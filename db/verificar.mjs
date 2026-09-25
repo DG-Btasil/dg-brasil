@@ -270,6 +270,31 @@ try {
   erro('auditoria', e)
 }
 
+console.log('\nTeste de fumaça: agente novo entra sem tocar em código')
+try {
+  // Um agente que só usa ferramentas já existentes é um INSERT. Nada além.
+  await db.query(
+    `insert into agente (slug, nome, modelo, politica_aprovacao, ferramentas, prompt_sistema)
+     values ('aniversarios', 'Felicitações de aniversário', 'claude-opus-5', 'humana',
+             array['buscar_contato'], 'Você prepara mensagens de aniversário para clientes.')`,
+  )
+  const a = await db.query(`select id from agente where slug = 'aniversarios'`)
+  await db.query(
+    `insert into execucao (agente_id, gatilho, entrada) values ($1, 'cron', '{}'::jsonb)`,
+    [a.rows[0].id],
+  )
+  const r = await db.query(`select * from reservar_execucao('worker-teste', 900)`)
+  if (r.rows[0]?.agente_id === a.rows[0].id)
+    ok('agente recém-cadastrado já é atendido pela mesma fila')
+  else erro('a fila não pegou a execução do agente novo')
+
+  const n = await db.query(`select count(*)::int as n from agente`)
+  if (n.rows[0].n === 6) ok(`catálogo cresceu para ${n.rows[0].n} agentes sem migração`)
+  else erro(`esperava 6 agentes, achei ${n.rows[0].n}`)
+} catch (e) {
+  erro('agente novo', e)
+}
+
 console.log('\nTeste de fumaça: exclusão de contato')
 try {
   // Cliente com caso aberto não se apaga por acidente — `on delete restrict`.

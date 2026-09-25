@@ -7,6 +7,7 @@ Substitui a ADVBOX ao final da migração. Um escritório, uma base, uso interno
 
 - **[ARQUITETURA.md](ARQUITETURA.md)** — as três camadas, a stack escolhida e por quê
 - **[ROADMAP.md](ROADMAP.md)** — as seis fases até o desligamento da ADVBOX
+- **[docs/adicionar-agente.md](docs/adicionar-agente.md)** — como cadastrar um agente novo
 
 ## A ideia em um parágrafo
 
@@ -96,4 +97,5 @@ conversa, não commit.
 | Schema, RLS, seed | Executados em Postgres (PGlite) — 19 asserções passando. Falta rodar no Supabase |
 | Worker (fila, executor, ferramentas, aplicador) | Escrito, `tsc --noEmit` passa limpo. **Não executado** (sem `DATABASE_URL`) |
 | Aplicador `enviar_mensagem` | Lança erro de propósito — ponte de WhatsApp é fase 4 |
+| Disparador dos gatilhos (`cron`, `evento`) | **Não existe.** Execução só entra na fila por insert manual — fase 2 |
 | Painel, importação da ADVBOX, `packages/dominio` | Não começados (fases 1 e 3) |
