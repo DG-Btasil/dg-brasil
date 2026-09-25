@@ -27,7 +27,7 @@ aprova ou rejeita. Só a aprovação produz efeito.
 | `db/004_seed_agentes.sql` | Os cinco agentes iniciais |
 | `db/verificar.mjs` | Roda os quatro arquivos num Postgres em WASM e testa o motor. Sem Docker |
 | `apps/agentes/` | O worker. Consome a fila e roda os agentes com o Claude Agent SDK |
-| `apps/web/` | Painel Next.js *(fase 1)* |
+| `apps/web/` | **O painel.** Hoje, contatos, ficha 360 do cliente e fila de aprovação |
 | `packages/dominio/` | Motor de classificação da esteira, vindo do `esteira-consignado` *(fase 3)* |
 | `agentes-claude/` | `.claude/` do escritório: agentes e skills versionados, carregados pelo worker |
 
@@ -49,7 +49,19 @@ Isso executa os quatro arquivos num Postgres de verdade (PGlite, em WASM) e roda
 Depois, crie um projeto no [Supabase](https://supabase.com) na região **São Paulo
 (sa-east-1)** e cole os quatro arquivos, em ordem, no SQL Editor.
 
-### 2. Worker
+### 2. Painel
+
+```bash
+cd apps/web
+npm install
+npm run dev     # http://localhost:3000
+```
+
+Sem `DATABASE_URL`, ele sobe sozinho com um Postgres em memória e dados
+fictícios — dá para abrir e navegar sem nuvem nenhuma. Uma tarja amarela no topo
+avisa que é demonstração.
+
+### 3. Worker
 
 ```bash
 cp .env.example .env     # preencha DATABASE_URL e ANTHROPIC_API_KEY
@@ -62,7 +74,7 @@ O worker fica em laço: pega execução pendente, roda o agente, grava as
 propostas, aplica as que foram aprovadas no painel. Vários podem rodar em
 paralelo — a fila usa `FOR UPDATE SKIP LOCKED`.
 
-### 3. Disparar um agente para testar
+### 4. Disparar um agente para testar
 
 ```sql
 insert into execucao (agente_id, gatilho, entrada)
@@ -98,4 +110,6 @@ conversa, não commit.
 | Worker (fila, executor, ferramentas, aplicador) | Escrito, `tsc --noEmit` passa limpo. **Não executado** (sem `DATABASE_URL`) |
 | Aplicador `enviar_mensagem` | Lança erro de propósito — ponte de WhatsApp é fase 4 |
 | Disparador dos gatilhos (`cron`, `evento`) | **Não existe.** Execução só entra na fila por insert manual — fase 2 |
-| Painel, importação da ADVBOX, `packages/dominio` | Não começados (fases 1 e 3) |
+| Painel — Hoje, contatos, ficha 360, aprovações | Roda. Build de produção passa. Testado via HTTP em modo demonstração |
+| Login (Supabase Auth) | **Não existe.** O painel se recusa a rodar contra banco real sem ele |
+| Importação da ADVBOX, `packages/dominio` | Não começados |

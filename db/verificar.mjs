@@ -189,6 +189,41 @@ try {
   erro('gate de aprovação', e)
 }
 
+console.log('\nTeste de fumaça: o painel aprovando e rejeitando')
+try {
+  const p = await db.query(
+    `select id from proposta where execucao_id = $1 and status = 'pendente' limit 1`,
+    [ids.execucao],
+  )
+  const propostaId = p.rows[0].id
+
+  // É exatamente a consulta do painel (apps/web/src/app/aprovacoes/acoes.ts).
+  const aprovar = `update proposta
+     set status = 'aprovada', revisado_por = $2, revisado_em = now()
+     where id = $1 and status = 'pendente'`
+
+  const r1 = await db.query(aprovar, [propostaId, ids.usuario])
+  if (r1.affectedRows === 1) ok('aprovação muda pendente → aprovada')
+  else erro(`esperava 1 linha afetada, veio ${r1.affectedRows}`)
+
+  // Clique duplo, ou dois advogados abrindo a fila ao mesmo tempo: a segunda
+  // aprovação precisa ser inócua, não um segundo efeito.
+  const r2 = await db.query(aprovar, [propostaId, ids.usuario])
+  if (r2.affectedRows === 0) ok('aprovar de novo não faz nada (guarda de status)')
+  else erro('a mesma proposta foi aprovada duas vezes')
+
+  // Rejeitar o que já saiu de pendente também precisa ser inócuo.
+  const r3 = await db.query(
+    `update proposta set status = 'rejeitada', comentario = $2
+     where id = $1 and status = 'pendente'`,
+    [propostaId, 'tarde demais'],
+  )
+  if (r3.affectedRows === 0) ok('não dá para rejeitar o que já foi aprovado')
+  else erro('proposta aprovada foi rejeitada depois')
+} catch (e) {
+  erro('aprovação/rejeição', e)
+}
+
 console.log('\nTeste de fumaça: documento gerado por execução')
 try {
   await db.query(
