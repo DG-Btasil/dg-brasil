@@ -1,7 +1,7 @@
 -- Núcleo — schema do CRM próprio
 -- Postgres 15+ (Supabase). Executar uma vez, em ordem numérica.
 
-create extension if not exists "pgcrypto";
+-- gen_random_uuid() é nativo desde o Postgres 13; não precisa de pgcrypto.
 
 -- ───────────────────────────── acesso ─────────────────────────────
 

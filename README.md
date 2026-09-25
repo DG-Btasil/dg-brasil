@@ -24,6 +24,7 @@ aprova ou rejeita. Só a aprovação produz efeito.
 | `db/002_agentes.sql` | Motor: catálogo de agentes, fila de execuções, propostas, auditoria |
 | `db/003_rls.sql` | Permissões por papel (admin, advogado, estagiário, financeiro, atendimento) |
 | `db/004_seed_agentes.sql` | Os cinco agentes iniciais |
+| `db/verificar.mjs` | Roda os quatro arquivos num Postgres em WASM e testa o motor. Sem Docker |
 | `apps/agentes/` | O worker. Consome a fila e roda os agentes com o Claude Agent SDK |
 | `apps/web/` | Painel Next.js *(fase 1)* |
 | `packages/dominio/` | Motor de classificação da esteira, vindo do `esteira-consignado` *(fase 3)* |
@@ -33,12 +34,19 @@ aprova ou rejeita. Só a aprovação produz efeito.
 
 ### 1. Banco
 
-Crie um projeto no [Supabase](https://supabase.com) na região **São Paulo
-(sa-east-1)** e rode os quatro arquivos de `db/` em ordem, no SQL Editor.
+Antes de tocar no Supabase, confira o schema localmente:
 
-> Os arquivos SQL ainda **não foram executados contra um Postgres real** — não
-> há banco nem Docker nesta máquina. Rode `001` primeiro e confira que passou
-> antes de seguir; erro de sintaxe, se houver, aparece aí.
+```bash
+cd db
+npm install
+npm run verificar
+```
+
+Isso executa os quatro arquivos num Postgres de verdade (PGlite, em WASM) e roda
+19 asserções sobre o motor de agentes. Rode isso sempre que mexer em `db/`.
+
+Depois, crie um projeto no [Supabase](https://supabase.com) na região **São Paulo
+(sa-east-1)** e cole os quatro arquivos, em ordem, no SQL Editor.
 
 ### 2. Worker
 
@@ -85,7 +93,7 @@ conversa, não commit.
 
 | Componente | Situação |
 |---|---|
-| Schema, RLS, seed | Escritos. **Não executados** contra Postgres (sem banco local) |
+| Schema, RLS, seed | Executados em Postgres (PGlite) — 19 asserções passando. Falta rodar no Supabase |
 | Worker (fila, executor, ferramentas, aplicador) | Escrito, `tsc --noEmit` passa limpo. **Não executado** (sem `DATABASE_URL`) |
 | Aplicador `enviar_mensagem` | Lança erro de propósito — ponte de WhatsApp é fase 4 |
 | Painel, importação da ADVBOX, `packages/dominio` | Não começados (fases 1 e 3) |
