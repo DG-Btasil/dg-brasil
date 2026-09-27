@@ -1,0 +1,567 @@
+/**
+ * Status centralizados do domínio.
+ *
+ * Regra: nenhum componente compara ou exibe string de status solta.
+ * Os valores (em inglês, estáveis) ficam aqui; os textos em português ficam
+ * nos mapas *_LABEL; o tom visual fica nos mapas *_TONE.
+ * Trocar um rótulo é mudar uma linha deste arquivo.
+ */
+
+export type Tone = "neutral" | "navy" | "gold" | "info" | "success" | "warning" | "orange" | "danger";
+
+/* ------------------------------------------------------------------ */
+/* Clientes                                                            */
+/* ------------------------------------------------------------------ */
+
+export const CLIENT_KINDS = ["INDIVIDUAL", "COMPANY"] as const;
+export type ClientKind = (typeof CLIENT_KINDS)[number];
+export const CLIENT_KIND_LABEL: Record<ClientKind, string> = {
+  INDIVIDUAL: "Pessoa Física",
+  COMPANY: "Pessoa Jurídica",
+};
+export const CLIENT_KIND_SHORT: Record<ClientKind, string> = {
+  INDIVIDUAL: "PF",
+  COMPANY: "PJ",
+};
+
+export const CLIENT_STATUSES = ["NEW", "ACTIVE", "WAITING_DOCUMENTS", "INACTIVE"] as const;
+export type ClientStatus = (typeof CLIENT_STATUSES)[number];
+export const CLIENT_STATUS_LABEL: Record<ClientStatus, string> = {
+  NEW: "Novo",
+  ACTIVE: "Ativo",
+  WAITING_DOCUMENTS: "Aguardando documentos",
+  INACTIVE: "Inativo",
+};
+export const CLIENT_STATUS_TONE: Record<ClientStatus, Tone> = {
+  NEW: "info",
+  ACTIVE: "success",
+  WAITING_DOCUMENTS: "warning",
+  INACTIVE: "neutral",
+};
+
+/* ------------------------------------------------------------------ */
+/* Documentos                                                          */
+/* ------------------------------------------------------------------ */
+
+export const DOCUMENT_STATUSES = ["RECEIVED", "PENDING", "MISSING", "NEEDS_UPDATE", "REJECTED"] as const;
+export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
+export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
+  RECEIVED: "Recebido",
+  PENDING: "Pendente de verificação",
+  MISSING: "Ausente",
+  NEEDS_UPDATE: "Precisa atualização",
+  REJECTED: "Rejeitado",
+};
+export const DOCUMENT_STATUS_TONE: Record<DocumentStatus, Tone> = {
+  RECEIVED: "success",
+  PENDING: "info",
+  MISSING: "danger",
+  NEEDS_UPDATE: "warning",
+  REJECTED: "danger",
+};
+
+export const DOCUMENT_VERIFICATIONS = ["VERIFIED", "UNVERIFIED", "FAILED"] as const;
+export type DocumentVerification = (typeof DOCUMENT_VERIFICATIONS)[number];
+export const DOCUMENT_VERIFICATION_LABEL: Record<DocumentVerification, string> = {
+  VERIFIED: "Verificado",
+  UNVERIFIED: "Não verificado",
+  FAILED: "Divergência encontrada",
+};
+
+export const DOCUMENT_CATEGORIES = [
+  "IDENTIFICATION",
+  "ADDRESS_PROOF",
+  "INCOME_PROOF",
+  "BANK_STATEMENT",
+  "LOAN_CONTRACT",
+  "BENEFIT_STATEMENT",
+  "POWER_OF_ATTORNEY",
+  "HARDSHIP_DECLARATION",
+  "CORPORATE_DOCUMENTS",
+  "PETITION",
+  "COURT_DECISION",
+  "OTHER",
+] as const;
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+export const DOCUMENT_CATEGORY_LABEL: Record<DocumentCategory, string> = {
+  IDENTIFICATION: "Documento de identificação",
+  ADDRESS_PROOF: "Comprovante de residência",
+  INCOME_PROOF: "Comprovante de renda",
+  BANK_STATEMENT: "Extrato bancário",
+  LOAN_CONTRACT: "Contrato bancário",
+  BENEFIT_STATEMENT: "Extrato de benefício",
+  POWER_OF_ATTORNEY: "Procuração",
+  HARDSHIP_DECLARATION: "Declaração de hipossuficiência",
+  CORPORATE_DOCUMENTS: "Documentos societários",
+  PETITION: "Peça processual",
+  COURT_DECISION: "Decisão judicial",
+  OTHER: "Outro",
+};
+
+/* ------------------------------------------------------------------ */
+/* Análise jurídica                                                    */
+/* ------------------------------------------------------------------ */
+
+export const ANALYSIS_STATUSES = [
+  "NOT_STARTED",
+  "WAITING_DOCUMENTS",
+  "READY",
+  "ANALYZING",
+  "WAITING_REVIEW",
+  "COMPLETED",
+  "INTERRUPTED",
+] as const;
+export type AnalysisStatus = (typeof ANALYSIS_STATUSES)[number];
+export const ANALYSIS_STATUS_LABEL: Record<AnalysisStatus, string> = {
+  NOT_STARTED: "Não iniciada",
+  WAITING_DOCUMENTS: "Aguardando documentos",
+  READY: "Pronta para análise",
+  ANALYZING: "Em análise",
+  WAITING_REVIEW: "Aguardando revisão humana",
+  COMPLETED: "Concluída",
+  INTERRUPTED: "Interrompida",
+};
+export const ANALYSIS_STATUS_TONE: Record<AnalysisStatus, Tone> = {
+  NOT_STARTED: "neutral",
+  WAITING_DOCUMENTS: "warning",
+  READY: "info",
+  ANALYZING: "navy",
+  WAITING_REVIEW: "gold",
+  COMPLETED: "success",
+  INTERRUPTED: "danger",
+};
+
+/* ------------------------------------------------------------------ */
+/* Processos                                                           */
+/* ------------------------------------------------------------------ */
+
+export const PROCESS_STATUSES = [
+  "PRE_FILING",
+  "PREPARING",
+  "FILED",
+  "ACTIVE",
+  "WAITING_CLIENT",
+  "WAITING_DEADLINE",
+  "SUSPENDED",
+  "CLOSED",
+] as const;
+export type ProcessStatus = (typeof PROCESS_STATUSES)[number];
+export const PROCESS_STATUS_LABEL: Record<ProcessStatus, string> = {
+  PRE_FILING: "Pré-ajuizamento",
+  PREPARING: "Em preparação",
+  FILED: "Distribuído",
+  ACTIVE: "Em andamento",
+  WAITING_CLIENT: "Aguardando cliente",
+  WAITING_DEADLINE: "Aguardando prazo",
+  SUSPENDED: "Suspenso",
+  CLOSED: "Encerrado",
+};
+export const PROCESS_STATUS_TONE: Record<ProcessStatus, Tone> = {
+  PRE_FILING: "neutral",
+  PREPARING: "info",
+  FILED: "navy",
+  ACTIVE: "success",
+  WAITING_CLIENT: "warning",
+  WAITING_DEADLINE: "gold",
+  SUSPENDED: "orange",
+  CLOSED: "neutral",
+};
+
+export const PROCESS_PHASES = [
+  "PRELIMINARY",
+  "PLEADINGS",
+  "EVIDENCE",
+  "JUDGMENT",
+  "APPEAL",
+  "ENFORCEMENT",
+  "ARCHIVED",
+] as const;
+export type ProcessPhase = (typeof PROCESS_PHASES)[number];
+export const PROCESS_PHASE_LABEL: Record<ProcessPhase, string> = {
+  PRELIMINARY: "Pré-processual",
+  PLEADINGS: "Postulatória",
+  EVIDENCE: "Instrutória",
+  JUDGMENT: "Decisória",
+  APPEAL: "Recursal",
+  ENFORCEMENT: "Cumprimento de sentença",
+  ARCHIVED: "Arquivado",
+};
+
+export const PROCESS_ORIGINS = ["AGENT", "INTEGRATION", "MANUAL"] as const;
+export type ProcessOrigin = (typeof PROCESS_ORIGINS)[number];
+export const PROCESS_ORIGIN_LABEL: Record<ProcessOrigin, string> = {
+  AGENT: "DG Brasil",
+  INTEGRATION: "Integração",
+  MANUAL: "Manual",
+};
+export const PROCESS_ORIGIN_DESCRIPTION: Record<ProcessOrigin, string> = {
+  AGENT: "Criado a partir de uma análise conduzida pelos agentes do DG Brasil",
+  INTEGRATION: "Importado do provedor de acompanhamento processual",
+  MANUAL: "Cadastrado manualmente pela equipe",
+};
+
+export const CLIENT_POLES = ["ACTIVE", "PASSIVE", "THIRD_PARTY"] as const;
+export type ClientPole = (typeof CLIENT_POLES)[number];
+export const CLIENT_POLE_LABEL: Record<ClientPole, string> = {
+  ACTIVE: "Polo ativo (autor)",
+  PASSIVE: "Polo passivo (réu)",
+  THIRD_PARTY: "Terceiro interessado",
+};
+
+export const PROCESS_EVENT_SOURCES = ["COURT", "INTEGRATION", "AGENT", "MANUAL", "SYSTEM"] as const;
+export type ProcessEventSource = (typeof PROCESS_EVENT_SOURCES)[number];
+export const PROCESS_EVENT_SOURCE_LABEL: Record<ProcessEventSource, string> = {
+  COURT: "Tribunal",
+  INTEGRATION: "Integração",
+  AGENT: "DG Brasil",
+  MANUAL: "Equipe",
+  SYSTEM: "Sistema",
+};
+
+/* ------------------------------------------------------------------ */
+/* Prazos                                                              */
+/* ------------------------------------------------------------------ */
+
+export const DEADLINE_TYPES = [
+  "MANIFESTATION",
+  "REPLY",
+  "APPEAL",
+  "HEARING",
+  "DOCUMENT_DELIVERY",
+  "FILING",
+  "INTERNAL",
+] as const;
+export type DeadlineType = (typeof DEADLINE_TYPES)[number];
+export const DEADLINE_TYPE_LABEL: Record<DeadlineType, string> = {
+  MANIFESTATION: "Manifestação",
+  REPLY: "Réplica",
+  APPEAL: "Recurso",
+  HEARING: "Audiência",
+  DOCUMENT_DELIVERY: "Entrega de documentos",
+  FILING: "Protocolo",
+  INTERNAL: "Prazo interno",
+};
+
+export const DEADLINE_STATUSES = ["OPEN", "DONE", "MISSED"] as const;
+export type DeadlineStatus = (typeof DEADLINE_STATUSES)[number];
+export const DEADLINE_STATUS_LABEL: Record<DeadlineStatus, string> = {
+  OPEN: "Em aberto",
+  DONE: "Cumprido",
+  MISSED: "Perdido",
+};
+export const DEADLINE_STATUS_TONE: Record<DeadlineStatus, Tone> = {
+  OPEN: "info",
+  DONE: "success",
+  MISSED: "danger",
+};
+
+/** Urgência calculada a partir da data de vencimento (ver lib/formatting/deadlines). */
+export const DEADLINE_URGENCIES = ["OVERDUE", "TODAY", "TOMORROW", "SOON", "LATER"] as const;
+export type DeadlineUrgency = (typeof DEADLINE_URGENCIES)[number];
+export const DEADLINE_URGENCY_LABEL: Record<DeadlineUrgency, string> = {
+  OVERDUE: "Vencido",
+  TODAY: "Vence hoje",
+  TOMORROW: "Vence amanhã",
+  SOON: "Próximos dias",
+  LATER: "No prazo",
+};
+export const DEADLINE_URGENCY_TONE: Record<DeadlineUrgency, Tone> = {
+  OVERDUE: "danger",
+  TODAY: "danger",
+  TOMORROW: "orange",
+  SOON: "warning",
+  LATER: "neutral",
+};
+
+/* ------------------------------------------------------------------ */
+/* Revisões                                                            */
+/* ------------------------------------------------------------------ */
+
+export const REVIEW_STATUSES = ["PENDING", "URGENT", "CHANGES_REQUESTED", "APPROVED", "REJECTED"] as const;
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
+export const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
+  PENDING: "Pendente",
+  URGENT: "Urgente",
+  CHANGES_REQUESTED: "Alterações solicitadas",
+  APPROVED: "Aprovada",
+  REJECTED: "Rejeitada",
+};
+export const REVIEW_STATUS_TONE: Record<ReviewStatus, Tone> = {
+  PENDING: "gold",
+  URGENT: "danger",
+  CHANGES_REQUESTED: "orange",
+  APPROVED: "success",
+  REJECTED: "neutral",
+};
+/** Revisões que ainda aguardam decisão humana. */
+export const OPEN_REVIEW_STATUSES: readonly ReviewStatus[] = ["PENDING", "URGENT"];
+
+export const REVIEW_TYPES = [
+  "ANALYSIS_RESULT",
+  "PETITION_DRAFT",
+  "DOCUMENT_CHECK",
+  "DEADLINE_PROPOSAL",
+  "CLIENT_MESSAGE",
+  "PROCESS_UPDATE",
+] as const;
+export type ReviewType = (typeof REVIEW_TYPES)[number];
+export const REVIEW_TYPE_LABEL: Record<ReviewType, string> = {
+  ANALYSIS_RESULT: "Resultado de análise",
+  PETITION_DRAFT: "Minuta de petição",
+  DOCUMENT_CHECK: "Conferência documental",
+  DEADLINE_PROPOSAL: "Proposta de prazo",
+  CLIENT_MESSAGE: "Mensagem ao cliente",
+  PROCESS_UPDATE: "Atualização processual",
+};
+
+export const PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"] as const;
+export type Priority = (typeof PRIORITIES)[number];
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  LOW: "Baixa",
+  NORMAL: "Normal",
+  HIGH: "Alta",
+  URGENT: "Urgente",
+};
+export const PRIORITY_TONE: Record<Priority, Tone> = {
+  LOW: "neutral",
+  NORMAL: "info",
+  HIGH: "orange",
+  URGENT: "danger",
+};
+export const PRIORITY_WEIGHT: Record<Priority, number> = { LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 };
+
+export const REVIEW_DECISIONS = ["APPROVED", "CHANGES_REQUESTED", "REJECTED"] as const;
+export type ReviewDecisionKind = (typeof REVIEW_DECISIONS)[number];
+export const REVIEW_DECISION_LABEL: Record<ReviewDecisionKind, string> = {
+  APPROVED: "Aprovada",
+  CHANGES_REQUESTED: "Alterações solicitadas",
+  REJECTED: "Rejeitada",
+};
+
+/* ------------------------------------------------------------------ */
+/* DG Brasil — agentes, Skills, teses                                  */
+/* ------------------------------------------------------------------ */
+
+export const AGENT_STATUSES = ["ACTIVE", "PAUSED", "DRAFT"] as const;
+export type AgentStatus = (typeof AGENT_STATUSES)[number];
+export const AGENT_STATUS_LABEL: Record<AgentStatus, string> = {
+  ACTIVE: "Ativo",
+  PAUSED: "Pausado",
+  DRAFT: "Em configuração",
+};
+export const AGENT_STATUS_TONE: Record<AgentStatus, Tone> = {
+  ACTIVE: "success",
+  PAUSED: "warning",
+  DRAFT: "neutral",
+};
+
+export const AGENT_AUTONOMY_LEVELS = ["SUGGEST_ONLY", "REVIEW_REQUIRED", "AUTO_LOW_RISK"] as const;
+export type AgentAutonomy = (typeof AGENT_AUTONOMY_LEVELS)[number];
+export const AGENT_AUTONOMY_LABEL: Record<AgentAutonomy, string> = {
+  SUGGEST_ONLY: "Apenas sugere",
+  REVIEW_REQUIRED: "Executa com revisão humana",
+  AUTO_LOW_RISK: "Autônomo em tarefas internas de baixo risco",
+};
+export const AGENT_AUTONOMY_DESCRIPTION: Record<AgentAutonomy, string> = {
+  SUGGEST_ONLY: "O agente apresenta recomendações; nenhuma tarefa é executada sem pedido explícito.",
+  REVIEW_REQUIRED: "O agente produz o material e o envia para Revisões. Nada segue sem aprovação.",
+  AUTO_LOW_RISK:
+    "Tarefas internas e reversíveis (classificar, organizar) seguem direto. Ações externas continuam exigindo aprovação.",
+};
+
+export const AGENT_TASK_STATUSES = ["COMPLETED", "RUNNING", "WAITING_REVIEW", "BLOCKED", "FAILED"] as const;
+export type AgentTaskStatus = (typeof AGENT_TASK_STATUSES)[number];
+export const AGENT_TASK_STATUS_LABEL: Record<AgentTaskStatus, string> = {
+  COMPLETED: "Concluída",
+  RUNNING: "Em execução",
+  WAITING_REVIEW: "Aguardando revisão",
+  BLOCKED: "Bloqueada",
+  FAILED: "Falhou",
+};
+export const AGENT_TASK_STATUS_TONE: Record<AgentTaskStatus, Tone> = {
+  COMPLETED: "success",
+  RUNNING: "navy",
+  WAITING_REVIEW: "gold",
+  BLOCKED: "warning",
+  FAILED: "danger",
+};
+
+export const SKILL_STATUSES = ["ACTIVE", "DRAFT", "DEPRECATED"] as const;
+export type SkillStatus = (typeof SKILL_STATUSES)[number];
+export const SKILL_STATUS_LABEL: Record<SkillStatus, string> = {
+  ACTIVE: "Ativa",
+  DRAFT: "Rascunho",
+  DEPRECATED: "Descontinuada",
+};
+export const SKILL_STATUS_TONE: Record<SkillStatus, Tone> = {
+  ACTIVE: "success",
+  DRAFT: "neutral",
+  DEPRECATED: "warning",
+};
+
+export const THESIS_STATUSES = ["ACTIVE", "IN_REVIEW", "DRAFT", "ARCHIVED"] as const;
+export type ThesisStatus = (typeof THESIS_STATUSES)[number];
+export const THESIS_STATUS_LABEL: Record<ThesisStatus, string> = {
+  ACTIVE: "Vigente",
+  IN_REVIEW: "Em revisão",
+  DRAFT: "Rascunho",
+  ARCHIVED: "Arquivada",
+};
+export const THESIS_STATUS_TONE: Record<ThesisStatus, Tone> = {
+  ACTIVE: "success",
+  IN_REVIEW: "gold",
+  DRAFT: "neutral",
+  ARCHIVED: "neutral",
+};
+
+export const CHANGE_ENTITY_TYPES = ["SKILL", "AGENT", "THESIS", "RULE"] as const;
+export type ChangeEntityType = (typeof CHANGE_ENTITY_TYPES)[number];
+export const CHANGE_ENTITY_LABEL: Record<ChangeEntityType, string> = {
+  SKILL: "Skill",
+  AGENT: "Agente",
+  THESIS: "Tese",
+  RULE: "Regra",
+};
+
+export const CHANGE_STATUSES = ["APPLIED", "PROPOSED", "CANCELLED", "REVERTED"] as const;
+export type ChangeStatus = (typeof CHANGE_STATUSES)[number];
+export const CHANGE_STATUS_LABEL: Record<ChangeStatus, string> = {
+  APPLIED: "Aplicada",
+  PROPOSED: "Proposta",
+  CANCELLED: "Cancelada",
+  REVERTED: "Revertida",
+};
+export const CHANGE_STATUS_TONE: Record<ChangeStatus, Tone> = {
+  APPLIED: "success",
+  PROPOSED: "gold",
+  CANCELLED: "neutral",
+  REVERTED: "orange",
+};
+
+/* ------------------------------------------------------------------ */
+/* Notificações                                                        */
+/* ------------------------------------------------------------------ */
+
+export const NOTIFICATION_SEVERITIES = ["info", "warning", "urgent", "critical"] as const;
+export type NotificationSeverity = (typeof NOTIFICATION_SEVERITIES)[number];
+export const NOTIFICATION_SEVERITY_LABEL: Record<NotificationSeverity, string> = {
+  info: "Informativo",
+  warning: "Atenção",
+  urgent: "Urgente",
+  critical: "Crítico",
+};
+export const NOTIFICATION_SEVERITY_TONE: Record<NotificationSeverity, Tone> = {
+  info: "info",
+  warning: "warning",
+  urgent: "orange",
+  critical: "danger",
+};
+export const SEVERITY_WEIGHT: Record<NotificationSeverity, number> = { info: 0, warning: 1, urgent: 2, critical: 3 };
+
+export const NOTIFICATION_TYPES = [
+  "DEADLINE",
+  "REVIEW_WAITING",
+  "DOCUMENT_MISSING",
+  "PROCESS_MOVEMENT",
+  "AGENT_INTERVENTION",
+  "INTEGRATION_ISSUE",
+  "TASK_OVERDUE",
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
+  DEADLINE: "Prazo",
+  REVIEW_WAITING: "Revisão aguardando",
+  DOCUMENT_MISSING: "Documento ausente",
+  PROCESS_MOVEMENT: "Movimentação processual",
+  AGENT_INTERVENTION: "Agente solicita intervenção",
+  INTEGRATION_ISSUE: "Integração",
+  TASK_OVERDUE: "Tarefa atrasada",
+};
+
+/* ------------------------------------------------------------------ */
+/* Financeiro                                                          */
+/* ------------------------------------------------------------------ */
+
+export const BILLING_MOMENTS = ["ON_SIGNING", "MONTHLY", "ON_FILING", "ON_SUCCESS", "CUSTOM"] as const;
+export type BillingMoment = (typeof BILLING_MOMENTS)[number];
+export const BILLING_MOMENT_LABEL: Record<BillingMoment, string> = {
+  ON_SIGNING: "Na assinatura do contrato",
+  MONTHLY: "Mensalmente",
+  ON_FILING: "No ajuizamento",
+  ON_SUCCESS: "No êxito",
+  CUSTOM: "Personalizado",
+};
+
+export const AGREEMENT_STATUSES = ["ACTIVE", "SETTLED", "OVERDUE", "CANCELLED"] as const;
+export type AgreementStatus = (typeof AGREEMENT_STATUSES)[number];
+export const AGREEMENT_STATUS_LABEL: Record<AgreementStatus, string> = {
+  ACTIVE: "Em dia",
+  SETTLED: "Quitado",
+  OVERDUE: "Em atraso",
+  CANCELLED: "Cancelado",
+};
+export const AGREEMENT_STATUS_TONE: Record<AgreementStatus, Tone> = {
+  ACTIVE: "success",
+  SETTLED: "navy",
+  OVERDUE: "danger",
+  CANCELLED: "neutral",
+};
+
+export const PAYMENT_STATUSES = ["PAID", "PENDING", "OVERDUE"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+  PAID: "Pago",
+  PENDING: "A vencer",
+  OVERDUE: "Em atraso",
+};
+export const PAYMENT_STATUS_TONE: Record<PaymentStatus, Tone> = {
+  PAID: "success",
+  PENDING: "info",
+  OVERDUE: "danger",
+};
+
+/* ------------------------------------------------------------------ */
+/* Integrações                                                         */
+/* ------------------------------------------------------------------ */
+
+export const INTEGRATION_KINDS = ["AI_PROVIDER", "LEGAL_PROCESS", "STORAGE", "EMAIL", "WHATSAPP"] as const;
+export type IntegrationKind = (typeof INTEGRATION_KINDS)[number];
+export const INTEGRATION_KIND_LABEL: Record<IntegrationKind, string> = {
+  AI_PROVIDER: "Anthropic / Claude Platform",
+  LEGAL_PROCESS: "Provedor de acompanhamento processual",
+  STORAGE: "Armazenamento de documentos",
+  EMAIL: "E-mail",
+  WHATSAPP: "WhatsApp",
+};
+
+export const INTEGRATION_STATUSES = ["CONNECTED", "DISCONNECTED", "ERROR", "PENDING"] as const;
+export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number];
+export const INTEGRATION_STATUS_LABEL: Record<IntegrationStatus, string> = {
+  CONNECTED: "Conectado",
+  DISCONNECTED: "Desconectado",
+  ERROR: "Com problema",
+  PENDING: "Configuração pendente",
+};
+export const INTEGRATION_STATUS_TONE: Record<IntegrationStatus, Tone> = {
+  CONNECTED: "success",
+  DISCONNECTED: "neutral",
+  ERROR: "danger",
+  PENDING: "warning",
+};
+
+/* ------------------------------------------------------------------ */
+/* Usuários                                                            */
+/* ------------------------------------------------------------------ */
+
+export const USER_STATUSES = ["ACTIVE", "INVITED", "DISABLED"] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+export const USER_STATUS_LABEL: Record<UserStatus, string> = {
+  ACTIVE: "Ativo",
+  INVITED: "Convite enviado",
+  DISABLED: "Desativado",
+};
+export const USER_STATUS_TONE: Record<UserStatus, Tone> = {
+  ACTIVE: "success",
+  INVITED: "gold",
+  DISABLED: "neutral",
+};

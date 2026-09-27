@@ -1,20 +1,38 @@
--- Núcleo — permissões por papel (Row Level Security).
+-- DG Brasil — permissões por papel (Row Level Security).
 --
--- O worker de agentes conecta com a service_role, que ignora RLS por natureza.
+-- O worker de agentes conecta como dono do banco, que ignora RLS por natureza.
 -- É por isso que o worker precisa da allowlist de ferramentas em `agente.ferramentas`:
 -- no banco ele é onipotente, e o limite dele é o código, não a política.
--- O painel conecta sempre como o usuário logado e passa por tudo isto abaixo.
+-- O painel passa por tudo isto: ele faz `set local role painel` (papel comum,
+-- criado em 005_auth.sql, sem bypass de RLS) antes de qualquer consulta.
 
-create or replace function papel_atual() returns papel
-language sql stable as $$
-  select u.papel from usuario u
-  where u.auth_id = auth.uid() and u.ativo
-$$;
+-- Quem é o usuário desta consulta. O painel escreve `app.usuario_id` no início
+-- de cada transação (ver comoUsuario em apps/web/src/servidor/banco.ts).
+-- O `true` no current_setting evita erro quando a variável não foi definida —
+-- nesse caso não há usuário, e as políticas abaixo negam tudo.
+--
+-- Deliberadamente NÃO usamos `auth.uid()`: isso amarraria o schema ao Supabase.
+-- Assim o mesmo banco roda em Supabase, numa VPS ou no PGlite dos testes.
 
 create or replace function usuario_atual() returns uuid
 language sql stable as $$
-  select u.id from usuario u
-  where u.auth_id = auth.uid() and u.ativo
+  select nullif(current_setting('app.usuario_id', true), '')::uuid
+$$;
+
+-- SECURITY DEFINER não é zelo excessivo aqui, é obrigatório: a tabela `usuario`
+-- também tem RLS, e a política dela chama esta função. Sem o DEFINER a leitura
+-- volta a passar pela política, que chama a função de novo — recursão infinita,
+-- e toda consulta do painel morre.
+--
+-- `search_path` fixo porque SECURITY DEFINER roda com os privilégios do dono:
+-- sem isso, quem puder criar um schema no caminho sequestra a função.
+create or replace function papel_atual() returns papel
+language sql stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select u.papel from usuario u
+  where u.id = usuario_atual() and u.ativo
 $$;
 
 -- ── quem enxerga o quê ────────────────────────────────────────────

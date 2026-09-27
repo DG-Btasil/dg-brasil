@@ -30,6 +30,7 @@ export function CartaoProposta({
   cliente,
   custoUsd,
   passos,
+  podeDecidir,
 }: {
   id: string
   tipo: string
@@ -39,6 +40,7 @@ export function CartaoProposta({
   cliente: string | null
   custoUsd: string | null
   passos: Passo[]
+  podeDecidir: boolean
 }) {
   const [pendente, iniciar] = useTransition()
   const [rejeitando, setRejeitando] = useState(false)
@@ -113,7 +115,7 @@ export function CartaoProposta({
 
       {erro && <p className="mt-2 text-xs text-urgente">{erro}</p>}
 
-      {rejeitando ? (
+      {!podeDecidir ? null : rejeitando ? (
         <div className="mt-3">
           <label className="mb-1 block text-xs text-suave" htmlFor={`motivo-${id}`}>
             Por que está rejeitando? Isso é o que corrige o agente.

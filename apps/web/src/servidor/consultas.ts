@@ -1,5 +1,15 @@
 import 'server-only'
-import { banco } from './banco'
+import type { Escopo } from './banco'
+
+/**
+ * Toda consulta de tela recebe um `Escopo` — a transação já com o papel
+ * `painel` e a identidade do usuário. É isso que faz a RLS valer: estagiário
+ * enxerga só o caso dele, financeiro não enxerga processo.
+ *
+ * Quem chama usa `comoUsuarioLogado` (src/servidor/sessao.ts). Trocar esse
+ * parâmetro por uma conexão dona do banco faria tudo funcionar e apagaria as
+ * permissões em silêncio — não faça.
+ */
 
 export interface PrazoLinha {
   id: string
@@ -40,8 +50,7 @@ export interface PropostaLinha {
 }
 
 /** Prazos abertos, do mais urgente ao menos. Vencidos aparecem com número negativo. */
-export async function prazosAbertos(limite = 30): Promise<PrazoLinha[]> {
-  const db = await banco()
+export async function prazosAbertos(db: Escopo, limite = 30): Promise<PrazoLinha[]> {
   return db.consulta<PrazoLinha>(
     `select z.id, z.tipo, z.descricao, z.data_fatal::text,
             (z.data_fatal - current_date) as dias_restantes,
@@ -59,8 +68,7 @@ export async function prazosAbertos(limite = 30): Promise<PrazoLinha[]> {
   )
 }
 
-export async function tarefasAbertas(limite = 30): Promise<TarefaLinha[]> {
-  const db = await banco()
+export async function tarefasAbertas(db: Escopo, limite = 30): Promise<TarefaLinha[]> {
   return db.consulta<TarefaLinha>(
     `select t.id, t.titulo, t.prazo_em::text, t.prioridade, t.status,
             c.nome as cliente, c.id as contato_id, u.nome as responsavel
@@ -76,8 +84,7 @@ export async function tarefasAbertas(limite = 30): Promise<TarefaLinha[]> {
 }
 
 /** A fila que dá sentido ao sistema: o que os agentes propuseram e espera humano. */
-export async function propostasPendentes(limite = 50): Promise<PropostaLinha[]> {
-  const db = await banco()
+export async function propostasPendentes(db: Escopo, limite = 50): Promise<PropostaLinha[]> {
   return db.consulta<PropostaLinha>(
     `select pr.id, pr.tipo, pr.resumo, pr.payload, pr.criado_em::text,
             a.slug as agente_slug, a.nome as agente_nome,
@@ -95,8 +102,7 @@ export async function propostasPendentes(limite = 50): Promise<PropostaLinha[]> 
   )
 }
 
-export async function contarPropostasPendentes(): Promise<number> {
-  const db = await banco()
+export async function contarPropostasPendentes(db: Escopo): Promise<number> {
   const r = await db.um<{ n: string }>(
     `select count(*)::text as n from proposta where status = 'pendente'`,
   )
@@ -104,8 +110,7 @@ export async function contarPropostasPendentes(): Promise<number> {
 }
 
 /** O rastro que torna a proposta auditável: o que o agente fez até chegar nela. */
-export async function passosDaExecucao(execucaoId: string) {
-  const db = await banco()
+export async function passosDaExecucao(db: Escopo, execucaoId: string) {
   return db.consulta<{
     ordem: number
     tipo: string
@@ -118,8 +123,7 @@ export async function passosDaExecucao(execucaoId: string) {
   )
 }
 
-export async function buscarContatos(termo: string, limite = 50) {
-  const db = await banco()
+export async function buscarContatos(db: Escopo, termo: string, limite = 50) {
   const digitos = termo.replace(/\D/g, '')
   return db.consulta<{
     id: string
@@ -142,8 +146,7 @@ export async function buscarContatos(termo: string, limite = 50) {
 }
 
 /** Visão 360 do cliente: tudo que a equipe precisa numa tela só. */
-export async function fichaDoContato(id: string) {
-  const db = await banco()
+export async function fichaDoContato(db: Escopo, id: string) {
 
   const contato = await db.um<{
     id: string

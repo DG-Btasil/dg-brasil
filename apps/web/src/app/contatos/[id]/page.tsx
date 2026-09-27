@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { fichaDoContato } from '@/servidor/consultas'
+import { comoUsuarioLogado } from '@/servidor/sessao'
 import {
   Cartao,
   Etiqueta,
@@ -13,9 +14,16 @@ import {
   prazoEmPalavras,
 } from '@/componentes/ui'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Ficha({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const ficha = await fichaDoContato(id)
+  // registrar_acesso: quem abriu a ficha de qual cliente fica registrado.
+  // Exigível pela LGPD, e aqui os titulares são idosos vulneráveis.
+  const ficha = await comoUsuarioLogado(async (db) => {
+    await db.consulta(`select registrar_acesso($1, $2)`, [id, 'abriu a ficha no painel'])
+    return fichaDoContato(db, id)
+  })
   if (!ficha) notFound()
 
   const { contato, beneficios, casos, prazos, documentos, financeiro } = ficha

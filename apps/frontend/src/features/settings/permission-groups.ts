@@ -1,0 +1,56 @@
+import type { Permission } from "@/lib/permissions";
+
+/** Rótulos legíveis de cada permissão (matriz somente leitura). */
+export const PERMISSION_LABEL: Record<Permission, string> = {
+  "home.view": "Ver a Home",
+  "clients.view": "Ver clientes",
+  "clients.edit": "Cadastrar e editar clientes",
+  "documents.manage": "Gerenciar documentos",
+  "analyses.start": "Iniciar análises jurídicas",
+  "processes.view": "Ver processos",
+  "processes.edit": "Cadastrar e editar processos",
+  "processes.caseValue.view": "Ver valor da causa",
+  "reviews.view": "Ver revisões",
+  "reviews.decide": "Aprovar ou rejeitar revisões",
+  "finance.view": "Ver honorários e pagamentos",
+  "finance.manage": "Gerenciar contratos e pagamentos",
+  "dgbrasil.view": "Acessar a Central DG Brasil",
+  "dgbrasil.manage": "Configurar agentes e Skills",
+  "dgbrasil.activity.view": "Ver atividade dos agentes",
+  "settings.view": "Acessar configurações",
+  "settings.office.edit": "Editar dados do escritório",
+  "settings.team.manage": "Gerenciar equipe e papéis",
+  "settings.integrations.view": "Ver integrações",
+  "settings.integrations.manage": "Configurar integrações",
+  "settings.ai.view": "Ver conexão e consumo de IA",
+  "settings.fees.manage": "Gerenciar modelos de honorários",
+  "settings.security.view": "Ver segurança e auditoria",
+  "settings.billing.view": "Ver assinatura",
+  "settings.notifications.edit": "Editar preferências de notificação",
+  "audit.view": "Ver registro de auditoria",
+  "demo.tools": "Ferramentas de demonstração",
+};
+
+export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
+  { label: "Clientes e documentos", permissions: ["home.view", "clients.view", "clients.edit", "documents.manage", "analyses.start"] },
+  { label: "Processos", permissions: ["processes.view", "processes.edit", "processes.caseValue.view"] },
+  { label: "Revisões", permissions: ["reviews.view", "reviews.decide"] },
+  { label: "Financeiro", permissions: ["finance.view", "finance.manage"] },
+  { label: "DG Brasil", permissions: ["dgbrasil.view", "dgbrasil.manage", "dgbrasil.activity.view"] },
+  {
+    label: "Configurações",
+    permissions: [
+      "settings.view",
+      "settings.office.edit",
+      "settings.team.manage",
+      "settings.integrations.view",
+      "settings.integrations.manage",
+      "settings.ai.view",
+      "settings.fees.manage",
+      "settings.security.view",
+      "settings.billing.view",
+      "settings.notifications.edit",
+    ],
+  },
+  { label: "Auditoria e demonstração", permissions: ["audit.view", "demo.tools"] },
+];

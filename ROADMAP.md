@@ -1,4 +1,4 @@
-# Roadmap — da ADVBOX ao Núcleo
+# Roadmap — da ADVBOX ao DG Brasil
 
 Seis fases. Cada uma entrega algo que a equipe usa de verdade; nenhuma depende
 de a seguinte existir. A ADVBOX só é desligada na fase 6, por decisão sua, com
@@ -18,7 +18,7 @@ quatro arquivos SQL em ordem e preencher o `.env`.
 
 ### Fase 1 — Espelho e painel de leitura
 
-Importar da ADVBOX contatos, processos, prazos e movimentações para o Núcleo,
+Importar da ADVBOX contatos, processos, prazos e movimentações para o DG Brasil,
 e mostrar isso num painel. Nada é escrito de volta na ADVBOX.
 
 - Script de importação usando o conector ADVBOX que você já tem (as colunas
@@ -72,7 +72,7 @@ curva.
 
 - Captura DJEN pelo conector de publicações.
 - Agente `radar` propõe prazos com contagem em dias úteis.
-- **Duplo registro:** por um período, prazo aberto no Núcleo também é conferido
+- **Duplo registro:** por um período, prazo aberto no DG Brasil também é conferido
   contra a ADVBOX. É essa fase que dá segurança para a fase 6.
 
 ---
@@ -90,7 +90,7 @@ curva.
 ## Onde o risco realmente mora
 
 Não é no código — é na fase 6. Enquanto os dois sistemas convivem, um prazo
-perdido no Núcleo ainda aparece na ADVBOX. Depois do desligamento, não aparece
+perdido no DG Brasil ainda aparece na ADVBOX. Depois do desligamento, não aparece
 em lugar nenhum.
 
 Por isso a fase 5 tem duplo registro e a fase 6 exige conferência item a item

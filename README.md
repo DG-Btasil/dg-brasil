@@ -1,4 +1,4 @@
-# Núcleo
+# DG Brasil
 
 Sistema interno da **Barbara Cardoso Advocacia**: CRM próprio + agentes de IA
 rodando na nuvem, com a equipe acessando pelo navegador.
@@ -28,6 +28,7 @@ aprova ou rejeita. Só a aprovação produz efeito.
 | `db/verificar.mjs` | Roda os quatro arquivos num Postgres em WASM e testa o motor. Sem Docker |
 | `apps/agentes/` | O worker. Consome a fila e roda os agentes com o Claude Agent SDK |
 | `apps/web/` | **O painel.** Hoje, contatos, ficha 360 do cliente e fila de aprovação |
+| `apps/frontend/` | **Front-end SaaS (protótipo navegável, dados fictícios).** Multi-escritório, RBAC, Revisões, DG Brasil. Ver [apps/frontend/README.md](apps/frontend/README.md) |
 | `packages/dominio/` | Motor de classificação da esteira, vindo do `esteira-consignado` *(fase 3)* |
 | `agentes-claude/` | `.claude/` do escritório: agentes e skills versionados, carregados pelo worker |
 

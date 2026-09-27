@@ -182,7 +182,7 @@ export function ferramentasDo(execucao: Execucao, agente: Agente) {
     : todas
 
   return createSdkMcpServer({
-    name: 'nucleo',
+    name: 'dgbrasil',
     version: '1.0.0',
     tools: permitidas,
   })

@@ -1,6 +1,9 @@
 import Link from 'next/link'
 import { buscarContatos } from '@/servidor/consultas'
+import { comoUsuarioLogado } from '@/servidor/sessao'
 import { Cartao, Etiqueta, Titulo, Vazio, cpfBr } from '@/componentes/ui'
+
+export const dynamic = 'force-dynamic'
 
 export default async function Contatos({
   searchParams,
@@ -8,7 +11,7 @@ export default async function Contatos({
   searchParams: Promise<{ q?: string }>
 }) {
   const { q = '' } = await searchParams
-  const contatos = await buscarContatos(q)
+  const contatos = await comoUsuarioLogado((db) => buscarContatos(db, q))
 
   return (
     <>

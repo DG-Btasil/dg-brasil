@@ -15,6 +15,7 @@ const ARQUIVOS = [
   '002_agentes.sql',
   '003_rls.sql',
   '004_seed_agentes.sql',
+  '005_auth.sql',
 ]
 
 const db = new PGlite()
@@ -28,16 +29,6 @@ function erro(msg, e) {
   console.log(`  \x1b[31m✗\x1b[0m ${msg}`)
   if (e) console.log(`    ${String(e.message ?? e).split('\n').join('\n    ')}`)
 }
-
-// O Supabase fornece o schema `auth` e a função `auth.uid()`. Fora dele, não
-// existem — 003_rls.sql depende dos dois.
-console.log('\nPreparando o ambiente (stub do schema auth do Supabase)')
-await db.exec(`
-  create schema if not exists auth;
-  create or replace function auth.uid() returns uuid
-  language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-`)
-ok('schema auth e auth.uid() criados')
 
 console.log('\nExecutando os arquivos de schema')
 for (const arquivo of ARQUIVOS) {
@@ -328,6 +319,71 @@ try {
   else erro(`esperava 6 agentes, achei ${n.rows[0].n}`)
 } catch (e) {
   erro('agente novo', e)
+}
+
+console.log('\nTeste de fumaça: a RLS isola de verdade')
+try {
+  // Segunda pessoa: estagiária, responsável por UM caso.
+  const est = await db.query(
+    `insert into usuario (nome, email, papel) values ('Renata', 'r@exemplo.br', 'estagiario')
+     returning id`,
+  )
+  ids.estagiaria = est.rows[0].id
+
+  const c2 = await db.query(
+    `insert into contato (nome, cpf_cnpj) values ('Cliente da estagiária', '22233344455')
+     returning id`,
+  )
+  const k2 = await db.query(
+    `insert into caso (contato_id, titulo, responsavel_id) values ($1, 'Caso dela', $2)
+     returning id`,
+    [c2.rows[0].id, ids.estagiaria],
+  )
+  await db.query(
+    `insert into caso (contato_id, titulo, responsavel_id) values ($1, 'Caso da chefe', $2)`,
+    [c2.rows[0].id, ids.usuario],
+  )
+
+  // Como o painel faz: vira o papel `painel` e declara quem é o usuário.
+  async function casosVistosPor(usuarioId) {
+    return db.transaction(async (tx) => {
+      // Mesma ordem do painel: identidade primeiro, privilégio depois.
+      await tx.query('select set_config($1, $2, true)', ['app.usuario_id', usuarioId])
+      await tx.query('set local role painel')
+      const r = await tx.query(`select titulo from caso order by titulo`)
+      return r.rows.map((x) => x.titulo)
+    })
+  }
+
+  const daChefe = await casosVistosPor(ids.usuario)
+  const daEstagiaria = await casosVistosPor(ids.estagiaria)
+
+  if (daChefe.length >= 2) ok(`administradora enxerga ${daChefe.length} casos`)
+  else erro(`administradora deveria ver todos, viu ${daChefe.length}`)
+
+  if (daEstagiaria.length === 1 && daEstagiaria[0] === 'Caso dela')
+    ok('estagiária enxerga só o caso em que é responsável')
+  else
+    erro(
+      `estagiária deveria ver 1 caso ("Caso dela"), viu ${daEstagiaria.length}: ` +
+        daEstagiaria.join(', '),
+    )
+
+  // Sem identidade declarada, a RLS precisa negar tudo — não liberar tudo.
+  const semIdentidade = await db.transaction(async (tx) => {
+    await tx.query('set local role painel')
+    const r = await tx.query(`select titulo from caso`)
+    return r.rows.length
+  })
+  if (semIdentidade === 0) ok('sem usuário declarado, nenhuma linha é devolvida')
+  else erro(`sem identidade vazaram ${semIdentidade} casos`)
+
+  // E o dono do banco (o worker) continua enxergando tudo, de propósito.
+  const comoDono = await db.query(`select count(*)::int as n from caso`)
+  if (comoDono.rows[0].n >= 2) ok('o worker, como dono, continua vendo tudo')
+  else erro('o dono do banco perdeu acesso — o worker quebraria')
+} catch (e) {
+  erro('RLS', e)
 }
 
 console.log('\nTeste de fumaça: exclusão de contato')

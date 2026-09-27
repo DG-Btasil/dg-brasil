@@ -21,7 +21,7 @@ const RAIZ_AGENTES = process.env.RAIZ_AGENTES ?? join(process.cwd(), 'agentes-cl
 const FERRAMENTAS_BASE = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill', 'TodoWrite']
 
 export async function executar(execucao: Execucao, agente: Agente) {
-  const scratch = await mkdtemp(join(tmpdir(), `nucleo-${agente.slug}-`))
+  const scratch = await mkdtemp(join(tmpdir(), `dgbrasil-${agente.slug}-`))
   const servidor = ferramentasDo(execucao, agente)
   const permitidas = new Set([...FERRAMENTAS_BASE, ...ferramentasMcp(agente)])
 
@@ -48,7 +48,7 @@ export async function executar(execucao: Execucao, agente: Agente) {
         maxTurns: 40,
         maxBudgetUsd: TETO_USD,
 
-        mcpServers: { nucleo: servidor },
+        mcpServers: { dgbrasil: servidor },
 
         allowedTools: [...permitidas],
         disallowedTools: ['WebFetch', 'WebSearch', 'Bash', 'NotebookEdit'],
@@ -123,7 +123,7 @@ function ferramentasMcp(agente: Agente): string[] {
         'conversa_recente',
         'propor',
       ]
-  return base.map((n) => `mcp__nucleo__${n}`)
+  return base.map((n) => `mcp__dgbrasil__${n}`)
 }
 
 function montarPrompt(execucao: Execucao, scratch: string): string {

@@ -1,4 +1,4 @@
--- Núcleo — catálogo inicial de agentes.
+-- DG Brasil — catálogo inicial de agentes.
 --
 -- `prompt_sistema` aqui é o contrato curto de cada agente: papel, limites e
 -- política. A instrução longa (o roteiro de trabalho) continua nos arquivos

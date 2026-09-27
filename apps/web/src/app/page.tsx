@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { prazosAbertos, tarefasAbertas, contarPropostasPendentes } from '@/servidor/consultas'
-import { usuarioAtual } from '@/servidor/sessao'
+import { comoUsuarioLogado } from '@/servidor/sessao'
 import {
   Cartao,
   Etiqueta,
@@ -12,13 +12,17 @@ import {
   prazoEmPalavras,
 } from '@/componentes/ui'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Hoje() {
-  const [usuario, prazos, tarefas, pendentes] = await Promise.all([
-    usuarioAtual(),
-    prazosAbertos(),
-    tarefasAbertas(),
-    contarPropostasPendentes(),
-  ])
+  const { usuario, prazos, tarefas, pendentes } = await comoUsuarioLogado(
+    async (db, usuario) => ({
+      usuario,
+      prazos: await prazosAbertos(db),
+      tarefas: await tarefasAbertas(db),
+      pendentes: await contarPropostasPendentes(db),
+    }),
+  )
 
   const primeiroNome = usuario.nome.split(' ')[0]
   const hoje = new Date().toLocaleDateString('pt-BR', {

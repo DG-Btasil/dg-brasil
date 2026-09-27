@@ -1,17 +1,27 @@
 import { passosDaExecucao, propostasPendentes } from '@/servidor/consultas'
+import { comoUsuarioLogado, podeAprovar } from '@/servidor/sessao'
 import { Cartao, Secao, Titulo, Vazio } from '@/componentes/ui'
 import { CartaoProposta } from './CartaoProposta'
 
-export default async function Aprovacoes() {
-  const propostas = await propostasPendentes()
+export const dynamic = 'force-dynamic'
 
-  // O rastro de cada execução, uma vez por execução (várias propostas podem
-  // ter saído da mesma).
-  const execucoes = [...new Set(propostas.map((p) => p.execucao_id))]
-  const rastros = new Map(
-    await Promise.all(
-      execucoes.map(async (id) => [id, await passosDaExecucao(id)] as const),
-    ),
+export default async function Aprovacoes() {
+  const { propostas, rastros, souAprovador } = await comoUsuarioLogado(
+    async (db, usuario) => {
+      const propostas = await propostasPendentes(db)
+      // O rastro de cada execução, uma vez por execução (várias propostas
+      // podem ter saído da mesma).
+      const execucoes = [...new Set(propostas.map((p) => p.execucao_id))]
+      return {
+        propostas,
+        souAprovador: podeAprovar(usuario),
+        rastros: new Map(
+          await Promise.all(
+            execucoes.map(async (id) => [id, await passosDaExecucao(db, id)] as const),
+          ),
+        ),
+      }
+    },
   )
 
   return (
@@ -22,6 +32,13 @@ export default async function Aprovacoes() {
         Nada aqui foi aplicado. Aprovar marca a proposta para o worker executar; rejeitar
         a descarta e registra o motivo — que é o material para corrigir o agente.
       </p>
+
+      {!souAprovador && (
+        <p className="mb-6 rounded-md bg-atencao-fraco px-3 py-2 text-xs text-atencao">
+          Você acompanha a fila, mas quem aprova é advogado ou administração — é quem
+          responde pelo que o agente propôs.
+        </p>
+      )}
 
       <Secao titulo="Pendentes" contador={propostas.length}>
         {propostas.length === 0 ? (
@@ -40,6 +57,7 @@ export default async function Aprovacoes() {
                   cliente={p.cliente}
                   custoUsd={p.custo_usd}
                   passos={rastros.get(p.execucao_id) ?? []}
+                  podeDecidir={souAprovador}
                 />
               ))}
             </ul>

@@ -3,28 +3,43 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 /**
- * Uma interface, dois motores.
+ * Uma interface, dois motores, dois níveis de acesso.
  *
- * Com `DATABASE_URL` no ambiente, fala com o Postgres de verdade (Supabase).
- * Sem ela, sobe um Postgres em WASM (PGlite) já com o schema e dados de
- * demonstração — o painel abre no navegador sem nuvem nenhuma, o que torna
- * possível desenvolver e revisar telas antes de existir projeto no Supabase.
+ * Com `DATABASE_URL`, fala com o Postgres de verdade. Sem ela, sobe um Postgres
+ * em WASM (PGlite) com schema e dados fictícios — o painel abre sem nuvem
+ * nenhuma, o que permite desenvolver e revisar telas antes de existir Supabase.
  *
- * O modo de demonstração é efêmero: reinicia o servidor, perde tudo. É de
- * propósito — ninguém vai confundi-lo com o sistema de verdade.
+ * Os dois níveis importam mais que os dois motores:
+ *
+ *   consulta()/um()  — conexão dona do banco. Ignora RLS. É o que o login usa,
+ *                      porque ele acontece ANTES de existir identidade.
+ *   comoUsuario()    — abre transação, vira o papel `painel` (sem bypass) e
+ *                      declara quem é o usuário. A partir daí a RLS vale.
+ *
+ * Toda consulta que serve uma tela passa por `comoUsuario`. Se alguém puxar
+ * dados de cliente por `consulta()` direto, as permissões de papel somem sem
+ * ninguém perceber — é o erro mais fácil de cometer aqui.
  */
 
 const RAIZ_DB = join(process.cwd(), '..', '..', 'db')
-const ARQUIVOS = ['001_schema.sql', '002_agentes.sql', '004_seed_agentes.sql']
+const ARQUIVOS = [
+  '001_schema.sql',
+  '002_agentes.sql',
+  '003_rls.sql',
+  '004_seed_agentes.sql',
+  '005_auth.sql',
+]
 
-export interface Banco {
+export interface Escopo {
   consulta<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>
   um<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | null>
+}
+
+export interface Banco extends Escopo {
+  comoUsuario<T>(usuarioId: string, fn: (db: Escopo) => Promise<T>): Promise<T>
   readonly demonstracao: boolean
 }
 
-// O Next recarrega módulos a cada edição em dev; sem isto, um PGlite novo por
-// recarga (e o banco de demonstração voltaria ao zero a cada salvamento).
 const global_ = globalThis as unknown as { __banco?: Promise<Banco> }
 
 export function banco(): Promise<Banco> {
@@ -37,38 +52,70 @@ async function criar(): Promise<Banco> {
   return url ? await postgres(url) : await demonstracao()
 }
 
+function escopo(rodar: (sql: string, params: unknown[]) => Promise<unknown[]>): Escopo {
+  return {
+    async consulta<T>(sql: string, params: unknown[] = []) {
+      return (await rodar(sql, params)) as T[]
+    },
+    async um<T>(sql: string, params: unknown[] = []) {
+      const linhas = (await rodar(sql, params)) as T[]
+      return linhas[0] ?? null
+    },
+  }
+}
+
 async function postgres(connectionString: string): Promise<Banco> {
   const { default: pg } = await import('pg')
   const pool = new pg.Pool({ connectionString, max: 8 })
-  return motor(async (sql, params) => (await pool.query(sql, params)).rows, false)
+  const dono = escopo(async (sql, params) => (await pool.query(sql, params)).rows)
+
+  return {
+    ...dono,
+    demonstracao: false,
+    async comoUsuario(usuarioId, fn) {
+      const cliente = await pool.connect()
+      try {
+        await cliente.query('begin')
+        // Ordem importa: declara a identidade AINDA como dono, e só então
+        // baixa para `painel`. Assim ninguém que já esteja em `painel`
+        // consegue reescrever quem é — e a RLS passa a valer a partir daqui.
+        // `set local` morre com a transação, então nenhuma sobra de identidade
+        // volta para o pool junto com a conexão.
+        await cliente.query('select set_config($1, $2, true)', ['app.usuario_id', usuarioId])
+        await cliente.query('set local role painel')
+        const r = await fn(escopo(async (sql, p) => (await cliente.query(sql, p)).rows))
+        await cliente.query('commit')
+        return r
+      } catch (e) {
+        await cliente.query('rollback').catch(() => {})
+        throw e
+      } finally {
+        cliente.release()
+      }
+    },
+  }
 }
 
 async function demonstracao(): Promise<Banco> {
   const { PGlite } = await import('@electric-sql/pglite')
   const db = new PGlite()
 
-  // 003_rls.sql fica de fora: depende do `auth.uid()` do Supabase e, aqui, a
-  // conexão é dona das tabelas — as políticas não teriam efeito de todo jeito.
   for (const arquivo of ARQUIVOS) {
     await db.exec(await readFile(join(RAIZ_DB, arquivo), 'utf8'))
   }
   await db.exec(await dadosDeDemonstracao())
 
-  return motor(async (sql, params) => (await db.query(sql, params)).rows as never[], true)
-}
+  const dono = escopo(async (sql, params) => (await db.query(sql, params)).rows as never[])
 
-function motor(
-  executar: (sql: string, params: unknown[]) => Promise<unknown[]>,
-  demo: boolean,
-): Banco {
   return {
-    demonstracao: demo,
-    async consulta<T>(sql: string, params: unknown[] = []) {
-      return (await executar(sql, params)) as T[]
-    },
-    async um<T>(sql: string, params: unknown[] = []) {
-      const linhas = (await executar(sql, params)) as T[]
-      return linhas[0] ?? null
+    ...dono,
+    demonstracao: true,
+    async comoUsuario(usuarioId, fn) {
+      return db.transaction(async (tx) => {
+        await tx.query('select set_config($1, $2, true)', ['app.usuario_id', usuarioId])
+        await tx.query('set local role painel')
+        return fn(escopo(async (sql, p) => (await tx.query(sql, p)).rows as never[]))
+      }) as Promise<Awaited<ReturnType<typeof fn>>>
     },
   }
 }
@@ -86,9 +133,11 @@ declare
   ag_lucas uuid; ag_radar uuid;
   ex1 uuid; ex2 uuid;
 begin
-  insert into usuario (nome, email, papel, oab) values
-    ('Barbara Cardoso', 'barbara@exemplo.adv.br', 'admin', 'BA 00000'),
-    ('Renata Alves', 'renata@exemplo.adv.br', 'estagiario', null);
+  -- Senha das duas contas de demonstração: "demo".
+  -- Hash gerado pelo mesmo scrypt de apps/web/src/servidor/auth.ts.
+  insert into usuario (nome, email, papel, oab, senha_hash, senha_definida_em) values
+    ('Barbara Cardoso', 'barbara@exemplo.adv.br', 'admin', 'BA 00000', :hash_demo, now()),
+    ('Renata Alves', 'renata@exemplo.adv.br', 'estagiario', null, :hash_demo, now());
   select id into u_barbara from usuario where papel = 'admin';
   select id into u_estag from usuario where papel = 'estagiario';
 
@@ -109,6 +158,8 @@ begin
   insert into beneficio (contato_id, numero_beneficio, especie, dib, valor_mensal, banco_pagador)
   values (c3, '3234567890', '21', '2018-09-30', 1712.00, 'Bradesco') returning id into b3;
 
+  -- Caso de Cibélia fica com a estagiária: é o que torna visível, na tela, que
+  -- a RLS está valendo (ela não enxerga os outros dois).
   insert into caso (contato_id, beneficio_id, titulo, status, responsavel_id, valor_causa)
   values (c1, b1, 'Consignado fraudado — Bloco C (BMG, Itaú)', 'judicializado', u_barbara, 48000.00)
   returning id into k1;
@@ -174,9 +225,9 @@ begin
 
   insert into passo_execucao (execucao_id, ordem, tipo, ferramenta, entrada, saida) values
     (ex1, 0, 'texto', null, null, '"Vou conferir quais documentos já existem na pasta da cliente antes de gerar qualquer coisa."'::jsonb),
-    (ex1, 1, 'ferramenta', 'mcp__nucleo__ver_caso', '{"caso_id":"..."}'::jsonb, '{"documentos":[]}'::jsonb),
+    (ex1, 1, 'ferramenta', 'mcp__dgbrasil__ver_caso', '{"caso_id":"..."}'::jsonb, '{"documentos":[]}'::jsonb),
     (ex1, 2, 'texto', null, null, '"A pasta está vazia: faltam a procuração e a declaração de hipossuficiência. Vou propor as duas."'::jsonb),
-    (ex2, 0, 'ferramenta', 'mcp__nucleo__publicacoes_pendentes', '{"limite":30}'::jsonb, '{"encontradas":1}'::jsonb),
+    (ex2, 0, 'ferramenta', 'mcp__dgbrasil__publicacoes_pendentes', '{"limite":30}'::jsonb, '{"encontradas":1}'::jsonb),
     (ex2, 1, 'texto', null, null, '"Intimação para réplica. O prazo é de 15 dias úteis; a publicação não diz o termo inicial expressamente, então contei da disponibilização."'::jsonb);
 
   insert into proposta (execucao_id, tipo, resumo, payload) values
@@ -190,5 +241,10 @@ begin
      'Abrir prazo de réplica no processo de Maria das Dores — vence em 2 dias',
      '{"tipo":"Réplica","dias":15,"dias_uteis":true,"observacao":"termo inicial contado da disponibilização; conferir"}'::jsonb);
 end $$;
-`
+`.replaceAll(':hash_demo', `'${await hashDemo()}'`)
+}
+
+async function hashDemo(): Promise<string> {
+  const { hashSenha } = await import('./auth')
+  return hashSenha('demo')
 }

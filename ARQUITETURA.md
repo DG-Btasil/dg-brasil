@@ -1,4 +1,4 @@
-# Núcleo — arquitetura
+# DG Brasil — arquitetura
 
 Sistema interno da Barbara Cardoso Advocacia: CRM próprio + motor de agentes de IA
 na nuvem, acessado pela equipe pelo navegador.

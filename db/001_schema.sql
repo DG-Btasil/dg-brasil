@@ -1,4 +1,4 @@
--- Núcleo — schema do CRM próprio
+-- DG Brasil — schema do CRM próprio
 -- Postgres 15+ (Supabase). Executar uma vez, em ordem numérica.
 
 -- gen_random_uuid() é nativo desde o Postgres 13; não precisa de pgcrypto.

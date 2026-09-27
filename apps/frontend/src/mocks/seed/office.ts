@@ -1,0 +1,169 @@
+import { daysFromNowISO } from "@/lib/clock";
+import type { Invitation, Office, Subscription, User, UserSession } from "@/types";
+import { OFFICE_ID, U } from "../ids";
+
+export function buildOffice(): Office {
+  return {
+    id: OFFICE_ID,
+    name: "Alves & Moura Advocacia",
+    legalName: "Alves & Moura Sociedade de Advogados (fictícia)",
+    tradeName: "Alves & Moura",
+    cnpj: "00.000.101/0001-00",
+    address: {
+      zipCode: "01000-000",
+      street: "Avenida Exemplo",
+      number: "1000",
+      complement: "Conjunto 101",
+      district: "Centro",
+      city: "São Paulo",
+      state: "SP",
+      country: "Brasil",
+    },
+    phone: "(11) 3000-0000",
+    email: "contato@alvesmoura.exemplo",
+    website: "alvesmoura.exemplo",
+    principalLawyer: "Marina Alves",
+    oab: "OAB/SP 000.101",
+    statesOfPractice: ["SP", "MG", "PR"],
+    units: ["São Paulo — Sede"],
+    onboarding: {
+      completed: true,
+      completedAt: daysFromNowISO(-60),
+      currentStep: 12,
+      // Escritório de demonstração já implantado: etapas respondidas; honorários pulada.
+      completedSteps: ["identity", "team", "practice-areas", "client-profile", "legal-criteria", "writing-style", "workflow", "approvals", "communication", "integrations", "agents-skills"],
+      skippedSteps: ["fee-models"],
+      answers: {},
+    },
+    createdAt: daysFromNowISO(-62),
+    updatedAt: daysFromNowISO(-3),
+  };
+}
+
+export function buildSubscription(): Subscription {
+  return {
+    officeId: OFFICE_ID,
+    planName: "Plano Escritório — Implantação assistida",
+    status: "ACTIVE",
+    implementationStatus: "COMPLETED",
+    nextBillingAt: daysFromNowISO(12),
+    seats: 6,
+    supportContact: "suporte@dgbrasil.exemplo",
+  };
+}
+
+export function buildUsers(): User[] {
+  const base = { officeId: OFFICE_ID, createdAt: daysFromNowISO(-60) };
+  return [
+    {
+      ...base,
+      id: U.marina,
+      name: "Marina Alves",
+      displayName: "Dra. Marina",
+      email: "marina@alvesmoura.exemplo",
+      role: "ADMIN",
+      title: "Sócia administradora",
+      oab: "OAB/SP 000.101",
+      status: "ACTIVE",
+      hasCompletedTour: false,
+      lastAccessAt: daysFromNowISO(0, 8, 42),
+    },
+    {
+      ...base,
+      id: U.rafael,
+      name: "Rafael Moura",
+      displayName: "Dr. Rafael",
+      email: "rafael@alvesmoura.exemplo",
+      role: "LAWYER",
+      title: "Advogado sênior — Bancário",
+      oab: "OAB/SP 000.202",
+      status: "ACTIVE",
+      hasCompletedTour: false,
+      lastAccessAt: daysFromNowISO(0, 9, 5),
+    },
+    {
+      ...base,
+      id: U.beatriz,
+      name: "Beatriz Nogueira",
+      displayName: "Dra. Beatriz",
+      email: "beatriz@alvesmoura.exemplo",
+      role: "LAWYER",
+      title: "Advogada — Contencioso",
+      oab: "OAB/SP 000.303",
+      status: "ACTIVE",
+      hasCompletedTour: true,
+      lastAccessAt: daysFromNowISO(-1, 17, 20),
+    },
+    {
+      ...base,
+      id: U.camila,
+      name: "Camila Duarte",
+      displayName: "Camila",
+      email: "camila@alvesmoura.exemplo",
+      role: "ASSISTANT",
+      title: "Assistente jurídica",
+      status: "ACTIVE",
+      hasCompletedTour: false,
+      lastAccessAt: daysFromNowISO(0, 8, 15),
+    },
+    {
+      ...base,
+      id: U.thiago,
+      name: "Thiago Prado",
+      displayName: "Dr. Thiago",
+      email: "thiago@alvesmoura.exemplo",
+      role: "LAWYER",
+      title: "Advogado — Previdenciário",
+      status: "INVITED",
+      hasCompletedTour: false,
+      createdAt: daysFromNowISO(-2),
+    },
+  ];
+}
+
+export function buildInvitations(): Invitation[] {
+  return [
+    {
+      id: "inv_thiago",
+      officeId: OFFICE_ID,
+      token: "demo-convite",
+      email: "thiago@alvesmoura.exemplo",
+      name: "Thiago Prado",
+      role: "LAWYER",
+      invitedBy: U.marina,
+      createdAt: daysFromNowISO(-2),
+    },
+  ];
+}
+
+export function buildSessions(): UserSession[] {
+  return [
+    {
+      id: "ses_1",
+      officeId: OFFICE_ID,
+      userId: U.marina,
+      device: "Chrome · Windows",
+      location: "São Paulo, SP",
+      lastActiveAt: daysFromNowISO(0, 9, 30),
+      current: true,
+    },
+    {
+      id: "ses_2",
+      officeId: OFFICE_ID,
+      userId: U.marina,
+      device: "Safari · macOS",
+      location: "São Paulo, SP",
+      lastActiveAt: daysFromNowISO(-2, 19, 10),
+      current: false,
+    },
+    {
+      id: "ses_3",
+      officeId: OFFICE_ID,
+      userId: U.rafael,
+      device: "Edge · Windows",
+      location: "Campinas, SP",
+      lastActiveAt: daysFromNowISO(0, 9, 5),
+      current: false,
+    },
+  ];
+}

@@ -1,4 +1,4 @@
--- Núcleo — motor de agentes: catálogo, fila, propostas e auditoria.
+-- DG Brasil — motor de agentes: catálogo, fila, propostas e auditoria.
 
 -- ─────────────────────── catálogo de agentes ──────────────────────
 

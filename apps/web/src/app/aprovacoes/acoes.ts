@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { banco } from '@/servidor/banco'
-import { usuarioAtual } from '@/servidor/sessao'
+import { exigirUsuario, podeAprovar } from '@/servidor/sessao'
 
 /**
  * Aprovar NÃO aplica o efeito aqui.
@@ -16,10 +16,10 @@ import { usuarioAtual } from '@/servidor/sessao'
  * abrir prazo ou lançar honorário por um caminho paralelo.
  */
 export async function aprovar(id: string) {
-  const [db, usuario] = await Promise.all([banco(), usuarioAtual()])
+  const [db, usuario] = await Promise.all([banco(), exigirUsuario()])
 
-  if (usuario.papel !== 'admin' && usuario.papel !== 'advogado') {
-    throw new Error('Só advogado ou administrador aprova proposta de agente.')
+  if (!podeAprovar(usuario)) {
+    throw new Error('Só advogado ou administração aprova proposta de agente.')
   }
 
   await db.consulta(
@@ -33,10 +33,10 @@ export async function aprovar(id: string) {
 }
 
 export async function rejeitar(id: string, comentario: string) {
-  const [db, usuario] = await Promise.all([banco(), usuarioAtual()])
+  const [db, usuario] = await Promise.all([banco(), exigirUsuario()])
 
-  if (usuario.papel !== 'admin' && usuario.papel !== 'advogado') {
-    throw new Error('Só advogado ou administrador rejeita proposta de agente.')
+  if (!podeAprovar(usuario)) {
+    throw new Error('Só advogado ou administração rejeita proposta de agente.')
   }
   // O motivo não é burocracia: é o material para corrigir o prompt do agente.
   if (!comentario.trim()) {
