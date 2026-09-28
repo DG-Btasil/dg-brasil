@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ShieldAlert } from "lucide-react";
 import { PROCESS_PHASE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
 import { formatCurrency, formatEventTime } from "@/lib/formatting";
 import { StatusBadge } from "@/components/ui/badge";
 import { DeadlineBadge } from "@/components/ui/display";
 import { SortableTh, sortBy, Table, TBody, Td, Th, THead, Tr, type SortDirection } from "@/components/ui/table";
-import { courtLocation, type ProcessRow } from "../utils";
+import { courtLocation, hasPendingClientLink, type ProcessRow } from "../utils";
 import { CnjText } from "./cnj-text";
 import { ProcessOriginBadge } from "./process-origin-badge";
 
@@ -67,9 +68,16 @@ export function ProcessTable({ rows, showCaseValue }: { rows: ProcessRow[]; show
               </Link>
             </Td>
             <Td className="max-w-[200px]">
-              <Link href={`/clientes/${p.clientId}`} className="block truncate text-foreground hover:text-navy hover:underline underline-offset-2">
-                {clientName}
-              </Link>
+              {hasPendingClientLink(p) ? (
+                <span className="flex items-center gap-1 text-[12.5px] text-warning" title={clientName}>
+                  <ShieldAlert className="size-3.5 shrink-0" aria-hidden />
+                  <span className="truncate">{clientName}</span>
+                </span>
+              ) : (
+                <Link href={`/clientes/${p.clientId}`} className="block truncate text-foreground hover:text-navy hover:underline underline-offset-2">
+                  {clientName}
+                </Link>
+              )}
             </Td>
             <Td className="max-w-[260px]">
               <div className="truncate text-foreground">{p.actionType}</div>

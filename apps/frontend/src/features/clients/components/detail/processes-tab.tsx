@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FolderPlus, Hand, Plug, Workflow, type LucideIcon } from "lucide-react";
+import { FileSpreadsheet, FolderPlus, Hand, Plug, Workflow, type LucideIcon } from "lucide-react";
 import { EmptyState } from "@/components/feedback/states";
 import { Can } from "@/components/layout/guards";
 import { StatusBadge } from "@/components/ui/badge";
@@ -21,7 +21,7 @@ import { useUserMap } from "@/features/offices/hooks";
 import type { Client, Process } from "@/types";
 import { useNextDeadlineByProcess } from "../../hooks";
 
-const ORIGIN_ICON: Record<ProcessOrigin, LucideIcon> = { AGENT: Workflow, INTEGRATION: Plug, MANUAL: Hand };
+const ORIGIN_ICON: Record<ProcessOrigin, LucideIcon> = { AGENT: Workflow, INTEGRATION: Plug, MANUAL: Hand, IMPORT: FileSpreadsheet };
 
 export function ProcessesTab({ client, processes }: { client: Client; processes: Process[] }) {
   const deadlines = useNextDeadlineByProcess(client.id);

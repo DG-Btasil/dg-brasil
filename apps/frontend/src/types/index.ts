@@ -9,4 +9,5 @@ export * from "./dg";
 export * from "./notification";
 export * from "./finance";
 export * from "./integration";
+export * from "./judicial";
 export * from "./audit";

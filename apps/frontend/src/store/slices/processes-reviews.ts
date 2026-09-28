@@ -1,5 +1,5 @@
 import { nowISO } from "@/lib/clock";
-import { REVIEW_DECISION_LABEL } from "@/lib/constants/status";
+import { OPEN_REVIEW_STATUSES, REVIEW_DECISION_LABEL, REVIEW_STATUS_LABEL } from "@/lib/constants/status";
 import { createId } from "@/lib/ids";
 import type { AuditAction, Process, ProcessEvent, Review } from "@/types";
 import {
@@ -86,6 +86,63 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
             n.type === "DEADLINE" && n.processId === deadline?.processId ? { ...n, read: true } : n,
           ),
           auditEvents: [auditEvent(s, "DEADLINE_COMPLETED", "deadline", id, `Prazo “${deadline?.title ?? ""}” cumprido.`), ...s.auditEvents],
+        };
+      }),
+    /**
+     * Exclui o processo, suas movimentações e prazos. O CLIENTE NÃO É AFETADO.
+     * Revisões, documentos e contratos de honorários continuam existindo
+     * (histórico); documentos deixam de apontar para o processo.
+     */
+    deleteProcess: (id) =>
+      set((s) => {
+        const process = s.processes.find((p) => p.id === id);
+        if (!process) return {};
+        const reviews = s.reviews.filter((r) => r.processId === id).length;
+        const deadlines = s.deadlines.filter((d) => d.processId === id && d.status === "OPEN").length;
+        const agreements = s.agreements.filter((a) => a.processId === id).length;
+        const documents = s.documents.filter((d) => d.processId === id).length;
+        return {
+          processes: s.processes.filter((p) => p.id !== id),
+          processEvents: s.processEvents.filter((e) => e.processId !== id),
+          deadlines: s.deadlines.filter((d) => d.processId !== id),
+          documents: s.documents.map((d) => (d.processId === id ? { ...d, processId: undefined } : d)),
+          notifications: s.notifications.map((n) => (n.processId === id ? { ...n, read: true } : n)),
+          auditEvents: [
+            auditEvent(s, "PROCESS_DELETED", "process", id, `Processo “${process.title}” excluído. O cliente foi mantido.`, undefined, [
+              ...(process.cnj ? [{ label: "Número CNJ", value: process.cnj }] : []),
+              { label: "Revisões associadas (mantidas)", value: String(reviews) },
+              { label: "Prazos em aberto removidos", value: String(deadlines) },
+              { label: "Contratos de honorários associados (mantidos)", value: String(agreements) },
+              { label: "Documentos desvinculados", value: String(documents) },
+            ]),
+            ...s.auditEvents,
+          ],
+        };
+      }),
+    linkProcessClient: (processId, clientId) =>
+      set((s) => {
+        const process = s.processes.find((p) => p.id === processId);
+        const client = s.clients.find((c) => c.id === clientId);
+        if (!process || !client) return {};
+        const wasPending = process.clientLinkStatus === "PENDING_LINK";
+        return {
+          processes: updateById(s.processes, processId, (p) => ({
+            ...p,
+            clientId,
+            clientLinkStatus: undefined,
+            removedClientName: undefined,
+            updatedAt: nowISO(),
+          })),
+          processEvents: [
+            processEvent(s, processId, `Cliente vinculado: ${clientName(client)}`, "MANUAL", wasPending ? `Vínculo pendente resolvido por ${actorOf(s).name}.` : undefined),
+            ...s.processEvents,
+          ],
+          notifications: s.notifications.map((n) => (n.type === "DATA_INTEGRITY" && n.processId === processId ? { ...n, read: true } : n)),
+          auditEvents: [
+            auditEvent(s, "PROCESS_CLIENT_LINKED", "process", processId, `Processo “${process.title}” vinculado a ${clientName(client)}.`, undefined,
+              wasPending && process.removedClientName ? [{ label: "Cliente removido anteriormente", value: process.removedClientName }] : undefined),
+            ...s.auditEvents,
+          ],
         };
       }),
   };
@@ -262,7 +319,11 @@ export function createReviewSlice(set: SetState, get: GetState): ReviewActions {
         ...effects,
         agentTasks,
         reviews: updateById(s.reviews, reviewId, (r) => ({ ...r, status: decision, decidedAt: at })),
-        reviewDecisions: [{ id: createId("dec"), officeId: s.office.id, reviewId, decision, comment, userId: actor.id, at }, ...s.reviewDecisions],
+        // A decisão fica atrelada à versão do conteúdo: aprovação não vale para versões posteriores.
+        reviewDecisions: [
+          { id: createId("dec"), officeId: s.office.id, reviewId, decision, comment, userId: actor.id, at, contentVersion: review.contentVersion ?? 1 },
+          ...s.reviewDecisions,
+        ],
         notifications: s.notifications.map((n) => (n.reviewId === reviewId ? { ...n, read: true } : n)),
         auditEvents: [
           auditEvent(s, DECISION_AUDIT[decision] ?? "REVIEW_APPROVED", "review", reviewId, `“${review.title}”: ${REVIEW_DECISION_LABEL[decision].toLowerCase()}.`),
@@ -273,6 +334,71 @@ export function createReviewSlice(set: SetState, get: GetState): ReviewActions {
         ],
       });
     },
+    /**
+     * Edição manual de pequenas correções, sem regenerar pelo agente.
+     * A versão anterior é preservada; a revisão continua aguardando decisão.
+     */
+    editReviewContent: (reviewId, content) =>
+      set((s) => {
+        const review = s.reviews.find((r) => r.id === reviewId);
+        if (!review || !OPEN_REVIEW_STATUSES.includes(review.status)) return {};
+        const at = nowISO();
+        const actor = actorOf(s);
+        const fromVersion = review.contentVersion ?? 1;
+        const toVersion = fromVersion + 1;
+        const changedSections = content.sections
+          .filter((section, i) => {
+            const before = review.content.sections[i];
+            return !before || before.heading !== section.heading || before.body !== section.body;
+          })
+          .map((section) => section.heading);
+        if (content.title !== review.content.title) changedSections.unshift("Título");
+        if (changedSections.length === 0) return {};
+        const archivedOrigin = review.history?.some((h) => h.kind === "MANUAL_EDIT" && h.toVersion === fromVersion) ? "MANUAL_EDIT" : "AGENT";
+        return {
+          reviews: updateById(s.reviews, reviewId, (r) => ({
+            ...r,
+            content,
+            contentVersion: toVersion,
+            previousVersions: [...(r.previousVersions ?? []), { version: fromVersion, content: r.content, origin: archivedOrigin, at, actor }],
+            history: [...(r.history ?? []), { id: createId("rvh"), kind: "MANUAL_EDIT" as const, at, actor, fromVersion, toVersion, changedSections }],
+          })),
+          auditEvents: [
+            auditEvent(s, "REVIEW_EDITED", "review", reviewId, `“${review.title}” editada manualmente (v${fromVersion} → v${toVersion}).`, actor, [
+              { label: "Origem", value: "MANUAL_EDIT" },
+              { label: "Seções alteradas", value: changedSections.join(", ") },
+            ]),
+            ...s.auditEvents,
+          ],
+        };
+      }),
+    /**
+     * Reabre uma revisão já decidida. A decisão anterior NÃO é apagada: continua
+     * em reviewDecisions e o evento de reabertura entra na trilha e na auditoria.
+     * Efeitos já aplicados pela decisão anterior não são desfeitos automaticamente.
+     */
+    reopenReview: (reviewId, reason) =>
+      set((s) => {
+        const review = s.reviews.find((r) => r.id === reviewId);
+        if (!review || OPEN_REVIEW_STATUSES.includes(review.status)) return {};
+        const at = nowISO();
+        const actor = actorOf(s);
+        return {
+          reviews: updateById(s.reviews, reviewId, (r) => ({
+            ...r,
+            status: "REOPENED" as const,
+            decidedAt: undefined,
+            history: [...(r.history ?? []), { id: createId("rvh"), kind: "REOPENED" as const, at, actor, previousStatus: review.status, reason }],
+          })),
+          auditEvents: [
+            auditEvent(s, "REVIEW_REOPENED", "review", reviewId, `“${review.title}” reaberta.`, actor, [
+              { label: "Decisão anterior", value: REVIEW_STATUS_LABEL[review.status] },
+              ...(reason ? [{ label: "Motivo", value: reason }] : []),
+            ]),
+            ...s.auditEvents,
+          ],
+        };
+      }),
     markNotificationRead: (id) => set((s) => ({ notifications: updateById(s.notifications, id, (n) => ({ ...n, read: true })) })),
     markAllNotificationsRead: () => set((s) => ({ notifications: s.notifications.map((n) => ({ ...n, read: true })) })),
   };

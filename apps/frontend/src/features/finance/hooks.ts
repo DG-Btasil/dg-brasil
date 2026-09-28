@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { summarizeAgreement } from "@/lib/domain/finance";
+import { todayISO } from "@/lib/clock";
+import { summarizeAgreement, toPaymentView } from "@/lib/domain/finance";
 import { repositories } from "@/repositories";
 import { useAppStore } from "@/store/app-store";
 import type { NewAgreementInput, NewFeeModelInput } from "@/store/types";
@@ -53,25 +54,37 @@ export function useProcessForFinance(processId: ID | undefined): Process | undef
   return useMemo(() => processes.find((p) => p.id === processId), [processes, processId]);
 }
 
-/** Contratos consolidados (acordo + pagamentos + cliente + processo + modelo). */
+/**
+ * Contratos consolidados (acordo + pagamentos + cliente + processo + modelo).
+ * Status de parcela e de contrato são DERIVADOS aqui, a partir dos mesmos
+ * arrays do store (fonte única). Tabela, drawer, KPIs e gráficos usam estas
+ * linhas, então todos mudam juntos quando um pagamento é registrado.
+ */
 export function useAgreementRows(): AgreementRow[] {
   const agreements = useAppStore((s) => s.agreements);
   const payments = usePayments();
   const clients = useClients();
   const processes = useProcesses();
   const feeModels = useFeeModels();
+  const removedClients = useAppStore((s) => s.removedClients);
   return useMemo(() => {
     const clientMap = new Map(clients.map((c) => [c.id, c]));
+    // Contrato de cliente excluído continua visível (histórico financeiro), identificado.
+    const removedMap = new Map(removedClients.map((r) => [r.id, `${r.name} (cliente removido)`]));
     const processMap = new Map(processes.map((p) => [p.id, p]));
     const modelMap = new Map(feeModels.map((m) => [m.id, m]));
+    const today = todayISO();
     return agreements.map((agreement) => ({
-      ...summarizeAgreement(agreement, payments),
-      clientName: clientLabel(clientMap.get(agreement.clientId)),
+      ...summarizeAgreement(agreement, payments, today),
+      clientName: removedMap.get(agreement.clientId) ?? clientLabel(clientMap.get(agreement.clientId)),
       process: agreement.processId ? processMap.get(agreement.processId) : undefined,
       feeModel: agreement.feeModelId ? modelMap.get(agreement.feeModelId) : undefined,
-      payments: payments.filter((p) => p.agreementId === agreement.id).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+      payments: payments
+        .filter((p) => p.agreementId === agreement.id)
+        .map((p) => toPaymentView(p, today))
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
     }));
-  }, [agreements, payments, clients, processes, feeModels]);
+  }, [agreements, payments, clients, processes, feeModels, removedClients]);
 }
 
 /** Contratos aplicáveis a um processo (diretos ou do cliente inteiro). */
@@ -93,13 +106,50 @@ export function useProcessFinance(processId: ID) {
 export function useFinanceActions() {
   const toast = useToast();
 
+  /** Sem `amount`, quita o saldo da parcela; com `amount`, registra recebimento parcial. */
   const registerPayment = useCallback(
-    async (paymentId: ID, description: string) => {
+    async (paymentId: ID, description: string, amount?: number) => {
       try {
-        await repositories.finance.registerPayment(paymentId);
+        await repositories.finance.registerPayment(paymentId, { amount });
         toast({ tone: "success", title: "Pagamento registrado", description });
       } catch {
         toast({ tone: "danger", title: "Não foi possível registrar o pagamento." });
+      }
+    },
+    [toast],
+  );
+
+  const updatePaymentAmount = useCallback(
+    async (paymentId: ID, paidAmount: number) => {
+      try {
+        await repositories.finance.updatePaymentAmount(paymentId, paidAmount);
+        toast({ tone: "success", title: "Valor recebido alterado", description: "A alteração ficou registrada na auditoria." });
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível alterar o pagamento." });
+      }
+    },
+    [toast],
+  );
+
+  const reversePayment = useCallback(
+    async (paymentId: ID) => {
+      try {
+        await repositories.finance.reversePayment(paymentId);
+        toast({ tone: "info", title: "Pagamento estornado", description: "A parcela voltou a ficar em aberto." });
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível estornar o pagamento." });
+      }
+    },
+    [toast],
+  );
+
+  const updatePaymentDueDate = useCallback(
+    async (paymentId: ID, dueDate: string) => {
+      try {
+        await repositories.finance.updatePaymentDueDate(paymentId, dueDate);
+        toast({ tone: "success", title: "Vencimento alterado" });
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível alterar o vencimento." });
       }
     },
     [toast],
@@ -134,5 +184,5 @@ export function useFinanceActions() {
     [toast],
   );
 
-  return { registerPayment, createAgreement, saveFeeModel };
+  return { registerPayment, updatePaymentAmount, reversePayment, updatePaymentDueDate, createAgreement, saveFeeModel };
 }

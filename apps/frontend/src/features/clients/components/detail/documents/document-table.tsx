@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, CircleX, RefreshCw } from "lucide-react";
+import { CheckCircle2, CircleX, Eye, RefreshCw } from "lucide-react";
 import { StatusBadge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { DOCUMENT_CATEGORY_LABEL, DOCUMENT_STATUS_LABEL, DOCUMENT_STATUS_TONE, type DocumentStatus } from "@/lib/constants/status";
 import { formatDate } from "@/lib/formatting";
@@ -11,6 +11,7 @@ import { usePermission } from "@/features/auth/hooks";
 import { repositories } from "@/repositories";
 import { useToast } from "@/store/ui-store";
 import type { ClientDocument } from "@/types";
+import { DocumentPreviewDialog } from "./document-preview-dialog";
 import { DocumentRejectDialog } from "./document-reject-dialog";
 import { VerificationLabel } from "./document-status-icon";
 
@@ -18,6 +19,7 @@ export function DocumentTable({ documents }: { documents: ClientDocument[] }) {
   const canManage = usePermission("documents.manage");
   const toast = useToast();
   const [rejecting, setRejecting] = useState<ClientDocument | null>(null);
+  const [previewing, setPreviewing] = useState<ClientDocument | null>(null);
 
   async function change(doc: ClientDocument, status: DocumentStatus, notes?: string) {
     await repositories.documents.updateStatus(doc.id, status, notes);
@@ -35,6 +37,9 @@ export function DocumentTable({ documents }: { documents: ClientDocument[] }) {
             <Th>Status</Th>
             <Th>Verificação</Th>
             <Th>Notas</Th>
+            <Th className="w-10">
+              <span className="sr-only">Visualizar</span>
+            </Th>
             {canManage && <Th className="text-right">Ações</Th>}
           </tr>
         </THead>
@@ -59,6 +64,13 @@ export function DocumentTable({ documents }: { documents: ClientDocument[] }) {
                 <VerificationLabel verification={doc.verification} />
               </Td>
               <Td className="max-w-[240px] text-[12.5px] text-muted">{doc.notes ?? "—"}</Td>
+              <Td className="text-right">
+                {doc.status !== "MISSING" && doc.fileName && (
+                  <IconButton size="sm" label={`Visualizar “${doc.name}”`} onClick={() => setPreviewing(doc)}>
+                    <Eye className="size-4" aria-hidden />
+                  </IconButton>
+                )}
+              </Td>
               {canManage && (
                 <Td className="whitespace-nowrap text-right">
                   <div className="inline-flex items-center gap-1">
@@ -84,6 +96,7 @@ export function DocumentTable({ documents }: { documents: ClientDocument[] }) {
           ))}
         </TBody>
       </Table>
+      <DocumentPreviewDialog document={previewing} onClose={() => setPreviewing(null)} />
       <DocumentRejectDialog document={rejecting} onClose={() => setRejecting(null)} onConfirm={(doc, reason) => change(doc, "REJECTED", reason)} />
     </>
   );

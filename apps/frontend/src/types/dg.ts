@@ -22,6 +22,8 @@ export interface Agent extends OfficeScoped {
   name: string;
   role: string;
   description: string;
+  /** Objetivo do agente, em linguagem de negócio. */
+  objective?: string;
   status: AgentStatus;
   skillIds: ID[];
   thesisIds: ID[];
@@ -78,6 +80,8 @@ export interface ThesisVersion {
 export interface ThesisReference {
   title: string;
   note: string;
+  /** Referência demonstrativa (fictícia). Nunca apresentar como jurisprudência real. */
+  demo?: boolean;
 }
 
 export interface LegalThesis extends OfficeScoped {
@@ -88,10 +92,14 @@ export interface LegalThesis extends OfficeScoped {
   summary: string;
   foundations: string[];
   applicationCriteria: string[];
+  /** Situações em que a tese NÃO se aplica. */
+  nonApplicationCriteria?: string[];
   requiredDocuments: string[];
   references: ThesisReference[];
   relatedTemplates: string[];
   skillIds: ID[];
+  /** Observações internas. */
+  notes?: string;
   versions: ThesisVersion[];
   updatedAt: ISODateTime;
 }
@@ -102,8 +110,13 @@ export interface DiffLine {
   text: string;
 }
 
+/** CREATED: entidade criada (fromVersion 0). UPDATED: alteração de entidade existente. */
+export type ChangeAction = "CREATED" | "UPDATED";
+
 export interface ChangeHistoryEntry extends OfficeScoped {
   at: ISODateTime;
+  /** Ausente em registros antigos = UPDATED. */
+  action?: ChangeAction;
   requestedBy: ID;
   originalRequest: string;
   suggestedChange: string;

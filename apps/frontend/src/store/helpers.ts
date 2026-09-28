@@ -1,7 +1,7 @@
 import type { StoreApi } from "zustand";
 import { nowISO } from "@/lib/clock";
 import { createId } from "@/lib/ids";
-import type { ActorRef, AnalysisEvent, AuditAction, AuditEvent, ID, LegalAnalysis, User } from "@/types";
+import type { ActorRef, AnalysisEvent, AuditAction, AuditEvent, ID, LegalAnalysis, Notification, User } from "@/types";
 import type { AppState, AppStore } from "./types";
 
 export type SetState = StoreApi<AppStore>["setState"];
@@ -34,6 +34,7 @@ export function auditEvent(
   entityId: ID,
   description: string,
   actor: ActorRef = actorOf(state),
+  details?: AuditEvent["details"],
 ): AuditEvent {
   return {
     id: createId("aud"),
@@ -44,7 +45,20 @@ export function auditEvent(
     entityType,
     entityId,
     description,
+    ...(details && details.length > 0 ? { details } : {}),
   };
+}
+
+/**
+ * Alerta DATA_INTEGRITY: dados que precisam de revisão humana (processo sem
+ * cliente, importação incompleta, pagamento inconsistente…). A severidade é
+ * escolhida por quem chama; nem todo alerta de integridade é crítico.
+ */
+export function integrityNotification(
+  state: AppState,
+  input: Pick<Notification, "severity" | "title" | "description" | "cta" | "requiredPermission"> & Partial<Pick<Notification, "clientId" | "processId">>,
+): Notification {
+  return { id: createId("ntf"), officeId: state.office.id, type: "DATA_INTEGRITY", at: nowISO(), read: false, ...input };
 }
 
 export function timelineEvent(actor: ActorRef, message: string): AnalysisEvent {

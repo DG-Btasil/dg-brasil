@@ -146,7 +146,7 @@ export function buildSkills(): Skill[] {
       templates: ["Parecer preliminar — bancário"],
       files: [{ name: "SKILL.md", sizeKb: 6 }, { name: "checklist-triagem.md", sizeKb: 3 }],
       updatedAt: daysFromNowISO(-14),
-      updatedBy: U.marina,
+      updatedBy: U.barbara,
     }),
     skill({
       id: S.conferenciaDocumental,
@@ -164,7 +164,7 @@ export function buildSkills(): Skill[] {
       templates: ["Mensagem de solicitação de documento"],
       files: [{ name: "SKILL.md", sizeKb: 4 }],
       updatedAt: daysFromNowISO(-18),
-      updatedBy: U.marina,
+      updatedBy: U.barbara,
     }),
     skill({
       id: S.peticaoInicial,
@@ -182,7 +182,7 @@ export function buildSkills(): Skill[] {
       templates: ["Inicial — revisional bancária", "Inicial — declaratória de inexistência de débito"],
       files: [{ name: "SKILL.md", sizeKb: 9 }, { name: "modelo-inicial.docx", sizeKb: 48 }],
       updatedAt: daysFromNowISO(-10),
-      updatedBy: U.marina,
+      updatedBy: U.barbara,
     }),
     skill({
       id: S.redacaoBancaria,
@@ -202,7 +202,7 @@ export function buildSkills(): Skill[] {
       templates: [],
       files: [{ name: "SKILL.md", sizeKb: 5 }],
       updatedAt: daysFromNowISO(-10),
-      updatedBy: U.marina,
+      updatedBy: U.barbara,
     }),
     skill({
       id: S.contagemPrazos,
@@ -220,7 +220,7 @@ export function buildSkills(): Skill[] {
       templates: [],
       files: [{ name: "SKILL.md", sizeKb: 4 }],
       updatedAt: daysFromNowISO(-25),
-      updatedBy: U.marina,
+      updatedBy: U.barbara,
     }),
     skill({
       id: S.leituraMovimentacoes,
@@ -235,7 +235,7 @@ export function buildSkills(): Skill[] {
       templates: [],
       files: [{ name: "SKILL.md", sizeKb: 3 }],
       updatedAt: daysFromNowISO(-40),
-      updatedBy: U.marina,
+      updatedBy: U.barbara,
     }),
     skill({
       id: S.comunicacaoCliente,
@@ -246,14 +246,14 @@ export function buildSkills(): Skill[] {
       version: 2,
       parameters: [
         { key: "tratamento", label: "Forma de tratamento", value: "Sr./Sra. seguido do primeiro nome" },
-        { key: "assinatura", label: "Assinatura", value: "Equipe Alves & Moura" },
+        { key: "assinatura", label: "Assinatura", value: "Equipe Bárbara Cardoso Advocacia" },
       ],
       instructions: "Mensagens curtas, com uma solicitação por vez e prazo claro quando houver.",
       references: [],
       templates: ["Solicitação de documentos", "Atualização de andamento"],
       files: [{ name: "SKILL.md", sizeKb: 3 }],
       updatedAt: daysFromNowISO(-22),
-      updatedBy: U.marina,
+      updatedBy: U.barbara,
     }),
     skill({
       id: S.resumoProcessual,
@@ -268,7 +268,7 @@ export function buildSkills(): Skill[] {
       templates: [],
       files: [{ name: "SKILL.md", sizeKb: 2 }],
       updatedAt: daysFromNowISO(-30),
-      updatedBy: U.marina,
+      updatedBy: U.barbara,
     }),
   ];
 }
@@ -309,9 +309,9 @@ export function buildTheses(): LegalThesis[] {
       relatedTemplates: ["Inicial — revisional bancária"],
       skillIds: [S.triagemContratos, S.peticaoInicial, S.redacaoBancaria],
       versions: [
-        { version: 1, at: daysFromNowISO(-200), authorId: U.marina, note: "Versão inicial." },
-        { version: 2, at: daysFromNowISO(-90), authorId: U.rafael, note: "Critério de diferença revisado." },
-        { version: 3, at: daysFromNowISO(-20), authorId: U.marina, note: "Inclusão de documentos obrigatórios." },
+        { version: 1, at: daysFromNowISO(-200), authorId: U.barbara, note: "Versão inicial." },
+        { version: 2, at: daysFromNowISO(-90), authorId: U.claudio, note: "Critério de diferença revisado." },
+        { version: 3, at: daysFromNowISO(-20), authorId: U.barbara, note: "Inclusão de documentos obrigatórios." },
       ],
       updatedAt: daysFromNowISO(-20),
     }),
@@ -337,8 +337,8 @@ export function buildTheses(): LegalThesis[] {
       relatedTemplates: ["Inicial — declaratória de inexistência de débito"],
       skillIds: [S.triagemContratos, S.peticaoInicial],
       versions: [
-        { version: 1, at: daysFromNowISO(-180), authorId: U.marina, note: "Versão inicial." },
-        { version: 2, at: daysFromNowISO(-45), authorId: U.rafael, note: "Critérios de aplicação detalhados." },
+        { version: 1, at: daysFromNowISO(-180), authorId: U.barbara, note: "Versão inicial." },
+        { version: 2, at: daysFromNowISO(-45), authorId: U.claudio, note: "Critérios de aplicação detalhados." },
       ],
       updatedAt: daysFromNowISO(-45),
     }),
@@ -355,7 +355,7 @@ export function buildTheses(): LegalThesis[] {
       references: [demoRef("transparência tarifária")],
       relatedTemplates: ["Inicial — revisional bancária"],
       skillIds: [S.triagemContratos],
-      versions: [{ version: 1, at: daysFromNowISO(-60), authorId: U.rafael, note: "Versão inicial." }],
+      versions: [{ version: 1, at: daysFromNowISO(-60), authorId: U.claudio, note: "Versão inicial." }],
       updatedAt: daysFromNowISO(-60),
     }),
     thesis({
@@ -373,8 +373,8 @@ export function buildTheses(): LegalThesis[] {
       relatedTemplates: ["Inicial — revisional bancária"],
       skillIds: [S.triagemContratos, S.redacaoBancaria],
       versions: [
-        { version: 1, at: daysFromNowISO(-150), authorId: U.marina, note: "Versão inicial." },
-        { version: 2, at: daysFromNowISO(-35), authorId: U.marina, note: "Ajuste nos critérios." },
+        { version: 1, at: daysFromNowISO(-150), authorId: U.barbara, note: "Versão inicial." },
+        { version: 2, at: daysFromNowISO(-35), authorId: U.barbara, note: "Ajuste nos critérios." },
       ],
       updatedAt: daysFromNowISO(-35),
     }),
@@ -391,7 +391,7 @@ export function buildTheses(): LegalThesis[] {
       references: [demoRef("comparação de custo efetivo total")],
       relatedTemplates: [],
       skillIds: [S.triagemContratos],
-      versions: [{ version: 1, at: daysFromNowISO(-70), authorId: U.rafael, note: "Versão inicial." }],
+      versions: [{ version: 1, at: daysFromNowISO(-70), authorId: U.claudio, note: "Versão inicial." }],
       updatedAt: daysFromNowISO(-70),
     }),
     thesis({
@@ -423,7 +423,7 @@ export function buildTheses(): LegalThesis[] {
       references: [],
       relatedTemplates: [],
       skillIds: [S.triagemContratos],
-      versions: [{ version: 1, at: daysFromNowISO(-3), authorId: U.rafael, note: "Rascunho inicial." }],
+      versions: [{ version: 1, at: daysFromNowISO(-3), authorId: U.claudio, note: "Rascunho inicial." }],
       updatedAt: daysFromNowISO(-3),
     }),
   ];
@@ -571,7 +571,7 @@ export function buildChangeHistory(): ChangeHistoryEntry[] {
       ...o,
       id: "chg_01",
       at: daysFromNowISO(-10, 14, 51),
-      requestedBy: U.marina,
+      requestedBy: U.barbara,
       originalRequest: "As petições bancárias estão citando referências que não estão nas nossas teses.",
       suggestedChange: "Restringir citações às referências cadastradas nas teses vigentes.",
       entityType: "SKILL",
@@ -593,7 +593,7 @@ export function buildChangeHistory(): ChangeHistoryEntry[] {
       ...o,
       id: "chg_02",
       at: daysFromNowISO(-18, 9, 20),
-      requestedBy: U.marina,
+      requestedBy: U.barbara,
       originalRequest: "O agente aceitou um comprovante de residência de seis meses atrás.",
       suggestedChange: "Definir validade de 90 dias para comprovante de residência.",
       entityType: "SKILL",
@@ -614,7 +614,7 @@ export function buildChangeHistory(): ChangeHistoryEntry[] {
       ...o,
       id: "chg_03",
       at: daysFromNowISO(-5, 17, 5),
-      requestedBy: U.marina,
+      requestedBy: U.barbara,
       originalRequest: "Quero que o agente de prazos avise com mais antecedência.",
       suggestedChange: "Aumentar a antecedência do alerta de 5 para 10 dias úteis.",
       entityType: "SKILL",

@@ -9,6 +9,9 @@ const optionalDate = z
   .optional()
   .refine((v) => !v || isoDate.test(v), msg.date);
 
+/** Mensagem da data de vencimento obrigatória no cadastro de processo. */
+export const DUE_DATE_REQUIRED = "Informe uma data de vencimento para continuar.";
+
 const requiredEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.enum(values, { error: () => ({ message: msg.required }) });
 
@@ -34,15 +37,16 @@ export const processFormSchema = z
     phase: requiredEnum(PROCESS_PHASES),
     deadlineTitle: z.string().optional(),
     deadlineType: z.union([z.enum(DEADLINE_TYPES), z.literal("")]).optional(),
-    deadlineDueDate: optionalDate,
+    /**
+     * Data operacional principal do processo (vencimento do próximo prazo).
+     * Obrigatória: é ela que organiza tarefas, alertas, prazos e prioridades.
+     */
+    deadlineDueDate: z
+      .string({ error: () => ({ message: DUE_DATE_REQUIRED }) })
+      .trim()
+      .min(1, DUE_DATE_REQUIRED)
+      .refine((v) => isoDate.test(v), msg.date),
     notes: z.string().optional(),
-  })
-  .superRefine((data, ctx) => {
-    const anyDeadline = Boolean(data.deadlineTitle?.trim() || data.deadlineType || data.deadlineDueDate);
-    if (!anyDeadline) return;
-    if (!data.deadlineTitle?.trim()) ctx.addIssue({ code: "custom", path: ["deadlineTitle"], message: "Informe o título do prazo." });
-    if (!data.deadlineType) ctx.addIssue({ code: "custom", path: ["deadlineType"], message: "Selecione o tipo do prazo." });
-    if (!data.deadlineDueDate) ctx.addIssue({ code: "custom", path: ["deadlineDueDate"], message: "Informe o vencimento." });
   });
 
 export type ProcessFormInput = z.input<typeof processFormSchema>;

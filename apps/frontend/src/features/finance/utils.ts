@@ -1,13 +1,13 @@
 import { addDays, parseISODate, toISODate, todayISO } from "@/lib/clock";
 import type { PaymentStatus } from "@/lib/constants/status";
-import type { AgreementSummary, Client, FeeModel, FinancialAgreement, Payment, Process } from "@/types";
+import type { AgreementSummary, Client, FeeModel, FinancialAgreement, PaymentView, Process } from "@/types";
 
 /** Linha consolidada da tabela de contratos. */
 export interface AgreementRow extends AgreementSummary {
   clientName: string;
   process?: Process;
   feeModel?: FeeModel;
-  payments: Payment[];
+  payments: PaymentView[];
 }
 
 export function clientLabel(client: Client | undefined): string {
@@ -105,7 +105,7 @@ export interface MonthlyPoint {
 }
 
 /** Janela de 6 meses: 4 anteriores, o atual e o próximo. */
-export function monthlyReceipts(payments: Payment[], today: string): MonthlyPoint[] {
+export function monthlyReceipts(payments: PaymentView[], today: string): MonthlyPoint[] {
   const base = parseISODate(today);
   const months: MonthlyPoint[] = [];
   for (let offset = -4; offset <= 1; offset += 1) {
@@ -115,12 +115,14 @@ export function monthlyReceipts(payments: Payment[], today: string): MonthlyPoin
   }
   const byKey = new Map(months.map((m) => [m.key, m]));
   for (const p of payments) {
-    if (p.status === "PAID") {
+    // Recebido entra no mês do recebimento; saldo em aberto, no mês do vencimento.
+    if (p.paidAmount > 0) {
       const bucket = byKey.get((p.paidAt ?? p.dueDate).slice(0, 7));
-      if (bucket) bucket.received += p.amount;
-    } else {
+      if (bucket) bucket.received += p.paidAmount;
+    }
+    if (p.balance > 0) {
       const bucket = byKey.get(p.dueDate.slice(0, 7));
-      if (bucket) bucket.open += p.amount;
+      if (bucket) bucket.open += p.balance;
     }
   }
   return months;

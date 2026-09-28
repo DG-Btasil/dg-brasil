@@ -12,6 +12,7 @@ import { useResponsibleOptions, useUserMap } from "@/features/offices/hooks";
 import { useAllDeadlines, useClientMap, useProcesses } from "../hooks";
 import {
   clientDisplayName,
+  processClientLabel,
   EMPTY_PROCESS_FILTERS,
   filterProcessRows,
   nextOpenDeadlineByProcess,
@@ -35,7 +36,7 @@ export function ProcessList() {
     const next = nextOpenDeadlineByProcess(deadlines);
     return processes.map((process) => ({
       process,
-      clientName: clientDisplayName(clientMap.get(process.clientId)),
+      clientName: processClientLabel(process, clientMap.get(process.clientId)),
       responsibleName: userMap.get(process.responsibleUserId)?.name ?? "—",
       nextDeadline: next.get(process.id),
     }));

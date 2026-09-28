@@ -10,6 +10,21 @@ export function clientDisplayName(client: Client | undefined): string {
   return client.tradeName || client.legalName;
 }
 
+/**
+ * Rótulo do cliente de um processo. Com vínculo pendente (cliente removido),
+ * o processo não "some": mostra que precisa de revisão e de quem era.
+ */
+export function processClientLabel(process: Pick<Process, "clientLinkStatus" | "removedClientName">, client: Client | undefined): string {
+  if (process.clientLinkStatus === "PENDING_LINK" || !client) {
+    return process.removedClientName ? `Vínculo pendente (antes: ${process.removedClientName})` : "Vínculo pendente — sem cliente";
+  }
+  return clientDisplayName(client);
+}
+
+export function hasPendingClientLink(process: Pick<Process, "clientLinkStatus">): boolean {
+  return process.clientLinkStatus === "PENDING_LINK";
+}
+
 /** "TJSP · Ribeirão Preto/SP" */
 export function courtLocation(process: Pick<Process, "court" | "district" | "state">): string {
   const place = [process.district, process.state].filter(Boolean).join("/");

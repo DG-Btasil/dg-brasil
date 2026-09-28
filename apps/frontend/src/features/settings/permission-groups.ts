@@ -5,10 +5,12 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "home.view": "Ver a Home",
   "clients.view": "Ver clientes",
   "clients.edit": "Cadastrar e editar clientes",
+  "clients.delete": "Excluir clientes",
   "documents.manage": "Gerenciar documentos",
   "analyses.start": "Iniciar análises jurídicas",
   "processes.view": "Ver processos",
   "processes.edit": "Cadastrar e editar processos",
+  "processes.delete": "Excluir processos",
   "processes.caseValue.view": "Ver valor da causa",
   "reviews.view": "Ver revisões",
   "reviews.decide": "Aprovar ou rejeitar revisões",
@@ -32,8 +34,8 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
 };
 
 export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
-  { label: "Clientes e documentos", permissions: ["home.view", "clients.view", "clients.edit", "documents.manage", "analyses.start"] },
-  { label: "Processos", permissions: ["processes.view", "processes.edit", "processes.caseValue.view"] },
+  { label: "Clientes e documentos", permissions: ["home.view", "clients.view", "clients.edit", "clients.delete", "documents.manage", "analyses.start"] },
+  { label: "Processos", permissions: ["processes.view", "processes.edit", "processes.delete", "processes.caseValue.view"] },
   { label: "Revisões", permissions: ["reviews.view", "reviews.decide"] },
   { label: "Financeiro", permissions: ["finance.view", "finance.manage"] },
   { label: "DG Brasil", permissions: ["dgbrasil.view", "dgbrasil.manage", "dgbrasil.activity.view"] },

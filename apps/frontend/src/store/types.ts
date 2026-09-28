@@ -10,14 +10,18 @@ import type {
 import type {
   Agent,
   Client,
+  ClientInactivationReason,
   CompanyClient,
   DiffLine,
   FeeModel,
   ID,
   IndividualClient,
+  LegalThesis,
   Office,
   Process,
+  ReviewContent,
   Role,
+  Skill,
 } from "@/types";
 
 /* ------------------------------------------------------------------ */
@@ -103,6 +107,93 @@ export interface NewAgreementInput {
   notes?: string;
 }
 
+export interface InactivateClientInput {
+  reason?: ClientInactivationReason;
+  note?: string;
+}
+
+/** Resultado da exclusão de cliente: processos que ficaram com vínculo pendente. */
+export interface DeleteClientResult {
+  affectedProcessIds: ID[];
+}
+
+/** Recebimento de parcela. Sem `amount`, quita o saldo restante. */
+export interface RegisterPaymentInput {
+  amount?: number;
+}
+
+export type NewAgentInput = Pick<Agent, "name" | "role" | "description" | "status" | "autonomy" | "skillIds" | "thesisIds" | "rules"> & {
+  objective?: string;
+};
+
+export type NewSkillInput = Pick<Skill, "name" | "description" | "purpose" | "status" | "instructions" | "version"> & {
+  /** Agentes que passam a usar a Skill. */
+  agentIds: ID[];
+};
+
+export type NewThesisInput = Pick<
+  LegalThesis,
+  "name" | "area" | "status" | "summary" | "foundations" | "applicationCriteria" | "nonApplicationCriteria" | "requiredDocuments" | "references" | "notes" | "skillIds"
+> & {
+  /** Agentes autorizados a aplicar a tese. */
+  agentIds: ID[];
+};
+
+export interface JudicialSourceConfigInput {
+  oabNumber?: string;
+  oabState?: string;
+  courts?: string[];
+  responsibleUserId?: ID;
+}
+
+/* ------------------------------------------------------------------ */
+/* Importação                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Plano de importação já validado e com os conflitos resolvidos. Uma única
+ * importação pode criar clientes, processos e os vínculos entre eles.
+ * `ref` liga um processo ao cliente criado/atualizado na mesma importação.
+ */
+export interface ImportClientOperation {
+  ref: string;
+  action: "CREATE" | "UPDATE";
+  existingId?: ID;
+  input: NewClientInput;
+}
+
+interface ImportProcessLink {
+  /** Cliente da mesma importação (ref) ou já existente (clientId). */
+  clientRef?: string;
+  clientId?: ID;
+}
+
+/** CREATE traz o processo completo; UPDATE traz só os campos presentes na planilha. */
+export type ImportProcessOperation =
+  | (ImportProcessLink & { action: "CREATE"; input: Omit<NewProcessInput, "clientId">; missingResponsible: boolean })
+  | (ImportProcessLink & { action: "UPDATE"; existingId: ID; patch: Partial<Omit<NewProcessInput, "clientId" | "nextDeadline">> });
+
+export interface ImportPlan {
+  fileName: string;
+  clients: ImportClientOperation[];
+  processes: ImportProcessOperation[];
+  /** Linhas descartadas por decisão do usuário (conflito → ignorar). */
+  ignoredRows: number;
+  /** Linhas com erro, que não foram importadas. */
+  errorRows: number;
+}
+
+export interface ImportResult {
+  clientsCreated: number;
+  clientsUpdated: number;
+  processesCreated: number;
+  processesUpdated: number;
+  linksCreated: number;
+  ignoredRows: number;
+  errorRows: number;
+  processesWithoutResponsible: number;
+}
+
 /** Proposta do Tutor DG, aplicada somente após confirmação explícita. */
 export interface SkillChangeProposal {
   skillId: ID;
@@ -142,8 +233,16 @@ export interface OfficeActions {
 export interface ClientActions {
   createClient: (input: NewClientInput) => ID;
   updateClient: (id: ID, patch: ClientPatch) => void;
+  inactivateClient: (id: ID, input: InactivateClientInput) => void;
+  reactivateClient: (id: ID) => void;
+  /** Exclui o cliente SEM excluir processos: eles ficam com vínculo pendente. */
+  deleteClient: (id: ID) => DeleteClientResult;
   addDocument: (input: NewDocumentInput) => ID;
   updateDocumentStatus: (id: ID, status: DocumentStatus, notes?: string) => void;
+}
+
+export interface ImportActions {
+  importData: (plan: ImportPlan) => ImportResult;
 }
 
 export interface AnalysisActions {
@@ -160,10 +259,18 @@ export interface ProcessActions {
   addProcessEvent: (processId: ID, input: { title: string; description?: string; important?: boolean }) => void;
   addDeadline: (input: NewDeadlineInput) => ID;
   completeDeadline: (id: ID) => void;
+  /** Exclui o processo. Nunca exclui o cliente. */
+  deleteProcess: (id: ID) => void;
+  /** Vincula (ou revincula) o cliente de um processo, resolvendo vínculo pendente. */
+  linkProcessClient: (processId: ID, clientId: ID) => void;
 }
 
 export interface ReviewActions {
   decideReview: (reviewId: ID, decision: ReviewDecisionKind, comment?: string) => void;
+  /** Edição manual: guarda a versão anterior e registra MANUAL_EDIT. */
+  editReviewContent: (reviewId: ID, content: ReviewContent) => void;
+  /** Reabre uma revisão decidida, preservando a decisão anterior no histórico. */
+  reopenReview: (reviewId: ID, reason?: string) => void;
   markNotificationRead: (id: ID) => void;
   markAllNotificationsRead: () => void;
 }
@@ -172,20 +279,33 @@ export interface FinanceActions {
   createFeeModel: (input: NewFeeModelInput) => ID;
   updateFeeModel: (id: ID, patch: Partial<NewFeeModelInput>) => void;
   createAgreement: (input: NewAgreementInput) => ID;
-  registerPayment: (paymentId: ID) => void;
+  /** Registra recebimento (total ou parcial). O status é recalculado, não gravado. */
+  registerPayment: (paymentId: ID, input?: RegisterPaymentInput) => void;
+  /** Corrige o total recebido de uma parcela. */
+  updatePaymentAmount: (paymentId: ID, paidAmount: number) => void;
+  /** Estorna todos os recebimentos da parcela. */
+  reversePayment: (paymentId: ID) => void;
+  updatePaymentDueDate: (paymentId: ID, dueDate: string) => void;
 }
 
 export interface DgActions {
+  createAgent: (input: NewAgentInput) => ID;
   updateAgent: (id: ID, patch: Partial<Pick<Agent, "status" | "autonomy" | "rules" | "skillIds" | "thesisIds" | "description">>) => void;
+  createSkill: (input: NewSkillInput) => ID;
+  createThesis: (input: NewThesisInput) => ID;
   applySkillChange: (proposal: SkillChangeProposal) => ID;
   cancelSkillChange: (proposal: SkillChangeProposal) => ID;
   updateIntegrationStatus: (id: ID, status: IntegrationStatus) => void;
   syncIntegration: (id: ID) => void;
+  configureJudicialSource: (id: ID, config: JudicialSourceConfigInput) => void;
+  /** Registra o resultado de uma sincronização (simulada) da fonte. */
+  recordJudicialSync: (id: ID, result: { syncedAt: string; newItems: number; latestItemAt?: string }) => void;
 }
 
 export type AppActions = SessionActions &
   OfficeActions &
   ClientActions &
+  ImportActions &
   AnalysisActions &
   ProcessActions &
   ReviewActions &

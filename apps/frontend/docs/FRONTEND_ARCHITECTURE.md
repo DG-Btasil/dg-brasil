@@ -89,6 +89,17 @@ Dois stores Zustand:
   Alterações solicitadas devolvem ao agente; rejeição interrompe a análise.
 - **Tutor DG:** propõe; somente `applySkillChange` (chamado após confirmação explícita)
   altera a Skill, incrementa a versão e registra o histórico. Cancelar também registra.
+  Criações e alterações manuais (agente, Skill, tese) também entram no histórico.
+- **Financeiro:** status de parcela e de contrato **não são gravados**; são derivados dos
+  pagamentos por `lib/domain/finance.ts` (fonte única). Registrar, alterar ou estornar
+  recebimento e mudar vencimento atualizam, na mesma leitura, tabela, drawer, KPIs e Home.
+- **Cliente ↔ processo:** ciclos de vida independentes. Excluir cliente mantém os
+  processos com vínculo pendente + alerta `DATA_INTEGRITY`; excluir processo mantém o cliente.
+  Inativar (status `INACTIVE`) é o caminho preferencial.
+- **Revisões:** edição manual cria nova versão (a anterior fica guardada); reabrir leva a
+  `REOPENED` sem apagar a decisão anterior; aprovação vale apenas para a versão aprovada.
+- **Importação:** `features/data-import` valida, detecta conflitos e monta um `ImportPlan`;
+  `importData` cria clientes, processos e vínculos numa única operação.
 
 ## 5. Abstração de repositório
 
@@ -112,8 +123,9 @@ Componente ──► hook da feature ──► (leitura) useAppStore
   para quando as leituras passarem a ter loading e erro de verdade.
 
 `services/` guarda contratos de integrações que não são CRUD:
-`AIProviderService` (Claude Platform, sempre via backend) e `LegalProcessIntegration`
-(provedor processual ainda não definido).
+`AIProviderService` (Claude Platform, sempre via backend) e `JudicialIntegrationProvider`
+(`judicial-integration.ts`: DJEN, DataJud e futuros fornecedores, cada um declarando o que
+fornece; a tela de Integração Judicial se monta a partir do registro `JUDICIAL_PROVIDERS`).
 
 ## 6. Design system
 
@@ -126,6 +138,8 @@ Componente ──► hook da feature ──► (leitura) useAppStore
   `components/ui/tone.ts` converte tom em classes. Prioridade sempre com texto/ícone.
 - **Navegação:** header navy persistente e o **menu da casa** (painel que desliza para
   baixo: hover abre, clique fixa, ESC/clique fora fecha, setas navegam). Não há sidebar.
+  O acionador mostra ícone e rótulo da **área atual**, vindos do mapa central
+  `components/navigation/route-areas.ts` (rota → rótulo → ícone); subrotas herdam a área pai.
 - **Primitives:** `components/ui/*`, construídos do zero ou sobre Radix (Dialog, Tooltip)
   com visual próprio.
 - **Densidade:** tabelas semânticas com cabeçalhos ordenáveis (`aria-sort`), linhas finas e

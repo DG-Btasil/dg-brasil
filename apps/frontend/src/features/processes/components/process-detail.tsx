@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CalendarPlus, FileSearch, NotebookPen } from "lucide-react";
-import { PROCESS_PHASE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
+import { CalendarPlus, FileSearch, Link2, NotebookPen, ShieldAlert } from "lucide-react";
+import { OPEN_REVIEW_STATUSES, PROCESS_PHASE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
 import { daysUntil } from "@/lib/clock";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import { Can, PageContainer, RequirePermission } from "@/components/layout/guards";
@@ -12,15 +12,16 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
 import { Panel } from "@/components/ui/panel";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
-import { EmptyState } from "@/components/feedback/states";
+import { Callout, EmptyState } from "@/components/feedback/states";
 import { useCan } from "@/features/auth/hooks";
 import { useUser } from "@/features/offices/hooks";
 import { ProcessFinancePanel } from "@/features/finance/components/process-finance-panel";
 import { useClientById, useProcess, useProcessDeadlines, useProcessReviews } from "../hooks";
-import { clientDisplayName } from "../utils";
+import { hasPendingClientLink, processClientLabel } from "../utils";
 import { AddDeadlineDialog } from "./add-deadline-dialog";
 import { AddEventDialog } from "./add-event-dialog";
 import { CnjText } from "./cnj-text";
+import { DeleteProcessDialog, LinkClientDialog, ProcessActionsMenu } from "./process-danger-actions";
 import { ProcessOriginBadge } from "./process-origin-badge";
 import { DeadlinesTab } from "./tabs/deadlines-tab";
 import { DocumentsTab } from "./tabs/documents-tab";
@@ -39,11 +40,11 @@ export function ProcessDetail({ id }: { id: string }) {
   const reviews = useProcessReviews(id);
   const can = useCan();
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
-  const [dialog, setDialog] = useState<"event" | "deadline" | null>(null);
+  const [dialog, setDialog] = useState<"event" | "deadline" | "delete" | "link" | null>(null);
 
   const openDeadlines = deadlines.filter((d) => d.status === "OPEN");
   const urgent = openDeadlines.some((d) => daysUntil(d.dueDate) <= 1);
-  const pendingReviews = reviews.filter((r) => r.status === "PENDING" || r.status === "URGENT").length;
+  const pendingReviews = reviews.filter((r) => OPEN_REVIEW_STATUSES.includes(r.status)).length;
 
   const tabs = useMemo(() => {
     const items: TabItem<TabKey>[] = [
@@ -83,9 +84,16 @@ export function ProcessDetail({ id }: { id: string }) {
         title={process.title}
         meta={
           <>
-            <Link href={`/clientes/${process.clientId}`} className="font-medium text-navy hover:underline underline-offset-2">
-              {clientDisplayName(client)}
-            </Link>
+            {hasPendingClientLink(process) ? (
+              <span className="inline-flex items-center gap-1 font-medium text-warning">
+                <ShieldAlert className="size-3.5" aria-hidden />
+                {processClientLabel(process, client)}
+              </span>
+            ) : (
+              <Link href={`/clientes/${process.clientId}`} className="font-medium text-navy hover:underline underline-offset-2">
+                {processClientLabel(process, client)}
+              </Link>
+            )}
             <StatusBadge status={process.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
             <span>Fase {PROCESS_PHASE_LABEL[process.phase].toLowerCase()}</span>
             <span>Responsável: {responsible?.name ?? "—"}</span>
@@ -100,9 +108,28 @@ export function ProcessDetail({ id }: { id: string }) {
             <Button icon={<CalendarPlus className="size-4" aria-hidden />} onClick={() => setDialog("deadline")}>
               Adicionar prazo
             </Button>
+            <ProcessActionsMenu onDelete={() => setDialog("delete")} onLinkClient={() => setDialog("link")} />
           </Can>
         }
       />
+
+      {hasPendingClientLink(process) && (
+        <Callout
+          tone="warning"
+          className="mb-5"
+          title="Cliente associado removido — revisão necessária"
+          action={
+            <Can permission="processes.edit">
+              <Button size="sm" icon={<Link2 className="size-3.5" aria-hidden />} onClick={() => setDialog("link")}>
+                Vincular cliente
+              </Button>
+            </Can>
+          }
+        >
+          {process.removedClientName ? `O cliente ${process.removedClientName} foi excluído. ` : "Este processo está sem cliente associado. "}
+          O processo foi mantido: vincule outro cliente ou resolva manualmente.
+        </Callout>
+      )}
 
       <Tabs items={tabs} value={active} onChange={setTab} label="Seções do processo" className="mb-5" />
 
@@ -123,6 +150,8 @@ export function ProcessDetail({ id }: { id: string }) {
         )}
       </TabPanel>
 
+      {dialog === "delete" && <DeleteProcessDialog process={process} clientName={processClientLabel(process, client)} onClose={() => setDialog(null)} />}
+      {dialog === "link" && <LinkClientDialog process={process} onClose={() => setDialog(null)} />}
       <AddEventDialog open={dialog === "event"} onOpenChange={(o) => setDialog(o ? "event" : null)} processId={process.id} />
       <AddDeadlineDialog
         open={dialog === "deadline"}

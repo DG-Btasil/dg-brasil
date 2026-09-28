@@ -155,5 +155,58 @@ export function useProcessActions() {
     [toast],
   );
 
-  return { createProcess, addEvent, addDeadline, completeDeadline };
+  const deleteProcess = useCallback(
+    async (process: Process): Promise<boolean> => {
+      try {
+        await repositories.processes.remove(process.id);
+        toast({ tone: "success", title: "Processo excluído", description: "O cliente foi mantido. A exclusão ficou registrada na auditoria." });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível excluir o processo." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  const linkClient = useCallback(
+    async (processId: ID, clientId: ID): Promise<boolean> => {
+      try {
+        await repositories.processes.linkClient(processId, clientId);
+        toast({ tone: "success", title: "Cliente vinculado", description: "O alerta de integridade foi resolvido." });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível vincular o cliente." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  return { createProcess, addEvent, addDeadline, completeDeadline, deleteProcess, linkClient };
+}
+
+export interface ProcessDeletionImpact {
+  reviews: number;
+  openDeadlines: number;
+  documents: number;
+  /** Só é contado para quem pode ver o financeiro. */
+  agreements: number;
+}
+
+/** O que existe associado ao processo, para avisar antes da exclusão. */
+export function useProcessDeletionImpact(processId: ID, includeFinance: boolean): ProcessDeletionImpact {
+  const reviews = useAppStore((s) => s.reviews);
+  const deadlines = useAppStore((s) => s.deadlines);
+  const documents = useAppStore((s) => s.documents);
+  const agreements = useAppStore((s) => s.agreements);
+  return useMemo(
+    () => ({
+      reviews: reviews.filter((r) => r.processId === processId).length,
+      openDeadlines: deadlines.filter((d) => d.processId === processId && d.status === "OPEN").length,
+      documents: documents.filter((d) => d.processId === processId).length,
+      agreements: includeFinance ? agreements.filter((a) => a.processId === processId).length : 0,
+    }),
+    [reviews, deadlines, documents, agreements, processId, includeFinance],
+  );
 }

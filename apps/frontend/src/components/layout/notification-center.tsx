@@ -10,6 +10,7 @@ import {
   FileWarning,
   Gavel,
   PlugZap,
+  ShieldAlert,
   TimerOff,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +37,7 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   AGENT_INTERVENTION: Bot,
   INTEGRATION_ISSUE: PlugZap,
   TASK_OVERDUE: TimerOff,
+  DATA_INTEGRITY: ShieldAlert,
 };
 
 export function NotificationCenter() {

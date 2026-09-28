@@ -1,14 +1,16 @@
 import { addDays, now, nowISO } from "@/lib/clock";
 import { DEMO_LEGAL_DISCLAIMER } from "@/lib/constants/legal";
-import { DOCUMENT_CATEGORY_LABEL } from "@/lib/constants/status";
+import { CLIENT_STATUS_LABEL, DOCUMENT_CATEGORY_LABEL } from "@/lib/constants/status";
 import { missingDocumentCategories } from "@/lib/domain/analysis";
+import { maskCNPJ, maskCPF } from "@/lib/formatting";
 import { createId } from "@/lib/ids";
 import { buildSteps } from "@/mocks";
-import type { AgentTask, Client, LegalAnalysis, Notification, Review } from "@/types";
+import { CLIENT_INACTIVATION_REASON_LABEL, type AgentTask, type Client, type LegalAnalysis, type Notification, type Review } from "@/types";
 import {
   actorOf,
   agentActor,
   auditEvent,
+  integrityNotification,
   timelineEvent,
   updateById,
   withStep,
@@ -64,6 +66,8 @@ function reevaluateClientAnalyses(state: AppState, clientId: string): Pick<AppSt
     return a;
   });
   const clients = updateById(state.clients, clientId, (c) => {
+    // Cliente inativado só muda de status por ação explícita (reativar).
+    if (c.status === "INACTIVE") return c;
     if (anyWaiting) return { ...c, status: "WAITING_DOCUMENTS" as const, updatedAt: nowISO() };
     if (c.status === "WAITING_DOCUMENTS") return { ...c, status: "ACTIVE" as const, updatedAt: nowISO() };
     return c;
@@ -93,6 +97,119 @@ export function createClientSlice(set: SetState, get: GetState): ClientActions {
           auditEvents: [auditEvent(s, "CLIENT_UPDATED", "client", id, `Cadastro de ${clientName(updated)} editado.`), ...s.auditEvents],
         };
       }),
+    inactivateClient: (id, { reason, note }) =>
+      set((s) => {
+        const client = s.clients.find((c) => c.id === id);
+        if (!client || client.status === "INACTIVE") return {};
+        const at = nowISO();
+        const details = [
+          ...(reason ? [{ label: "Motivo", value: CLIENT_INACTIVATION_REASON_LABEL[reason] }] : []),
+          ...(note ? [{ label: "Observação", value: note }] : []),
+          { label: "Status anterior", value: CLIENT_STATUS_LABEL[client.status] },
+        ];
+        return {
+          clients: updateById(s.clients, id, (c) => ({
+            ...c,
+            status: "INACTIVE" as const,
+            inactivation: { reason, note, at, by: actorOf(s).id, previousStatus: c.status },
+            updatedAt: at,
+          })),
+          auditEvents: [auditEvent(s, "CLIENT_INACTIVATED", "client", id, `Cliente ${clientName(client)} inativado.`, undefined, details), ...s.auditEvents],
+        };
+      }),
+    reactivateClient: (id) =>
+      set((s) => {
+        const client = s.clients.find((c) => c.id === id);
+        if (!client || client.status !== "INACTIVE") return {};
+        const previous = client.inactivation?.previousStatus;
+        return {
+          clients: updateById(s.clients, id, (c) => ({
+            ...c,
+            status: previous && previous !== "INACTIVE" ? previous : ("ACTIVE" as const),
+            inactivation: undefined,
+            updatedAt: nowISO(),
+          })),
+          auditEvents: [auditEvent(s, "CLIENT_REACTIVATED", "client", id, `Cliente ${clientName(client)} reativado.`), ...s.auditEvents],
+        };
+      }),
+    /**
+     * Cliente e processo têm ciclos de vida independentes: excluir o cliente
+     * NÃO exclui processos. Cada processo vinculado fica com vínculo pendente
+     * e gera um alerta de integridade para a equipe resolver.
+     */
+    deleteClient: (id) => {
+      const s = get();
+      const client = s.clients.find((c) => c.id === id);
+      if (!client) return { affectedProcessIds: [] };
+      const at = nowISO();
+      const actor = actorOf(s);
+      const name = clientName(client);
+      const linked = s.processes.filter((p) => p.clientId === id);
+      const affectedProcessIds = linked.map((p) => p.id);
+      set({
+        clients: s.clients.filter((c) => c.id !== id),
+        removedClients: [
+          {
+            id,
+            officeId: s.office.id,
+            name,
+            document: client.kind === "INDIVIDUAL" ? maskCPF(client.cpf) : maskCNPJ(client.cnpj),
+            deletedAt: at,
+            deletedBy: actor.id,
+            linkedProcessIds: affectedProcessIds,
+          },
+          ...s.removedClients,
+        ],
+        processes: s.processes.map((p) =>
+          p.clientId === id ? { ...p, clientLinkStatus: "PENDING_LINK" as const, removedClientName: name, updatedAt: at } : p,
+        ),
+        processEvents: [
+          ...linked.map((p) => ({
+            id: createId("mov"),
+            officeId: s.office.id,
+            processId: p.id,
+            at,
+            title: "Cliente associado removido — revisão necessária",
+            description: `${name} foi excluído por ${actor.name}. O processo foi mantido e aguarda novo vínculo.`,
+            source: "SYSTEM" as const,
+            important: true,
+          })),
+          ...s.processEvents,
+        ],
+        notifications: [
+          ...linked.map((p) =>
+            integrityNotification(s, {
+              severity: "warning",
+              title: "Cliente associado removido — revisão necessária",
+              description: `${p.title}: o cliente ${name} foi excluído. Vincule outro cliente ou resolva manualmente.`,
+              processId: p.id,
+              cta: { label: "Revisar vínculo", href: `/processos/${p.id}` },
+              requiredPermission: "processes.view",
+            }),
+          ),
+          // Contratos de honorários ficam no histórico, mas sem cliente ativo: pagamento inconsistente.
+          ...(s.agreements.some((a) => a.clientId === id)
+            ? [
+                integrityNotification(s, {
+                  severity: "warning",
+                  title: "Pagamento inconsistente: contrato sem cliente ativo",
+                  description: `O contrato de honorários de ${name} foi mantido, mas o cliente foi excluído. Revise cobranças em aberto.`,
+                  cta: { label: "Abrir Financeiro", href: "/financeiro" },
+                  requiredPermission: "finance.view",
+                }),
+              ]
+            : []),
+          ...s.notifications,
+        ],
+        auditEvents: [
+          auditEvent(s, "CLIENT_DELETED", "client", id, `Cliente ${name} excluído.`, actor, [
+            { label: "Processos mantidos com vínculo pendente", value: linked.length ? linked.map((p) => p.title).join("; ") : "Nenhum" },
+          ]),
+          ...s.auditEvents,
+        ],
+      });
+      return { affectedProcessIds };
+    },
     addDocument: (input) => {
       const s = get();
       const at = nowISO();

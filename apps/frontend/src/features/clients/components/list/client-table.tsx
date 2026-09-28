@@ -14,6 +14,7 @@ import {
   CLIENT_STATUS_LABEL,
   CLIENT_STATUS_TONE,
 } from "@/lib/constants/status";
+import { cn } from "@/lib/cn";
 import { formatEventTime } from "@/lib/formatting";
 import type { ID, User } from "@/types";
 import type { ClientRow } from "../../hooks";
@@ -62,7 +63,10 @@ export function ClientTable({
                 <Link
                   href={href}
                   onClick={(e) => e.stopPropagation()}
-                  className="block truncate font-medium text-foreground hover:text-navy hover:underline underline-offset-2 focus-visible:underline"
+                  className={cn(
+                    "block truncate font-medium hover:text-navy hover:underline underline-offset-2 focus-visible:underline",
+                    client.status === "INACTIVE" ? "text-muted" : "text-foreground",
+                  )}
                 >
                   {clientDisplayName(client)}
                 </Link>

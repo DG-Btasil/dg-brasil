@@ -1,16 +1,17 @@
 "use client";
 
-import { PenLine, RefreshCw, Sparkles } from "lucide-react";
+import { FileSpreadsheet, PenLine, RefreshCw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PROCESS_ORIGIN_DESCRIPTION, PROCESS_ORIGIN_LABEL, type ProcessOrigin } from "@/lib/constants/status";
 import { Tooltip } from "@/components/ui/tooltip";
 
-const ICON = { AGENT: Sparkles, INTEGRATION: RefreshCw, MANUAL: PenLine } as const;
+const ICON = { AGENT: Sparkles, INTEGRATION: RefreshCw, MANUAL: PenLine, IMPORT: FileSpreadsheet } as const;
 
 const STYLE: Record<ProcessOrigin, string> = {
   AGENT: "border-gold-100 bg-gold-50 text-navy font-semibold",
   INTEGRATION: "border-line bg-surface text-muted",
   MANUAL: "border-transparent bg-transparent text-subtle",
+  IMPORT: "border-line bg-surface text-muted",
 };
 
 /**

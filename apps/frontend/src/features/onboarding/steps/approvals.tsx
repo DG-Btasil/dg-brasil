@@ -55,7 +55,7 @@ export function ApprovalsStep({ formId, answers, onSave, registerForm }: StepPro
           )}
         />
         <Field label="Responsáveis por área ou tipo de revisão" requirement="optional" error={errors.responsibles?.message}>
-          {(p) => <Textarea {...p} rows={2} placeholder="Ex.: petições bancárias — Dr. Rafael; mensagens a clientes — Dra. Marina." {...register("responsibles")} />}
+          {(p) => <Textarea {...p} rows={2} placeholder="Ex.: petições bancárias — Dr. Cláudio; mensagens a clientes — Dra. Bárbara." {...register("responsibles")} />}
         </Field>
       </StepSection>
 

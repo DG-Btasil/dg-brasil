@@ -55,7 +55,18 @@ export function ThesisDetail({ id }: { id: string }) {
           </Panel>
           <BulletPanel title="Fundamentos" items={thesis.foundations} empty="Nenhum fundamento cadastrado." />
           <BulletPanel title="Critérios de aplicação" items={thesis.applicationCriteria} empty="Nenhum critério cadastrado." />
+          {thesis.nonApplicationCriteria && thesis.nonApplicationCriteria.length > 0 && (
+            <BulletPanel title="Critérios de não aplicação" items={thesis.nonApplicationCriteria} empty="Nenhum critério cadastrado." />
+          )}
           <BulletPanel title="Documentos necessários" items={thesis.requiredDocuments} empty="Nenhum documento indicado." />
+          {thesis.notes && (
+            <Panel>
+              <PanelHeader title="Observações" />
+              <PanelBody>
+                <p className="whitespace-pre-line text-[13px] leading-relaxed text-foreground">{thesis.notes}</p>
+              </PanelBody>
+            </Panel>
+          )}
           <Panel>
             <PanelHeader title="Referências" description="Referências fictícias; nenhuma decisão ou precedente real é citado." />
             {thesis.references.length === 0 ? (

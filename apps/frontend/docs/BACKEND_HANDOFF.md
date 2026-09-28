@@ -87,11 +87,142 @@ decisão de revisão e versionamento de Skills.
 
 ## 8. Integrações
 
-- Acompanhamento processual: `src/services/legal-process-integration.ts`. O fornecedor
-  não foi definido. A sincronização por OAB roda em job periódico e cria processos e
-  movimentações com `origin = INTEGRATION`, deduplicando pelo número CNJ.
+### 8.1 Integração Judicial
+
+- Contrato: `src/services/judicial-integration.ts` (`JudicialIntegrationProvider`) e o
+  registro `JUDICIAL_PROVIDERS`. A tela (Configurações → Integrações → Integração Judicial)
+  se monta a partir do registro: nova fonte ou fornecedor = implementar o contrato e
+  registrar, sem reescrever a interface. Estado por escritório: `JudicialSourceState`.
+- **Nenhuma fonte fornece tudo.** Cada provedor declara `capabilities`; a UI mostra o que
+  cada fonte entrega. Hoje:
+  - **DJEN** (Diário de Justiça Eletrônico Nacional): comunicações, publicações e
+    intimações; consulta por OAB (número + UF) quando aplicável. Gera prazos **derivados**,
+    que entram em Revisões como proposta (nunca prazo confirmado automaticamente).
+  - **DataJud** (CNJ): metadados por número CNJ — capa, tribunal, órgão julgador, classe,
+    assuntos e o histórico de movimentos disponível. Enriquece processos já cadastrados.
+- **Sincronização:** jobs periódicos por fonte e escritório (polling). Se algum fornecedor
+  oferecer webhook/push, tratar como gatilho do mesmo job, com verificação de assinatura.
+  Botão "Sincronizar agora" = enfileirar job com prioridade, nunca chamada síncrona do navegador.
+- **Deduplicação:** processo pelo CNJ normalizado (só dígitos); comunicação pelo
+  identificador da fonte + hash do conteúdo; movimento por CNJ + data + código/descrição.
+- **OAB e CNJ:** validar formato; OAB monitorada é dado do escritório (e do advogado
+  responsável), com trilha de quem configurou.
+- **Rate limits e resiliência:** respeitar cotas de cada fonte, backoff exponencial,
+  retomada por cursor/data da última comunicação, alerta `INTEGRATION_ISSUE` em falha.
+- **Origem do dado:** persistir, em cada registro importado, a fonte, o identificador
+  externo, a data de captura e o payload bruto (para auditoria e reprocessamento).
+  Processos criados por integração continuam com `origin = INTEGRATION`.
+- Credenciais (quando houver) só no backend, criptografadas. O protótipo não pede nenhuma.
+
+### 8.2 Outras integrações
+
 - E-mail e WhatsApp: envio só depois de aprovação em Revisões, com registro do envio.
 - Armazenamento externo: opcional, via o mesmo serviço de storage.
+
+### 8.3 Importação de dados (planilhas e outros sistemas)
+
+- Hoje: `src/features/data-import` faz o *dry run* no navegador (CSV lido de verdade; XLSX
+  simulado com planilha de exemplo) e `importData` (`store/slices/data-import.ts`) aplica
+  um `ImportPlan` já validado.
+- Backend:
+  - **Parsing** de XLSX/CSV no servidor (encoding, separador, datas BR, números com vírgula),
+    com limite de tamanho e antivírus.
+  - **Mapeamento** coluna → campo, com sugestão (cabeçalho, amostras, futuramente IA) e
+    confirmação humana obrigatória. Salvar mapeamentos por origem para reuso.
+  - **Validação e dry run** antes de gravar: erros (CPF/CNPJ/CNJ inválido, cliente sem
+    nome, CNJ repetido no arquivo) e alertas (sem responsável, sem vencimento, dado
+    financeiro só como referência). **Linha com erro nunca é importada.**
+  - **Deduplicação e conflitos:** CPF/CNPJ e CNJ já existentes exigem decisão explícita
+    (atualizar / ignorar; "criar novo" só quando não gerar duplicata evidente). Nunca criar
+    duplicata em silêncio. O mesmo cliente em várias linhas = um cliente com vários processos.
+  - **Import jobs** assíncronos, com progresso, idempotência (hash do arquivo + mapeamento)
+    e **rollback**: gravar tudo numa transação ou marcar os registros com `importJobId`
+    para desfazer o lote inteiro.
+  - **Relatório de erros** por linha, exportável, e alertas `DATA_INTEGRITY` para o que
+    ficou pendente (processo sem cliente ou sem responsável, importação incompleta).
+  - Atualização via importação só altera os campos presentes na planilha; nunca apaga dado
+    existente com valor vazio.
+
+## 8A. Cliente, Processo e integridade
+
+- **Relação explícita, ciclos de vida independentes.** Cliente pode existir sem processo.
+  Processo normalmente tem cliente, mas **não desaparece** se o cliente for removido:
+  fica com `clientLinkStatus = PENDING_LINK` (vínculo pendente / revisão necessária),
+  gera alerta `DATA_INTEGRITY` e aguarda: vincular outro cliente, restaurar o cliente
+  (soft delete) ou resolução manual. Implementado no protótipo em `deleteClient` e
+  `linkProcessClient`.
+- **Sem cascade delete destrutivo.** FKs de processo → cliente com `ON DELETE RESTRICT`
+  (ou `SET NULL` + status de vínculo); a exclusão é uma operação de domínio, não um
+  cascade do banco.
+- **Soft delete primeiro.** Tratar Cliente e Processo com `status` (ativo/inativo),
+  `archivedAt` e `deletedAt`, em vez de `DELETE` físico imediato. Inativar é o caminho
+  preferencial para quem deixou de ser cliente (continua pesquisável e no histórico).
+- **Retenção e auditoria.** Dados jurídicos podem ter exigências de retenção (prazos
+  legais, guarda de documentos, defesa do escritório) e de auditoria. A exclusão
+  definitiva (expurgo) precisa ser projetada com cuidado: política por tipo de dado,
+  aprovação, registro de quem pediu e quando, e atendimento a pedidos de eliminação da
+  LGPD sem apagar o que a lei obriga a manter.
+- **Quem pode excluir:** somente Administrador (`clients.delete`, `processes.delete`), verificado no servidor. Demais papéis podem inativar cliente (`clients.edit`).
+- **Excluir processo** nunca exclui o cliente. Revisões, contratos de honorários e
+  documentos associados são mantidos (histórico); prazos em aberto do processo são
+  removidos. O front avisa antes quantos itens estão associados.
+- Toda ação destrutiva ou reversível (excluir, inativar, reativar, revincular) gera
+  `AuditEvent` com `details` (antes/depois, motivo). O histórico nunca é apagado porque
+  o estado atual mudou.
+
+## 8B. Revisões: versionamento, edição manual e reabertura
+
+- **Versionamento do conteúdo.** Cada revisão tem `contentVersion`; toda alteração cria
+  nova versão e guarda a anterior (`previousVersions`) com autoria e origem
+  (`AGENT` ou `MANUAL_EDIT`). Nada é sobrescrito. No banco: tabela `review_content_version`
+  append-only.
+- **Edição manual** (pequenas correções sem pedir ao agente que regenere): registra
+  usuário, horário, seções alteradas e origem `MANUAL_EDIT`. A revisão continua aguardando
+  decisão.
+- **Decisão atrelada à versão.** `ReviewDecision.contentVersion` guarda a versão decidida.
+  **Aprovação vale só para aquela versão:** se a revisão for reaberta e editada, a nova
+  versão exige nova aprovação. O backend deve recusar aplicar efeitos de uma aprovação cuja
+  versão não seja a atual.
+- **Reabertura** de revisão decidida (aprovou/rejeitou por engano, erro percebido depois,
+  ajuste de conteúdo): status `REOPENED` (volta a aguardar decisão), evento na trilha e
+  `AuditEvent` com decisão anterior, usuário, data e motivo. A decisão anterior **não é
+  apagada**. Efeitos já aplicados por ela (ex.: processo criado) não são desfeitos
+  automaticamente; desfazer é uma decisão separada e explícita.
+- **Histórico imutável:** decisões, edições e reaberturas são append-only.
+
+## 8C. Financeiro: status derivado e fonte única
+
+- **Status nunca é gravado.** Parcela guarda só fatos (`amount`, `dueDate`, `paidAmount`,
+  `paidAt`); contrato guarda termos e, se for o caso, `cancelledAt`. Status é calculado
+  por uma regra central (`src/lib/domain/finance.ts`):
+  - parcela: saldo 0 → `PAID`; saldo > 0 e vencida → `OVERDUE`; saldo > 0 com algo pago →
+    `PARTIALLY_PAID`; senão `PENDING`;
+  - contrato: cancelado → `CANCELLED`; alguma parcela em atraso → `OVERDUE`; todas quitadas
+    (sem mensalidade recorrente) → `SETTLED`; senão `ACTIVE`.
+- Isso corrigiu no protótipo o bug em que o detalhe mostrava "Pago" e a visão geral
+  continuava "Em atraso": havia status gravado em dois lugares. Agora tabela, drawer, KPIs,
+  gráficos, Home e menu leem os mesmos arrays e derivam com a mesma função.
+- **Backend:** recebimentos como lançamentos (`payment_receipt`, append-only) e
+  `paidAmount` como soma; status calculado em view/consulta (ou materializado por trigger
+  na mesma transação, nunca por job assíncrono que deixe janelas de inconsistência).
+  Registrar, alterar, estornar recebimento e mudar vencimento são transações únicas, com
+  `AuditEvent` contendo situação anterior e atual. "Em atraso" depende da data: calcular
+  na leitura ou reavaliar diariamente.
+
+## 8D. DG Brasil: CRUD de Agentes, Skills e Teses
+
+- Criação e edição manuais já existem no protótipo (`createAgent`, `createSkill`,
+  `createThesis`, `updateAgent`), além das alterações via Tutor DG.
+- **Toda** criação e alteração — manual ou pelo Tutor — entra no Histórico de Alterações
+  (`ChangeHistoryEntry`, `action = CREATED | UPDATED`, `responsible = USER | TUTOR_DG`) e na
+  auditoria. Criação = versão 0 → versão inicial.
+- Versionar agentes, Skills e teses (tabelas de versão append-only); reverter = aplicar
+  uma versão anterior como nova versão.
+- Relações: Skill ↔ agente em `agent.skillIds`; tese ↔ agente autorizado em
+  `agent.thesisIds`; tese ↔ Skill em `thesis.skillIds`. No banco, tabelas de junção.
+- Teses criadas pela interface têm referências marcadas como demonstração (`demo`) até
+  validação jurídica. O sistema não deve apresentar jurisprudência não verificada como real.
+- Permissão: `dgbrasil.manage`, aplicada no servidor.
 
 ## 9. Auditoria
 
@@ -109,8 +240,11 @@ apuração de consumo de IA; limpeza conforme a política de retenção.
 ## 11. Notificações
 
 - Geração no backend a partir de eventos (prazo, revisão, documento, movimentação,
-  intervenção de agente, falha de integração, tarefa atrasada), com severidade
-  `info | warning | urgent | critical` e permissão exigida.
+  intervenção de agente, falha de integração, tarefa atrasada, integridade de dados), com
+  severidade `info | warning | urgent | critical` e permissão exigida.
+- `DATA_INTEGRITY`: processo sem cliente ativo, cliente removido com processo associado,
+  pagamento inconsistente, importação incompleta, processo importado sem responsável. A
+  severidade depende do caso (a maioria é `warning` ou `info`, não `critical`).
 - Entrega in-app (tempo real via SSE/WebSocket) e e-mail, respeitando as preferências
   (`UserPreferences`) já modeladas.
 

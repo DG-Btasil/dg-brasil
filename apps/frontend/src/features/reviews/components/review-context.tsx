@@ -1,18 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { ArrowRight, CheckCircle2, FileText, Info } from "lucide-react";
-import { REVIEW_DECISION_LABEL } from "@/lib/constants/status";
+import { useMemo, useState, type ReactNode } from "react";
+import { ArrowRight, CheckCircle2, FilePen, FileText, Info, RotateCcw, type LucideIcon } from "lucide-react";
+import { REVIEW_CONTENT_ORIGIN_LABEL, REVIEW_DECISION_LABEL, REVIEW_STATUS_LABEL } from "@/lib/constants/status";
 import { formatDateTime, formatWaitingTime } from "@/lib/formatting";
+import { Dialog } from "@/components/ui/dialog";
 import { Panel } from "@/components/ui/panel";
 import { usePermission } from "@/features/auth/hooks";
 import { useUserMap } from "@/features/offices/hooks";
 import { clientDisplayName } from "@/features/processes/utils";
 import { useClientById } from "@/features/processes/hooks";
-import type { Review } from "@/types";
+import type { Review, ReviewContentVersion } from "@/types";
 import { useAgentMap, useDocumentMap, useProcessMap, useReviewDecisions, useSkillMap, useThesisMap } from "../hooks";
 import { isOpenReview } from "../utils";
+import { ReviewDocument } from "./review-document";
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -50,6 +52,34 @@ export function ReviewContext({ review }: { review: Review }) {
   const agent = agents.get(review.agentId);
   const thesis = review.thesisId ? theses.get(review.thesisId) : undefined;
   const dgLink = (href: string, label: string) => (canSeeDg ? <Link href={href} className={linkCls}>{label}</Link> : <span>{label}</span>);
+  const [viewing, setViewing] = useState<ReviewContentVersion | null>(null);
+
+  // Trilha completa e imutável: decisões + edições manuais + reaberturas, mais recentes primeiro.
+  const trail = useMemo(() => {
+    const items: { id: string; at: string; icon: LucideIcon; title: string; who: string; detail?: string; version?: ReviewContentVersion }[] = [
+      ...decisions.map((d) => ({
+        id: d.id,
+        at: d.at,
+        icon: CheckCircle2,
+        title: `${REVIEW_DECISION_LABEL[d.decision]} · v${d.contentVersion ?? 1}`,
+        who: users.get(d.userId)?.name ?? "Usuário",
+        detail: d.comment ? `“${d.comment}”` : undefined,
+      })),
+      ...(review.history ?? []).map((h) => ({
+        id: h.id,
+        at: h.at,
+        icon: h.kind === "MANUAL_EDIT" ? FilePen : RotateCcw,
+        title:
+          h.kind === "MANUAL_EDIT"
+            ? `Editada manualmente · v${h.fromVersion} → v${h.toVersion}`
+            : `Reaberta${h.previousStatus ? ` (antes: ${REVIEW_STATUS_LABEL[h.previousStatus].toLowerCase()})` : ""}`,
+        who: h.actor.name,
+        detail: h.kind === "MANUAL_EDIT" ? `Origem: edição manual. Alterado: ${h.changedSections?.join(", ") ?? "—"}.` : h.reason ? `Motivo: “${h.reason}”` : undefined,
+        version: h.kind === "MANUAL_EDIT" ? review.previousVersions?.find((v) => v.version === h.fromVersion) : undefined,
+      })),
+    ];
+    return items.sort((a, b) => b.at.localeCompare(a.at));
+  }, [decisions, review.history, review.previousVersions, users]);
 
   return (
     <Panel>
@@ -120,26 +150,44 @@ export function ReviewContext({ review }: { review: Review }) {
         <p className="first-letter:uppercase">{review.nextStepOnApproval}.</p>
       </Block>
 
-      <Block title="Histórico de decisões">
-        {decisions.length === 0 ? (
-          <span className="text-subtle">Nenhuma decisão registrada ainda.</span>
+      <Block title="Histórico">
+        {trail.length === 0 ? (
+          <span className="text-subtle">Nenhuma decisão ou edição registrada ainda.</span>
         ) : (
           <ol className="space-y-3">
-            {decisions.map((d) => (
-              <li key={d.id} className="flex items-start gap-2">
-                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-subtle" aria-hidden />
-                <div className="min-w-0">
-                  <p className="font-medium">{REVIEW_DECISION_LABEL[d.decision]}</p>
-                  <p className="text-[12px] text-muted">
-                    {users.get(d.userId)?.name ?? "Usuário"} · {formatDateTime(d.at)}
-                  </p>
-                  {d.comment && <p className="mt-1 whitespace-pre-line text-[12.5px] text-muted">“{d.comment}”</p>}
-                </div>
-              </li>
-            ))}
+            {trail.map((item) => {
+              const Icon = item.icon;
+              return (
+                <li key={item.id} className="flex items-start gap-2">
+                  <Icon className="mt-0.5 size-3.5 shrink-0 text-subtle" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="font-medium">{item.title}</p>
+                    <p className="text-[12px] text-muted">
+                      {item.who} · {formatDateTime(item.at)}
+                    </p>
+                    {item.detail && <p className="mt-1 whitespace-pre-line text-[12.5px] text-muted">{item.detail}</p>}
+                    {item.version && (
+                      <button type="button" onClick={() => setViewing(item.version ?? null)} className="mt-1 text-[12px] font-medium text-navy hover:underline underline-offset-2">
+                        Ver versão v{item.version.version}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         )}
       </Block>
+
+      <Dialog
+        open={viewing !== null}
+        onOpenChange={(o) => !o && setViewing(null)}
+        size="lg"
+        title={viewing ? `Versão v${viewing.version} — ${REVIEW_CONTENT_ORIGIN_LABEL[viewing.origin]}` : "Versão anterior"}
+        description={viewing ? `Substituída em ${formatDateTime(viewing.at)} por ${viewing.actor.name}. Somente leitura.` : undefined}
+      >
+        {viewing && <ReviewDocument content={viewing.content} />}
+      </Dialog>
 
       <p className="flex items-start gap-2 px-5 py-3 text-[11.5px] leading-relaxed text-muted">
         <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />

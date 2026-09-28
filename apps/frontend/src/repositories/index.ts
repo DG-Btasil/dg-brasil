@@ -8,6 +8,7 @@ import {
   mockDgRepository,
   mockDocumentRepository,
   mockFinanceRepository,
+  mockImportRepository,
   mockIntegrationRepository,
   mockNotificationRepository,
   mockOfficeRepository,
@@ -28,6 +29,7 @@ export const repositories = {
   finance: mockFinanceRepository,
   dg: mockDgRepository,
   integrations: mockIntegrationRepository,
+  imports: mockImportRepository,
 } as const;
 
 export type Repositories = typeof repositories;

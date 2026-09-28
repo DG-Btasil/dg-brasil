@@ -6,7 +6,7 @@ export type { Role, Permission } from "@/lib/permissions";
 
 export interface User extends OfficeScoped {
   name: string;
-  /** Forma de tratamento usada na interface, ex.: "Dra. Marina". */
+  /** Forma de tratamento usada na interface, ex.: "Dra. Bárbara". */
   displayName: string;
   email: string;
   role: Role;

@@ -11,7 +11,7 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { usePermission } from "@/features/auth/hooks";
 import type { Client, Process } from "@/types";
 import { useAnalysis, useThesis } from "../../hooks";
-import { clientDisplayName } from "../../utils";
+import { hasPendingClientLink, processClientLabel } from "../../utils";
 import { CnjText } from "../cnj-text";
 
 function ThesisValue({ thesisId }: { thesisId?: string }) {
@@ -108,9 +108,11 @@ export function OverviewTab({ process: p, client, responsibleName }: { process: 
               items={[
                 {
                   label: `Cliente — ${CLIENT_POLE_LABEL[p.clientPole]}`,
-                  value: (
+                  value: hasPendingClientLink(p) ? (
+                    <span className="text-warning">{processClientLabel(p, client)}</span>
+                  ) : (
                     <Link href={`/clientes/${p.clientId}`} className="text-navy hover:underline underline-offset-2">
-                      {clientDisplayName(client)}
+                      {processClientLabel(p, client)}
                     </Link>
                   ),
                 },

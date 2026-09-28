@@ -9,6 +9,8 @@ import { companyToInput, companyToValues, individualToInput, individualToValues 
 import { clientShortName } from "../../utils";
 import { ClientNotFound } from "../detail/client-not-found";
 import { CompanyForm, IndividualForm } from "./client-forms";
+import { ClientLifecycleActions } from "./client-lifecycle-actions";
+import { Can } from "@/components/layout/guards";
 
 export function ClientEdit({ id }: { id: string }) {
   const router = useRouter();
@@ -54,6 +56,9 @@ export function ClientEdit({ id }: { id: string }) {
           }}
         />
       )}
+      <Can permission="clients.edit">
+        <ClientLifecycleActions client={client} />
+      </Can>
     </>
   );
 }

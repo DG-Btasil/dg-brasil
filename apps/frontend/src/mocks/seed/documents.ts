@@ -36,7 +36,7 @@ function doc(
     fileName: received ? (opts.fileName ?? `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`) : undefined,
     sizeKb: received ? (opts.sizeKb ?? 180 + ((seq * 37) % 900)) : undefined,
     uploadedAt: received ? at : undefined,
-    uploadedBy: received ? (opts.uploadedBy ?? U.camila) : undefined,
+    uploadedBy: received ? (opts.uploadedBy ?? U.renata) : undefined,
     required: opts.required ?? true,
     notes: opts.notes,
     updatedAt: at,
@@ -57,7 +57,7 @@ export function buildDocuments(): ClientDocument[] {
       daysAgo: 38,
       processId: P.helenaRevisional,
       required: false,
-      uploadedBy: U.rafael,
+      uploadedBy: U.claudio,
     }),
 
     // João — faltam contrato e extrato
@@ -98,7 +98,7 @@ export function buildDocuments(): ClientDocument[] {
       daysAgo: 12,
       processId: P.franciscoDeclaratoria,
       required: false,
-      uploadedBy: U.rafael,
+      uploadedBy: U.claudio,
     }),
 
     // Luiza — divergência

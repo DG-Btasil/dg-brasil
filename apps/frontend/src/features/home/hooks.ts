@@ -97,17 +97,17 @@ export function useFinanceSnapshot(): FinanceSnapshot {
   const agreements = useAppStore((s) => s.agreements);
   const payments = useAppStore((s) => s.payments);
   return useMemo(() => {
-    const active = agreements.filter((a) => a.status !== "CANCELLED");
-    const summaries = active.map((a) => summarizeAgreement(a, payments));
+    // Mesma regra central do Financeiro (lib/domain/finance): nada de status gravado.
+    const summaries = agreements.map((a) => summarizeAgreement(a, payments)).filter((x) => x.agreement.status !== "CANCELLED");
     const today = now();
-    const agreementIds = new Set(active.map((a) => a.id));
+    const agreementIds = new Set(summaries.map((x) => x.agreement.id));
     const receivedThisMonth = payments
       .filter((p) => {
-        if (p.status !== "PAID" || !p.paidAt || !agreementIds.has(p.agreementId)) return false;
+        if (p.paidAmount <= 0 || !p.paidAt || !agreementIds.has(p.agreementId)) return false;
         const d = new Date(p.paidAt);
         return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
       })
-      .reduce((sum, p) => sum + p.amount, 0);
+      .reduce((sum, p) => sum + p.paidAmount, 0);
     return {
       receivable: summaries.reduce((s, x) => s + x.outstandingBalance, 0),
       overdue: summaries.reduce((s, x) => s + x.overdueAmount, 0),

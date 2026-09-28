@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { createSeedData } from "@/mocks";
 import { createAnalysisSlice, createClientSlice } from "./slices/clients-analyses";
+import { createImportSlice } from "./slices/data-import";
 import { createDgSlice, createFinanceSlice } from "./slices/finance-dg";
 import { createProcessSlice, createReviewSlice } from "./slices/processes-reviews";
 import { createOfficeSlice, createSessionSlice, initialSession } from "./slices/session-office";
@@ -21,7 +22,8 @@ import type { AppState, AppStore } from "./types";
  */
 
 export const STORAGE_KEY = "dg-brasil:demo";
-const STORAGE_VERSION = 1;
+// v2: status financeiro derivado, dados da Bárbara Cardoso Advocacia, Integração Judicial.
+const STORAGE_VERSION = 2;
 
 export const useAppStore = create<AppStore>()(
   persist(
@@ -32,6 +34,7 @@ export const useAppStore = create<AppStore>()(
       ...createSessionSlice(set, get),
       ...createOfficeSlice(set, get),
       ...createClientSlice(set, get),
+      ...createImportSlice(set, get),
       ...createAnalysisSlice(set, get),
       ...createProcessSlice(set, get),
       ...createReviewSlice(set, get),

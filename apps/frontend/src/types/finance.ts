@@ -21,6 +21,10 @@ export interface FeeModel extends OfficeScoped {
   updatedAt: ISODateTime;
 }
 
+/**
+ * Contrato de honorários. NÃO guarda status: ele é derivado das parcelas
+ * (lib/domain/finance.ts). Só o cancelamento é decisão manual.
+ */
 export interface FinancialAgreement extends OfficeScoped {
   clientId: ID;
   processId?: ID;
@@ -34,24 +38,41 @@ export interface FinancialAgreement extends OfficeScoped {
   successFeePercent?: number;
   totalContracted: number;
   estimatedSuccessFee?: number;
-  status: AgreementStatus;
+  cancelledAt?: ISODateTime;
   startDate: ISODate;
   notes?: string;
   createdAt: ISODateTime;
 }
 
+/**
+ * Parcela. Os FATOS ficam gravados (valor, vencimento, quanto foi pago e
+ * quando); o status é calculado a partir deles, nunca armazenado.
+ */
 export interface Payment extends OfficeScoped {
   agreementId: ID;
   description: string;
   amount: number;
   dueDate: ISODate;
+  /** Total recebido para esta parcela. 0 = nada recebido. */
+  paidAmount: number;
+  /** Data do último recebimento registrado. */
   paidAt?: ISODateTime;
+}
+
+/** Parcela com os valores derivados (status e saldo). Só existe em leitura. */
+export interface PaymentView extends Payment {
   status: PaymentStatus;
+  balance: number;
+}
+
+/** Contrato com o status derivado. Só existe em leitura. */
+export interface AgreementView extends FinancialAgreement {
+  status: AgreementStatus;
 }
 
 /** Visão consolidada calculada a partir de acordo + pagamentos. */
 export interface AgreementSummary {
-  agreement: FinancialAgreement;
+  agreement: AgreementView;
   received: number;
   outstandingBalance: number;
   overdueAmount: number;

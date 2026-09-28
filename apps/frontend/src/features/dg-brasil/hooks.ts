@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { daysSince } from "@/lib/clock";
 import { repositories } from "@/repositories";
-import type { SkillChangeProposal } from "@/store/types";
+import type { NewAgentInput, NewSkillInput, NewThesisInput, SkillChangeProposal } from "@/store/types";
 import { useAppStore } from "@/store/app-store";
 import { useToast } from "@/store/ui-store";
 import type { Agent, AgentTask, ChangeHistoryEntry, ID, LegalThesis, Skill } from "@/types";
@@ -170,5 +170,24 @@ export function useDgActions() {
     [toast],
   );
 
-  return { updateAgent, applySkillChange, cancelSkillChange };
+  /** Criação manual de agente, Skill ou tese. Sempre registra Histórico de Alterações e auditoria. */
+  const create = useCallback(
+    async <I,>(fn: (input: I) => Promise<ID>, input: I, title: string, name: string): Promise<ID | null> => {
+      try {
+        const id = await fn(input);
+        toast({ tone: "success", title, description: `“${name}” já aparece na lista e foi registrado no Histórico de Alterações.` });
+        return id;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível concluir a criação." });
+        return null;
+      }
+    },
+    [toast],
+  );
+
+  const createAgent = useCallback((input: NewAgentInput) => create(repositories.dg.createAgent, input, "Agente criado", input.name), [create]);
+  const createSkill = useCallback((input: NewSkillInput) => create(repositories.dg.createSkill, input, "Skill criada", input.name), [create]);
+  const createThesis = useCallback((input: NewThesisInput) => create(repositories.dg.createThesis, input, "Tese criada", input.name), [create]);
+
+  return { updateAgent, applySkillChange, cancelSkillChange, createAgent, createSkill, createThesis };
 }

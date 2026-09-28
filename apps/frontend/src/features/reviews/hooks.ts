@@ -5,7 +5,7 @@ import { REVIEW_DECISION_LABEL, type ReviewDecisionKind } from "@/lib/constants/
 import { repositories } from "@/repositories";
 import { useAppStore } from "@/store/app-store";
 import { useToast } from "@/store/ui-store";
-import type { Agent, ClientDocument, ID, LegalThesis, Process, Review, ReviewDecision, Skill } from "@/types";
+import type { Agent, ClientDocument, ID, LegalThesis, Process, Review, ReviewContent, ReviewDecision, Skill } from "@/types";
 import { APPROVAL_OUTCOME, compareReviewQueue, isOpenReview } from "./utils";
 
 /* ------------------------------------------------------------------ */
@@ -90,5 +90,33 @@ export function useReviewActions() {
     },
     [toast],
   );
-  return { decide };
+  const editContent = useCallback(
+    async (review: Review, content: ReviewContent): Promise<boolean> => {
+      try {
+        await repositories.reviews.editContent(review.id, content);
+        toast({ tone: "success", title: "Alterações salvas", description: "A versão anterior foi preservada no histórico. A revisão continua aguardando decisão." });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível salvar a edição." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  const reopen = useCallback(
+    async (review: Review, reason?: string): Promise<boolean> => {
+      try {
+        await repositories.reviews.reopen(review.id, reason);
+        toast({ tone: "info", title: "Revisão reaberta", description: "A decisão anterior continua no histórico. Uma nova decisão é necessária." });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível reabrir a revisão." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  return { decide, editContent, reopen };
 }

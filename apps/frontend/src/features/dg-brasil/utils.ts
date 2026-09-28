@@ -27,6 +27,7 @@ export function formatVersion(version: number): string {
 }
 
 export function formatVersionChange(from: number, to: number): string {
+  if (from === 0) return `Criação · ${formatVersion(to)}`;
   return from === to ? `${formatVersion(from)} (sem alteração)` : `${formatVersion(from)} → ${formatVersion(to)}`;
 }
 

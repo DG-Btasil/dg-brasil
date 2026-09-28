@@ -73,7 +73,6 @@ export function buildAgreements(): FinancialAgreement[] {
       successFeePercent: 30,
       totalContracted: 1500,
       estimatedSuccessFee: 11526,
-      status: "ACTIVE",
       startDate: dateFromNow(-20),
       createdAt: daysFromNowISO(-20),
     },
@@ -90,7 +89,6 @@ export function buildAgreements(): FinancialAgreement[] {
       successFeePercent: 8,
       totalContracted: 23000,
       estimatedSuccessFee: 33000,
-      status: "OVERDUE",
       startDate: dateFromNow(-135),
       notes: "Valores personalizados em razão do valor da causa.",
       createdAt: daysFromNowISO(-135),
@@ -107,7 +105,6 @@ export function buildAgreements(): FinancialAgreement[] {
       monthlyFee: 4500,
       successFeePercent: 10,
       totalContracted: 27000,
-      status: "ACTIVE",
       startDate: dateFromNow(-150),
       notes: "Mensalidade cobre todos os processos contenciosos do cliente.",
       createdAt: daysFromNowISO(-150),
@@ -125,7 +122,6 @@ export function buildAgreements(): FinancialAgreement[] {
       successFeePercent: 35,
       totalContracted: 0,
       estimatedSuccessFee: 4970,
-      status: "ACTIVE",
       startDate: dateFromNow(-45),
       createdAt: daysFromNowISO(-45),
     },
@@ -140,7 +136,6 @@ export function buildAgreements(): FinancialAgreement[] {
       fixedFee: 6000,
       installments: 6,
       totalContracted: 6000,
-      status: "SETTLED",
       startDate: dateFromNow(-300),
       createdAt: daysFromNowISO(-300),
     },
@@ -154,7 +149,6 @@ export function buildAgreements(): FinancialAgreement[] {
       fixedFee: 9000,
       installments: 3,
       totalContracted: 12000,
-      status: "ACTIVE",
       startDate: dateFromNow(-40),
       createdAt: daysFromNowISO(-40),
     },
@@ -163,7 +157,8 @@ export function buildAgreements(): FinancialAgreement[] {
 
 export function buildPayments(): Payment[] {
   let n = 0;
-  const pay = (agreementId: string, description: string, amount: number, dueIn: number, status: Payment["status"]): Payment => {
+  // Grava só os fatos (quanto foi pago e quando). O status é derivado em lib/domain/finance.
+  const pay = (agreementId: string, description: string, amount: number, dueIn: number, paid: "PAID" | "OPEN" | number): Payment => {
     n += 1;
     return {
       ...o,
@@ -172,35 +167,35 @@ export function buildPayments(): Payment[] {
       description,
       amount,
       dueDate: dateFromNow(dueIn),
-      paidAt: status === "PAID" ? daysFromNowISO(dueIn) : undefined,
-      status,
+      paidAmount: paid === "PAID" ? amount : paid === "OPEN" ? 0 : paid,
+      paidAt: paid === "OPEN" ? undefined : daysFromNowISO(Math.min(dueIn, 0)),
     };
   };
   return [
     pay("agr_helena", "Entrada — parcela 1/3", 500, -20, "PAID"),
-    pay("agr_helena", "Entrada — parcela 2/3", 500, 10, "PENDING"),
-    pay("agr_helena", "Entrada — parcela 3/3", 500, 40, "PENDING"),
+    pay("agr_helena", "Entrada — parcela 2/3", 500, 10, "OPEN"),
+    pay("agr_helena", "Entrada — parcela 3/3", 500, 40, "OPEN"),
 
     pay("agr_ferragens", "Entrada", 5000, -135, "PAID"),
     pay("agr_ferragens", "Parcela 1/6", 3000, -105, "PAID"),
     pay("agr_ferragens", "Parcela 2/6", 3000, -75, "PAID"),
-    pay("agr_ferragens", "Parcela 3/6", 3000, -45, "OVERDUE"),
-    pay("agr_ferragens", "Parcela 4/6", 3000, -15, "OVERDUE"),
-    pay("agr_ferragens", "Parcela 5/6", 3000, 15, "PENDING"),
-    pay("agr_ferragens", "Parcela 6/6", 3000, 45, "PENDING"),
+    pay("agr_ferragens", "Parcela 3/6", 3000, -45, "OPEN"),
+    pay("agr_ferragens", "Parcela 4/6", 3000, -15, "OPEN"),
+    pay("agr_ferragens", "Parcela 5/6", 3000, 15, "OPEN"),
+    pay("agr_ferragens", "Parcela 6/6", 3000, 45, "OPEN"),
 
     pay("agr_transportes", "Mensalidade", 4500, -120, "PAID"),
     pay("agr_transportes", "Mensalidade", 4500, -90, "PAID"),
     pay("agr_transportes", "Mensalidade", 4500, -60, "PAID"),
     pay("agr_transportes", "Mensalidade", 4500, -30, "PAID"),
-    pay("agr_transportes", "Mensalidade", 4500, 0, "PENDING"),
-    pay("agr_transportes", "Mensalidade", 4500, 30, "PENDING"),
+    pay("agr_transportes", "Mensalidade", 4500, 0, "OPEN"),
+    pay("agr_transportes", "Mensalidade", 4500, 30, "OPEN"),
 
     ...[1, 2, 3, 4, 5, 6].map((i) => pay("agr_pedro", `Parcela ${i}/6`, 1000, -300 + i * 30, "PAID")),
 
     pay("agr_clinica", "Entrada", 3000, -40, "PAID"),
-    pay("agr_clinica", "Parcela 1/3", 3000, -10, "OVERDUE"),
-    pay("agr_clinica", "Parcela 2/3", 3000, 20, "PENDING"),
-    pay("agr_clinica", "Parcela 3/3", 3000, 50, "PENDING"),
+    pay("agr_clinica", "Parcela 1/3", 3000, -10, "OPEN"),
+    pay("agr_clinica", "Parcela 2/3", 3000, 20, 1200),
+    pay("agr_clinica", "Parcela 3/3", 3000, 50, "OPEN"),
   ];
 }

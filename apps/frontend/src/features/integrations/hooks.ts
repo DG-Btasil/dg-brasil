@@ -5,7 +5,9 @@ import { INTEGRATION_STATUS_LABEL, type IntegrationStatus } from "@/lib/constant
 import { repositories } from "@/repositories";
 import { useAppStore } from "@/store/app-store";
 import { useToast } from "@/store/ui-store";
-import type { AIUsage, ID, Integration } from "@/types";
+import { JUDICIAL_PROVIDERS } from "@/services/judicial-integration";
+import type { JudicialSourceConfigInput } from "@/store/types";
+import type { AIUsage, ID, Integration, JudicialSourceState } from "@/types";
 
 export function useIntegrations(): Integration[] {
   return useAppStore((s) => s.integrations);
@@ -49,4 +51,48 @@ export function useIntegrationActions() {
   );
 
   return { setStatus, sync };
+}
+
+/* ------------------------------------------------------------------ */
+/* Integração Judicial                                                 */
+/* ------------------------------------------------------------------ */
+
+export function useJudicialSources(): JudicialSourceState[] {
+  return useAppStore((s) => s.judicialSources);
+}
+
+export function useJudicialActions() {
+  const toast = useToast();
+
+  const configure = useCallback(
+    async (source: JudicialSourceState, config: JudicialSourceConfigInput): Promise<boolean> => {
+      try {
+        await repositories.integrations.configureJudicialSource(source.id, config);
+        toast({ tone: "success", title: `${JUDICIAL_PROVIDERS[source.source].name} configurado`, description: "Configuração simulada: nenhuma conexão real foi feita." });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível salvar a configuração." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  const sync = useCallback(
+    async (source: JudicialSourceState) => {
+      try {
+        const result = await repositories.integrations.syncJudicialSource(source.id);
+        toast({
+          tone: "success",
+          title: `${JUDICIAL_PROVIDERS[source.source].name} sincronizado`,
+          description: `${result.newItems} item(ns) novo(s) · simulação sem consulta externa.`,
+        });
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível sincronizar." });
+      }
+    },
+    [toast],
+  );
+
+  return { configure, sync };
 }

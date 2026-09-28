@@ -35,6 +35,12 @@ export function AgentOverviewTab({ agent, tasks }: { agent: Agent; tasks: AgentT
               <h3 className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-subtle">Descrição</h3>
               <p className="mt-0.5 text-[13px] leading-relaxed text-foreground">{agent.description}</p>
             </div>
+            {agent.objective && (
+              <div>
+                <h3 className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-subtle">Objetivo</h3>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-foreground">{agent.objective}</p>
+              </div>
+            )}
           </PanelBody>
         </Panel>
         <Panel>

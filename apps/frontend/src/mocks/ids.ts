@@ -5,10 +5,10 @@
 export const OFFICE_ID = "office_demo";
 
 export const U = {
-  marina: "usr_marina",
-  rafael: "usr_rafael",
+  barbara: "usr_barbara",
+  claudio: "usr_claudio",
   beatriz: "usr_beatriz",
-  camila: "usr_camila",
+  renata: "usr_renata",
   thiago: "usr_thiago",
 } as const;
 

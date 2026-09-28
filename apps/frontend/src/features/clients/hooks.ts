@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { AnalysisStatus } from "@/lib/constants/status";
+import { repositories } from "@/repositories";
 import { useAppStore } from "@/store/app-store";
+import type { InactivateClientInput } from "@/store/types";
+import { useToast } from "@/store/ui-store";
 import type { AuditEvent, Client, ClientDocument, Deadline, ID, Process } from "@/types";
 import { sortAnalysesByRecent } from "@/features/analyses/utils";
 import { documentProgress, type DocumentProgress } from "./utils";
@@ -55,6 +58,61 @@ export function useClientActivity(clientId: ID): AuditEvent[] {
     analyses.filter((a) => a.clientId === clientId).forEach((a) => ids.add(a.id));
     return auditEvents.filter((e) => ids.has(e.entityId)).sort((a, b) => b.at.localeCompare(a.at));
   }, [auditEvents, documents, analyses, clientId]);
+}
+
+/** Ações de ciclo de vida do cliente (inativar, reativar, excluir), com feedback. */
+export function useClientLifecycleActions() {
+  const toast = useToast();
+
+  const inactivate = useCallback(
+    async (client: Client, input: InactivateClientInput): Promise<boolean> => {
+      try {
+        await repositories.clients.inactivate(client.id, input);
+        toast({ tone: "success", title: "Cliente inativado", description: "Continua pesquisável e com todo o histórico preservado." });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível inativar o cliente." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  const reactivate = useCallback(
+    async (client: Client): Promise<boolean> => {
+      try {
+        await repositories.clients.reactivate(client.id);
+        toast({ tone: "success", title: "Cliente reativado" });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível reativar o cliente." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  const remove = useCallback(
+    async (client: Client): Promise<boolean> => {
+      try {
+        const { affectedProcessIds } = await repositories.clients.remove(client.id);
+        toast({
+          tone: "warning",
+          title: "Cliente excluído",
+          description: affectedProcessIds.length
+            ? `${affectedProcessIds.length === 1 ? "1 processo foi mantido" : `${affectedProcessIds.length} processos foram mantidos`} com vínculo pendente. Veja os alertas.`
+            : "Nenhum processo estava vinculado.",
+        });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível excluir o cliente." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  return { inactivate, reactivate, remove };
 }
 
 export interface ClientRow {

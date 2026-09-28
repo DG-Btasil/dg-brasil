@@ -55,7 +55,7 @@ function CreateOfficeForm() {
       <form onSubmit={onSubmit} noValidate className="space-y-4">
         {errors.root?.message && <Callout tone="danger">{errors.root.message}</Callout>}
         <Field label="Nome do escritório" requirement="required" error={errors.officeName?.message}>
-          {(p) => <Input {...p} autoComplete="organization" placeholder="Ex.: Alves & Moura Advocacia" {...register("officeName")} />}
+          {(p) => <Input {...p} autoComplete="organization" placeholder="Ex.: Bárbara Cardoso Advocacia" {...register("officeName")} />}
         </Field>
         <Field label="Seu nome completo" requirement="required" error={errors.adminName?.message}>
           {(p) => <Input {...p} autoComplete="name" {...register("adminName")} />}

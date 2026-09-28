@@ -18,6 +18,42 @@ interface ClientBase extends OfficeScoped, Timestamps {
   notes?: string;
   /** Resumo jurídico curto do relacionamento com o cliente. */
   legalSummary?: string;
+  /** Preenchido quando o cliente é inativado (status INACTIVE). Mantido no histórico. */
+  inactivation?: ClientInactivation;
+}
+
+export const CLIENT_INACTIVATION_REASONS = ["SERVICE_ENDED", "CLIENT_GAVE_UP", "CONTRACT_ENDED", "DUPLICATE", "OTHER"] as const;
+export type ClientInactivationReason = (typeof CLIENT_INACTIVATION_REASONS)[number];
+export const CLIENT_INACTIVATION_REASON_LABEL: Record<ClientInactivationReason, string> = {
+  SERVICE_ENDED: "Encerramento do atendimento",
+  CLIENT_GAVE_UP: "Cliente desistiu",
+  CONTRACT_ENDED: "Contrato encerrado",
+  DUPLICATE: "Duplicado",
+  OTHER: "Outro",
+};
+
+export interface ClientInactivation {
+  reason?: ClientInactivationReason;
+  note?: string;
+  at: ISODateTime;
+  by: ID;
+  /** Status anterior, para a reativação voltar ao ponto em que estava. */
+  previousStatus: ClientStatus;
+}
+
+/**
+ * Registro de um cliente excluído. O protótipo não apaga o rastro: guarda o
+ * nome e quando/por quem foi removido, para que processos que ficaram sem
+ * vínculo possam exibir de quem eram. No backend: soft delete (deletedAt).
+ */
+export interface RemovedClientRecord {
+  id: ID;
+  officeId: ID;
+  name: string;
+  document: string;
+  deletedAt: ISODateTime;
+  deletedBy: ID;
+  linkedProcessIds: ID[];
 }
 
 export interface IdentityDocument {

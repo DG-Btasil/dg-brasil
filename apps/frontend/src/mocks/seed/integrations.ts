@@ -1,6 +1,6 @@
 import { dateFromNow, daysFromNowISO } from "@/lib/clock";
-import type { AIUsage, Integration } from "@/types";
-import { A, OFFICE_ID } from "../ids";
+import type { AIUsage, Integration, JudicialSourceState } from "@/types";
+import { A, OFFICE_ID, U } from "../ids";
 
 const o = { officeId: OFFICE_ID };
 
@@ -14,7 +14,7 @@ export function buildIntegrations(): Integration[] {
       status: "CONNECTED",
       lastSyncAt: daysFromNowISO(0, 9, 0),
       details: [
-        { label: "Organização", value: "Alves & Moura — Produção (demonstração)" },
+        { label: "Organização", value: "Bárbara Cardoso Advocacia — Produção (demonstração)" },
         { label: "Modelo principal", value: "claude-sonnet-5" },
         { label: "Credencial", value: "Gerenciada no backend (não armazenada no navegador)" },
       ],
@@ -23,15 +23,11 @@ export function buildIntegrations(): Integration[] {
       ...o,
       id: "int_processual",
       kind: "LEGAL_PROCESS",
-      name: "Provedor de acompanhamento processual",
+      name: "Integração Judicial",
       status: "CONNECTED",
       lastSyncAt: daysFromNowISO(0, 6, 0),
-      details: [
-        { label: "OAB associada", value: "OAB/SP 000.101" },
-        { label: "Processos sincronizados", value: "6" },
-        { label: "Frequência", value: "A cada 6 horas" },
-      ],
-      statusMessage: "Fornecedor ainda não definido — conexão simulada.",
+      // Detalhes por fonte (DJEN, DataJud) ficam em judicialSources.
+      details: [],
     },
     {
       ...o,
@@ -52,7 +48,7 @@ export function buildIntegrations(): Integration[] {
       name: "E-mail",
       status: "ERROR",
       lastSyncAt: daysFromNowISO(-1, 6, 0),
-      details: [{ label: "Remetente", value: "contato@alvesmoura.exemplo" }],
+      details: [{ label: "Remetente", value: "contato@barbaracardoso.exemplo" }],
       statusMessage: "Autenticação expirada. Reconecte a conta para retomar os envios.",
     },
     {
@@ -92,7 +88,7 @@ export function buildAIUsage(): AIUsage {
   return {
     officeId: OFFICE_ID,
     month: dateFromNow(0).slice(0, 7),
-    organization: "Alves & Moura — Produção (demonstração)",
+    organization: "Bárbara Cardoso Advocacia — Produção (demonstração)",
     primaryModel: "claude-sonnet-5",
     inputTokens,
     outputTokens,
@@ -111,4 +107,32 @@ export function buildAIUsage(): AIUsage {
     ],
     lastSyncAt: daysFromNowISO(0, 9, 0),
   };
+}
+
+/** Fontes da Integração Judicial (mock): DJEN conectado por OAB; DataJud aguardando configuração. */
+export function buildJudicialSources(): JudicialSourceState[] {
+  return [
+    {
+      ...o,
+      id: "jud_djen",
+      source: "DJEN",
+      status: "CONNECTED",
+      oabNumber: "000.101",
+      oabState: "SP",
+      responsibleUserId: U.barbara,
+      lastSyncAt: daysFromNowISO(0, 6, 0),
+      lastCommunicationAt: daysFromNowISO(-1, 18, 12),
+      importedCount: 37,
+    },
+    {
+      ...o,
+      id: "jud_datajud",
+      source: "DATAJUD",
+      status: "PENDING",
+      courts: ["TJSP", "TJMG"],
+      responsibleUserId: U.claudio,
+      importedCount: 0,
+      statusMessage: "Configure os tribunais consultados para enriquecer os processos já cadastrados.",
+    },
+  ];
 }

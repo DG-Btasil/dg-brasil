@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+import { todayISO } from "@/lib/clock";
 import { OPEN_REVIEW_STATUSES } from "@/lib/constants/status";
+import { agreementStatus } from "@/lib/domain/finance";
 import { useAppStore } from "@/store/app-store";
 import type { NavKey } from "@/components/navigation/nav-config";
 
@@ -12,11 +14,13 @@ export function useNavCounts(): Partial<Record<NavKey, string>> {
   const reviews = useAppStore((s) => s.reviews);
   const agents = useAppStore((s) => s.agents);
   const agreements = useAppStore((s) => s.agreements);
+  const payments = useAppStore((s) => s.payments);
   return useMemo(() => {
     const openReviews = reviews.filter((r) => OPEN_REVIEW_STATUSES.includes(r.status)).length;
     const activeProcesses = processes.filter((p) => p.status !== "CLOSED").length;
     const activeAgents = agents.filter((a) => a.status === "ACTIVE").length;
-    const overdue = agreements.filter((a) => a.status === "OVERDUE").length;
+    const today = todayISO();
+    const overdue = agreements.filter((a) => agreementStatus(a, payments, today) === "OVERDUE").length;
     return {
       clients: `${clients.length} clientes`,
       processes: `${activeProcesses} ativos`,
@@ -24,7 +28,7 @@ export function useNavCounts(): Partial<Record<NavKey, string>> {
       finance: overdue ? `${overdue} em atraso` : "Em dia",
       dgbrasil: `${activeAgents} agentes ativos`,
     };
-  }, [clients, processes, reviews, agents, agreements]);
+  }, [clients, processes, reviews, agents, agreements, payments]);
 }
 
 /** true quando o store já leu o localStorage. */

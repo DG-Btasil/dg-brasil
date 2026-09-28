@@ -8,9 +8,9 @@ import type { OfficeActions, SessionActions } from "../types";
 
 /** Usuário de demonstração assumido em cada papel ao "simular perfil". */
 export const DEMO_USER_BY_ROLE: Record<Role, string> = {
-  ADMIN: MOCK_USER_IDS.marina,
-  LAWYER: MOCK_USER_IDS.rafael,
-  ASSISTANT: MOCK_USER_IDS.camila,
+  ADMIN: MOCK_USER_IDS.barbara,
+  LAWYER: MOCK_USER_IDS.claudio,
+  ASSISTANT: MOCK_USER_IDS.renata,
 };
 
 export function initialSession() {

@@ -187,17 +187,31 @@ export const PROCESS_PHASE_LABEL: Record<ProcessPhase, string> = {
   ARCHIVED: "Arquivado",
 };
 
-export const PROCESS_ORIGINS = ["AGENT", "INTEGRATION", "MANUAL"] as const;
+export const PROCESS_ORIGINS = ["AGENT", "INTEGRATION", "MANUAL", "IMPORT"] as const;
 export type ProcessOrigin = (typeof PROCESS_ORIGINS)[number];
 export const PROCESS_ORIGIN_LABEL: Record<ProcessOrigin, string> = {
   AGENT: "DG Brasil",
   INTEGRATION: "Integração",
   MANUAL: "Manual",
+  IMPORT: "Importação",
 };
 export const PROCESS_ORIGIN_DESCRIPTION: Record<ProcessOrigin, string> = {
   AGENT: "Criado a partir de uma análise conduzida pelos agentes do DG Brasil",
-  INTEGRATION: "Importado do provedor de acompanhamento processual",
+  INTEGRATION: "Importado de uma fonte da Integração Judicial",
   MANUAL: "Cadastrado manualmente pela equipe",
+  IMPORT: "Criado pela importação de planilha (Excel/CSV)",
+};
+
+/**
+ * Vínculo do processo com o cliente. Cliente e processo têm ciclos de vida
+ * independentes: remover o cliente não remove o processo, que passa a
+ * exigir revisão do vínculo.
+ */
+export const CLIENT_LINK_STATUSES = ["LINKED", "PENDING_LINK"] as const;
+export type ClientLinkStatus = (typeof CLIENT_LINK_STATUSES)[number];
+export const CLIENT_LINK_STATUS_LABEL: Record<ClientLinkStatus, string> = {
+  LINKED: "Vinculado",
+  PENDING_LINK: "Vínculo pendente",
 };
 
 export const CLIENT_POLES = ["ACTIVE", "PASSIVE", "THIRD_PARTY"] as const;
@@ -277,11 +291,12 @@ export const DEADLINE_URGENCY_TONE: Record<DeadlineUrgency, Tone> = {
 /* Revisões                                                            */
 /* ------------------------------------------------------------------ */
 
-export const REVIEW_STATUSES = ["PENDING", "URGENT", "CHANGES_REQUESTED", "APPROVED", "REJECTED"] as const;
+export const REVIEW_STATUSES = ["PENDING", "URGENT", "REOPENED", "CHANGES_REQUESTED", "APPROVED", "REJECTED"] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 export const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
   PENDING: "Pendente",
   URGENT: "Urgente",
+  REOPENED: "Reaberta",
   CHANGES_REQUESTED: "Alterações solicitadas",
   APPROVED: "Aprovada",
   REJECTED: "Rejeitada",
@@ -289,12 +304,21 @@ export const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
 export const REVIEW_STATUS_TONE: Record<ReviewStatus, Tone> = {
   PENDING: "gold",
   URGENT: "danger",
+  REOPENED: "info",
   CHANGES_REQUESTED: "orange",
   APPROVED: "success",
   REJECTED: "neutral",
 };
-/** Revisões que ainda aguardam decisão humana. */
-export const OPEN_REVIEW_STATUSES: readonly ReviewStatus[] = ["PENDING", "URGENT"];
+/** Revisões que ainda aguardam decisão humana (a reaberta volta a aguardar). */
+export const OPEN_REVIEW_STATUSES: readonly ReviewStatus[] = ["PENDING", "URGENT", "REOPENED"];
+
+/** Origem de cada versão do conteúdo de uma revisão. */
+export const REVIEW_CONTENT_ORIGINS = ["AGENT", "MANUAL_EDIT"] as const;
+export type ReviewContentOrigin = (typeof REVIEW_CONTENT_ORIGINS)[number];
+export const REVIEW_CONTENT_ORIGIN_LABEL: Record<ReviewContentOrigin, string> = {
+  AGENT: "Gerada pelo agente",
+  MANUAL_EDIT: "Edição manual",
+};
 
 export const REVIEW_TYPES = [
   "ANALYSIS_RESULT",
@@ -466,6 +490,7 @@ export const NOTIFICATION_TYPES = [
   "AGENT_INTERVENTION",
   "INTEGRATION_ISSUE",
   "TASK_OVERDUE",
+  "DATA_INTEGRITY",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
@@ -476,6 +501,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   AGENT_INTERVENTION: "Agente solicita intervenção",
   INTEGRATION_ISSUE: "Integração",
   TASK_OVERDUE: "Tarefa atrasada",
+  DATA_INTEGRITY: "Integridade de dados",
 };
 
 /* ------------------------------------------------------------------ */
@@ -492,6 +518,7 @@ export const BILLING_MOMENT_LABEL: Record<BillingMoment, string> = {
   CUSTOM: "Personalizado",
 };
 
+/** Status do contrato: derivado das parcelas (exceto CANCELLED, que é decisão manual). */
 export const AGREEMENT_STATUSES = ["ACTIVE", "SETTLED", "OVERDUE", "CANCELLED"] as const;
 export type AgreementStatus = (typeof AGREEMENT_STATUSES)[number];
 export const AGREEMENT_STATUS_LABEL: Record<AgreementStatus, string> = {
@@ -507,15 +534,21 @@ export const AGREEMENT_STATUS_TONE: Record<AgreementStatus, Tone> = {
   CANCELLED: "neutral",
 };
 
-export const PAYMENT_STATUSES = ["PAID", "PENDING", "OVERDUE"] as const;
+/**
+ * Status de parcela. Nunca é gravado: é DERIVADO do valor pago, do valor
+ * devido e do vencimento (ver lib/domain/finance.ts → paymentStatus).
+ */
+export const PAYMENT_STATUSES = ["PAID", "PARTIALLY_PAID", "PENDING", "OVERDUE"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   PAID: "Pago",
+  PARTIALLY_PAID: "Parcialmente pago",
   PENDING: "A vencer",
   OVERDUE: "Em atraso",
 };
 export const PAYMENT_STATUS_TONE: Record<PaymentStatus, Tone> = {
   PAID: "success",
+  PARTIALLY_PAID: "warning",
   PENDING: "info",
   OVERDUE: "danger",
 };
@@ -547,6 +580,52 @@ export const INTEGRATION_STATUS_TONE: Record<IntegrationStatus, Tone> = {
   DISCONNECTED: "neutral",
   ERROR: "danger",
   PENDING: "warning",
+};
+
+/* ------------------------------------------------------------------ */
+/* Integração Judicial                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Fontes de dados jurídicos externos. Nova fonte = novo valor aqui + provedor no registro. */
+export const JUDICIAL_SOURCES = ["DJEN", "DATAJUD"] as const;
+export type JudicialSource = (typeof JUDICIAL_SOURCES)[number];
+
+export const JUDICIAL_CAPABILITIES = [
+  "COMMUNICATIONS",
+  "PUBLICATIONS",
+  "INTIMATIONS",
+  "DERIVED_DEADLINES",
+  "PROCESS_METADATA",
+  "MOVEMENTS",
+  "COURT_BODY",
+  "CLASS_SUBJECTS",
+] as const;
+export type JudicialCapability = (typeof JUDICIAL_CAPABILITIES)[number];
+export const JUDICIAL_CAPABILITY_LABEL: Record<JudicialCapability, string> = {
+  COMMUNICATIONS: "Comunicações processuais",
+  PUBLICATIONS: "Publicações",
+  INTIMATIONS: "Intimações",
+  DERIVED_DEADLINES: "Prazos derivados (sugeridos para revisão)",
+  PROCESS_METADATA: "Capa e metadados processuais",
+  MOVEMENTS: "Movimentos processuais",
+  COURT_BODY: "Tribunal e órgão julgador",
+  CLASS_SUBJECTS: "Classe e assuntos",
+};
+
+/* ------------------------------------------------------------------ */
+/* Importação de dados                                                 */
+/* ------------------------------------------------------------------ */
+
+export const IMPORT_ISSUE_SEVERITIES = ["ERROR", "WARNING"] as const;
+export type ImportIssueSeverity = (typeof IMPORT_ISSUE_SEVERITIES)[number];
+
+/** Ações possíveis para uma linha que conflita com registro já existente. */
+export const IMPORT_CONFLICT_ACTIONS = ["UPDATE", "IGNORE", "CREATE_NEW"] as const;
+export type ImportConflictAction = (typeof IMPORT_CONFLICT_ACTIONS)[number];
+export const IMPORT_CONFLICT_ACTION_LABEL: Record<ImportConflictAction, string> = {
+  UPDATE: "Atualizar o existente",
+  IGNORE: "Ignorar esta linha",
+  CREATE_NEW: "Criar novo registro",
 };
 
 /* ------------------------------------------------------------------ */

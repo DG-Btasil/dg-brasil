@@ -12,7 +12,7 @@ interface DialogProps {
   description?: ReactNode;
   children?: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
 /**
@@ -20,7 +20,7 @@ interface DialogProps {
  * confirmações e formulários curtos — formulários longos têm página própria.
  */
 export function Dialog({ open, onOpenChange, title, description, children, footer, size = "md" }: DialogProps) {
-  const width = { sm: "max-w-[420px]", md: "max-w-[560px]", lg: "max-w-[760px]" }[size];
+  const width = { sm: "max-w-[420px]", md: "max-w-[560px]", lg: "max-w-[760px]", xl: "max-w-[1040px]" }[size];
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>

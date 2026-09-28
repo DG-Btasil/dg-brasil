@@ -10,7 +10,7 @@ import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/li
 import { formatEventTime } from "@/lib/formatting";
 import { usePermission } from "@/features/auth/hooks";
 import { useUser } from "@/features/offices/hooks";
-import type { Client } from "@/types";
+import { CLIENT_INACTIVATION_REASON_LABEL, type Client } from "@/types";
 import { clientDisplayName, clientDocumentLabel, clientSecondaryName, clientShortName, formatClientDocument, maskClientDocument } from "../../utils";
 import { DocumentAddDialog } from "./documents/document-add-dialog";
 import { MaskedIdentifier } from "./masked-identifier";
@@ -35,6 +35,12 @@ export function ClientHeader({ client, hasActiveAnalysis }: { client: Client; ha
             <p className="mt-0.5 text-[13px] text-muted">
               {client.kind === "INDIVIDUAL" ? "Nome social: " : "Nome fantasia: "}
               {secondary}
+            </p>
+          )}
+          {client.status === "INACTIVE" && (
+            <p className="mt-1 text-[12.5px] text-muted">
+              Cadastro inativo{client.inactivation ? ` desde ${formatEventTime(client.inactivation.at)}` : ""}
+              {client.inactivation?.reason ? ` · ${CLIENT_INACTIVATION_REASON_LABEL[client.inactivation.reason]}` : ""}. Histórico preservado.
             </p>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px]">

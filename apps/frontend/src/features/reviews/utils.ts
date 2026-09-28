@@ -1,9 +1,28 @@
 import { daysSince } from "@/lib/clock";
 import { OPEN_REVIEW_STATUSES, PRIORITY_WEIGHT, type ReviewStatus, type ReviewType } from "@/lib/constants/status";
-import type { Review } from "@/types";
+import type { Review, ReviewDecision } from "@/types";
 
 export function isOpenReview(review: Pick<Review, "status">): boolean {
   return OPEN_REVIEW_STATUSES.includes(review.status);
+}
+
+/** Versão atual do conteúdo (revisões antigas, sem o campo, estão na v1). */
+export function contentVersionOf(review: Pick<Review, "contentVersion">): number {
+  return review.contentVersion ?? 1;
+}
+
+export function wasManuallyEdited(review: Pick<Review, "history">): boolean {
+  return review.history?.some((h) => h.kind === "MANUAL_EDIT") ?? false;
+}
+
+/**
+ * Aprovação vale apenas para a versão aprovada. Se a revisão foi reaberta e
+ * editada depois, a aprovação anterior deixa de valer e é preciso aprovar de novo.
+ */
+export function approvalCoversCurrentVersion(review: Pick<Review, "status" | "contentVersion">, decisions: ReviewDecision[]): boolean {
+  if (review.status !== "APPROVED") return false;
+  const lastApproval = decisions.find((d) => d.decision === "APPROVED");
+  return (lastApproval?.contentVersion ?? 1) === contentVersionOf(review);
 }
 
 /** Urgente primeiro, depois prioridade maior, depois a mais antiga (FIFO). */

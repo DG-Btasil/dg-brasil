@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Puzzle } from "lucide-react";
+import { useState } from "react";
+import { Plus, Puzzle } from "lucide-react";
+import { Can } from "@/components/layout/guards";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
@@ -12,21 +15,31 @@ import { SKILL_STATUS_LABEL, SKILL_STATUS_TONE } from "@/lib/constants/status";
 import { formatDate } from "@/lib/formatting";
 import { useSkills, useUsageIndex } from "../../hooks";
 import { dgRoutes, formatVersion } from "../../utils";
+import { CreateSkillDrawer } from "./create-skill-drawer";
 
 export function SkillTable() {
   const skills = useSkills();
   const { bySkill } = useUsageIndex();
   const users = useUserMap();
   const router = useRouter();
+  const [creating, setCreating] = useState(false);
 
   return (
     <section aria-labelledby="dg-skills-title">
-      <div className="mb-3">
-        <h2 id="dg-skills-title" className="text-[15px] font-semibold text-foreground">
-          Skills
-        </h2>
-        <p className="mt-0.5 text-[12.5px] text-muted">Capacidades reutilizáveis dos agentes. Os parâmetros podem ser ajustados sem editar arquivos técnicos.</p>
+      <div className="mb-3 flex items-end justify-between gap-4">
+        <div>
+          <h2 id="dg-skills-title" className="text-[15px] font-semibold text-foreground">
+            Skills
+          </h2>
+          <p className="mt-0.5 text-[12.5px] text-muted">Capacidades reutilizáveis dos agentes. Os parâmetros podem ser ajustados sem editar arquivos técnicos.</p>
+        </div>
+        <Can permission="dgbrasil.manage">
+          <Button icon={<Plus className="size-4" aria-hidden />} onClick={() => setCreating(true)}>
+            Criar Skill
+          </Button>
+        </Can>
       </div>
+      <CreateSkillDrawer open={creating} onOpenChange={setCreating} />
       <Panel>
         {skills.length === 0 ? (
           <EmptyState icon={Puzzle} title="Nenhuma Skill cadastrada." />

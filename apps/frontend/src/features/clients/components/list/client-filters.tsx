@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Checkbox, SearchInput, Select } from "@/components/ui/form";
 import {
@@ -18,7 +19,17 @@ import { onlyDigits } from "@/lib/formatting";
 import type { ClientRow } from "../../hooks";
 import { clientDocumentRaw } from "../../utils";
 
+export type ClientLifecycleFilter = "active" | "inactive" | "all";
+
+const LIFECYCLE_OPTIONS: { value: ClientLifecycleFilter; label: string }[] = [
+  { value: "active", label: "Ativos" },
+  { value: "inactive", label: "Inativos" },
+  { value: "all", label: "Todos" },
+];
+
 export interface ClientFilterState {
+  /** Ativos = qualquer status exceto INACTIVE. Inativos continuam pesquisáveis. */
+  lifecycle: ClientLifecycleFilter;
   search: string;
   kind: ClientKind | "";
   status: ClientStatus | "";
@@ -29,6 +40,7 @@ export interface ClientFilterState {
 }
 
 export const EMPTY_FILTERS: ClientFilterState = {
+  lifecycle: "all",
   search: "",
   kind: "",
   status: "",
@@ -57,6 +69,8 @@ export function applyClientFilters(rows: ClientRow[], f: ClientFilterState): Cli
       const docMatch = digits.length >= 3 && onlyDigits(clientDocumentRaw(client)).includes(digits);
       if (!haystack.includes(term) && !docMatch) return false;
     }
+    if (f.lifecycle === "active" && client.status === "INACTIVE") return false;
+    if (f.lifecycle === "inactive" && client.status !== "INACTIVE") return false;
     if (f.kind && client.kind !== f.kind) return false;
     if (f.status && client.status !== f.status) return false;
     if (f.responsible && client.responsibleUserId !== f.responsible) return false;
@@ -108,9 +122,28 @@ export function ClientFilters({
         <Checkbox label="Documentação pendente" checked={value.pendingDocs} onChange={(e) => set("pendingDocs", e.target.checked)} className="items-center" />
       </div>
       <div className="mt-2.5 flex items-center justify-between text-[12px] text-muted">
-        <span aria-live="polite">
-          {resultCount === 1 ? "1 cliente encontrado" : `${resultCount} clientes encontrados`}
-        </span>
+        <div className="flex items-center gap-3">
+          <div role="radiogroup" aria-label="Situação do cadastro" className="inline-flex rounded-md border border-line bg-surface p-0.5">
+            {LIFECYCLE_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                role="radio"
+                aria-checked={value.lifecycle === o.value}
+                onClick={() => set("lifecycle", o.value)}
+                className={cn(
+                  "rounded-[5px] px-2.5 py-1 text-[12px] font-medium transition-colors",
+                  value.lifecycle === o.value ? "bg-navy text-white" : "text-muted hover:bg-surface-muted hover:text-foreground",
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <span aria-live="polite">
+            {resultCount === 1 ? "1 cliente encontrado" : `${resultCount} clientes encontrados`}
+          </span>
+        </div>
         {hasActiveFilters(value) && (
           <Button variant="ghost" size="sm" icon={<X className="size-3.5" aria-hidden />} onClick={() => onChange(EMPTY_FILTERS)}>
             Limpar filtros

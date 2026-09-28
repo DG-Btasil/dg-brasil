@@ -1,4 +1,5 @@
 import type {
+  ClientLinkStatus,
   ClientPole,
   DeadlineStatus,
   DeadlineType,
@@ -37,6 +38,14 @@ export interface Process extends OfficeScoped, Timestamps {
   summary?: string;
   notes?: string;
   lastMovementAt?: ISODateTime;
+  /**
+   * Situação do vínculo com o cliente. Ausente = vinculado. "PENDING_LINK"
+   * quando o cliente associado foi removido: o processo continua existindo
+   * e aguarda a equipe vincular outro cliente ou resolver manualmente.
+   */
+  clientLinkStatus?: ClientLinkStatus;
+  /** Nome do cliente removido, para exibição enquanto o vínculo está pendente. */
+  removedClientName?: string;
 }
 
 export interface ProcessEvent extends OfficeScoped {

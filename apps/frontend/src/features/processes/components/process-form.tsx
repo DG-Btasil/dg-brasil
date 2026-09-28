@@ -15,6 +15,7 @@ import { processFormSchema, type ProcessFormInput, type ProcessFormValues } from
 import { clientDisplayName } from "../utils";
 
 const opts = <T extends string>(values: readonly T[], labels?: Record<T, string>) => values.map((v) => ({ value: v, label: labels ? labels[v] : v }));
+const DEFAULT_DEADLINE_TITLE = "Acompanhamento do processo";
 const blank = (v?: string) => (v && v.trim() ? v.trim() : undefined);
 
 function toInput(v: ProcessFormValues): NewProcessInput {
@@ -37,10 +38,12 @@ function toInput(v: ProcessFormValues): NewProcessInput {
     status: v.status,
     phase: v.phase,
     notes: blank(v.notes),
-    nextDeadline:
-      v.deadlineTitle && v.deadlineType && v.deadlineDueDate
-        ? { title: v.deadlineTitle.trim(), type: v.deadlineType, dueDate: v.deadlineDueDate }
-        : undefined,
+    // Vencimento é obrigatório; descrição e tipo têm padrão para não travar o cadastro.
+    nextDeadline: {
+      title: v.deadlineTitle?.trim() || DEFAULT_DEADLINE_TITLE,
+      type: v.deadlineType || "INTERNAL",
+      dueDate: v.deadlineDueDate,
+    },
   };
 }
 
@@ -154,15 +157,18 @@ export function ProcessForm({
           </Field>
         </FormSection>
 
-        <FormSection title="Próximo prazo" description="Opcional. Se preencher algum campo, informe os três.">
-          <Field label="Título do prazo" requirement="optional" className="col-span-2" error={errors.deadlineTitle?.message}>
-            {(a) => <Input {...a} {...register("deadlineTitle")} placeholder="Ex.: Protocolar petição inicial" />}
+        <FormSection
+          title="Vencimento"
+          description="Data operacional principal do processo. Obrigatória: é ela que organiza tarefas, alertas, prazos e prioridades."
+        >
+          <Field label="Data de vencimento" requirement="required" hint="Vencimento do próximo prazo ou providência." error={errors.deadlineDueDate?.message}>
+            {(a) => <Input {...a} type="date" {...register("deadlineDueDate")} />}
           </Field>
-          <Field label="Tipo" requirement="optional" error={errors.deadlineType?.message}>
+          <Field label="Tipo" requirement="optional" hint="Sem seleção, fica como prazo interno." error={errors.deadlineType?.message}>
             {(a) => <Select {...a} {...register("deadlineType")} options={opts(DEADLINE_TYPES, DEADLINE_TYPE_LABEL)} placeholder="Selecione" />}
           </Field>
-          <Field label="Vencimento" requirement="optional" error={errors.deadlineDueDate?.message}>
-            {(a) => <Input {...a} type="date" {...register("deadlineDueDate")} />}
+          <Field label="Descrição do prazo" requirement="optional" className="col-span-2" hint={`Sem descrição, fica “${DEFAULT_DEADLINE_TITLE}”.`} error={errors.deadlineTitle?.message}>
+            {(a) => <Input {...a} {...register("deadlineTitle")} placeholder="Ex.: Protocolar petição inicial" />}
           </Field>
         </FormSection>
 

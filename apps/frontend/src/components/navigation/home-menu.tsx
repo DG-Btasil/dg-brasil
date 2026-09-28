@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Home } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useCan } from "@/features/auth/hooks";
 import { useNavCounts } from "@/features/navigation/hooks";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
 import { useUiStore } from "@/store/ui-store";
 import { NAV_ITEMS, isNavActive } from "./nav-config";
+import { resolveRouteArea } from "./route-areas";
 
 const OPEN_DELAY = 90;
 const CLOSE_DELAY = 220;
@@ -116,14 +116,16 @@ export function HomeMenu() {
     linkRefs.current[next]?.focus();
   }
 
-  const current = items.find((i) => isNavActive(pathname, i.href));
+  // O acionador mostra a área atual (ícone + rótulo), vinda do mapa central de rotas.
+  const area = resolveRouteArea(pathname);
+  const AreaIcon = area.icon;
 
   return (
     <div ref={wrapperRef} className="relative flex h-full items-center" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} data-tour="home-menu">
       <button
         ref={buttonRef}
         type="button"
-        aria-label="Navegação principal"
+        aria-label={`Navegação principal — área atual: ${area.label}`}
         aria-expanded={open}
         aria-controls={panelId}
         aria-haspopup="true"
@@ -134,8 +136,8 @@ export function HomeMenu() {
           open && "bg-white/10 text-white",
         )}
       >
-        <Home className="size-[18px]" aria-hidden />
-        <span className="text-[13px] font-medium">{current?.label ?? "Início"}</span>
+        <AreaIcon className="size-[18px]" aria-hidden />
+        <span className="text-[13px] font-medium">{area.label}</span>
         <span aria-hidden className={cn("h-px w-3 bg-gold transition-all", open ? "w-5" : "w-3")} />
       </button>
 

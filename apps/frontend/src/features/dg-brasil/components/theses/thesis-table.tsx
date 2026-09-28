@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpen } from "lucide-react";
+import { useState } from "react";
+import { BookOpen, Plus } from "lucide-react";
+import { Can } from "@/components/layout/guards";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { DemoContentNotice } from "@/components/ui/display";
@@ -13,11 +16,13 @@ import { THESIS_STATUS_LABEL, THESIS_STATUS_TONE } from "@/lib/constants/status"
 import { formatDate } from "@/lib/formatting";
 import { useTheses, useUsageIndex } from "../../hooks";
 import { dgRoutes, formatVersion } from "../../utils";
+import { CreateThesisDrawer } from "./create-thesis-drawer";
 
 export function ThesisTable() {
   const theses = useTheses();
   const { byThesis } = useUsageIndex();
   const router = useRouter();
+  const [creating, setCreating] = useState(false);
 
   return (
     <section aria-labelledby="dg-theses-title">
@@ -28,8 +33,16 @@ export function ThesisTable() {
           </h2>
           <p className="mt-0.5 text-[12.5px] text-muted">Conhecimento jurídico do escritório consultado pelos agentes.</p>
         </div>
-        <DemoContentNotice />
+        <div className="flex items-center gap-3">
+          <DemoContentNotice />
+          <Can permission="dgbrasil.manage">
+            <Button icon={<Plus className="size-4" aria-hidden />} onClick={() => setCreating(true)}>
+              Adicionar tese
+            </Button>
+          </Can>
+        </div>
       </div>
+      <CreateThesisDrawer open={creating} onOpenChange={setCreating} />
       <Panel>
         {theses.length === 0 ? (
           <EmptyState icon={BookOpen} title="Nenhuma tese cadastrada." description="As teses do escritório aparecerão aqui." />

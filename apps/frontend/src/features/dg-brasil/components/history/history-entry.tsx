@@ -43,12 +43,22 @@ export function HistoryEntry({ entry, requestedByName, entityHref, agents, onSho
 
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_280px] gap-6">
         <div>
-          <h3 className="text-[11px] font-medium uppercase tracking-[0.05em] text-subtle">Pedido original</h3>
-          <blockquote className="mt-1 border-l-2 border-gold-300 pl-3 text-[13px] italic leading-relaxed text-foreground">“{entry.originalRequest}”</blockquote>
-          <p className="mt-1 text-[12px] text-muted">Solicitado por {requestedByName}</p>
+          {entry.responsible === "TUTOR_DG" ? (
+            <>
+              <h3 className="text-[11px] font-medium uppercase tracking-[0.05em] text-subtle">Pedido original</h3>
+              <blockquote className="mt-1 border-l-2 border-gold-300 pl-3 text-[13px] italic leading-relaxed text-foreground">“{entry.originalRequest}”</blockquote>
+              <p className="mt-1 text-[12px] text-muted">Solicitado por {requestedByName}</p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-[11px] font-medium uppercase tracking-[0.05em] text-subtle">Origem</h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-foreground">{entry.action === "CREATED" ? "Criação manual pela interface" : "Alteração manual pela interface"}</p>
+              <p className="mt-1 text-[12px] text-muted">Feita por {requestedByName}</p>
+            </>
+          )}
         </div>
         <div>
-          <h3 className="text-[11px] font-medium uppercase tracking-[0.05em] text-subtle">Alteração sugerida</h3>
+          <h3 className="text-[11px] font-medium uppercase tracking-[0.05em] text-subtle">{entry.responsible === "TUTOR_DG" ? "Alteração sugerida" : "Alteração realizada"}</h3>
           <p className="mt-1 text-[13px] leading-relaxed text-foreground">{entry.suggestedChange}</p>
           {entry.impact && (
             <>
@@ -60,7 +70,7 @@ export function HistoryEntry({ entry, requestedByName, entityHref, agents, onSho
         <dl className="space-y-2.5 text-[12.5px]">
           <div>
             <dt className="text-[11px] font-medium uppercase tracking-[0.05em] text-subtle">Responsável</dt>
-            <dd className="mt-0.5 text-foreground">{entry.responsible === "TUTOR_DG" ? "Tutor DG (com confirmação humana)" : requestedByName}</dd>
+            <dd className="mt-0.5 text-foreground">{entry.responsible === "TUTOR_DG" ? "Tutor DG (com confirmação humana)" : `${requestedByName} (manual)`}</dd>
           </div>
           <div>
             <dt className="text-[11px] font-medium uppercase tracking-[0.05em] text-subtle">Agentes afetados</dt>

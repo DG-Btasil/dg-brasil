@@ -16,7 +16,7 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const SECTION_META: Record<SettingsSection, { label: string; description: string; permission: Permission }> = {
   geral: { label: "Geral", description: "Dados do escritório, preferências e identidade", permission: "settings.view" },
   equipe: { label: "Equipe e permissões", description: "Usuários, convites e papéis", permission: "settings.team.manage" },
-  integracoes: { label: "Integrações", description: "Acompanhamento processual, e-mail, WhatsApp", permission: "settings.integrations.view" },
+  integracoes: { label: "Integrações", description: "Integração Judicial, importação de dados, e-mail, WhatsApp", permission: "settings.integrations.view" },
   ia: { label: "IA e consumo", description: "Conexão com a Claude Platform e uso", permission: "settings.ai.view" },
   honorarios: { label: "Modelos de honorários", description: "Modelos usados nos contratos", permission: "settings.fees.manage" },
   notificacoes: { label: "Notificações", description: "Suas preferências de aviso", permission: "settings.notifications.edit" },

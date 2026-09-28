@@ -27,7 +27,6 @@ aprova ou rejeita. Só a aprovação produz efeito.
 | `db/004_seed_agentes.sql` | Os cinco agentes iniciais |
 | `db/verificar.mjs` | Roda os quatro arquivos num Postgres em WASM e testa o motor. Sem Docker |
 | `apps/agentes/` | O worker. Consome a fila e roda os agentes com o Claude Agent SDK |
-| `apps/web/` | **O painel.** Hoje, contatos, ficha 360 do cliente e fila de aprovação |
 | `apps/frontend/` | **Front-end SaaS (protótipo navegável, dados fictícios).** Multi-escritório, RBAC, Revisões, DG Brasil. Ver [apps/frontend/README.md](apps/frontend/README.md) |
 | `packages/dominio/` | Motor de classificação da esteira, vindo do `esteira-consignado` *(fase 3)* |
 | `agentes-claude/` | `.claude/` do escritório: agentes e skills versionados, carregados pelo worker |
@@ -50,17 +49,16 @@ Isso executa os quatro arquivos num Postgres de verdade (PGlite, em WASM) e roda
 Depois, crie um projeto no [Supabase](https://supabase.com) na região **São Paulo
 (sa-east-1)** e cole os quatro arquivos, em ordem, no SQL Editor.
 
-### 2. Painel
+### 2. Front-end
 
 ```bash
-cd apps/web
+cd apps/frontend
 npm install
 npm run dev     # http://localhost:3000
 ```
 
-Sem `DATABASE_URL`, ele sobe sozinho com um Postgres em memória e dados
-fictícios — dá para abrir e navegar sem nuvem nenhuma. Uma tarja amarela no topo
-avisa que é demonstração.
+Protótipo navegável com dados fictícios. Detalhes em
+[apps/frontend/README.md](apps/frontend/README.md).
 
 ### 3. Worker
 
@@ -111,6 +109,6 @@ conversa, não commit.
 | Worker (fila, executor, ferramentas, aplicador) | Escrito, `tsc --noEmit` passa limpo. **Não executado** (sem `DATABASE_URL`) |
 | Aplicador `enviar_mensagem` | Lança erro de propósito — ponte de WhatsApp é fase 4 |
 | Disparador dos gatilhos (`cron`, `evento`) | **Não existe.** Execução só entra na fila por insert manual — fase 2 |
-| Painel — Hoje, contatos, ficha 360, aprovações | Roda. Build de produção passa. Testado via HTTP em modo demonstração |
-| Login (Supabase Auth) | **Não existe.** O painel se recusa a rodar contra banco real sem ele |
+| Front-end (`apps/frontend`) | Protótipo navegável com dados fictícios. Ainda não conectado ao banco |
+| Login (Supabase Auth) | **Não existe** |
 | Importação da ADVBOX, `packages/dominio` | Não começados |

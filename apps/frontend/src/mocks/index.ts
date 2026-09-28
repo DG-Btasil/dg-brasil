@@ -12,6 +12,7 @@ import type {
   FinancialAgreement,
   Integration,
   Invitation,
+  JudicialSourceState,
   LegalAnalysis,
   LegalThesis,
   Notification,
@@ -19,6 +20,7 @@ import type {
   Payment,
   Process,
   ProcessEvent,
+  RemovedClientRecord,
   Review,
   ReviewDecision,
   Skill,
@@ -32,7 +34,7 @@ import { buildClients } from "./seed/clients";
 import { buildAgentTasks, buildAgents, buildChangeHistory, buildSkills, buildTemplates, buildTheses } from "./seed/dg";
 import { buildDocuments } from "./seed/documents";
 import { buildAgreements, buildFeeModels, buildPayments } from "./seed/finance";
-import { buildAIUsage, buildIntegrations } from "./seed/integrations";
+import { buildAIUsage, buildIntegrations, buildJudicialSources } from "./seed/integrations";
 import { buildNotifications } from "./seed/notifications";
 import { buildInvitations, buildOffice, buildSessions, buildSubscription, buildUsers } from "./seed/office";
 import { buildDeadlines, buildProcessEvents, buildProcesses } from "./seed/processes";
@@ -67,6 +69,9 @@ export interface DataState {
   agreements: FinancialAgreement[];
   payments: Payment[];
   integrations: Integration[];
+  judicialSources: JudicialSourceState[];
+  /** Clientes excluídos (rastro para processos com vínculo pendente). */
+  removedClients: RemovedClientRecord[];
   aiUsage: AIUsage;
   auditEvents: AuditEvent[];
 }
@@ -98,6 +103,8 @@ export function createSeedData(): DataState {
     agreements: buildAgreements(),
     payments: buildPayments(),
     integrations: buildIntegrations(),
+    judicialSources: buildJudicialSources(),
+    removedClients: [],
     aiUsage: buildAIUsage(),
     auditEvents: buildAuditEvents(),
   };

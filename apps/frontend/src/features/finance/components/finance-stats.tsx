@@ -19,10 +19,11 @@ export function computeTotals(rows: AgreementRow[], today: string): FinanceTotal
   const payments = active.flatMap((r) => r.payments);
   const withSuccess = active.filter((r) => r.agreement.estimatedSuccessFee);
   return {
-    receivable: payments.filter((p) => p.status !== "PAID").reduce((s, p) => s + p.amount, 0),
-    received: payments.filter((p) => p.status === "PAID").reduce((s, p) => s + p.amount, 0),
-    receivedThisMonth: payments.filter((p) => p.status === "PAID" && (p.paidAt ?? "").slice(0, 7) === month).reduce((s, p) => s + p.amount, 0),
-    overdue: payments.filter((p) => p.status === "OVERDUE").reduce((s, p) => s + p.amount, 0),
+    // Tudo a partir das parcelas derivadas (status e saldo calculados em lib/domain/finance).
+    receivable: payments.reduce((s, p) => s + p.balance, 0),
+    received: payments.reduce((s, p) => s + p.paidAmount, 0),
+    receivedThisMonth: payments.filter((p) => p.paidAmount > 0 && (p.paidAt ?? "").slice(0, 7) === month).reduce((s, p) => s + p.paidAmount, 0),
+    overdue: payments.filter((p) => p.status === "OVERDUE").reduce((s, p) => s + p.balance, 0),
     overdueAgreements: active.filter((r) => r.overdueAmount > 0).length,
     estimatedSuccess: withSuccess.reduce((s, r) => s + (r.agreement.estimatedSuccessFee ?? 0), 0),
     successAgreements: withSuccess.length,
