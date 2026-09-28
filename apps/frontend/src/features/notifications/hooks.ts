@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { SEVERITY_WEIGHT } from "@/lib/constants/status";
 import { useCan } from "@/features/auth/hooks";
 import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import type { Notification } from "@/types";
 
 /**
@@ -12,7 +13,7 @@ import type { Notification } from "@/types";
  * renderizar: alertas administrativos nunca chegam ao DOM de outros papéis.
  */
 export function useVisibleNotifications(): Notification[] {
-  const notifications = useAppStore((s) => s.notifications);
+  const notifications = useScopedStore((s) => s.notifications);
   const can = useCan();
   return useMemo(
     () =>

@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { can } from "@/lib/permissions";
 import { repositories } from "@/repositories";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import { useToast } from "@/store/ui-store";
 import type { NewDeadlineInput, NewProcessInput } from "@/store/types";
 import type { Client, ClientDocument, Deadline, ID, LegalAnalysis, LegalThesis, Process, ProcessEvent, Review } from "@/types";
@@ -16,7 +16,7 @@ export type { NewDeadlineInput, NewProcessInput };
 /* ------------------------------------------------------------------ */
 
 export function useProcesses(): Process[] {
-  return useAppStore((s) => s.processes);
+  return useScopedStore((s) => s.processes);
 }
 
 export function useProcess(id: ID): Process | undefined {
@@ -25,7 +25,7 @@ export function useProcess(id: ID): Process | undefined {
 }
 
 export function useAllDeadlines(): Deadline[] {
-  return useAppStore((s) => s.deadlines);
+  return useScopedStore((s) => s.deadlines);
 }
 
 export function useProcessDeadlines(processId: ID): Deadline[] {
@@ -34,7 +34,7 @@ export function useProcessDeadlines(processId: ID): Deadline[] {
 }
 
 export function useProcessEvents(processId: ID): ProcessEvent[] {
-  const events = useAppStore((s) => s.processEvents);
+  const events = useScopedStore((s) => s.processEvents);
   return useMemo(
     () => events.filter((e) => e.processId === processId).sort((a, b) => b.at.localeCompare(a.at)),
     [events, processId],
@@ -42,7 +42,7 @@ export function useProcessEvents(processId: ID): ProcessEvent[] {
 }
 
 export function useClients(): Client[] {
-  return useAppStore((s) => s.clients);
+  return useScopedStore((s) => s.clients);
 }
 
 export function useClientMap(): Map<ID, Client> {
@@ -57,7 +57,7 @@ export function useClientById(id: ID | undefined): Client | undefined {
 
 /** Documentos do processo e, separadamente, os demais documentos do cliente. */
 export function useProcessDocuments(processId: ID, clientId: ID | undefined): { linked: ClientDocument[]; client: ClientDocument[] } {
-  const documents = useAppStore((s) => s.documents);
+  const documents = useScopedStore((s) => s.documents);
   return useMemo(
     () => ({
       linked: documents.filter((d) => d.processId === processId),
@@ -68,7 +68,7 @@ export function useProcessDocuments(processId: ID, clientId: ID | undefined): { 
 }
 
 export function useProcessReviews(processId: ID): Review[] {
-  const reviews = useAppStore((s) => s.reviews);
+  const reviews = useScopedStore((s) => s.reviews);
   return useMemo(
     () => reviews.filter((r) => r.processId === processId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [reviews, processId],
@@ -76,18 +76,18 @@ export function useProcessReviews(processId: ID): Review[] {
 }
 
 export function useThesis(id: ID | undefined): LegalThesis | undefined {
-  const theses = useAppStore((s) => s.theses);
+  const theses = useScopedStore((s) => s.theses);
   return useMemo(() => theses.find((t) => t.id === id), [theses, id]);
 }
 
 export function useAnalysis(id: ID | undefined): LegalAnalysis | undefined {
-  const analyses = useAppStore((s) => s.analyses);
+  const analyses = useScopedStore((s) => s.analyses);
   return useMemo(() => analyses.find((a) => a.id === id), [analyses, id]);
 }
 
 /** Usuários ativos que podem conduzir processos (advogados e administradores). */
 export function useLawyerOptions(): { value: ID; label: string }[] {
-  const users = useAppStore((s) => s.users);
+  const users = useScopedStore((s) => s.users);
   return useMemo(
     () => users.filter((u) => u.status === "ACTIVE" && can(u.role, "processes.edit")).map((u) => ({ value: u.id, label: u.name })),
     [users],
@@ -196,10 +196,10 @@ export interface ProcessDeletionImpact {
 
 /** O que existe associado ao processo, para avisar antes da exclusão. */
 export function useProcessDeletionImpact(processId: ID, includeFinance: boolean): ProcessDeletionImpact {
-  const reviews = useAppStore((s) => s.reviews);
-  const deadlines = useAppStore((s) => s.deadlines);
-  const documents = useAppStore((s) => s.documents);
-  const agreements = useAppStore((s) => s.agreements);
+  const reviews = useScopedStore((s) => s.reviews);
+  const deadlines = useScopedStore((s) => s.deadlines);
+  const documents = useScopedStore((s) => s.documents);
+  const agreements = useScopedStore((s) => s.agreements);
   return useMemo(
     () => ({
       reviews: reviews.filter((r) => r.processId === processId).length,

@@ -6,13 +6,18 @@ Regras práticas do dia a dia estão em [CONVENTIONS.md](CONVENTIONS.md).
 ## 1. Domínio
 
 ```
-ESCRITÓRIO (officeId)
- └─ USUÁRIOS (Administrador · Advogado · Assistente)
- └─ CLIENTES (PF | PJ)
+BÁRBARA CARDOSO ADVOCACIA — escritório proprietário único (officeId)
+ └─ USUÁRIOS INTERNOS (Administrador · Advogado · Assistente)
+ └─ ESCRITÓRIOS PARCEIROS (PartnerOffice)
+     └─ USUÁRIOS PARCEIROS (Administrador do parceiro · Usuário do parceiro)
+     └─ RELACIONAMENTOS com clientes canônicos (ClientOfficeRelationship)
+     └─ CASOS ENVIADOS · SOLICITAÇÕES · ACORDOS POR CASO (snapshot da divisão)
+ └─ CLIENTES canônicos (PF | PJ, únicos por CPF/CNPJ)
      └─ DOCUMENTOS
      └─ ANÁLISES JURÍDICAS (a partir de um AnalysisTemplate)
          └─ REVISÃO HUMANA ─► aprovação continua o fluxo
-     └─ PROCESSOS (origem: AGENT | INTEGRATION | MANUAL)
+     └─ PROCESSOS (origem técnica: AGENT | INTEGRATION | MANUAL | IMPORT;
+                    origem do caso: INTERNAL | PARTNER + originPartnerOfficeId)
          └─ MOVIMENTAÇÕES · PRAZOS · REVISÕES · FINANCEIRO (admin)
  └─ DG BRASIL: AGENTES · SKILLS · TESES · HISTÓRICO DE ALTERAÇÕES
 ```
@@ -37,6 +42,8 @@ necessário, `schemas.ts` (Zod) e `utils.ts`.
 | `finance` | `/financeiro/**` | somente Administrador |
 | `dg-brasil` | `/dg-brasil/**` | agentes, Skills, teses, histórico, Tutor DG |
 | `settings`, `integrations` | `/configuracoes` | seções por permissão |
+| `partners` | `/parceiros/**` | área interna de parceiros; hooks de parceria compartilhados com o portal |
+| `partner-portal` | `/home`, `/clientes/**`, `/processos/**`, `/pendencias`, `/financeiro`, `/notificacoes`, `/minha-conta` | Portal do Parceiro (mesmas URLs; a página escolhe a tela pelo público com `AudienceSwitch`) |
 | `notifications`, `navigation`, `offices` | — | hooks compartilhados |
 
 Rotas em `src/app` são finas: páginas dinâmicas aguardam `params` (Next 16) e delegam
@@ -57,6 +64,25 @@ para um componente da feature. `src/app/(app)/layout.tsx` monta o `AppShell`
   contratos).
 - Trocar o que um papel enxerga = editar `ROLE_PERMISSIONS`.
 - No backend, a **mesma** matriz precisa ser aplicada no servidor. O front só decide o que desenhar.
+
+### Dois públicos e escopo de dados
+
+- `audienceOf(role)`: `OWNER` (equipe interna) ou `PARTNER` (escritório parceiro). Papéis
+  de parceiro (`PARTNER_ADMIN`, `PARTNER_USER`) têm matriz própria em `ROLE_PERMISSIONS`.
+- **Escopo:** `store/scope.ts` recorta o estado inteiro para o usuário da sessão antes de
+  qualquer leitura (`useScopedStore` nos hooks, `selectScoped` nos repositórios mock). As
+  regras ficam em `lib/permissions/partner-scope.ts`. Para o parceiro, revisões, agentes,
+  Skills, teses, financeiro global, integrações e auditoria interna **não existem** no
+  estado recebido; clientes e processos chegam sem campos internos.
+- Hooks de features **nunca** leem dados com `useAppStore` diretamente: usam
+  `useScopedStore`. `useAppStore` fica para sessão, preferências e ações.
+- Ações do portal (`store/slices/partners.ts`) obtêm o `partnerOfficeId` da sessão
+  (`requirePartnerViewer`) — nunca de parâmetro de tela.
+- Rotas: `AudienceSwitch` escolhe a tela; `RequirePermission` bloqueia áreas internas
+  (`/dg-brasil`, `/parceiros`, `/revisoes`, `/configuracoes`); recurso fora do escopo por
+  URL mostra "não encontrado".
+- Simulação: o seletor de perfil permite escolher papel interno ou papel de parceiro + o
+  escritório parceiro simulado.
 
 ## 4. Estado
 

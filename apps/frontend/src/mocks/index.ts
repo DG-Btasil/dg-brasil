@@ -7,6 +7,7 @@ import type {
   ChangeHistoryEntry,
   Client,
   ClientDocument,
+  ClientOfficeRelationship,
   Deadline,
   FeeModel,
   FinancialAgreement,
@@ -17,9 +18,13 @@ import type {
   LegalThesis,
   Notification,
   Office,
+  PartnerCaseSubmission,
+  PartnerOffice,
+  PartnerRequest,
   Payment,
   Process,
   ProcessEvent,
+  ProcessPartnershipAgreement,
   RemovedClientRecord,
   Review,
   ReviewDecision,
@@ -28,6 +33,7 @@ import type {
   User,
   UserSession,
 } from "@/types";
+import { OFFICE_ID } from "./ids";
 import { buildAnalyses } from "./seed/analyses";
 import { buildAuditEvents } from "./seed/audit";
 import { buildClients } from "./seed/clients";
@@ -39,11 +45,31 @@ import { buildNotifications } from "./seed/notifications";
 import { buildInvitations, buildOffice, buildSessions, buildSubscription, buildUsers } from "./seed/office";
 import { buildDeadlines, buildProcessEvents, buildProcesses } from "./seed/processes";
 import { buildReviewDecisions, buildReviews } from "./seed/reviews";
+import {
+  buildClientRelationships,
+  buildPartnerAuditEvents,
+  buildPartnerClients,
+  buildPartnerDocuments,
+  buildPartnerInvitations,
+  buildPartnerNotifications,
+  buildPartnerOffices,
+  buildPartnerProcessEvents,
+  buildPartnerProcesses,
+  buildPartnerRequests,
+  buildPartnerReviews,
+  buildPartnershipAgreements,
+  buildPartnerSubmissions,
+  buildPartnerUsers,
+} from "./seed/partners";
 
-export { OFFICE_ID, U as MOCK_USER_IDS } from "./ids";
+export { OFFICE_ID, U as MOCK_USER_IDS, PO as MOCK_PARTNER_OFFICE_IDS, PU as MOCK_PARTNER_USER_IDS } from "./ids";
 export { buildSteps } from "./seed/analyses";
 
-/** Tudo o que o protótipo persiste. Equivale ao que o backend devolverá por escritório. */
+/**
+ * Tudo o que o protótipo persiste: a base completa do escritório proprietário.
+ * O que cada usuário ENXERGA é recortado por `store/scope.ts` (parceiros veem
+ * apenas a própria relação). No backend, esse recorte acontece no servidor.
+ */
 export interface DataState {
   office: Office;
   subscription: Subscription;
@@ -74,31 +100,38 @@ export interface DataState {
   removedClients: RemovedClientRecord[];
   aiUsage: AIUsage;
   auditEvents: AuditEvent[];
+  /* Parcerias */
+  partnerOffices: PartnerOffice[];
+  clientRelationships: ClientOfficeRelationship[];
+  partnerSubmissions: PartnerCaseSubmission[];
+  partnerRequests: PartnerRequest[];
+  partnershipAgreements: ProcessPartnershipAgreement[];
 }
 
 /** Gera um conjunto novo de dados, com datas relativas ao dia de hoje. */
 export function createSeedData(): DataState {
+  const ownClients = buildClients().map((c) => ({ ...c, createdByOfficeId: OFFICE_ID }));
   return {
     office: buildOffice(),
     subscription: buildSubscription(),
-    users: buildUsers(),
-    invitations: buildInvitations(),
+    users: [...buildUsers(), ...buildPartnerUsers()],
+    invitations: [...buildInvitations(), ...buildPartnerInvitations()],
     sessions: buildSessions(),
-    clients: buildClients(),
-    documents: buildDocuments(),
+    clients: [...buildPartnerClients(), ...ownClients],
+    documents: [...buildPartnerDocuments(), ...buildDocuments()],
     templates: buildTemplates(),
     analyses: buildAnalyses(),
-    processes: buildProcesses(),
-    processEvents: buildProcessEvents(),
+    processes: [...buildPartnerProcesses(), ...buildProcesses()],
+    processEvents: [...buildPartnerProcessEvents(), ...buildProcessEvents()],
     deadlines: buildDeadlines(),
-    reviews: buildReviews(),
+    reviews: [...buildPartnerReviews(), ...buildReviews()],
     reviewDecisions: buildReviewDecisions(),
     agents: buildAgents(),
     agentTasks: buildAgentTasks(),
     skills: buildSkills(),
     theses: buildTheses(),
     changeHistory: buildChangeHistory(),
-    notifications: buildNotifications(),
+    notifications: [...buildPartnerNotifications(), ...buildNotifications()],
     feeModels: buildFeeModels(),
     agreements: buildAgreements(),
     payments: buildPayments(),
@@ -106,6 +139,11 @@ export function createSeedData(): DataState {
     judicialSources: buildJudicialSources(),
     removedClients: [],
     aiUsage: buildAIUsage(),
-    auditEvents: buildAuditEvents(),
+    auditEvents: [...buildPartnerAuditEvents(), ...buildAuditEvents()].sort((a, b) => b.at.localeCompare(a.at)),
+    partnerOffices: buildPartnerOffices(),
+    clientRelationships: buildClientRelationships(ownClients.map((c) => c.id)),
+    partnerSubmissions: buildPartnerSubmissions(),
+    partnerRequests: buildPartnerRequests(),
+    partnershipAgreements: buildPartnershipAgreements(),
   };
 }

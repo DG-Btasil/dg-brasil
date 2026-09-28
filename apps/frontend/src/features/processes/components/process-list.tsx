@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/display";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/feedback/states";
 import { usePermission } from "@/features/auth/hooks";
+import { usePartnerMap, usePartnerOptions } from "@/features/partners/hooks";
 import { useResponsibleOptions, useUserMap } from "@/features/offices/hooks";
 import { useAllDeadlines, useClientMap, useProcesses } from "../hooks";
 import {
@@ -30,6 +31,9 @@ export function ProcessList() {
   const userMap = useUserMap();
   const responsibleOptions = useResponsibleOptions();
   const showCaseValue = usePermission("processes.caseValue.view");
+  const canPartners = usePermission("partners.view");
+  const partnerOptions = usePartnerOptions();
+  const partnerMap = usePartnerMap();
   const [filters, setFilters] = useState<Filters>(EMPTY_PROCESS_FILTERS);
 
   const rows = useMemo<ProcessRow[]>(() => {
@@ -86,6 +90,7 @@ export function ProcessList() {
               responsibleOptions={responsibleOptions}
               resultCount={filtered.length}
               total={rows.length}
+              partnerOptions={canPartners ? partnerOptions : undefined}
             />
             {filtered.length === 0 ? (
               <EmptyState
@@ -99,7 +104,7 @@ export function ProcessList() {
                 }
               />
             ) : (
-              <ProcessTable rows={filtered} showCaseValue={showCaseValue} />
+              <ProcessTable rows={filtered} showCaseValue={showCaseValue} partnerMap={canPartners ? partnerMap : undefined} />
             )}
           </Panel>
         </>

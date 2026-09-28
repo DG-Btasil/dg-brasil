@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { ShieldAlert } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
-import { useIsAuthenticated, usePermission } from "@/features/auth/hooks";
+import { useIsAuthenticated, useIsPartner, usePermission } from "@/features/auth/hooks";
 import { useOffice } from "@/features/offices/hooks";
 import { useHydrated, useRehydrateOnMount } from "@/store/hydration";
 import { Skeleton } from "@/components/feedback/states";
@@ -67,6 +67,15 @@ export function RequirePermission({ permission, children, fallback }: { permissi
   return <>{children}</>;
 }
 
+/**
+ * Escolhe a tela conforme o público: ambiente interno (Bárbara Cardoso
+ * Advocacia) ou portal do parceiro. As duas árvores nunca são montadas
+ * juntas, e cada uma lê apenas o estado já recortado para a sessão.
+ */
+export function AudienceSwitch({ owner, partner }: { owner: ReactNode; partner: ReactNode }) {
+  return <>{useIsPartner() ? partner : owner}</>;
+}
+
 /** Renderiza os filhos somente com permissão; sem fallback visual. */
 export function Can({ permission, children }: { permission: Permission; children: ReactNode }) {
   return usePermission(permission) ? <>{children}</> : null;
@@ -80,7 +89,7 @@ export function AccessDenied() {
       </div>
       <h1 className="text-[16px] font-semibold text-foreground">Acesso restrito</h1>
       <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-        Seu perfil não tem permissão para acessar esta área. Se precisar dela, fale com um administrador do escritório.
+        Seu perfil não tem permissão para acessar esta área. Se precisar dela, fale com o administrador do seu escritório.
       </p>
       <Link href="/home" className={buttonClasses("secondary", "md", "mt-5")}>
         Voltar para a Home

@@ -1,5 +1,5 @@
 import { daysUntil } from "@/lib/clock";
-import type { ProcessOrigin, ProcessPhase, ProcessStatus } from "@/lib/constants/status";
+import type { ProcessOrigin, ProcessPhase, ProcessStatus, RelationshipOrigin } from "@/lib/constants/status";
 import { onlyDigits } from "@/lib/formatting";
 import type { Client, Deadline, ID, Process } from "@/types";
 
@@ -57,6 +57,9 @@ export interface ProcessFilters {
   court: string;
   status: "" | ProcessStatus;
   origin: "" | ProcessOrigin;
+  /** Origem do caso (relacional): vazio = todos. */
+  caseOrigin: "" | RelationshipOrigin;
+  partnerOfficeId: string;
   deadline: "" | DeadlineFilter;
   phase: "" | ProcessPhase;
 }
@@ -68,6 +71,8 @@ export const EMPTY_PROCESS_FILTERS: ProcessFilters = {
   court: "",
   status: "",
   origin: "",
+  caseOrigin: "",
+  partnerOfficeId: "",
   deadline: "",
   phase: "",
 };
@@ -109,6 +114,8 @@ export function filterProcessRows(rows: ProcessRow[], filters: ProcessFilters): 
     if (filters.court && p.court !== filters.court) return false;
     if (filters.status && p.status !== filters.status) return false;
     if (filters.origin && p.origin !== filters.origin) return false;
+    if (filters.caseOrigin && p.relationshipOrigin !== filters.caseOrigin) return false;
+    if (filters.partnerOfficeId && p.originPartnerOfficeId !== filters.partnerOfficeId) return false;
     if (filters.phase && p.phase !== filters.phase) return false;
     if (filters.deadline && !matchesDeadlineFilter(filters.deadline, nextDeadline)) return false;
     return true;

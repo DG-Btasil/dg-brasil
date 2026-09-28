@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import type { Agent, AnalysisTemplate, ID, LegalAnalysis, LegalThesis } from "@/types";
 import { sortAnalysesByRecent } from "./utils";
 
 export function useTemplates(): AnalysisTemplate[] {
-  return useAppStore((s) => s.templates);
+  return useScopedStore((s) => s.templates);
 }
 
 export function useTemplate(id: ID | undefined): AnalysisTemplate | undefined {
@@ -21,7 +21,7 @@ export function useReferenceTemplate(): AnalysisTemplate | undefined {
 }
 
 export function useAllAnalyses(): LegalAnalysis[] {
-  return useAppStore((s) => s.analyses);
+  return useScopedStore((s) => s.analyses);
 }
 
 /** Análises do cliente, da mais recente para a mais antiga. */
@@ -31,11 +31,11 @@ export function useClientAnalyses(clientId: ID): LegalAnalysis[] {
 }
 
 export function useThesisMap(): Map<ID, LegalThesis> {
-  const theses = useAppStore((s) => s.theses);
+  const theses = useScopedStore((s) => s.theses);
   return useMemo(() => new Map(theses.map((t) => [t.id, t])), [theses]);
 }
 
 export function useAgentMap(): Map<ID, Agent> {
-  const agents = useAppStore((s) => s.agents);
+  const agents = useScopedStore((s) => s.agents);
   return useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 }

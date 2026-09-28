@@ -1,6 +1,6 @@
-import { createSeedData, MOCK_USER_IDS } from "@/mocks";
+import { createSeedData, MOCK_PARTNER_OFFICE_IDS, MOCK_PARTNER_USER_IDS, MOCK_USER_IDS } from "@/mocks";
 import { nowISO } from "@/lib/clock";
-import { ROLE_LABEL } from "@/lib/permissions";
+import { isPartnerRole, ROLE_LABEL } from "@/lib/permissions";
 import { createId } from "@/lib/ids";
 import type { Role } from "@/types";
 import { auditEvent, currentUser, updateById, type GetState, type SetState } from "../helpers";
@@ -11,7 +11,12 @@ export const DEMO_USER_BY_ROLE: Record<Role, string> = {
   ADMIN: MOCK_USER_IDS.barbara,
   LAWYER: MOCK_USER_IDS.claudio,
   ASSISTANT: MOCK_USER_IDS.renata,
+  PARTNER_ADMIN: MOCK_PARTNER_USER_IDS.marcos,
+  PARTNER_USER: MOCK_PARTNER_USER_IDS.carla,
 };
+
+/** Escritório parceiro padrão da simulação (Almeida Advocacia). */
+export const DEMO_PARTNER_OFFICE_ID = MOCK_PARTNER_OFFICE_IDS.almeida;
 
 export function initialSession() {
   return { isAuthenticated: true, currentUserId: DEMO_USER_BY_ROLE.ADMIN };
@@ -20,8 +25,11 @@ export function initialSession() {
 export function createSessionSlice(set: SetState, get: GetState): SessionActions {
   return {
     login: (email) => {
-      const user = get().users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.status === "ACTIVE");
+      const s = get();
+      const user = s.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.status === "ACTIVE");
       if (!user) return false;
+      // Usuário de parceiro só entra com a parceria ativa.
+      if (user.partnerOfficeId && s.partnerOffices.find((p) => p.id === user.partnerOfficeId)?.status !== "ACTIVE") return false;
       set({
         session: { isAuthenticated: true, currentUserId: user.id },
         users: updateById(get().users, user.id, (u) => ({ ...u, lastAccessAt: nowISO() })),
@@ -29,8 +37,19 @@ export function createSessionSlice(set: SetState, get: GetState): SessionActions
       return true;
     },
     logout: () => set((s) => ({ session: { ...s.session, isAuthenticated: false } })),
-    simulateRole: (role) =>
-      set((s) => ({ session: { ...s.session, isAuthenticated: true, currentUserId: DEMO_USER_BY_ROLE[role] } })),
+    simulateRole: (role, partnerOfficeId) =>
+      set((s) => {
+        let userId = DEMO_USER_BY_ROLE[role];
+        if (isPartnerRole(role)) {
+          // O escritório simulado define o escopo (currentPartnerOfficeId = partnerOfficeId do usuário).
+          const officeId = partnerOfficeId ?? DEMO_PARTNER_OFFICE_ID;
+          const match =
+            s.users.find((u) => u.partnerOfficeId === officeId && u.role === role && u.status === "ACTIVE") ??
+            s.users.find((u) => u.partnerOfficeId === officeId && u.role === role);
+          if (match) userId = match.id;
+        }
+        return { session: { ...s.session, isAuthenticated: true, currentUserId: userId } };
+      }),
     completeTour: (userId) =>
       set((s) => ({ users: updateById(s.users, userId, (u) => ({ ...u, hasCompletedTour: true })) })),
     resetDemo: () => {
@@ -152,6 +171,12 @@ export function createOfficeSlice(set: SetState, get: GetState): OfficeActions {
       set({
         invitations: updateById(s.invitations, invitation.id, (i) => ({ ...i, acceptedAt: nowISO() })),
         users: updateById(s.users, user.id, (u) => ({ ...u, name, status: "ACTIVE", lastAccessAt: nowISO() })),
+        // Primeiro acesso de um parceiro com convite pendente ativa a parceria.
+        partnerOffices: invitation.partnerOfficeId
+          ? updateById(s.partnerOffices, invitation.partnerOfficeId, (p) =>
+              p.status === "PENDING_INVITE" ? { ...p, status: "ACTIVE" as const, activatedAt: nowISO(), updatedAt: nowISO() } : p,
+            )
+          : s.partnerOffices,
         session: { isAuthenticated: true, currentUserId: user.id },
       });
       return true;

@@ -5,6 +5,7 @@
  */
 import { JUDICIAL_PROVIDERS } from "@/services/judicial-integration";
 import { useAppStore } from "@/store/app-store";
+import { selectScoped } from "@/store/scope";
 import type {
   AnalysisRepository,
   ClientRepository,
@@ -15,16 +16,20 @@ import type {
   IntegrationRepository,
   NotificationRepository,
   OfficeRepository,
+  PartnerPortalRepository,
+  PartnerRepository,
   ProcessRepository,
   ReviewRepository,
   UserRepository,
 } from "../contracts";
 
 const state = () => useAppStore.getState();
+/** Leituras sempre pelo estado RECORTADO para o usuário da sessão (como o backend fará). */
+const data = () => selectScoped(useAppStore.getState());
 const ok = <T>(value: T) => Promise.resolve(value);
 
 export const mockOfficeRepository: OfficeRepository = {
-  get: () => ok(state().office),
+  get: () => ok(data().office),
   create: async (input) => state().createOffice(input),
   update: async (patch) => state().updateOffice(patch),
   saveOnboardingStep: async (key, answers, next, skipped) => state().saveOnboardingStep(key, answers, next, skipped),
@@ -33,7 +38,7 @@ export const mockOfficeRepository: OfficeRepository = {
 };
 
 export const mockUserRepository: UserRepository = {
-  list: () => ok(state().users),
+  list: () => ok(data().users),
   invite: async (input) => state().inviteUser(input),
   acceptInvitation: async (token, name) => state().acceptInvitation(token, name),
   changeRole: async (userId, role) => state().changeUserRole(userId, role),
@@ -41,8 +46,8 @@ export const mockUserRepository: UserRepository = {
 };
 
 export const mockClientRepository: ClientRepository = {
-  list: () => ok(state().clients),
-  get: (id) => ok(state().clients.find((c) => c.id === id)),
+  list: () => ok(data().clients),
+  get: (id) => ok(data().clients.find((c) => c.id === id)),
   create: async (input) => state().createClient(input),
   update: async (id, patch) => state().updateClient(id, patch),
   inactivate: async (id, input) => state().inactivateClient(id, input),
@@ -51,14 +56,14 @@ export const mockClientRepository: ClientRepository = {
 };
 
 export const mockDocumentRepository: DocumentRepository = {
-  listByClient: (clientId) => ok(state().documents.filter((d) => d.clientId === clientId)),
+  listByClient: (clientId) => ok(data().documents.filter((d) => d.clientId === clientId)),
   add: async (input) => state().addDocument(input),
   updateStatus: async (id, status, notes) => state().updateDocumentStatus(id, status, notes),
 };
 
 export const mockAnalysisRepository: AnalysisRepository = {
-  listTemplates: () => ok(state().templates),
-  listByClient: (clientId) => ok(state().analyses.filter((a) => a.clientId === clientId)),
+  listTemplates: () => ok(data().templates),
+  listByClient: (clientId) => ok(data().analyses.filter((a) => a.clientId === clientId)),
   start: async (input) => state().startAnalysis(input),
   sendToAgent: async (id) => state().sendAnalysisToAgent(id),
   interrupt: async (id, reason) => state().interruptAnalysis(id, reason),
@@ -67,13 +72,13 @@ export const mockAnalysisRepository: AnalysisRepository = {
 };
 
 export const mockProcessRepository: ProcessRepository = {
-  list: () => ok(state().processes),
-  get: (id) => ok(state().processes.find((p) => p.id === id)),
+  list: () => ok(data().processes),
+  get: (id) => ok(data().processes.find((p) => p.id === id)),
   create: async (input) => state().createProcess(input),
   update: async (id, patch) => state().updateProcess(id, patch),
-  listEvents: (processId) => ok(state().processEvents.filter((e) => e.processId === processId)),
+  listEvents: (processId) => ok(data().processEvents.filter((e) => e.processId === processId)),
   addEvent: async (processId, input) => state().addProcessEvent(processId, input),
-  listDeadlines: (processId) => ok(state().deadlines.filter((d) => !processId || d.processId === processId)),
+  listDeadlines: (processId) => ok(data().deadlines.filter((d) => !processId || d.processId === processId)),
   addDeadline: async (input) => state().addDeadline(input),
   completeDeadline: async (id) => state().completeDeadline(id),
   remove: async (id) => state().deleteProcess(id),
@@ -81,26 +86,26 @@ export const mockProcessRepository: ProcessRepository = {
 };
 
 export const mockReviewRepository: ReviewRepository = {
-  list: () => ok(state().reviews),
-  get: (id) => ok(state().reviews.find((r) => r.id === id)),
+  list: () => ok(data().reviews),
+  get: (id) => ok(data().reviews.find((r) => r.id === id)),
   decide: async (id, decision, comment) => state().decideReview(id, decision, comment),
   editContent: async (id, content) => state().editReviewContent(id, content),
   reopen: async (id, reason) => state().reopenReview(id, reason),
 };
 
 export const mockNotificationRepository: NotificationRepository = {
-  list: () => ok(state().notifications),
+  list: () => ok(data().notifications),
   markRead: async (id) => state().markNotificationRead(id),
   markAllRead: async () => state().markAllNotificationsRead(),
 };
 
 export const mockFinanceRepository: FinanceRepository = {
-  listFeeModels: () => ok(state().feeModels),
+  listFeeModels: () => ok(data().feeModels),
   createFeeModel: async (input) => state().createFeeModel(input),
   updateFeeModel: async (id, patch) => state().updateFeeModel(id, patch),
-  listAgreements: () => ok(state().agreements),
+  listAgreements: () => ok(data().agreements),
   createAgreement: async (input) => state().createAgreement(input),
-  listPayments: (agreementId) => ok(state().payments.filter((p) => !agreementId || p.agreementId === agreementId)),
+  listPayments: (agreementId) => ok(data().payments.filter((p) => !agreementId || p.agreementId === agreementId)),
   registerPayment: async (id, input) => state().registerPayment(id, input),
   updatePaymentAmount: async (id, paidAmount) => state().updatePaymentAmount(id, paidAmount),
   reversePayment: async (id) => state().reversePayment(id),
@@ -108,27 +113,27 @@ export const mockFinanceRepository: FinanceRepository = {
 };
 
 export const mockDgRepository: DgRepository = {
-  listAgents: () => ok(state().agents),
+  listAgents: () => ok(data().agents),
   createAgent: async (input) => state().createAgent(input),
   createSkill: async (input) => state().createSkill(input),
   createThesis: async (input) => state().createThesis(input),
   updateAgent: async (id, patch) => state().updateAgent(id, patch),
-  listAgentTasks: (agentId) => ok(state().agentTasks.filter((t) => !agentId || t.agentId === agentId)),
-  listSkills: () => ok(state().skills),
-  listTheses: () => ok(state().theses),
-  listChangeHistory: () => ok(state().changeHistory),
+  listAgentTasks: (agentId) => ok(data().agentTasks.filter((t) => !agentId || t.agentId === agentId)),
+  listSkills: () => ok(data().skills),
+  listTheses: () => ok(data().theses),
+  listChangeHistory: () => ok(data().changeHistory),
   applySkillChange: async (proposal) => state().applySkillChange(proposal),
   cancelSkillChange: async (proposal) => state().cancelSkillChange(proposal),
 };
 
 export const mockIntegrationRepository: IntegrationRepository = {
-  list: () => ok(state().integrations),
+  list: () => ok(data().integrations),
   setStatus: async (id, status) => state().updateIntegrationStatus(id, status),
   sync: async (id) => state().syncIntegration(id),
-  listJudicialSources: () => ok(state().judicialSources),
+  listJudicialSources: () => ok(data().judicialSources),
   configureJudicialSource: async (id, config) => state().configureJudicialSource(id, config),
   syncJudicialSource: async (id) => {
-    const source = state().judicialSources.find((j) => j.id === id);
+    const source = data().judicialSources.find((j) => j.id === id);
     if (!source) throw new Error("Fonte da Integração Judicial não encontrada.");
     // O provedor é mock: nenhuma consulta externa é feita no protótipo.
     const result = await JUDICIAL_PROVIDERS[source.source].sync(source);
@@ -139,4 +144,34 @@ export const mockIntegrationRepository: IntegrationRepository = {
 
 export const mockImportRepository: ImportRepository = {
   run: async (plan) => state().importData(plan),
+};
+
+export const mockPartnerRepository: PartnerRepository = {
+  list: () => ok(data().partnerOffices),
+  get: (id) => ok(data().partnerOffices.find((p) => p.id === id)),
+  create: async (input) => state().createPartnerOffice(input),
+  update: async (id, patch) => state().updatePartnerOffice(id, patch),
+  setStatus: async (id, status) => state().setPartnerOfficeStatus(id, status),
+  changeShare: async (id, partnerPercentage, ownerPercentage) => state().changePartnerShare(id, partnerPercentage, ownerPercentage),
+  inviteUser: async (partnerOfficeId, input) => state().invitePartnerUser(partnerOfficeId, input),
+  setUserStatus: async (userId, status) => state().setPartnerUserStatus(userId, status),
+  changeUserRole: async (userId, role) => state().changePartnerUserRole(userId, role),
+  listRequests: () => ok(data().partnerRequests),
+  createRequest: async (input) => state().createPartnerRequest(input),
+  resolveRequest: async (id, resolution) => state().resolvePartnerRequest(id, resolution),
+  listSubmissions: () => ok(data().partnerSubmissions),
+  setSubmissionStatus: async (id, status) => state().setSubmissionStatus(id, status),
+  shareDocument: async (documentId) => state().shareDocumentWithPartner(documentId),
+  listAgreements: () => ok(data().partnershipAgreements),
+  updateAgreementValues: async (id, input) => state().updatePartnershipValues(id, input),
+  registerPayout: async (id, amount, note) => state().registerPartnerPayout(id, amount, note),
+};
+
+export const mockPartnerPortalRepository: PartnerPortalRepository = {
+  lookupClient: async (document) => state().lookupClientDocument(document),
+  submitCase: async (input) => state().submitPartnerCase(input),
+  createProcess: async (input) => state().createPartnerProcess(input),
+  updateClientBasics: async (clientId, patch) => state().updatePartnerClientBasics(clientId, patch),
+  submitDocument: async (input) => state().submitPartnerDocument(input),
+  respondRequest: async (requestId, message) => state().respondPartnerRequest(requestId, message),
 };

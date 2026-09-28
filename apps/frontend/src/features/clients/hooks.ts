@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import type { AnalysisStatus } from "@/lib/constants/status";
 import { repositories } from "@/repositories";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import type { InactivateClientInput } from "@/store/types";
 import { useToast } from "@/store/ui-store";
 import type { AuditEvent, Client, ClientDocument, Deadline, ID, Process } from "@/types";
@@ -11,7 +11,7 @@ import { sortAnalysesByRecent } from "@/features/analyses/utils";
 import { documentProgress, type DocumentProgress } from "./utils";
 
 export function useClients(): Client[] {
-  return useAppStore((s) => s.clients);
+  return useScopedStore((s) => s.clients);
 }
 
 export function useClient(id: ID): Client | undefined {
@@ -20,7 +20,7 @@ export function useClient(id: ID): Client | undefined {
 }
 
 export function useClientDocuments(clientId: ID): ClientDocument[] {
-  const documents = useAppStore((s) => s.documents);
+  const documents = useScopedStore((s) => s.documents);
   return useMemo(
     () => documents.filter((d) => d.clientId === clientId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [documents, clientId],
@@ -28,13 +28,13 @@ export function useClientDocuments(clientId: ID): ClientDocument[] {
 }
 
 export function useClientProcesses(clientId: ID): Process[] {
-  const processes = useAppStore((s) => s.processes);
+  const processes = useScopedStore((s) => s.processes);
   return useMemo(() => processes.filter((p) => p.clientId === clientId), [processes, clientId]);
 }
 
 /** Próximo prazo em aberto por processo do cliente. */
 export function useNextDeadlineByProcess(clientId: ID): Map<ID, Deadline> {
-  const deadlines = useAppStore((s) => s.deadlines);
+  const deadlines = useScopedStore((s) => s.deadlines);
   return useMemo(() => {
     const map = new Map<ID, Deadline>();
     deadlines
@@ -49,9 +49,9 @@ export function useNextDeadlineByProcess(clientId: ID): Map<ID, Deadline> {
 
 /** Eventos de auditoria do cliente, de seus documentos e análises. */
 export function useClientActivity(clientId: ID): AuditEvent[] {
-  const auditEvents = useAppStore((s) => s.auditEvents);
-  const documents = useAppStore((s) => s.documents);
-  const analyses = useAppStore((s) => s.analyses);
+  const auditEvents = useScopedStore((s) => s.auditEvents);
+  const documents = useScopedStore((s) => s.documents);
+  const analyses = useScopedStore((s) => s.analyses);
   return useMemo(() => {
     const ids = new Set<ID>([clientId]);
     documents.filter((d) => d.clientId === clientId).forEach((d) => ids.add(d.id));
@@ -120,15 +120,22 @@ export interface ClientRow {
   analysisStatus: AnalysisStatus | undefined;
   activeProcesses: number;
   documents: DocumentProgress;
+  /** Parceiros com vínculo ativo com o cliente (visão interna). */
+  partnerOfficeIds: ID[];
 }
 
 /** Linhas da listagem de clientes, com os agregados de cada um. */
 export function useClientRows(): ClientRow[] {
   const clients = useClients();
-  const documents = useAppStore((s) => s.documents);
-  const analyses = useAppStore((s) => s.analyses);
-  const processes = useAppStore((s) => s.processes);
+  const documents = useScopedStore((s) => s.documents);
+  const analyses = useScopedStore((s) => s.analyses);
+  const processes = useScopedStore((s) => s.processes);
+  const relationships = useScopedStore((s) => s.clientRelationships);
   return useMemo(() => {
+    const partnersBy = new Map<ID, ID[]>();
+    relationships
+      .filter((r) => r.officeType === "PARTNER" && r.partnerOfficeId && r.status === "ACTIVE")
+      .forEach((r) => partnersBy.set(r.clientId, [...(partnersBy.get(r.clientId) ?? []), r.partnerOfficeId as ID]));
     const docsBy = new Map<ID, ClientDocument[]>();
     documents.forEach((d) => docsBy.set(d.clientId, [...(docsBy.get(d.clientId) ?? []), d]));
     const latest = new Map<ID, AnalysisStatus>();
@@ -144,6 +151,7 @@ export function useClientRows(): ClientRow[] {
       analysisStatus: latest.get(client.id),
       activeProcesses: activeCount.get(client.id) ?? 0,
       documents: documentProgress(docsBy.get(client.id) ?? []),
+      partnerOfficeIds: partnersBy.get(client.id) ?? [],
     }));
-  }, [clients, documents, analyses, processes]);
+  }, [clients, documents, analyses, processes, relationships]);
 }

@@ -1,12 +1,22 @@
-import { PageContainer, RequirePermission } from "@/components/layout/guards";
+import { AudienceSwitch, PageContainer, RequirePermission } from "@/components/layout/guards";
 import { ClientList } from "@/features/clients/components/list/client-list";
+import { PortalClientList } from "@/features/partner-portal/components/portal-clients";
 
 export default function ClientsPage() {
   return (
-    <PageContainer>
-      <RequirePermission permission="clients.view">
-        <ClientList />
-      </RequirePermission>
-    </PageContainer>
+    <AudienceSwitch
+      owner={
+        <PageContainer>
+          <RequirePermission permission="clients.view">
+            <ClientList />
+          </RequirePermission>
+        </PageContainer>
+      }
+      partner={
+        <RequirePermission permission="partnerPortal.view">
+          <PortalClientList />
+        </RequirePermission>
+      }
+    />
   );
 }

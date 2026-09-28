@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import type { AgentTaskStatus } from "@/lib/constants/status";
 import type { Permission } from "@/lib/permissions";
 import { useCan } from "@/features/auth/hooks";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import { AUDIT_ACTION_LABEL, type AgentTask, type AuditAction } from "@/types";
 
 /* ------------------------------------------------------------------ */
@@ -25,8 +25,8 @@ export interface AgentActivityRow {
 }
 
 export function useAgentActivity(limit = 7): AgentActivityRow[] {
-  const tasks = useAppStore((s) => s.agentTasks);
-  const agents = useAppStore((s) => s.agents);
+  const tasks = useScopedStore((s) => s.agentTasks);
+  const agents = useScopedStore((s) => s.agents);
   return useMemo(() => {
     const names = new Map(agents.map((a) => [a.id, a.name]));
     return [...tasks]
@@ -63,9 +63,9 @@ export interface FeedEntry {
 }
 
 export function useOfficeFeed(limit = 10): FeedEntry[] {
-  const auditEvents = useAppStore((s) => s.auditEvents);
-  const processEvents = useAppStore((s) => s.processEvents);
-  const processes = useAppStore((s) => s.processes);
+  const auditEvents = useScopedStore((s) => s.auditEvents);
+  const processEvents = useScopedStore((s) => s.processEvents);
+  const processes = useScopedStore((s) => s.processes);
   const can = useCan();
   return useMemo(() => {
     const processTitle = new Map(processes.map((p) => [p.id, p.title]));

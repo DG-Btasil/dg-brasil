@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { Check, Compass, LogOut, RotateCcw, Settings, UserRoundCog } from "lucide-react";
+import { Check, Compass, LogOut, RotateCcw, Settings, UserRound, UserRoundCog } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { ROLE_LABEL, ROLES, type Role } from "@/lib/permissions";
+import { INTERNAL_ROLES, PARTNER_ROLES, ROLE_LABEL, type Role } from "@/lib/permissions";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
-import { useCurrentUser, usePermission, useSessionActions } from "@/features/auth/hooks";
+import { useCurrentPartnerOffice, useCurrentUser, useIsPartner, usePermission, useSessionActions } from "@/features/auth/hooks";
 import { useOffice } from "@/features/offices/hooks";
+import { useAppStore } from "@/store/app-store";
 import { useToast, useUiStore } from "@/store/ui-store";
 import { Avatar } from "@/components/ui/display";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,13 @@ export function UserMenu() {
   const { simulateRole, resetDemo, logout } = useSessionActions();
   const canSettings = usePermission("settings.view");
   const canDemo = usePermission("demo.tools");
+  const isPartner = useIsPartner();
+  const partnerOffice = useCurrentPartnerOffice();
+  // Ferramenta de demonstração: lista os parceiros ativos sem depender do escopo da sessão atual.
+  const allPartners = useAppStore((s) => s.partnerOffices);
+  const activePartners = allPartners.filter((p) => p.status === "ACTIVE");
+  const [simPartnerId, setSimPartnerId] = useState<string>("");
+  const selectedPartnerId = simPartnerId || partnerOffice?.id || activePartners[0]?.id || "";
   const [open, setOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -38,10 +46,15 @@ export function UserMenu() {
 
   if (!user) return null;
 
-  function onSimulate(role: Role) {
-    simulateRole(role);
+  function onSimulate(role: Role, partnerOfficeId?: string) {
+    simulateRole(role, partnerOfficeId);
     setOpen(false);
-    toast({ tone: "info", title: `Perfil simulado: ${ROLE_LABEL[role]}`, description: "A interface foi ajustada às permissões deste perfil." });
+    const partnerName = partnerOfficeId ? activePartners.find((p) => p.id === partnerOfficeId)?.name : undefined;
+    toast({
+      tone: "info",
+      title: `Perfil simulado: ${ROLE_LABEL[role]}${partnerName ? ` · ${partnerName}` : ""}`,
+      description: partnerName ? "Os dados foram restritos a este escritório parceiro." : "A interface foi ajustada às permissões deste perfil.",
+    });
     router.push("/home");
   }
 
@@ -73,7 +86,7 @@ export function UserMenu() {
               <p className="truncate text-[13.5px] font-semibold">{user.name}</p>
               <p className="truncate text-[12px] text-muted">{user.email}</p>
               <p className="mt-0.5 truncate text-[11.5px] text-subtle">
-                {ROLE_LABEL[user.role]} · {office.name}
+                {ROLE_LABEL[user.role]} · {partnerOffice?.name ?? office.name}
               </p>
             </div>
           </div>
@@ -83,18 +96,24 @@ export function UserMenu() {
                 <Settings className="size-4 text-subtle" aria-hidden /> Configurações
               </Link>
             )}
-            <button
-              role="menuitem"
-              type="button"
-              className={item}
-              onClick={() => {
-                setOpen(false);
-                router.push("/home");
-                startTour();
-              }}
-            >
-              <Compass className="size-4 text-subtle" aria-hidden /> Conhecer o DG Brasil
-            </button>
+            {isPartner ? (
+              <Link role="menuitem" href="/minha-conta" className={item} onClick={() => setOpen(false)}>
+                <UserRound className="size-4 text-subtle" aria-hidden /> Minha Conta
+              </Link>
+            ) : (
+              <button
+                role="menuitem"
+                type="button"
+                className={item}
+                onClick={() => {
+                  setOpen(false);
+                  router.push("/home");
+                  startTour();
+                }}
+              >
+                <Compass className="size-4 text-subtle" aria-hidden /> Conhecer o DG Brasil
+              </button>
+            )}
           </div>
 
           {DEMO_MODE && canDemo && (
@@ -102,12 +121,40 @@ export function UserMenu() {
               <p className="flex items-center gap-2 px-4 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-muted">
                 <UserRoundCog className="size-3.5" aria-hidden /> Simular perfil
               </p>
-              {ROLES.map((role) => (
+              <p className="px-4 pt-1 text-[11px] text-subtle">Bárbara Cardoso Advocacia</p>
+              {INTERNAL_ROLES.map((role) => (
                 <button key={role} role="menuitemradio" aria-checked={user.role === role} type="button" className={item} onClick={() => onSimulate(role)}>
                   <span className="flex size-4 items-center justify-center">{user.role === role && <Check className="size-4 text-navy" aria-hidden />}</span>
                   {ROLE_LABEL[role]}
                 </button>
               ))}
+              {activePartners.length > 0 && (
+                <>
+                  <label className="mt-1 block border-t border-line px-4 pb-1 pt-2">
+                    <span className="text-[11px] text-subtle">Escritório parceiro</span>
+                    <select
+                      value={selectedPartnerId}
+                      onChange={(e) => setSimPartnerId(e.target.value)}
+                      className="mt-1 h-8 w-full rounded-md border border-line-strong bg-surface px-2 text-[12.5px] text-foreground"
+                    >
+                      {activePartners.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {PARTNER_ROLES.map((role) => {
+                    const checked = user.role === role && user.partnerOfficeId === selectedPartnerId;
+                    return (
+                      <button key={role} role="menuitemradio" aria-checked={checked} type="button" className={item} onClick={() => onSimulate(role, selectedPartnerId)}>
+                        <span className="flex size-4 items-center justify-center">{checked && <Check className="size-4 text-navy" aria-hidden />}</span>
+                        {ROLE_LABEL[role]}
+                      </button>
+                    );
+                  })}
+                </>
+              )}
               <button
                 role="menuitem"
                 type="button"

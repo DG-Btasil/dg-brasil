@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Settings } from "lucide-react";
-import { usePermission } from "@/features/auth/hooks";
+import { useCurrentPartnerOffice, usePermission } from "@/features/auth/hooks";
 import { HomeMenu } from "@/components/navigation/home-menu";
 import { NotificationCenter } from "./notification-center";
 import { DEMO_MODE, UserMenu } from "./user-menu";
@@ -11,6 +11,7 @@ import { Wordmark } from "./wordmark";
 /** Header global persistente. Navegação no topo — sem sidebar. */
 export function AppHeader() {
   const canSettings = usePermission("settings.view");
+  const partnerOffice = useCurrentPartnerOffice();
   return (
     <header className="sticky top-0 z-40 h-[var(--header-height)] bg-navy text-white shadow-[0_1px_0_rgb(0_0_0/0.2)]">
       <div className="mx-auto grid h-full max-w-[1600px] grid-cols-[1fr_auto_1fr] items-center px-8">
@@ -18,6 +19,12 @@ export function AppHeader() {
           <Link href="/home" aria-label="DG Brasil — ir para a Home" className="rounded-sm">
             <Wordmark />
           </Link>
+          {partnerOffice && (
+            <span className="hidden min-w-0 items-center gap-2 border-l border-white/15 pl-4 lg:flex">
+              <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-gold-300">Portal do parceiro</span>
+              <span className="truncate text-[12.5px] text-white/80">{partnerOffice.name}</span>
+            </span>
+          )}
           {DEMO_MODE && (
             <span className="hidden rounded-xs border border-gold/40 px-1.5 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-gold-300 lg:inline">
               Demonstração

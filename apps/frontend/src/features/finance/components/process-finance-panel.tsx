@@ -9,6 +9,9 @@ import { EmptyState } from "@/components/feedback/states";
 import { usePermission } from "@/features/auth/hooks";
 import { AGREEMENT_STATUS_LABEL, AGREEMENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatCurrency } from "@/lib/formatting";
+import { useClientMap } from "@/features/processes/hooks";
+import { PartnershipAgreementsTable } from "@/features/partners/components/agreements-table";
+import { useProcessMap, useProcessPartnership } from "@/features/partners/hooks";
 import { useProcessFinance } from "../hooks";
 import type { AgreementRow } from "../utils";
 import { AgreementForm } from "./agreement-form";
@@ -22,7 +25,27 @@ import { PaymentsTable } from "./payments-table";
 export function ProcessFinancePanel({ processId }: { processId: string }) {
   const allowed = usePermission("finance.view");
   if (!allowed) return null;
-  return <ProcessFinanceContent processId={processId} />;
+  return (
+    <div className="space-y-5">
+      <ProcessPartnershipFinance processId={processId} />
+      <ProcessFinanceContent processId={processId} />
+    </div>
+  );
+}
+
+/** Caso originado por parceiro: divisão dos honorários registrada no caso. */
+function ProcessPartnershipFinance({ processId }: { processId: string }) {
+  const agreement = useProcessPartnership(processId);
+  const clientMap = useClientMap();
+  const processMap = useProcessMap();
+  const canPartners = usePermission("partners.finance.view");
+  if (!agreement || !canPartners) return null;
+  return (
+    <Panel>
+      <PanelHeader title="Parceria neste caso" description="Divisão dos honorários com o escritório parceiro de origem (registrada no caso)." />
+      <PartnershipAgreementsTable agreements={[agreement]} clientMap={clientMap} processMap={processMap} />
+    </Panel>
+  );
 }
 
 function ProcessFinanceContent({ processId }: { processId: string }) {

@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { REVIEW_DECISION_LABEL, type ReviewDecisionKind } from "@/lib/constants/status";
 import { repositories } from "@/repositories";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import { useToast } from "@/store/ui-store";
 import type { Agent, ClientDocument, ID, LegalThesis, Process, Review, ReviewContent, ReviewDecision, Skill } from "@/types";
 import { APPROVAL_OUTCOME, compareReviewQueue, isOpenReview } from "./utils";
@@ -13,7 +13,7 @@ import { APPROVAL_OUTCOME, compareReviewQueue, isOpenReview } from "./utils";
 /* ------------------------------------------------------------------ */
 
 export function useReviews(): Review[] {
-  return useAppStore((s) => s.reviews);
+  return useScopedStore((s) => s.reviews);
 }
 
 export function useReview(id: ID): Review | undefined {
@@ -22,7 +22,7 @@ export function useReview(id: ID): Review | undefined {
 }
 
 export function useReviewDecisions(reviewId: ID): ReviewDecision[] {
-  const decisions = useAppStore((s) => s.reviewDecisions);
+  const decisions = useScopedStore((s) => s.reviewDecisions);
   return useMemo(() => decisions.filter((d) => d.reviewId === reviewId).sort((a, b) => b.at.localeCompare(a.at)), [decisions, reviewId]);
 }
 
@@ -31,27 +31,27 @@ function useMapOf<T extends { id: ID }>(list: T[]): Map<ID, T> {
 }
 
 export function useAgentMap(): Map<ID, Agent> {
-  return useMapOf(useAppStore((s) => s.agents));
+  return useMapOf(useScopedStore((s) => s.agents));
 }
 
 export function useSkillMap(): Map<ID, Skill> {
-  return useMapOf(useAppStore((s) => s.skills));
+  return useMapOf(useScopedStore((s) => s.skills));
 }
 
 export function useThesisMap(): Map<ID, LegalThesis> {
-  return useMapOf(useAppStore((s) => s.theses));
+  return useMapOf(useScopedStore((s) => s.theses));
 }
 
 export function useDocumentMap(): Map<ID, ClientDocument> {
-  return useMapOf(useAppStore((s) => s.documents));
+  return useMapOf(useScopedStore((s) => s.documents));
 }
 
 export function useProcessMap(): Map<ID, Process> {
-  return useMapOf(useAppStore((s) => s.processes));
+  return useMapOf(useScopedStore((s) => s.processes));
 }
 
 export function useClientList() {
-  return useAppStore((s) => s.clients);
+  return useScopedStore((s) => s.clients);
 }
 
 /** Revisões pendentes na ordem da fila, para navegar "anterior/próxima". */

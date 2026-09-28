@@ -11,3 +11,4 @@ export * from "./finance";
 export * from "./integration";
 export * from "./judicial";
 export * from "./audit";
+export * from "./partner";

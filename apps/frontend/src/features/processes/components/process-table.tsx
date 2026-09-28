@@ -26,7 +26,16 @@ const GETTERS: Record<SortKey, (r: ProcessRow) => string | number | undefined> =
   updated: (r) => r.process.lastMovementAt ?? r.process.updatedAt,
 };
 
-export function ProcessTable({ rows, showCaseValue }: { rows: ProcessRow[]; showCaseValue: boolean }) {
+export function ProcessTable({
+  rows,
+  showCaseValue,
+  partnerMap,
+}: {
+  rows: ProcessRow[];
+  showCaseValue: boolean;
+  /** Nomes dos parceiros, para indicar a origem do caso. */
+  partnerMap?: Map<string, { name: string }>;
+}) {
   const [sortKey, setSortKey] = useState<SortKey>("deadline");
   const [direction, setDirection] = useState<SortDirection>("asc");
 
@@ -102,6 +111,11 @@ export function ProcessTable({ rows, showCaseValue }: { rows: ProcessRow[]; show
             {showCaseValue && <Td className="whitespace-nowrap text-right tabular">{formatCurrency(p.caseValue)}</Td>}
             <Td>
               <ProcessOriginBadge origin={p.origin} />
+              {partnerMap && p.relationshipOrigin === "PARTNER" && p.originPartnerOfficeId && (
+                <div className="mt-1 max-w-[160px] truncate text-[11.5px] font-medium text-navy-700" title="Origem do caso">
+                  {partnerMap.get(p.originPartnerOfficeId)?.name ?? "Parceiro"}
+                </div>
+              )}
             </Td>
             <Td className="whitespace-nowrap text-[12px] text-muted tabular">{formatEventTime(p.lastMovementAt ?? p.updatedAt)}</Td>
           </Tr>

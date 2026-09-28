@@ -15,7 +15,7 @@ import { zRequired } from "@/lib/validation";
 import { repositories } from "@/repositories";
 import type { Invitation } from "@/types";
 import { AuthLayout, AuthLoading } from "./auth-layout";
-import { useInvitationLookup } from "./use-invitation";
+import { useInvitationLookup } from "@/features/auth/hooks";
 
 const schema = z
   .object({
@@ -76,7 +76,15 @@ function AcceptForm({ token, invitation, officeName, inviterName }: { token: str
 function InvitationContent({ token }: { token: string }) {
   const lookup = useInvitationLookup(token);
   if (lookup.state === "valid") {
-    return <AcceptForm token={token} invitation={lookup.invitation} officeName={lookup.officeName} inviterName={lookup.inviterName} />;
+    // Convite de parceiro: o escritório exibido é o parceiro; o convite parte da Bárbara Cardoso Advocacia.
+    return (
+      <AcceptForm
+        token={token}
+        invitation={lookup.invitation}
+        officeName={lookup.partnerOfficeName ?? lookup.officeName}
+        inviterName={lookup.partnerOfficeName ? `${lookup.inviterName} · ${lookup.officeName}` : lookup.inviterName}
+      />
+    );
   }
   const used = lookup.state === "used";
   return (

@@ -8,6 +8,7 @@ import { AttentionPanel } from "./attention-panel";
 import { FinanceSnapshot } from "./finance-snapshot";
 import { HomeGreeting } from "./home-greeting";
 import { HomeKpis } from "./home-kpis";
+import { NewPartnerCases } from "./new-partner-cases";
 import { OfficeFeed } from "./office-feed";
 import { PendingReviews } from "./pending-reviews";
 import { ProcessDistribution } from "./process-distribution";
@@ -31,6 +32,11 @@ export function HomeDashboard() {
       </Can>
 
       <div className="mt-6 grid grid-cols-12 gap-5">
+        <Can permission="partners.view">
+          <div className="col-span-12">
+            <NewPartnerCases />
+          </div>
+        </Can>
         <div className="col-span-12 xl:col-span-8">
           <AttentionPanel />
         </div>

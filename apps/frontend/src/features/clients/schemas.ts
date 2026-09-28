@@ -13,7 +13,7 @@ import type { Address, CompanyClient, Contact, IndividualClient } from "@/types"
 const text = () => z.string().trim();
 const optionalEmail = () => text().refine((v) => !v || z.string().email().safeParse(v).success, msg.email);
 
-const addressSchema = z.object({
+export const addressSchema = z.object({
   zipCode: zCepOptional(),
   street: text(),
   number: text(),
@@ -102,9 +102,9 @@ export type AddressFormValues = z.infer<typeof addressSchema>;
 
 const opt = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
 
-const EMPTY_ADDRESS: AddressFormValues = { zipCode: "", street: "", number: "", complement: "", district: "", city: "", state: "", country: "Brasil" };
+export const EMPTY_ADDRESS: AddressFormValues = { zipCode: "", street: "", number: "", complement: "", district: "", city: "", state: "", country: "Brasil" };
 
-function toAddress(a: AddressFormValues): Address | undefined {
+export function toAddress(a: AddressFormValues): Address | undefined {
   const filled = [a.zipCode, a.street, a.number, a.district, a.city, a.state].some((v) => v && v.trim());
   if (!filled) return undefined;
   return {
@@ -119,7 +119,7 @@ function toAddress(a: AddressFormValues): Address | undefined {
   };
 }
 
-function fromAddress(a: Address | undefined): AddressFormValues {
+export function fromAddress(a: Address | undefined): AddressFormValues {
   if (!a) return EMPTY_ADDRESS;
   return { ...a, complement: a.complement ?? "", country: a.country || "Brasil" };
 }

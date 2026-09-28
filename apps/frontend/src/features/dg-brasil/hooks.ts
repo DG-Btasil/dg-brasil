@@ -4,7 +4,7 @@ import { useCallback, useMemo } from "react";
 import { daysSince } from "@/lib/clock";
 import { repositories } from "@/repositories";
 import type { NewAgentInput, NewSkillInput, NewThesisInput, SkillChangeProposal } from "@/store/types";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import { useToast } from "@/store/ui-store";
 import type { Agent, AgentTask, ChangeHistoryEntry, ID, LegalThesis, Skill } from "@/types";
 
@@ -13,7 +13,7 @@ import type { Agent, AgentTask, ChangeHistoryEntry, ID, LegalThesis, Skill } fro
 /* ------------------------------------------------------------------ */
 
 export function useAgents(): Agent[] {
-  return useAppStore((s) => s.agents);
+  return useScopedStore((s) => s.agents);
 }
 
 export function useAgent(id: ID | undefined): Agent | undefined {
@@ -22,7 +22,7 @@ export function useAgent(id: ID | undefined): Agent | undefined {
 }
 
 export function useSkills(): Skill[] {
-  return useAppStore((s) => s.skills);
+  return useScopedStore((s) => s.skills);
 }
 
 export function useSkill(id: ID | undefined): Skill | undefined {
@@ -31,7 +31,7 @@ export function useSkill(id: ID | undefined): Skill | undefined {
 }
 
 export function useTheses(): LegalThesis[] {
-  return useAppStore((s) => s.theses);
+  return useScopedStore((s) => s.theses);
 }
 
 export function useThesis(id: ID | undefined): LegalThesis | undefined {
@@ -41,7 +41,7 @@ export function useThesis(id: ID | undefined): LegalThesis | undefined {
 
 /** Tarefas recentes (todas ou de um agente), mais novas primeiro. */
 export function useAgentTasks(agentId?: ID): AgentTask[] {
-  const tasks = useAppStore((s) => s.agentTasks);
+  const tasks = useScopedStore((s) => s.agentTasks);
   return useMemo(
     () => tasks.filter((t) => !agentId || t.agentId === agentId).sort((a, b) => b.at.localeCompare(a.at)),
     [tasks, agentId],
@@ -50,7 +50,7 @@ export function useAgentTasks(agentId?: ID): AgentTask[] {
 
 /** Histórico de alterações, mais novas primeiro. */
 export function useChangeHistory(entityId?: ID): ChangeHistoryEntry[] {
-  const history = useAppStore((s) => s.changeHistory);
+  const history = useScopedStore((s) => s.changeHistory);
   return useMemo(
     () => history.filter((h) => !entityId || h.entityId === entityId).sort((a, b) => b.at.localeCompare(a.at)),
     [history, entityId],
@@ -58,7 +58,7 @@ export function useChangeHistory(entityId?: ID): ChangeHistoryEntry[] {
 }
 
 export function useAiUsage() {
-  return useAppStore((s) => s.aiUsage);
+  return useScopedStore((s) => s.aiUsage);
 }
 
 /** Mapas id → entidade para exibir nomes em listas. */
@@ -103,7 +103,7 @@ export function useDgOverview(): DgOverview {
   const agents = useAgents();
   const skills = useSkills();
   const theses = useTheses();
-  const history = useAppStore((s) => s.changeHistory);
+  const history = useScopedStore((s) => s.changeHistory);
   const usage = useAiUsage();
   return useMemo(
     () => ({

@@ -15,4 +15,9 @@ export interface Notification extends OfficeScoped {
   cta: { label: string; href: string };
   /** Permissão exigida para ver o alerta. Alertas administrativos não chegam a outros papéis. */
   requiredPermission: Permission;
+  /**
+   * Destinatário parceiro. Ausente = notificação interna (nunca entregue a
+   * parceiros). Presente = só o parceiro indicado recebe.
+   */
+  partnerOfficeId?: ID;
 }

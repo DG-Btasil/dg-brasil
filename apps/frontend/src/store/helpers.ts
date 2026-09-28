@@ -1,6 +1,7 @@
 import type { StoreApi } from "zustand";
 import { nowISO } from "@/lib/clock";
 import { createId } from "@/lib/ids";
+import { audienceOf, type Audience, type Role } from "@/lib/permissions";
 import type { ActorRef, AnalysisEvent, AuditAction, AuditEvent, ID, LegalAnalysis, Notification, User } from "@/types";
 import type { AppState, AppStore } from "./types";
 
@@ -9,6 +10,39 @@ export type GetState = StoreApi<AppStore>["getState"];
 
 export function currentUser(state: AppState): User | undefined {
   return state.users.find((u) => u.id === state.session.currentUserId);
+}
+
+export interface Viewer {
+  userId: ID;
+  role: Role;
+  audience: Audience;
+  /** Presente quando o usuário é de escritório parceiro. */
+  partnerOfficeId?: ID;
+}
+
+export function viewerOf(state: AppState): Viewer | undefined {
+  const user = state.users.find((u) => u.id === state.session.currentUserId);
+  if (!user) return undefined;
+  const audience = audienceOf(user.role) ?? "OWNER";
+  return { userId: user.id, role: user.role, audience, partnerOfficeId: audience === "PARTNER" ? user.partnerOfficeId : undefined };
+}
+
+/**
+ * Garante que a ação é executada por um usuário de escritório parceiro e
+ * devolve o escritório DA SESSÃO. Ações do portal nunca recebem o
+ * partnerOfficeId da tela (no backend: vem do token/sessão).
+ */
+export function requirePartnerViewer(state: AppState): Viewer & { partnerOfficeId: ID } {
+  const viewer = viewerOf(state);
+  if (!viewer || viewer.audience !== "PARTNER" || !viewer.partnerOfficeId) throw new Error("Ação disponível apenas para escritórios parceiros.");
+  return viewer as Viewer & { partnerOfficeId: ID };
+}
+
+/** Garante que a ação é da equipe interna (escritório proprietário). */
+export function requireOwnerViewer(state: AppState): Viewer {
+  const viewer = viewerOf(state);
+  if (!viewer || viewer.audience !== "OWNER") throw new Error("Ação disponível apenas para a equipe interna.");
+  return viewer;
 }
 
 /** Referência de autoria da ação atual (usuário logado). */
@@ -35,6 +69,7 @@ export function auditEvent(
   description: string,
   actor: ActorRef = actorOf(state),
   details?: AuditEvent["details"],
+  partner?: { partnerOfficeId: ID; summary?: string },
 ): AuditEvent {
   return {
     id: createId("aud"),
@@ -46,6 +81,7 @@ export function auditEvent(
     entityId,
     description,
     ...(details && details.length > 0 ? { details } : {}),
+    ...(partner ? { partnerOfficeId: partner.partnerOfficeId, ...(partner.summary ? { partnerSummary: partner.summary } : {}) } : {}),
   };
 }
 

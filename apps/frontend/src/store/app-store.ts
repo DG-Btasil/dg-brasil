@@ -7,6 +7,7 @@ import { createAnalysisSlice, createClientSlice } from "./slices/clients-analyse
 import { createImportSlice } from "./slices/data-import";
 import { createDgSlice, createFinanceSlice } from "./slices/finance-dg";
 import { createProcessSlice, createReviewSlice } from "./slices/processes-reviews";
+import { createPartnerSlice } from "./slices/partners";
 import { createOfficeSlice, createSessionSlice, initialSession } from "./slices/session-office";
 import type { AppState, AppStore } from "./types";
 
@@ -23,7 +24,8 @@ import type { AppState, AppStore } from "./types";
 
 export const STORAGE_KEY = "dg-brasil:demo";
 // v2: status financeiro derivado, dados da Bárbara Cardoso Advocacia, Integração Judicial.
-const STORAGE_VERSION = 2;
+// v3: escritório proprietário único + escritórios parceiros (cliente canônico, origem relacional, snapshot financeiro).
+const STORAGE_VERSION = 3;
 
 export const useAppStore = create<AppStore>()(
   persist(
@@ -40,6 +42,7 @@ export const useAppStore = create<AppStore>()(
       ...createReviewSlice(set, get),
       ...createFinanceSlice(set, get),
       ...createDgSlice(set, get),
+      ...createPartnerSlice(set, get),
     }),
     {
       name: STORAGE_KEY,

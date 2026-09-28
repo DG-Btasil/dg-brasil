@@ -11,9 +11,12 @@ import {
   CLIENT_KIND_LABEL,
   CLIENT_STATUSES,
   CLIENT_STATUS_LABEL,
+  RELATIONSHIP_ORIGIN_LABEL,
+  RELATIONSHIP_ORIGINS,
   type AnalysisStatus,
   type ClientKind,
   type ClientStatus,
+  type RelationshipOrigin,
 } from "@/lib/constants/status";
 import { onlyDigits } from "@/lib/formatting";
 import type { ClientRow } from "../../hooks";
@@ -37,6 +40,9 @@ export interface ClientFilterState {
   analysis: AnalysisStatus | "";
   hasProcesses: "" | "yes" | "no";
   pendingDocs: boolean;
+  /** Próprio = cadastro criado pela Bárbara Cardoso Advocacia; Parceiro = cliente com vínculo de parceiro. */
+  origin: RelationshipOrigin | "";
+  partnerOfficeId: string;
 }
 
 export const EMPTY_FILTERS: ClientFilterState = {
@@ -48,6 +54,8 @@ export const EMPTY_FILTERS: ClientFilterState = {
   analysis: "",
   hasProcesses: "",
   pendingDocs: false,
+  origin: "",
+  partnerOfficeId: "",
 };
 
 export function hasActiveFilters(f: ClientFilterState): boolean {
@@ -61,7 +69,7 @@ function normalize(value: string): string {
 export function applyClientFilters(rows: ClientRow[], f: ClientFilterState): ClientRow[] {
   const term = normalize(f.search.trim());
   const digits = onlyDigits(f.search);
-  return rows.filter(({ client, analysisStatus, activeProcesses, documents }) => {
+  return rows.filter(({ client, analysisStatus, activeProcesses, documents, partnerOfficeIds }) => {
     if (term) {
       const names =
         client.kind === "INDIVIDUAL" ? [client.fullName, client.socialName] : [client.legalName, client.tradeName];
@@ -78,6 +86,9 @@ export function applyClientFilters(rows: ClientRow[], f: ClientFilterState): Cli
     if (f.hasProcesses === "yes" && activeProcesses === 0) return false;
     if (f.hasProcesses === "no" && activeProcesses > 0) return false;
     if (f.pendingDocs && documents.pending === 0) return false;
+    if (f.origin === "INTERNAL" && client.createdByOfficeId !== client.officeId) return false;
+    if (f.origin === "PARTNER" && partnerOfficeIds.length === 0) return false;
+    if (f.partnerOfficeId && !partnerOfficeIds.includes(f.partnerOfficeId)) return false;
     return true;
   });
 }
@@ -89,11 +100,14 @@ export function ClientFilters({
   onChange,
   responsibleOptions,
   resultCount,
+  partnerOptions,
 }: {
   value: ClientFilterState;
   onChange: (next: ClientFilterState) => void;
   responsibleOptions: { value: string; label: string }[];
   resultCount: number;
+  /** Presente para quem vê parceiros: habilita os filtros de origem. */
+  partnerOptions?: { value: string; label: string }[];
 }) {
   const set = <K extends keyof ClientFilterState>(key: K, v: ClientFilterState[K]) => onChange({ ...value, [key]: v });
   return (
@@ -140,6 +154,26 @@ export function ClientFilters({
               </button>
             ))}
           </div>
+          {partnerOptions && (
+            <>
+              <Select
+                aria-label="Origem"
+                placeholder="Origem: todos"
+                options={opts(RELATIONSHIP_ORIGINS, RELATIONSHIP_ORIGIN_LABEL)}
+                value={value.origin}
+                onChange={(e) => onChange({ ...value, origin: e.target.value as RelationshipOrigin | "", partnerOfficeId: e.target.value === "INTERNAL" ? "" : value.partnerOfficeId })}
+                className="h-8 w-[160px] text-[12px]"
+              />
+              <Select
+                aria-label="Escritório parceiro"
+                placeholder="Escritório parceiro"
+                options={partnerOptions}
+                value={value.partnerOfficeId}
+                onChange={(e) => onChange({ ...value, partnerOfficeId: e.target.value, origin: e.target.value ? "PARTNER" : value.origin })}
+                className="h-8 w-[200px] text-[12px]"
+              />
+            </>
+          )}
           <span aria-live="polite">
             {resultCount === 1 ? "1 cliente encontrado" : `${resultCount} clientes encontrados`}
           </span>

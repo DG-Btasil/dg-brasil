@@ -4,7 +4,7 @@ import { useCallback, useMemo } from "react";
 import { todayISO } from "@/lib/clock";
 import { summarizeAgreement, toPaymentView } from "@/lib/domain/finance";
 import { repositories } from "@/repositories";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import type { NewAgreementInput, NewFeeModelInput } from "@/store/types";
 import { useToast } from "@/store/ui-store";
 import type { Client, FeeModel, ID, Process } from "@/types";
@@ -15,7 +15,7 @@ import { agreementAppliesToProcess, clientLabel, type AgreementRow } from "./uti
 /* ------------------------------------------------------------------ */
 
 export function useFeeModels(): FeeModel[] {
-  return useAppStore((s) => s.feeModels);
+  return useScopedStore((s) => s.feeModels);
 }
 
 export function useFeeModel(id: ID | undefined): FeeModel | undefined {
@@ -24,15 +24,15 @@ export function useFeeModel(id: ID | undefined): FeeModel | undefined {
 }
 
 export function usePayments() {
-  return useAppStore((s) => s.payments);
+  return useScopedStore((s) => s.payments);
 }
 
 function useClients(): Client[] {
-  return useAppStore((s) => s.clients);
+  return useScopedStore((s) => s.clients);
 }
 
 function useProcesses(): Process[] {
-  return useAppStore((s) => s.processes);
+  return useScopedStore((s) => s.processes);
 }
 
 export function useClientOptions(): { value: ID; label: string }[] {
@@ -61,12 +61,12 @@ export function useProcessForFinance(processId: ID | undefined): Process | undef
  * linhas, então todos mudam juntos quando um pagamento é registrado.
  */
 export function useAgreementRows(): AgreementRow[] {
-  const agreements = useAppStore((s) => s.agreements);
+  const agreements = useScopedStore((s) => s.agreements);
   const payments = usePayments();
   const clients = useClients();
   const processes = useProcesses();
   const feeModels = useFeeModels();
-  const removedClients = useAppStore((s) => s.removedClients);
+  const removedClients = useScopedStore((s) => s.removedClients);
   return useMemo(() => {
     const clientMap = new Map(clients.map((c) => [c.id, c]));
     // Contrato de cliente excluído continua visível (histórico financeiro), identificado.

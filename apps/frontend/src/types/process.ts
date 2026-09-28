@@ -7,6 +7,7 @@ import type {
   ProcessOrigin,
   ProcessPhase,
   ProcessStatus,
+  RelationshipOrigin,
 } from "@/lib/constants/status";
 import type { LegalArea } from "@/lib/constants/legal";
 import type { ID, ISODate, ISODateTime, OfficeScoped, Timestamps } from "./common";
@@ -31,7 +32,17 @@ export interface Process extends OfficeScoped, Timestamps {
   caseValue?: number;
   status: ProcessStatus;
   phase: ProcessPhase;
+  /** Origem TÉCNICA do cadastro (manual, integração, DG Brasil, importação). */
   origin: ProcessOrigin;
+  /**
+   * Origem RELACIONAL do caso: próprio (INTERNAL) ou originado por parceiro
+   * (PARTNER). Independe de quem criou o cliente. Define o acordo financeiro.
+   */
+  relationshipOrigin: RelationshipOrigin;
+  /** Obrigatório quando relationshipOrigin = PARTNER. */
+  originPartnerOfficeId?: ID;
+  /** Resultado econômico estimado do caso. Sempre estimativa, nunca garantia. */
+  economicEstimate?: number;
   integrationId?: ID;
   thesisId?: ID;
   analysisId?: ID;

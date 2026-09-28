@@ -12,6 +12,8 @@ import {
   mockIntegrationRepository,
   mockNotificationRepository,
   mockOfficeRepository,
+  mockPartnerPortalRepository,
+  mockPartnerRepository,
   mockProcessRepository,
   mockReviewRepository,
   mockUserRepository,
@@ -30,6 +32,8 @@ export const repositories = {
   dg: mockDgRepository,
   integrations: mockIntegrationRepository,
   imports: mockImportRepository,
+  partners: mockPartnerRepository,
+  partnerPortal: mockPartnerPortalRepository,
 } as const;
 
 export type Repositories = typeof repositories;

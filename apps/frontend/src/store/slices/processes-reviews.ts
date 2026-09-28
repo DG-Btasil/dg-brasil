@@ -8,14 +8,23 @@ import {
   SYSTEM_ACTOR,
   timelineEvent,
   updateById,
+  viewerOf,
   withStep,
   type GetState,
   type SetState,
 } from "../helpers";
 import type { AppState, ProcessActions, ReviewActions } from "../types";
 import { clientName } from "./clients-analyses";
+import { partnershipSnapshotFor } from "./partners";
 
 const PETITION_AGENT = "agt_peticoes";
+
+/** Caixa de notificações do usuário da sessão (interna × parceiro). */
+function inboxOf(state: AppState): (n: AppState["notifications"][number]) => boolean {
+  const viewer = viewerOf(state);
+  if (viewer?.audience === "PARTNER") return (n) => !!viewer.partnerOfficeId && n.partnerOfficeId === viewer.partnerOfficeId;
+  return (n) => !n.partnerOfficeId;
+}
 
 function processEvent(state: AppState, processId: string, title: string, source: ProcessEvent["source"], description?: string, important = false): ProcessEvent {
   return { id: createId("mov"), officeId: state.office.id, processId, at: nowISO(), title, description, source, important };
@@ -27,8 +36,21 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
       const s = get();
       const id = createId("prc");
       const at = nowISO();
-      const { nextDeadline, origin, ...data } = input;
-      const process: Process = { ...data, id, officeId: s.office.id, origin: origin ?? "MANUAL", createdAt: at, updatedAt: at, lastMovementAt: at };
+      const { nextDeadline, origin, relationshipOrigin, originPartnerOfficeId, ...data } = input;
+      const partnerOrigin = relationshipOrigin === "PARTNER" && originPartnerOfficeId;
+      const process: Process = {
+        ...data,
+        id,
+        officeId: s.office.id,
+        origin: origin ?? "MANUAL",
+        relationshipOrigin: partnerOrigin ? "PARTNER" : "INTERNAL",
+        ...(partnerOrigin ? { originPartnerOfficeId } : {}),
+        createdAt: at,
+        updatedAt: at,
+        lastMovementAt: at,
+      };
+      // Caso originado por parceiro: copia a divisão vigente (snapshot) para o acordo do caso.
+      const agreement = partnershipSnapshotFor(s, process);
       const deadlines = nextDeadline
         ? [
             {
@@ -49,14 +71,24 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
         processes: [process, ...s.processes],
         processEvents: [processEvent(s, id, "Processo cadastrado manualmente", "MANUAL", `Cadastrado por ${actorOf(s).name}.`), ...s.processEvents],
         deadlines: [...deadlines, ...s.deadlines],
-        auditEvents: [auditEvent(s, "PROCESS_CREATED", "process", id, `Processo “${input.title}” cadastrado.`), ...s.auditEvents],
+        partnershipAgreements: agreement ? [agreement, ...s.partnershipAgreements] : s.partnershipAgreements,
+        auditEvents: [
+          agreement
+            ? auditEvent(s, "PARTNER_PROCESS_CREATED", "process", id, `Processo “${input.title}” cadastrado com origem em parceiro (divisão ${agreement.partnerPercentage}% / ${agreement.ownerPercentage}%).`, undefined, undefined, {
+                partnerOfficeId: agreement.partnerOfficeId,
+                summary: `Processo criado: ${input.title}.`,
+              })
+            : auditEvent(s, "PROCESS_CREATED", "process", id, `Processo “${input.title}” cadastrado.`),
+          ...s.auditEvents,
+        ],
       });
       return id;
     },
     updateProcess: (id, patch) =>
       set((s) => {
-        const { nextDeadline: _ignored, ...rest } = patch;
-        void _ignored;
+        // Origem relacional não muda por edição comum: ela define o acordo financeiro do caso.
+        const { nextDeadline: _ignored, relationshipOrigin: _ro, originPartnerOfficeId: _po, ...rest } = patch;
+        void [_ignored, _ro, _po];
         return {
           processes: updateById(s.processes, id, (p) => ({ ...p, ...rest, updatedAt: nowISO() })),
           auditEvents: [auditEvent(s, "PROCESS_UPDATED", "process", id, "Dados do processo atualizados."), ...s.auditEvents],
@@ -180,6 +212,7 @@ function applyApproval(state: AppState, review: Review): Partial<AppState> {
             status: "PRE_FILING",
             phase: "PRELIMINARY",
             origin: "AGENT",
+            relationshipOrigin: "INTERNAL",
             thesisId: review.thesisId,
             analysisId: analysis.id,
             summary: analysis.result?.summary,
@@ -216,9 +249,42 @@ function applyApproval(state: AppState, review: Review): Partial<AppState> {
         ],
       };
     }
-    case "PETITION_DRAFT":
+    case "PETITION_DRAFT": {
+      const process = review.processId ? state.processes.find((p) => p.id === review.processId) : undefined;
+      // Caso de parceiro: guarda uma cópia congelada da versão aprovada como documento
+      // INTERNAL. Ela só chega ao parceiro quando a equipe a disponibilizar.
+      const approvedCopy =
+        process?.relationshipOrigin === "PARTNER" && review.clientId
+          ? [
+              {
+                id: createId("doc"),
+                officeId: state.office.id,
+                clientId: review.clientId,
+                processId: process.id,
+                name: `${review.content.title} — versão aprovada`,
+                category: "PETITION" as const,
+                status: "RECEIVED" as const,
+                verification: "VERIFIED" as const,
+                fileName: `${review.content.title.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-")}-aprovada.pdf`,
+                sizeKb: 300,
+                uploadedAt: at,
+                uploadedBy: actor.id,
+                required: false,
+                updatedAt: at,
+                visibility: "INTERNAL" as const,
+                sourceReviewId: review.id,
+                approvedContent: {
+                  title: review.content.title,
+                  sections: review.content.sections,
+                  version: review.contentVersion ?? 1,
+                  approvedAt: at,
+                },
+              },
+            ]
+          : [];
       return review.processId
         ? {
+            documents: approvedCopy.length ? [...approvedCopy, ...state.documents] : state.documents,
             processes: updateById(state.processes, review.processId, (p) => ({
               ...p,
               status: p.status === "PRE_FILING" ? "PREPARING" : p.status,
@@ -231,6 +297,7 @@ function applyApproval(state: AppState, review: Review): Partial<AppState> {
             ],
           }
         : {};
+    }
     case "DEADLINE_PROPOSAL":
     case "PROCESS_UPDATE":
       return review.processId
@@ -399,7 +466,16 @@ export function createReviewSlice(set: SetState, get: GetState): ReviewActions {
           ],
         };
       }),
-    markNotificationRead: (id) => set((s) => ({ notifications: updateById(s.notifications, id, (n) => ({ ...n, read: true })) })),
-    markAllNotificationsRead: () => set((s) => ({ notifications: s.notifications.map((n) => ({ ...n, read: true })) })),
+    // Leitura de notificação respeita a caixa do usuário: interna ou do próprio parceiro.
+    markNotificationRead: (id) =>
+      set((s) => {
+        const inbox = inboxOf(s);
+        return { notifications: s.notifications.map((n) => (n.id === id && inbox(n) ? { ...n, read: true } : n)) };
+      }),
+    markAllNotificationsRead: () =>
+      set((s) => {
+        const inbox = inboxOf(s);
+        return { notifications: s.notifications.map((n) => (inbox(n) ? { ...n, read: true } : n)) };
+      }),
   };
 }

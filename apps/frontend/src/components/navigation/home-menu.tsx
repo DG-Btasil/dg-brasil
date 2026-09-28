@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
-import { useCan } from "@/features/auth/hooks";
+import { useAudience, useCan } from "@/features/auth/hooks";
 import { useNavCounts } from "@/features/navigation/hooks";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
 import { useUiStore } from "@/store/ui-store";
-import { NAV_ITEMS, isNavActive } from "./nav-config";
+import { isNavActive, navItemsFor } from "./nav-config";
 import { resolveRouteArea } from "./route-areas";
 
 const OPEN_DELAY = 90;
@@ -23,7 +23,8 @@ export function HomeMenu() {
   const pathname = usePathname();
   const can = useCan();
   const counts = useNavCounts();
-  const items = useMemo(() => NAV_ITEMS.filter((item) => can(item.permission)), [can]);
+  const audience = useAudience();
+  const items = useMemo(() => navItemsFor(audience).filter((item) => can(item.permission)), [can, audience]);
   const [openState, setOpen] = useState(false);
   // Durante o tour guiado, o painel fica aberto para mostrar os módulos.
   const tourMenuOpen = useUiStore((s) => s.tourMenuOpen);
@@ -117,7 +118,7 @@ export function HomeMenu() {
   }
 
   // O acionador mostra a área atual (ícone + rótulo), vinda do mapa central de rotas.
-  const area = resolveRouteArea(pathname);
+  const area = resolveRouteArea(pathname, audience);
   const AreaIcon = area.icon;
 
   return (

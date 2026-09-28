@@ -16,7 +16,8 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
 | `src/lib` | Status, permissões, formatação, validação, domínio puro. | Não |
 
 - **Escrita:** componentes chamam `repositories.<x>.<método>()` (assíncrono), normalmente via um hook de ações da feature.
-- **Leitura:** hooks da feature selecionam arrays crus do store e derivam com `useMemo`.
+- **Leitura:** hooks da feature selecionam arrays do estado **recortado** (`useScopedStore` de `@/store/scope`) e derivam com `useMemo`.
+  Nunca leia dados com `useAppStore` em hooks de feature — isso ignoraria o escopo do parceiro. `useAppStore` é só para sessão, preferências e ações.
   Nunca retorne um array novo direto do selector (`useAppStore(s => s.clients.filter(...))`) — isso quebra o Zustand v5 (loop de render).
 
 ## Regras de negócio que não se quebram
@@ -31,6 +32,9 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
 5. **Nada de conteúdo jurídico inventado.** Textos jurídicos de exemplo levam `<DemoContentNotice />` ou `DEMO_LEGAL_DISCLAIMER`.
 6. **Botão sem função não existe.** Se não está implementado: `<NotAvailable>` (desabilitado + "Disponível em uma próxima etapa").
 7. **Prioridade nunca só por cor:** sempre ícone e/ou texto junto (`Badge` com texto, `DeadlineBadge`).
+8. **Parceiro vê só a própria relação.** Visibilidade de parceiro se decide em `lib/permissions/partner-scope.ts`, nunca no componente.
+   Portal do parceiro não usa vocabulário interno ("agente", "Skill", "tenant", "workflow de IA").
+9. **Duas origens, nunca misturar:** `origin` (técnica: Manual/Integração/DG Brasil) ≠ `relationshipOrigin` (caso próprio ou de parceiro).
 
 ## Next.js 16
 

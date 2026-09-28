@@ -47,6 +47,8 @@ export const processFormSchema = z
       .min(1, DUE_DATE_REQUIRED)
       .refine((v) => isoDate.test(v), msg.date),
     notes: z.string().optional(),
+    /** Origem do caso: vazio = próprio; id = originado por escritório parceiro. */
+    originPartnerOfficeId: z.string().optional(),
   });
 
 export type ProcessFormInput = z.input<typeof processFormSchema>;

@@ -10,6 +10,8 @@ import { Panel } from "@/components/ui/panel";
 import { sortBy, type SortDirection } from "@/components/ui/table";
 import { CLIENT_STATUSES } from "@/lib/constants/status";
 import { useResponsibleOptions, useUserMap } from "@/features/offices/hooks";
+import { usePermission } from "@/features/auth/hooks";
+import { usePartnerOptions } from "@/features/partners/hooks";
 import { useClientRows } from "../../hooks";
 import { clientDisplayName } from "../../utils";
 import { applyClientFilters, ClientFilters, EMPTY_FILTERS, type ClientFilterState } from "./client-filters";
@@ -19,6 +21,8 @@ export function ClientList() {
   const rows = useClientRows();
   const userMap = useUserMap();
   const responsibleOptions = useResponsibleOptions();
+  const canPartners = usePermission("partners.view");
+  const partnerOptions = usePartnerOptions();
   const [filters, setFilters] = useState<ClientFilterState>(EMPTY_FILTERS);
   const [sortKey, setSortKey] = useState<ClientSortKey | null>("updated");
   const [direction, setDirection] = useState<SortDirection>("desc");
@@ -69,7 +73,7 @@ export function ClientList() {
         </Panel>
       ) : (
         <Panel>
-          <ClientFilters value={filters} onChange={setFilters} responsibleOptions={responsibleOptions} resultCount={visible.length} />
+          <ClientFilters value={filters} onChange={setFilters} responsibleOptions={responsibleOptions} resultCount={visible.length} partnerOptions={canPartners ? partnerOptions : undefined} />
           {visible.length === 0 ? (
             <EmptyState
               icon={SearchX}

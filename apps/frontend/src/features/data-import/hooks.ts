@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { repositories } from "@/repositories";
 import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import type { ImportPlan, ImportResult } from "@/store/types";
 import { useToast } from "@/store/ui-store";
 import type { AuditEvent } from "@/types";
@@ -10,16 +11,16 @@ import type { AnalysisContext } from "./analyze";
 
 /** Dados existentes usados para detectar conflitos (CPF/CNPJ, CNJ) e casar responsáveis. */
 export function useImportContext(): AnalysisContext & { currentUserId: string } {
-  const clients = useAppStore((s) => s.clients);
-  const processes = useAppStore((s) => s.processes);
-  const users = useAppStore((s) => s.users);
+  const clients = useScopedStore((s) => s.clients);
+  const processes = useScopedStore((s) => s.processes);
+  const users = useScopedStore((s) => s.users);
   const currentUserId = useAppStore((s) => s.session.currentUserId);
   return useMemo(() => ({ clients, processes, users: users.filter((u) => u.status === "ACTIVE"), currentUserId }), [clients, processes, users, currentUserId]);
 }
 
 /** Última importação registrada na auditoria. */
 export function useLastImport(): AuditEvent | undefined {
-  const audit = useAppStore((s) => s.auditEvents);
+  const audit = useScopedStore((s) => s.auditEvents);
   return useMemo(() => audit.find((e) => e.action === "DATA_IMPORTED"), [audit]);
 }
 

@@ -5,6 +5,7 @@ import type { FieldValues, UseFormReturn } from "react-hook-form";
 import { parseCurrencyInput } from "@/lib/validation";
 import { repositories } from "@/repositories";
 import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import type { Agent, Integration, LegalThesis, OnboardingState, Skill, User } from "@/types";
 import type { AgentsSkillsValues, FeeModelsValues, IdentityValues, TeamValues } from "./schemas";
 import type { StepAnswers, StepFormApi, StepKey } from "./types";
@@ -22,24 +23,24 @@ export function useStepAnswers(key: StepKey): StepAnswers | undefined {
 }
 
 export function useOnboardingIntegrations(): Integration[] {
-  return useAppStore((s) => s.integrations);
+  return useScopedStore((s) => s.integrations);
 }
 
 export function useOnboardingAgents(): Agent[] {
-  return useAppStore((s) => s.agents);
+  return useScopedStore((s) => s.agents);
 }
 
 export function useOnboardingSkills(): Skill[] {
-  return useAppStore((s) => s.skills);
+  return useScopedStore((s) => s.skills);
 }
 
 export function useOnboardingTheses(): LegalThesis[] {
-  return useAppStore((s) => s.theses);
+  return useScopedStore((s) => s.theses);
 }
 
 /** Usuários já cadastrados no escritório (ativos ou convidados). */
 export function useOfficeMembers(): User[] {
-  const users = useAppStore((s) => s.users);
+  const users = useScopedStore((s) => s.users);
   return useMemo(() => users.filter((u) => u.status !== "DISABLED"), [users]);
 }
 
@@ -68,7 +69,7 @@ function blankToUndefined(v: string): string | undefined {
 }
 
 export function useOnboardingActions() {
-  const users = useAppStore((s) => s.users);
+  const users = useScopedStore((s) => s.users);
 
   const saveStep = useCallback(
     (key: StepKey, answers: StepAnswers, nextStep: number, skipped = false) =>

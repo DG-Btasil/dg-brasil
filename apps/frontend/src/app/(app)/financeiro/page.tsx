@@ -1,10 +1,21 @@
-import { RequirePermission } from "@/components/layout/guards";
+import { AudienceSwitch, RequirePermission } from "@/components/layout/guards";
 import { FinanceOverview } from "@/features/finance/components/finance-overview";
+import { PortalFinance } from "@/features/partner-portal/components/portal-finance";
 
+/** Interno: Financeiro global. Parceiro: somente Partner Admin (Partner User é bloqueado). */
 export default function FinancePage() {
   return (
-    <RequirePermission permission="finance.view">
-      <FinanceOverview />
-    </RequirePermission>
+    <AudienceSwitch
+      owner={
+        <RequirePermission permission="finance.view">
+          <FinanceOverview />
+        </RequirePermission>
+      }
+      partner={
+        <RequirePermission permission="partnerPortal.finance.view">
+          <PortalFinance />
+        </RequirePermission>
+      }
+    />
   );
 }

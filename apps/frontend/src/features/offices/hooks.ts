@@ -2,28 +2,40 @@
 
 import { useMemo } from "react";
 import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import type { ID, Office, Subscription, User } from "@/types";
 
 export function useOffice(): Office {
-  return useAppStore((s) => s.office);
+  return useScopedStore((s) => s.office);
 }
 
 export function useSubscription(): Subscription {
-  return useAppStore((s) => s.subscription);
+  return useScopedStore((s) => s.subscription);
 }
 
+/** Todos os usuários visíveis na sessão (equipe interna e, para a equipe interna, também os de parceiros). */
+export function useAllUsers(): User[] {
+  return useScopedStore((s) => s.users);
+}
+
+/** Equipe do escritório do usuário: interna (sem parceiros) ou, no portal, o próprio escritório parceiro. */
 export function useUsers(): User[] {
-  return useAppStore((s) => s.users);
+  const users = useAllUsers();
+  const currentUserId = useAppStore((s) => s.session.currentUserId);
+  return useMemo(() => {
+    const me = users.find((u) => u.id === currentUserId);
+    return users.filter((u) => (u.partnerOfficeId ?? null) === (me?.partnerOfficeId ?? null));
+  }, [users, currentUserId]);
 }
 
 /** Mapa id → usuário, para exibir responsáveis em listas sem buscas repetidas. */
 export function useUserMap(): Map<ID, User> {
-  const users = useUsers();
+  const users = useAllUsers();
   return useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 }
 
 export function useUser(id: ID | undefined): User | undefined {
-  const users = useUsers();
+  const users = useAllUsers();
   return useMemo(() => users.find((u) => u.id === id), [users, id]);
 }
 
@@ -37,15 +49,15 @@ export function useResponsibleOptions(): { value: ID; label: string }[] {
 }
 
 export function useInvitations() {
-  return useAppStore((s) => s.invitations);
+  return useScopedStore((s) => s.invitations);
 }
 
 export function useUserSessions() {
-  return useAppStore((s) => s.sessions);
+  return useScopedStore((s) => s.sessions);
 }
 
 export function useAuditEvents() {
-  return useAppStore((s) => s.auditEvents);
+  return useScopedStore((s) => s.auditEvents);
 }
 
 export function usePreferences() {

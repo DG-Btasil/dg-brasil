@@ -1,4 +1,4 @@
-import { daysSince, daysUntil, parseISODate } from "@/lib/clock";
+import { daysSince, daysUntil, now, parseISODate } from "@/lib/clock";
 import type { DeadlineUrgency } from "@/lib/constants/status";
 
 export * from "./masks";
@@ -95,6 +95,16 @@ export function formatEventTime(value: string): string {
   if (diff === 1) return `ontem, ${formatTime(value)}`;
   if (diff < 7) return `há ${diff} dias`;
   return formatDate(value);
+}
+
+/** "há 18 minutos", "há 3 horas"; acima de um dia, igual a formatEventTime. */
+export function formatSince(value: string, reference: Date = now()): string {
+  const minutes = Math.floor((reference.getTime() - new Date(value).getTime()) / 60_000);
+  if (minutes < 1) return "agora há pouco";
+  if (minutes < 60) return `há ${minutes} ${minutes === 1 ? "minuto" : "minutos"}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `há ${hours} ${hours === 1 ? "hora" : "horas"}`;
+  return formatEventTime(value);
 }
 
 /** "aguardando há 4 dias" → devolve só o trecho temporal. */

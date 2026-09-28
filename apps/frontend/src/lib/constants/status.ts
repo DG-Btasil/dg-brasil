@@ -491,6 +491,11 @@ export const NOTIFICATION_TYPES = [
   "INTEGRATION_ISSUE",
   "TASK_OVERDUE",
   "DATA_INTEGRITY",
+  "PARTNER_SUBMISSION",
+  "PARTNER_REQUEST",
+  "DOCUMENT_APPROVED",
+  "CASE_UPDATE",
+  "PAYOUT_UPDATE",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
@@ -502,6 +507,11 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   INTEGRATION_ISSUE: "Integração",
   TASK_OVERDUE: "Tarefa atrasada",
   DATA_INTEGRITY: "Integridade de dados",
+  PARTNER_SUBMISSION: "Novo caso de parceiro",
+  PARTNER_REQUEST: "Solicitação",
+  DOCUMENT_APPROVED: "Documento aprovado",
+  CASE_UPDATE: "Atualização do caso",
+  PAYOUT_UPDATE: "Repasse",
 };
 
 /* ------------------------------------------------------------------ */
@@ -643,4 +653,139 @@ export const USER_STATUS_TONE: Record<UserStatus, Tone> = {
   ACTIVE: "success",
   INVITED: "gold",
   DISABLED: "neutral",
+};
+
+/* ------------------------------------------------------------------ */
+/* Escritórios parceiros                                               */
+/* ------------------------------------------------------------------ */
+
+export const PARTNER_OFFICE_STATUSES = ["ACTIVE", "INACTIVE", "PENDING_INVITE", "SUSPENDED"] as const;
+export type PartnerOfficeStatus = (typeof PARTNER_OFFICE_STATUSES)[number];
+export const PARTNER_OFFICE_STATUS_LABEL: Record<PartnerOfficeStatus, string> = {
+  ACTIVE: "Ativo",
+  INACTIVE: "Inativo",
+  PENDING_INVITE: "Convite pendente",
+  SUSPENDED: "Suspenso",
+};
+export const PARTNER_OFFICE_STATUS_TONE: Record<PartnerOfficeStatus, Tone> = {
+  ACTIVE: "success",
+  INACTIVE: "neutral",
+  PENDING_INVITE: "gold",
+  SUSPENDED: "orange",
+};
+
+/**
+ * Origem RELACIONAL do caso (de quem é o caso na operação). Não confundir
+ * com PROCESS_ORIGINS, que é a origem TÉCNICA do cadastro (manual, integração…).
+ */
+export const RELATIONSHIP_ORIGINS = ["INTERNAL", "PARTNER"] as const;
+export type RelationshipOrigin = (typeof RELATIONSHIP_ORIGINS)[number];
+export const RELATIONSHIP_ORIGIN_LABEL: Record<RelationshipOrigin, string> = {
+  INTERNAL: "Próprio",
+  PARTNER: "Parceiro",
+};
+
+/** Filtro de origem usado nas listagens internas. */
+export const ORIGIN_FILTERS = ["ALL", "INTERNAL", "PARTNER"] as const;
+export type OriginFilter = (typeof ORIGIN_FILTERS)[number];
+export const ORIGIN_FILTER_LABEL: Record<OriginFilter, string> = {
+  ALL: "Todos",
+  INTERNAL: "Próprio",
+  PARTNER: "Parceiro",
+};
+
+/** Situação do relacionamento de um escritório com um cliente canônico. */
+export const CLIENT_RELATIONSHIP_STATUSES = ["ACTIVE", "ENDED"] as const;
+export type ClientRelationshipStatus = (typeof CLIENT_RELATIONSHIP_STATUSES)[number];
+
+/** Situação de um caso enviado por parceiro. */
+export const SUBMISSION_STATUSES = [
+  "DRAFT",
+  "READY_TO_SUBMIT",
+  "SUBMITTED",
+  "UNDER_ANALYSIS",
+  "WAITING_DOCUMENTS",
+  "ACCEPTED",
+  "IN_PROGRESS",
+  "CLOSED",
+] as const;
+export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
+export const SUBMISSION_STATUS_LABEL: Record<SubmissionStatus, string> = {
+  DRAFT: "Rascunho",
+  READY_TO_SUBMIT: "Pronto para envio",
+  SUBMITTED: "Enviado",
+  UNDER_ANALYSIS: "Em análise",
+  WAITING_DOCUMENTS: "Aguardando documentos",
+  ACCEPTED: "Aceito",
+  IN_PROGRESS: "Em andamento",
+  CLOSED: "Concluído",
+};
+export const SUBMISSION_STATUS_TONE: Record<SubmissionStatus, Tone> = {
+  DRAFT: "neutral",
+  READY_TO_SUBMIT: "info",
+  SUBMITTED: "gold",
+  UNDER_ANALYSIS: "navy",
+  WAITING_DOCUMENTS: "warning",
+  ACCEPTED: "success",
+  IN_PROGRESS: "success",
+  CLOSED: "neutral",
+};
+/** Situações que a equipe interna pode atribuir depois do envio. */
+export const OWNER_SUBMISSION_TRANSITIONS: readonly SubmissionStatus[] = [
+  "UNDER_ANALYSIS",
+  "WAITING_DOCUMENTS",
+  "ACCEPTED",
+  "IN_PROGRESS",
+  "CLOSED",
+];
+
+export const PARTNER_REQUEST_TYPES = ["DOCUMENT_REQUEST", "INFORMATION_REQUEST", "CORRECTION_REQUEST", "GENERAL_REQUEST"] as const;
+export type PartnerRequestType = (typeof PARTNER_REQUEST_TYPES)[number];
+export const PARTNER_REQUEST_TYPE_LABEL: Record<PartnerRequestType, string> = {
+  DOCUMENT_REQUEST: "Documento solicitado",
+  INFORMATION_REQUEST: "Informação solicitada",
+  CORRECTION_REQUEST: "Correção solicitada",
+  GENERAL_REQUEST: "Solicitação geral",
+};
+
+export const PARTNER_REQUEST_STATUSES = ["OPEN", "ANSWERED", "RESOLVED", "CANCELLED"] as const;
+export type PartnerRequestStatus = (typeof PARTNER_REQUEST_STATUSES)[number];
+export const PARTNER_REQUEST_STATUS_LABEL: Record<PartnerRequestStatus, string> = {
+  OPEN: "Aberta",
+  ANSWERED: "Respondida",
+  RESOLVED: "Resolvida",
+  CANCELLED: "Cancelada",
+};
+export const PARTNER_REQUEST_STATUS_TONE: Record<PartnerRequestStatus, Tone> = {
+  OPEN: "warning",
+  ANSWERED: "info",
+  RESOLVED: "success",
+  CANCELLED: "neutral",
+};
+
+/**
+ * Visibilidade de documento. INTERNAL nunca é entregue ao parceiro;
+ * PARTNER_VISIBLE fica disponível ao parceiro do caso.
+ */
+export const DOCUMENT_VISIBILITIES = ["INTERNAL", "PARTNER_VISIBLE"] as const;
+export type DocumentVisibility = (typeof DOCUMENT_VISIBILITIES)[number];
+export const DOCUMENT_VISIBILITY_LABEL: Record<DocumentVisibility, string> = {
+  INTERNAL: "Interno",
+  PARTNER_VISIBLE: "Compartilhado com o parceiro",
+};
+
+/** Situação financeira de um acordo de parceria. Derivada, nunca gravada. */
+export const PARTNERSHIP_STATUSES = ["AWAITING_ESTIMATE", "ESTIMATED", "TO_RECEIVE", "SETTLED"] as const;
+export type PartnershipStatus = (typeof PARTNERSHIP_STATUSES)[number];
+export const PARTNERSHIP_STATUS_LABEL: Record<PartnershipStatus, string> = {
+  AWAITING_ESTIMATE: "Aguardando estimativa",
+  ESTIMATED: "Em andamento",
+  TO_RECEIVE: "Repasse pendente",
+  SETTLED: "Repassado",
+};
+export const PARTNERSHIP_STATUS_TONE: Record<PartnershipStatus, Tone> = {
+  AWAITING_ESTIMATE: "neutral",
+  ESTIMATED: "info",
+  TO_RECEIVE: "gold",
+  SETTLED: "success",
 };

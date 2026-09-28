@@ -1,10 +1,20 @@
-import { RequirePermission } from "@/components/layout/guards";
+import { AudienceSwitch, RequirePermission } from "@/components/layout/guards";
 import { ProcessList } from "@/features/processes/components/process-list";
+import { PortalProcessList } from "@/features/partner-portal/components/portal-processes";
 
 export default function ProcessesPage() {
   return (
-    <RequirePermission permission="processes.view">
-      <ProcessList />
-    </RequirePermission>
+    <AudienceSwitch
+      owner={
+        <RequirePermission permission="processes.view">
+          <ProcessList />
+        </RequirePermission>
+      }
+      partner={
+        <RequirePermission permission="partnerPortal.view">
+          <PortalProcessList />
+        </RequirePermission>
+      }
+    />
   );
 }

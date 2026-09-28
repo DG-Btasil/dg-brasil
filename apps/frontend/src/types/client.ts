@@ -4,6 +4,7 @@ import type {
   DocumentCategory,
   DocumentStatus,
   DocumentVerification,
+  DocumentVisibility,
 } from "@/lib/constants/status";
 import type { IdDocumentType, MaritalStatus } from "@/lib/constants/legal";
 import type { Address, Contact, ID, ISODate, ISODateTime, OfficeScoped, Timestamps } from "./common";
@@ -20,6 +21,12 @@ interface ClientBase extends OfficeScoped, Timestamps {
   legalSummary?: string;
   /** Preenchido quando o cliente é inativado (status INACTIVE). Mantido no histórico. */
   inactivation?: ClientInactivation;
+  /**
+   * Quem criou o registro canônico: id do escritório proprietário ou de um
+   * parceiro. Serve à auditoria; NÃO define a origem de processos futuros
+   * nem a divisão financeira (que pertencem ao processo).
+   */
+  createdByOfficeId?: ID;
 }
 
 export const CLIENT_INACTIVATION_REASONS = ["SERVICE_ENDED", "CLIENT_GAVE_UP", "CONTRACT_ENDED", "DUPLICATE", "OTHER"] as const;
@@ -128,4 +135,22 @@ export interface ClientDocument extends OfficeScoped {
   required: boolean;
   notes?: string;
   updatedAt: ISODateTime;
+  /** INTERNAL (padrão) nunca chega ao parceiro; PARTNER_VISIBLE fica disponível ao parceiro do caso. */
+  visibility: DocumentVisibility;
+  /** Escritório parceiro que enviou o documento (ausente = equipe interna). */
+  uploadedByPartnerOfficeId?: ID;
+  /**
+   * Versionamento: documentos da mesma "família" compartilham versionGroupId.
+   * Uma nova versão cria OUTRO documento; a anterior é preservada com
+   * `supersededAt`. Nada é sobrescrito.
+   */
+  versionGroupId?: ID;
+  version?: number;
+  supersededAt?: ISODateTime;
+  /** Enviado oficialmente à Bárbara Cardoso Advocacia: a partir daqui o parceiro não edita nem apaga. */
+  submittedAt?: ISODateTime;
+  /** Revisão de origem (documento produzido internamente e aprovado). */
+  sourceReviewId?: ID;
+  /** Cópia congelada da versão aprovada, para exibição ao parceiro sem expor a revisão. */
+  approvedContent?: { title: string; sections: { heading: string; body: string }[]; version: number; approvedAt: ISODateTime };
 }

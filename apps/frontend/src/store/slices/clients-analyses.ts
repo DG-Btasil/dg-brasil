@@ -81,9 +81,14 @@ export function createClientSlice(set: SetState, get: GetState): ClientActions {
       const s = get();
       const id = createId("cli");
       const at = nowISO();
-      const client = { ...input, id, officeId: s.office.id, createdAt: at, updatedAt: at } as Client;
+      // Cadastro interno: o registro canônico nasce do escritório proprietário, com relacionamento OWNER.
+      const client = { ...input, id, officeId: s.office.id, createdByOfficeId: s.office.id, createdAt: at, updatedAt: at } as Client;
       set({
         clients: [client, ...s.clients],
+        clientRelationships: [
+          { id: createId("rel"), officeId: s.office.id, clientId: id, officeType: "OWNER", status: "ACTIVE", createdAt: at, createdBy: actorOf(s).id },
+          ...s.clientRelationships,
+        ],
         auditEvents: [auditEvent(s, "CLIENT_CREATED", "client", id, `Cliente ${clientName(client)} cadastrado.`), ...s.auditEvents],
       });
       return id;
@@ -235,6 +240,8 @@ export function createClientSlice(set: SetState, get: GetState): ClientActions {
         required: placeholder?.required ?? false,
         notes: input.notes,
         updatedAt: at,
+        // Documento da equipe interna nasce INTERNAL; só a equipe pode disponibilizá-lo ao parceiro.
+        visibility: placeholder?.visibility ?? ("INTERNAL" as const),
       };
       const documents = placeholder ? updateById(s.documents, id, () => doc) : [doc, ...s.documents];
       const client = s.clients.find((c) => c.id === input.clientId);

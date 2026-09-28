@@ -6,10 +6,12 @@
  * Todos os métodos são assíncronos desde já, para que a troca não mude
  * a assinatura usada pela interface.
  *
- * O `officeId` não é parâmetro: no backend ele virá da sessão
- * autenticada (nunca do cliente), garantindo o isolamento multi-tenant.
+ * O `officeId` e o `partnerOfficeId` não são parâmetros de leitura: no
+ * backend virão da sessão autenticada (nunca do cliente). Um usuário de
+ * parceiro recebe apenas os registros da própria relação (ver
+ * `lib/permissions/partner-scope.ts` e docs/BACKEND_HANDOFF.md).
  */
-import type { DocumentStatus, IntegrationStatus, ReviewDecisionKind } from "@/lib/constants/status";
+import type { DocumentStatus, IntegrationStatus, PartnerOfficeStatus, ReviewDecisionKind, SubmissionStatus } from "@/lib/constants/status";
 import type {
   AgentTask,
   Agent,
@@ -27,9 +29,14 @@ import type {
   LegalThesis,
   Notification,
   Office,
+  PartnerCaseSubmission,
+  PartnerOffice,
+  PartnerRequest,
+  PartnerRole,
   Payment,
   Process,
   ProcessEvent,
+  ProcessPartnershipAgreement,
   Review,
   ReviewContent,
   Role,
@@ -38,7 +45,17 @@ import type {
 } from "@/types";
 import type { JudicialSyncResult } from "@/services/judicial-integration";
 import type {
+  ClientLookupResult,
   ClientPatch,
+  NewPartnerOfficeInput,
+  NewPartnerRequestInput,
+  PartnerCaseInput,
+  PartnerCaseResult,
+  PartnerClientBasicsPatch,
+  PartnerDocumentInput,
+  PartnerOfficePatch,
+  PartnerProcessInput,
+  PartnershipValuesInput,
   CreateOfficeInput,
   DeleteClientResult,
   ImportPlan,
@@ -180,4 +197,43 @@ export interface IntegrationRepository {
 export interface ImportRepository {
   /** Aplica um plano já validado (dry run feito na interface). */
   run(plan: ImportPlan): Promise<ImportResult>;
+}
+
+/** Escritórios parceiros, vista do escritório proprietário (e leitura própria do parceiro). */
+export interface PartnerRepository {
+  list(): Promise<PartnerOffice[]>;
+  get(id: ID): Promise<PartnerOffice | undefined>;
+  create(input: NewPartnerOfficeInput): Promise<ID>;
+  update(id: ID, patch: PartnerOfficePatch): Promise<void>;
+  setStatus(id: ID, status: PartnerOfficeStatus): Promise<void>;
+  /** Altera a divisão PADRÃO. Acordos de casos existentes não mudam (snapshot). */
+  changeShare(id: ID, partnerPercentage: number, ownerPercentage: number): Promise<void>;
+  inviteUser(partnerOfficeId: ID, input: { name: string; email: string; role: PartnerRole }): Promise<string>;
+  setUserStatus(userId: ID, status: "ACTIVE" | "DISABLED"): Promise<void>;
+  changeUserRole(userId: ID, role: PartnerRole): Promise<void>;
+  listRequests(): Promise<PartnerRequest[]>;
+  createRequest(input: NewPartnerRequestInput): Promise<ID>;
+  resolveRequest(id: ID, resolution: "RESOLVED" | "CANCELLED"): Promise<void>;
+  listSubmissions(): Promise<PartnerCaseSubmission[]>;
+  setSubmissionStatus(id: ID, status: SubmissionStatus): Promise<void>;
+  /** Torna PARTNER_VISIBLE um documento (já aprovado) de caso de parceiro. */
+  shareDocument(documentId: ID): Promise<void>;
+  listAgreements(): Promise<ProcessPartnershipAgreement[]>;
+  updateAgreementValues(id: ID, input: PartnershipValuesInput): Promise<void>;
+  registerPayout(id: ID, amount: number, note?: string): Promise<void>;
+}
+
+/**
+ * Operações do Portal do Parceiro. Nenhum método recebe `partnerOfficeId`:
+ * o escritório é sempre o da sessão.
+ */
+export interface PartnerPortalRepository {
+  /** Consulta CPF/CNPJ sem revelar dados de outros relacionamentos. */
+  lookupClient(document: string): Promise<ClientLookupResult>;
+  submitCase(input: PartnerCaseInput): Promise<PartnerCaseResult>;
+  createProcess(input: PartnerProcessInput): Promise<ID>;
+  updateClientBasics(clientId: ID, patch: PartnerClientBasicsPatch): Promise<void>;
+  /** Envio oficial. Com `replacesDocumentId`, cria nova versão e preserva a anterior. */
+  submitDocument(input: PartnerDocumentInput): Promise<ID>;
+  respondRequest(requestId: ID, message: string): Promise<void>;
 }

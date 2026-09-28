@@ -6,15 +6,14 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Briefcase, ShieldCheck, UserRound } from "lucide-react";
+import { Briefcase, Handshake, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 import { HydrationGate } from "@/components/layout/guards";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
-import { ROLE_LABEL, type Role } from "@/lib/permissions";
+import { isPartnerRole, ROLE_LABEL, type Role } from "@/lib/permissions";
 import { msg, zEmail, zRequired } from "@/lib/validation";
-import { useSessionActions } from "@/features/auth/hooks";
-import { useUsers } from "@/features/offices/hooks";
+import { useDemoAccounts, useSessionActions } from "@/features/auth/hooks";
 import { AuthLayout, AuthLoading } from "./auth-layout";
 
 const schema = z.object({
@@ -27,14 +26,15 @@ const DEMO_ROLES: { role: Role; icon: typeof ShieldCheck }[] = [
   { role: "ADMIN", icon: ShieldCheck },
   { role: "LAWYER", icon: Briefcase },
   { role: "ASSISTANT", icon: UserRound },
+  { role: "PARTNER_ADMIN", icon: Handshake },
+  { role: "PARTNER_USER", icon: UsersRound },
 ];
 
 function LoginForm() {
   const router = useRouter();
   const { login, simulateRole } = useSessionActions();
-  const users = useUsers();
+  const demoUsers = useDemoAccounts();
   const [notFound, setNotFound] = useState(false);
-  const demoUsers = users.filter((u) => u.status === "ACTIVE");
   const {
     register,
     handleSubmit,
@@ -84,6 +84,7 @@ function LoginForm() {
           {DEMO_ROLES.map(({ role, icon: Icon }) => (
             <Button key={role} variant="secondary" className="justify-start" icon={<Icon className="size-4 text-navy-600" aria-hidden />} onClick={() => enterAs(role)}>
               Entrar como {ROLE_LABEL[role]}
+              {isPartnerRole(role) && <span className="text-muted">· Almeida Advocacia</span>}
             </Button>
           ))}
         </div>

@@ -40,6 +40,7 @@ function doc(
     required: opts.required ?? true,
     notes: opts.notes,
     updatedAt: at,
+    visibility: "INTERNAL",
   };
 }
 

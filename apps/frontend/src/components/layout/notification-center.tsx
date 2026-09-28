@@ -4,11 +4,15 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import {
   AlarmClock,
+  Banknote,
   Bell,
   Bot,
+  BriefcaseBusiness,
   ClipboardCheck,
+  FileCheck2,
   FileWarning,
   Gavel,
+  Inbox,
   PlugZap,
   ShieldAlert,
   TimerOff,
@@ -29,7 +33,7 @@ import { IconButton } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/states";
 import { TONE_BORDER_LEFT } from "@/components/ui/tone";
 
-const TYPE_ICON: Record<NotificationType, LucideIcon> = {
+export const NOTIFICATION_TYPE_ICON: Record<NotificationType, LucideIcon> = {
   DEADLINE: AlarmClock,
   REVIEW_WAITING: ClipboardCheck,
   DOCUMENT_MISSING: FileWarning,
@@ -38,6 +42,11 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   INTEGRATION_ISSUE: PlugZap,
   TASK_OVERDUE: TimerOff,
   DATA_INTEGRITY: ShieldAlert,
+  PARTNER_SUBMISSION: BriefcaseBusiness,
+  PARTNER_REQUEST: Inbox,
+  DOCUMENT_APPROVED: FileCheck2,
+  CASE_UPDATE: Gavel,
+  PAYOUT_UPDATE: Banknote,
 };
 
 export function NotificationCenter() {
@@ -105,11 +114,11 @@ export function NotificationCenter() {
           <ul className="max-h-[440px] divide-y divide-line overflow-y-auto">
             {list.length === 0 && (
               <li>
-                <EmptyState compact icon={Bell} title="Nenhuma notificação não lida" description="Alertas de prazos, revisões e integrações aparecem aqui." />
+                <EmptyState compact icon={Bell} title="Nenhuma notificação não lida" description="Alertas importantes para o seu trabalho aparecem aqui." />
               </li>
             )}
             {list.map((n) => {
-              const Icon = TYPE_ICON[n.type];
+              const Icon = NOTIFICATION_TYPE_ICON[n.type];
               const tone = NOTIFICATION_SEVERITY_TONE[n.severity];
               return (
                 <li key={n.id} className={cn("border-l-2 px-4 py-3", n.read ? "border-l-transparent bg-surface" : cn("bg-surface-muted/60", TONE_BORDER_LEFT[tone]))}>

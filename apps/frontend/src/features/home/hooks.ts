@@ -10,7 +10,7 @@ import {
 } from "@/lib/constants/status";
 import { summarizeAgreement } from "@/lib/domain/finance";
 import { useCan } from "@/features/auth/hooks";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import type { Client, ID, Review } from "@/types";
 
 /* ------------------------------------------------------------------ */
@@ -25,10 +25,10 @@ export function clientDisplayName(client: Client | undefined): string {
 const IN_PROGRESS_ANALYSIS = ["WAITING_DOCUMENTS", "READY", "ANALYZING", "WAITING_REVIEW"] as const;
 
 function useNameMaps() {
-  const clients = useAppStore((s) => s.clients);
-  const processes = useAppStore((s) => s.processes);
-  const agents = useAppStore((s) => s.agents);
-  const users = useAppStore((s) => s.users);
+  const clients = useScopedStore((s) => s.clients);
+  const processes = useScopedStore((s) => s.processes);
+  const agents = useScopedStore((s) => s.agents);
+  const users = useScopedStore((s) => s.users);
   return useMemo(
     () => ({
       client: new Map(clients.map((c) => [c.id, c])),
@@ -57,11 +57,11 @@ export interface HomeKpis {
 }
 
 export function useHomeKpis(): HomeKpis {
-  const processes = useAppStore((s) => s.processes);
-  const analyses = useAppStore((s) => s.analyses);
-  const deadlines = useAppStore((s) => s.deadlines);
-  const reviews = useAppStore((s) => s.reviews);
-  const clients = useAppStore((s) => s.clients);
+  const processes = useScopedStore((s) => s.processes);
+  const analyses = useScopedStore((s) => s.analyses);
+  const deadlines = useScopedStore((s) => s.deadlines);
+  const reviews = useScopedStore((s) => s.reviews);
+  const clients = useScopedStore((s) => s.clients);
   return useMemo(() => {
     const open = deadlines.filter((d) => d.status === "OPEN");
     const openReviews = reviews.filter((r) => OPEN_REVIEW_STATUSES.includes(r.status));
@@ -94,8 +94,8 @@ export interface FinanceSnapshot {
 }
 
 export function useFinanceSnapshot(): FinanceSnapshot {
-  const agreements = useAppStore((s) => s.agreements);
-  const payments = useAppStore((s) => s.payments);
+  const agreements = useScopedStore((s) => s.agreements);
+  const payments = useScopedStore((s) => s.payments);
   return useMemo(() => {
     // Mesma regra central do Financeiro (lib/domain/finance): nada de status gravado.
     const summaries = agreements.map((a) => summarizeAgreement(a, payments)).filter((x) => x.agreement.status !== "CANCELLED");
@@ -131,7 +131,7 @@ export interface StatusSlice {
 const MAX_SLICES = 5;
 
 export function useProcessDistribution(): { slices: StatusSlice[]; total: number } {
-  const processes = useAppStore((s) => s.processes);
+  const processes = useScopedStore((s) => s.processes);
   return useMemo(() => {
     const counts = PROCESS_STATUSES.map((status) => ({
       status,
@@ -189,11 +189,11 @@ function levelFromWeight(weight: number): AttentionLevel {
 }
 
 export function useAttentionItems(): AttentionItem[] {
-  const deadlines = useAppStore((s) => s.deadlines);
-  const analyses = useAppStore((s) => s.analyses);
-  const reviews = useAppStore((s) => s.reviews);
-  const processEvents = useAppStore((s) => s.processEvents);
-  const integrations = useAppStore((s) => s.integrations);
+  const deadlines = useScopedStore((s) => s.deadlines);
+  const analyses = useScopedStore((s) => s.analyses);
+  const reviews = useScopedStore((s) => s.reviews);
+  const processEvents = useScopedStore((s) => s.processEvents);
+  const integrations = useScopedStore((s) => s.integrations);
   const maps = useNameMaps();
   const can = useCan();
 
@@ -315,7 +315,7 @@ export interface PendingReviewRow {
 }
 
 export function usePendingReviews(limit = 6): { rows: PendingReviewRow[]; total: number } {
-  const reviews = useAppStore((s) => s.reviews);
+  const reviews = useScopedStore((s) => s.reviews);
   const maps = useNameMaps();
   return useMemo(() => {
     const open = reviews
@@ -347,7 +347,7 @@ export interface RecentClientRow {
 }
 
 export function useRecentClients(limit = 6): RecentClientRow[] {
-  const clients = useAppStore((s) => s.clients);
+  const clients = useScopedStore((s) => s.clients);
   const maps = useNameMaps();
   return useMemo(
     () =>

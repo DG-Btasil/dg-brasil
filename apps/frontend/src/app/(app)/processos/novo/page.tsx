@@ -1,20 +1,32 @@
 import { Suspense } from "react";
-import { PageContainer, RequirePermission } from "@/components/layout/guards";
+import { AudienceSwitch, PageContainer, RequirePermission } from "@/components/layout/guards";
 import { SkeletonRows } from "@/components/feedback/states";
 import { NewProcessPage } from "@/features/processes/components/new-process-page";
+import { PortalProcessForm } from "@/features/partner-portal/components/portal-processes";
+
+const fallback = (
+  <PageContainer>
+    <SkeletonRows rows={8} />
+  </PageContainer>
+);
 
 export default function NewProcessRoute() {
   return (
-    <RequirePermission permission="processes.edit">
-      <Suspense
-        fallback={
-          <PageContainer>
-            <SkeletonRows rows={8} />
-          </PageContainer>
-        }
-      >
-        <NewProcessPage />
-      </Suspense>
-    </RequirePermission>
+    <AudienceSwitch
+      owner={
+        <RequirePermission permission="processes.edit">
+          <Suspense fallback={fallback}>
+            <NewProcessPage />
+          </Suspense>
+        </RequirePermission>
+      }
+      partner={
+        <RequirePermission permission="partnerPortal.processes.create">
+          <Suspense fallback={fallback}>
+            <PortalProcessForm />
+          </Suspense>
+        </RequirePermission>
+      }
+    />
   );
 }

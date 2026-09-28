@@ -114,3 +114,48 @@ export const FICTITIOUS_BANKS = {
   serrano: "Cooperativa de Crédito Serrana (fictícia)",
   crediplus: "Crediplus Financeira S.A. (fictícia)",
 } as const;
+
+/* ------------------------------------------------------------------ */
+/* Escritórios parceiros (todos fictícios)                             */
+/* ------------------------------------------------------------------ */
+
+export const PO = {
+  almeida: "pof_almeida",
+  ferreiraLima: "pof_ferreira_lima",
+  costa: "pof_costa",
+  nogueira: "pof_nogueira",
+} as const;
+
+/** Usuários dos escritórios parceiros. */
+export const PU = {
+  marcos: "usr_p_marcos",
+  carla: "usr_p_carla",
+  patricia: "usr_p_patricia",
+  rodrigo: "usr_p_rodrigo",
+  eduardo: "usr_p_eduardo",
+  silvia: "usr_p_silvia",
+} as const;
+
+/** Clientes cujo cadastro canônico foi criado por parceiros. */
+export const PC = {
+  sandra: "cli_p_sandra",
+  otavio: "cli_p_otavio",
+  mercearia: "cli_p_mercearia",
+  rita: "cli_p_rita",
+} as const;
+
+/** Processos originados por parceiros. */
+export const PP = {
+  sandraRevisional: "prc_p_sandra_revisional",
+  otavioConsignado: "prc_p_otavio_consignado",
+  merceariaCapitalGiro: "prc_p_mercearia_capital_giro",
+  ritaIndenizatoria: "prc_p_rita_indenizatoria",
+  helenaCartao: "prc_p_helena_cartao",
+} as const;
+
+export const PR = {
+  merceariaExtrato: "prq_mercearia_extrato",
+  merceariaCadastro: "prq_mercearia_cadastro",
+  sandraComprovante: "prq_sandra_comprovante",
+  ritaProcuracao: "prq_rita_procuracao",
+} as const;

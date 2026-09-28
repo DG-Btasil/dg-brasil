@@ -5,8 +5,12 @@ import type {
   DocumentStatus,
   IntegrationStatus,
   NotificationType,
+  PartnerOfficeStatus,
+  PartnerRequestType,
   ReviewDecisionKind,
+  SubmissionStatus,
 } from "@/lib/constants/status";
+import type { LegalArea } from "@/lib/constants/legal";
 import type {
   Agent,
   Client,
@@ -18,6 +22,8 @@ import type {
   IndividualClient,
   LegalThesis,
   Office,
+  PartnerOffice,
+  PartnerRole,
   Process,
   ReviewContent,
   Role,
@@ -77,8 +83,14 @@ export interface StartAnalysisInput {
   fields: Record<string, string>;
 }
 
-export type NewProcessInput = Omit<Process, "id" | "officeId" | "createdAt" | "updatedAt" | "origin" | "lastMovementAt"> & {
+export type NewProcessInput = Omit<
+  Process,
+  "id" | "officeId" | "createdAt" | "updatedAt" | "origin" | "lastMovementAt" | "relationshipOrigin" | "originPartnerOfficeId"
+> & {
   origin?: Process["origin"];
+  /** Ausente = INTERNAL. PARTNER exige originPartnerOfficeId e gera o acordo (snapshot). */
+  relationshipOrigin?: Process["relationshipOrigin"];
+  originPartnerOfficeId?: ID;
   nextDeadline?: { title: string; type: DeadlineType; dueDate: string };
 };
 
@@ -144,6 +156,110 @@ export interface JudicialSourceConfigInput {
   oabState?: string;
   courts?: string[];
   responsibleUserId?: ID;
+}
+
+/* ------------------------------------------------------------------ */
+/* Parcerias                                                           */
+/* ------------------------------------------------------------------ */
+
+export type NewPartnerOfficeInput = Pick<
+  PartnerOffice,
+  "name" | "legalName" | "cnpj" | "responsibleName" | "responsibleOab" | "oabState" | "email" | "phone" | "address" | "notes" | "partnershipPercentage" | "ownerPercentage"
+>;
+export type PartnerOfficePatch = Partial<Omit<NewPartnerOfficeInput, "partnershipPercentage" | "ownerPercentage">>;
+
+/**
+ * Resultado da consulta de CPF/CNPJ feita por um parceiro. Nunca revela
+ * nome, escritório, processos ou qualquer dado de outro relacionamento.
+ * `matchToken` é opaco (no backend: token curto e assinado, não o id).
+ */
+export type ClientLookupResult =
+  | { status: "NOT_FOUND" }
+  | { status: "ALREADY_RELATED"; clientId: ID }
+  | { status: "EXISTS"; matchToken: string };
+
+export interface PartnerCaseDocumentInput {
+  name: string;
+  category: DocumentCategory;
+  fileName?: string;
+  sizeKb?: number;
+}
+
+/** Dados básicos que o parceiro informa para um cliente NOVO. */
+export type PartnerNewClientInput =
+  | {
+      kind: "INDIVIDUAL";
+      fullName: string;
+      cpf: string;
+      birthDate?: string;
+      contact: IndividualClient["contact"];
+      address?: IndividualClient["address"];
+    }
+  | {
+      kind: "COMPANY";
+      legalName: string;
+      tradeName?: string;
+      cnpj: string;
+      contact: CompanyClient["contact"];
+      address?: CompanyClient["address"];
+      representativeName?: string;
+    };
+
+export interface PartnerCaseInput {
+  client: { mode: "NEW"; data: PartnerNewClientInput } | { mode: "EXISTING"; matchToken?: string; clientId?: ID };
+  documents: PartnerCaseDocumentInput[];
+  caseInfo: {
+    title: string;
+    area: LegalArea;
+    actionType: string;
+    opposingParty?: string;
+    summary: string;
+    cnj?: string;
+    court?: string;
+    caseValue?: number;
+  };
+  notes?: string;
+}
+
+export interface PartnerCaseResult {
+  clientId: ID;
+  processId: ID;
+  submissionId: ID;
+}
+
+/** Processo cadastrado pelo parceiro. A origem (parceiro) é aplicada pelo sistema. */
+export type PartnerProcessInput = Pick<
+  Process,
+  "clientId" | "cnj" | "title" | "court" | "unit" | "district" | "state" | "area" | "actionType" | "subject" | "clientPole" | "opposingParty" | "distributionDate" | "caseValue"
+>;
+
+export type PartnerClientBasicsPatch = {
+  contact?: IndividualClient["contact"];
+  address?: IndividualClient["address"];
+};
+
+export interface PartnerDocumentInput extends PartnerCaseDocumentInput {
+  clientId: ID;
+  processId?: ID;
+  /** Envio em resposta a uma solicitação. */
+  requestId?: ID;
+  /** Nova versão de um documento já enviado (a anterior é preservada). */
+  replacesDocumentId?: ID;
+}
+
+export interface NewPartnerRequestInput {
+  partnerOfficeId: ID;
+  type: PartnerRequestType;
+  title: string;
+  description: string;
+  clientId?: ID;
+  processId?: ID;
+  dueDate?: string;
+}
+
+export interface PartnershipValuesInput {
+  revenueBase?: number;
+  realizedRevenue?: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -213,7 +329,8 @@ export interface SkillChangeProposal {
 export interface SessionActions {
   login: (email: string) => boolean;
   logout: () => void;
-  simulateRole: (role: Role) => void;
+  /** Simula um papel. Para papéis de parceiro, `partnerOfficeId` escolhe o escritório. */
+  simulateRole: (role: Role, partnerOfficeId?: ID) => void;
   completeTour: (userId: ID) => void;
   resetDemo: () => void;
 }
@@ -302,6 +419,32 @@ export interface DgActions {
   recordJudicialSync: (id: ID, result: { syncedAt: string; newItems: number; latestItemAt?: string }) => void;
 }
 
+export interface PartnerActions {
+  /* Escritório proprietário */
+  createPartnerOffice: (input: NewPartnerOfficeInput) => ID;
+  updatePartnerOffice: (id: ID, patch: PartnerOfficePatch) => void;
+  setPartnerOfficeStatus: (id: ID, status: PartnerOfficeStatus) => void;
+  /** Muda a divisão PADRÃO. Vale só para novos casos; acordos existentes não mudam. */
+  changePartnerShare: (id: ID, partnerPercentage: number, ownerPercentage: number) => void;
+  setSubmissionStatus: (submissionId: ID, status: SubmissionStatus) => void;
+  shareDocumentWithPartner: (documentId: ID) => void;
+  createPartnerRequest: (input: NewPartnerRequestInput) => ID;
+  resolvePartnerRequest: (id: ID, resolution: "RESOLVED" | "CANCELLED") => void;
+  updatePartnershipValues: (agreementId: ID, input: PartnershipValuesInput) => void;
+  registerPartnerPayout: (agreementId: ID, amount: number, note?: string) => void;
+  /* Proprietário (qualquer parceiro) ou Partner Admin (somente o próprio escritório) */
+  invitePartnerUser: (partnerOfficeId: ID, input: { name: string; email: string; role: PartnerRole }) => string;
+  setPartnerUserStatus: (userId: ID, status: "ACTIVE" | "DISABLED") => void;
+  changePartnerUserRole: (userId: ID, role: PartnerRole) => void;
+  /* Portal do parceiro (escopo sempre da sessão) */
+  lookupClientDocument: (document: string) => ClientLookupResult;
+  submitPartnerCase: (input: PartnerCaseInput) => PartnerCaseResult;
+  createPartnerProcess: (input: PartnerProcessInput) => ID;
+  updatePartnerClientBasics: (clientId: ID, patch: PartnerClientBasicsPatch) => void;
+  submitPartnerDocument: (input: PartnerDocumentInput) => ID;
+  respondPartnerRequest: (requestId: ID, message: string) => void;
+}
+
 export type AppActions = SessionActions &
   OfficeActions &
   ClientActions &
@@ -310,7 +453,8 @@ export type AppActions = SessionActions &
   ProcessActions &
   ReviewActions &
   FinanceActions &
-  DgActions;
+  DgActions &
+  PartnerActions;
 
 export type AppStore = AppState & AppActions;
 

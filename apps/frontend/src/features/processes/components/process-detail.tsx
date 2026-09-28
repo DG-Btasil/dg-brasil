@@ -16,6 +16,7 @@ import { Callout, EmptyState } from "@/components/feedback/states";
 import { useCan } from "@/features/auth/hooks";
 import { useUser } from "@/features/offices/hooks";
 import { ProcessFinancePanel } from "@/features/finance/components/process-finance-panel";
+import { CaseOriginTag, ProcessPartnershipPanel } from "@/features/partners/components/process-partnership-panel";
 import { useClientById, useProcess, useProcessDeadlines, useProcessReviews } from "../hooks";
 import { hasPendingClientLink, processClientLabel } from "../utils";
 import { AddDeadlineDialog } from "./add-deadline-dialog";
@@ -29,7 +30,7 @@ import { EventsTab } from "./tabs/events-tab";
 import { OverviewTab } from "./tabs/overview-tab";
 import { ReviewsTab } from "./tabs/reviews-tab";
 
-const TAB_KEYS = ["visao-geral", "movimentacoes", "documentos", "prazos", "revisoes", "financeiro"] as const;
+const TAB_KEYS = ["visao-geral", "movimentacoes", "documentos", "prazos", "revisoes", "parceria", "financeiro"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 export function ProcessDetail({ id }: { id: string }) {
@@ -45,6 +46,7 @@ export function ProcessDetail({ id }: { id: string }) {
   const openDeadlines = deadlines.filter((d) => d.status === "OPEN");
   const urgent = openDeadlines.some((d) => daysUntil(d.dueDate) <= 1);
   const pendingReviews = reviews.filter((r) => OPEN_REVIEW_STATUSES.includes(r.status)).length;
+  const isPartnerCase = process?.relationshipOrigin === "PARTNER";
 
   const tabs = useMemo(() => {
     const items: TabItem<TabKey>[] = [
@@ -54,9 +56,10 @@ export function ProcessDetail({ id }: { id: string }) {
       { key: "prazos", label: "Prazos", count: openDeadlines.length, attention: urgent },
     ];
     if (can("reviews.view")) items.push({ key: "revisoes", label: "Revisões", count: reviews.length, attention: pendingReviews > 0 });
+    if (isPartnerCase && can("partners.view")) items.push({ key: "parceria", label: "Parceria" });
     if (can("finance.view")) items.push({ key: "financeiro", label: "Financeiro" });
     return items;
-  }, [can, openDeadlines.length, urgent, reviews.length, pendingReviews]);
+  }, [can, openDeadlines.length, urgent, reviews.length, pendingReviews, isPartnerCase]);
 
   if (!process) {
     return (
@@ -97,7 +100,10 @@ export function ProcessDetail({ id }: { id: string }) {
             <StatusBadge status={process.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
             <span>Fase {PROCESS_PHASE_LABEL[process.phase].toLowerCase()}</span>
             <span>Responsável: {responsible?.name ?? "—"}</span>
-            <ProcessOriginBadge origin={process.origin} />
+            <CaseOriginTag process={process} />
+            <span className="inline-flex items-center gap-1.5">
+              Cadastro: <ProcessOriginBadge origin={process.origin} />
+            </span>
           </>
         }
         actions={
@@ -141,6 +147,11 @@ export function ProcessDetail({ id }: { id: string }) {
         {active === "revisoes" && (
           <RequirePermission permission="reviews.view" fallback={null}>
             <ReviewsTab reviews={reviews} />
+          </RequirePermission>
+        )}
+        {active === "parceria" && (
+          <RequirePermission permission="partners.view" fallback={null}>
+            <ProcessPartnershipPanel process={process} />
           </RequirePermission>
         )}
         {active === "financeiro" && (

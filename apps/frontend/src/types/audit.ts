@@ -45,6 +45,24 @@ export const AUDIT_ACTIONS = [
   "JUDICIAL_SOURCE_SYNCED",
   "DATA_IMPORTED",
   "DEMO_RESET",
+  "PARTNER_CREATED",
+  "PARTNER_UPDATED",
+  "PARTNER_STATUS_CHANGED",
+  "PARTNER_SHARE_CHANGED",
+  "PARTNER_USER_INVITED",
+  "PARTNER_USER_UPDATED",
+  "CLIENT_SUBMITTED",
+  "CLIENT_DUPLICATE_DETECTED",
+  "CLIENT_RELATIONSHIP_CREATED",
+  "PARTNER_PROCESS_CREATED",
+  "SUBMISSION_STATUS_CHANGED",
+  "DOCUMENT_VERSION_ADDED",
+  "DOCUMENT_SHARED_WITH_PARTNER",
+  "PARTNER_REQUEST_CREATED",
+  "PARTNER_REQUEST_ANSWERED",
+  "PARTNER_REQUEST_RESOLVED",
+  "PARTNERSHIP_VALUE_UPDATED",
+  "PARTNER_PAYOUT_REGISTERED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -93,6 +111,24 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   JUDICIAL_SOURCE_SYNCED: "Integração judicial sincronizada",
   DATA_IMPORTED: "Dados importados",
   DEMO_RESET: "Dados de demonstração restaurados",
+  PARTNER_CREATED: "Parceiro cadastrado",
+  PARTNER_UPDATED: "Parceiro editado",
+  PARTNER_STATUS_CHANGED: "Situação do parceiro alterada",
+  PARTNER_SHARE_CHANGED: "Divisão da parceria alterada",
+  PARTNER_USER_INVITED: "Usuário parceiro convidado",
+  PARTNER_USER_UPDATED: "Usuário parceiro alterado",
+  CLIENT_SUBMITTED: "Cliente enviado pelo parceiro",
+  CLIENT_DUPLICATE_DETECTED: "Cliente já cadastrado identificado",
+  CLIENT_RELATIONSHIP_CREATED: "Vínculo de cliente criado",
+  PARTNER_PROCESS_CREATED: "Processo de parceiro criado",
+  SUBMISSION_STATUS_CHANGED: "Situação do caso alterada",
+  DOCUMENT_VERSION_ADDED: "Nova versão de documento",
+  DOCUMENT_SHARED_WITH_PARTNER: "Documento disponibilizado ao parceiro",
+  PARTNER_REQUEST_CREATED: "Solicitação ao parceiro criada",
+  PARTNER_REQUEST_ANSWERED: "Solicitação respondida",
+  PARTNER_REQUEST_RESOLVED: "Solicitação encerrada",
+  PARTNERSHIP_VALUE_UPDATED: "Valor da parceria atualizado",
+  PARTNER_PAYOUT_REGISTERED: "Repasse registrado",
 };
 
 export interface AuditEvent extends OfficeScoped {
@@ -104,4 +140,11 @@ export interface AuditEvent extends OfficeScoped {
   description: string;
   /** Dados complementares imutáveis (ex.: decisão anterior, motivo, valores antes/depois). */
   details?: { label: string; value: string }[];
+  /** Escritório parceiro relacionado ao evento (atividade do parceiro). */
+  partnerOfficeId?: ID;
+  /**
+   * Texto seguro para a linha do tempo do PARCEIRO. Ausente = evento interno,
+   * nunca exibido no portal. A auditoria em si continua interna.
+   */
+  partnerSummary?: string;
 }

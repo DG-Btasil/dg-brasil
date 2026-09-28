@@ -3,23 +3,23 @@
 import { useCallback, useMemo } from "react";
 import { INTEGRATION_STATUS_LABEL, type IntegrationStatus } from "@/lib/constants/status";
 import { repositories } from "@/repositories";
-import { useAppStore } from "@/store/app-store";
+import { useScopedStore } from "@/store/scope";
 import { useToast } from "@/store/ui-store";
 import { JUDICIAL_PROVIDERS } from "@/services/judicial-integration";
 import type { JudicialSourceConfigInput } from "@/store/types";
 import type { AIUsage, ID, Integration, JudicialSourceState } from "@/types";
 
 export function useIntegrations(): Integration[] {
-  return useAppStore((s) => s.integrations);
+  return useScopedStore((s) => s.integrations);
 }
 
 export function useAIUsage(): AIUsage {
-  return useAppStore((s) => s.aiUsage);
+  return useScopedStore((s) => s.aiUsage);
 }
 
 /** Mapa id → nome do agente, para os gráficos de consumo. */
 export function useAgentNameMap(): Map<ID, string> {
-  const agents = useAppStore((s) => s.agents);
+  const agents = useScopedStore((s) => s.agents);
   return useMemo(() => new Map(agents.map((a) => [a.id, a.name])), [agents]);
 }
 
@@ -58,7 +58,7 @@ export function useIntegrationActions() {
 /* ------------------------------------------------------------------ */
 
 export function useJudicialSources(): JudicialSourceState[] {
-  return useAppStore((s) => s.judicialSources);
+  return useScopedStore((s) => s.judicialSources);
 }
 
 export function useJudicialActions() {

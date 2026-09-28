@@ -110,6 +110,7 @@ export function createImportSlice(set: SetState, get: GetState): ImportActions {
           officeId: s.office.id,
           clientId,
           origin: "IMPORT",
+          relationshipOrigin: "INTERNAL",
           clientLinkStatus: pendingLink ? "PENDING_LINK" : undefined,
           createdAt: at,
           updatedAt: at,

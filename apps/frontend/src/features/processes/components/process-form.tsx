@@ -10,6 +10,8 @@ import { parseCurrencyInput } from "@/lib/validation";
 import { Button } from "@/components/ui/button";
 import { Field, FormSection, Input, MaskedInput, Select, Textarea } from "@/components/ui/form";
 import { Panel, PanelFooter } from "@/components/ui/panel";
+import { usePermission } from "@/features/auth/hooks";
+import { usePartnerOffices } from "@/features/partners/hooks";
 import { useClients, useLawyerOptions, type NewProcessInput } from "../hooks";
 import { processFormSchema, type ProcessFormInput, type ProcessFormValues } from "../schemas";
 import { clientDisplayName } from "../utils";
@@ -38,6 +40,8 @@ function toInput(v: ProcessFormValues): NewProcessInput {
     status: v.status,
     phase: v.phase,
     notes: blank(v.notes),
+    // Origem relacional: define o acordo financeiro (divisão copiada do parceiro na criação).
+    ...(blank(v.originPartnerOfficeId) ? { relationshipOrigin: "PARTNER" as const, originPartnerOfficeId: blank(v.originPartnerOfficeId) } : { relationshipOrigin: "INTERNAL" as const }),
     // Vencimento é obrigatório; descrição e tipo têm padrão para não travar o cadastro.
     nextDeadline: {
       title: v.deadlineTitle?.trim() || DEFAULT_DEADLINE_TITLE,
@@ -58,6 +62,12 @@ export function ProcessForm({
 }) {
   const clients = useClients();
   const lawyers = useLawyerOptions();
+  const canPartners = usePermission("partners.view");
+  const partners = usePartnerOffices();
+  const partnerOptions = useMemo(
+    () => partners.filter((p) => p.status === "ACTIVE").map((p) => ({ value: p.id, label: `${p.name} (${p.partnershipPercentage}% / ${p.ownerPercentage}%)` })),
+    [partners],
+  );
   const clientOptions = useMemo(
     () => clients.map((c) => ({ value: c.id, label: clientDisplayName(c) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
     [clients],
@@ -104,6 +114,16 @@ export function ProcessForm({
           <Field label="Nome resumido" requirement="required" className="col-span-2" hint="Como a equipe se refere ao caso, ex.: “Revisional de consignados”." error={errors.title?.message}>
             {(a) => <Input {...a} {...register("title")} />}
           </Field>
+          {canPartners && (
+            <Field
+              label="Origem do caso"
+              requirement="optional"
+              className="col-span-2"
+              hint="Caso originado por parceiro recebe a divisão vigente do parceiro, copiada para este processo."
+            >
+              {(a) => <Select {...a} {...register("originPartnerOfficeId")} options={partnerOptions} placeholder="Próprio — Bárbara Cardoso Advocacia" />}
+            </Field>
+          )}
         </FormSection>
 
         <FormSection title="Juízo" description="Onde o processo tramita ou tramitará.">

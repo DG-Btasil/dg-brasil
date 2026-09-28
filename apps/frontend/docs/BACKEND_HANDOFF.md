@@ -28,24 +28,34 @@ ML, pipelines científicos ou análise pesada de dados), não porque o sistema u
   isso), 2FA e convites com token de uso único e prazo de validade.
 - Remover as ferramentas de demonstração (`NEXT_PUBLIC_DEMO_MODE=false`) fora do protótipo.
 
-## 2. Multi-tenancy
+## 2. Escritório proprietário único (não é multi-tenant)
 
-- Todos os tipos já têm `officeId`. No backend, o `officeId` vem **da sessão**, nunca do cliente.
-- Segregação no banco: `office_id` em todas as tabelas, com Row Level Security ou filtro
-  obrigatório na camada de acesso. Testes automatizados de isolamento entre escritórios.
-- Fluxo: criar escritório → primeiro usuário Administrador → onboarding → convites.
+O DG Brasil **não** é mais um SaaS vendido para vários escritórios independentes. Existe
+um único escritório proprietário — **Bárbara Cardoso Advocacia** (`OwnerOffice`) — que
+opera todo o sistema e trabalha com **escritórios parceiros**. As regras completas estão
+na seção **13. Parcerias**.
+
+- Todos os tipos mantêm `officeId` (= o escritório proprietário). No backend ele vem da
+  configuração/sessão, nunca do cliente.
+- O fluxo "Criar escritório" (`/criar-escritorio`) é legado do modelo anterior e só existe
+  como ferramenta de demonstração; não faz parte do produto.
 
 ## 3. RBAC no servidor
 
 - Replicar `ROLE_PERMISSIONS` (`src/lib/permissions`) no backend e aplicá-la em **todo**
-  endpoint.
+  endpoint. Papéis internos: `ADMIN`, `LAWYER`, `ASSISTANT`. Papéis de parceiro (matriz
+  própria, não equivalentes aos internos): `PARTNER_ADMIN`, `PARTNER_USER`.
+- Além da permissão, usuários de parceiro têm **escopo de dados** (seção 13.2). Permissão
+  diz o que a pessoa pode fazer; escopo diz sobre quais registros.
 - Dados financeiros (honorários, pagamentos, contratos) nunca podem sair do servidor para
   quem não tem `finance.view`. Não basta a interface não mostrar.
 - Futuro: permissões configuráveis por escritório (a matriz já está centralizada para isso).
 
 ## 4. PostgreSQL
 
-Entidades mapeadas em `src/types`: Office, User, Invitation, Client (PF/PJ),
+Entidades mapeadas em `src/types`: Office (proprietário), PartnerOffice, User (com
+`partnerOfficeId` opcional), Invitation, Client (PF/PJ, canônico), ClientOfficeRelationship,
+PartnerCaseSubmission, PartnerRequest, ProcessPartnershipAgreement (+ payouts),
 LegalRepresentative, Partner, ClientDocument, AnalysisTemplate, LegalAnalysis
 (+ steps/timeline), Process, ProcessEvent, Deadline, Review, ReviewDecision, Agent,
 AgentTask, Skill, LegalThesis (+ versões), ChangeHistoryEntry, Notification, FeeModel,
@@ -264,3 +274,200 @@ O protótipo **não** é conforme à LGPD; ele só prepara a interface. O backen
 - registro de operações de tratamento, base legal e DPO do escritório;
 - avaliação dos operadores (provedor de IA, storage, integrações) e cláusulas contratuais;
 - logs sem dados pessoais nem conteúdo de documentos.
+
+## 13. Parcerias: escritório proprietário + escritórios parceiros
+
+Implementado no protótipo com mocks. Referências:
+`src/types/partner.ts` (entidades), `src/lib/permissions/partner-scope.ts` (regras de
+visibilidade, puras), `src/store/scope.ts` (recorte aplicado ao estado inteiro),
+`src/store/slices/partners.ts` (ações — especificação dos serviços),
+`src/lib/domain/partnership.ts` (regra financeira).
+
+### 13.1 Single Owner Architecture
+
+- Existe **um** `OwnerOffice`. Ele tem visão global: clientes próprios e de parceiros,
+  todos os processos, documentos, revisões, agentes, Skills, teses, financeiro,
+  integrações, auditoria e configurações.
+- `PartnerOffice` é uma entidade **dentro** do escritório proprietário: nome, razão social,
+  CNPJ opcional, responsável + OAB/UF, contatos, endereço, `status`
+  (`ACTIVE | INACTIVE | PENDING_INVITE | SUSPENDED`), `partnershipPercentage`,
+  `ownerPercentage`, `activatedAt`, `notes` (internas) e `metadata`.
+- Usuários de parceiro são `users` com `partner_office_id NOT NULL` e papel de parceiro.
+  Parceiro inativo/suspenso não autentica. O primeiro aceite de convite ativa um parceiro
+  `PENDING_INVITE`.
+
+### 13.2 Partner Isolation (escopo por `partnerOfficeId`)
+
+- **Todas** as consultas feitas por usuário de parceiro aplicam escopo por
+  `partnerOfficeId`. O valor vem **da sessão/autorização server-side**. Nunca confiar em
+  filtro, parâmetro ou id enviado pelo cliente (o protótipo não recebe `partnerOfficeId`
+  em nenhuma ação do portal: `requirePartnerViewer` o lê da sessão).
+- O que o parceiro recebe (espelhar `partner-scope.ts`):
+  - processos com `relationship_origin = 'PARTNER' AND origin_partner_office_id = :pid`;
+  - clientes com relacionamento `PARTNER` ativo para `:pid` — **sem** `notes`,
+    `legalSummary` e histórico de inativação;
+  - documentos `PARTNER_VISIBLE` enviados pelo próprio parceiro ou ligados a processos dele;
+  - movimentações de origem tribunal/integração/sistema (notas internas e registros de
+    agentes ficam de fora);
+  - solicitações, submissões e notificações do próprio parceiro;
+  - acordos financeiros do próprio parceiro **somente** para `PARTNER_ADMIN`;
+  - auditoria: nunca. Apenas eventos com `partnerSummary` (texto seguro), sem `details`, e
+    com autoria interna substituída pelo nome do escritório.
+- O que o parceiro **nunca** recebe: clientes exclusivos da Bárbara, dados de outros
+  parceiros, revisões (conteúdo, comentários, versões internas), agentes, Skills, teses,
+  prompts, configurações de IA, consumo de tokens, financeiro global, contratos de
+  honorários internos, integrações, auditoria interna e configurações administrativas.
+- Revisão em andamento aparece ao parceiro só como sinal genérico ("Em revisão interna",
+  `InternalReviewSignal`: processo, tipo e data — sem conteúdo nem autoria).
+- Recurso fora do escopo acessado por URL responde **404** (não 403), para não confirmar
+  existência. Rotas de áreas internas respondem 403.
+- Recomendação: Row Level Security no PostgreSQL com a política derivada da sessão, além
+  do filtro na camada de serviço; testes automatizados de isolamento parceiro × parceiro e
+  parceiro × proprietário.
+
+### 13.3 Canonical Client
+
+- `Client` é a **identidade canônica** da pessoa/empresa. Chave de deduplicação: CPF (PF) e
+  CNPJ (PJ), normalizados (só dígitos), com índice **único**.
+- Nunca criar outra pessoa porque outro escritório cadastrou o mesmo CPF/CNPJ.
+- `createdByOfficeId` registra quem criou o cadastro (auditoria). **Não** define a origem de
+  processos futuros nem a divisão financeira.
+
+### 13.4 ClientOfficeRelationship
+
+- Tabela separada (`client_id`, `office_type` OWNER|PARTNER, `partner_office_id`, `status`,
+  `created_at`, `created_by`). É ela que libera visibilidade: o registro canônico sozinho
+  não dá acesso a nada.
+- Um cliente canônico pode ter **vários** relacionamentos autorizados (ex.: Helena: OWNER +
+  Ferreira & Lima).
+- Novo vínculo com cliente existente dá acesso **apenas** ao que nasce do novo vínculo:
+  o parceiro não ganha processos anteriores, observações, documentos privados, financeiro
+  nem histórico interno.
+
+### 13.5 Consulta de CPF/CNPJ sem vazamento
+
+- Endpoint de verificação do parceiro responde apenas `NOT_FOUND`, `ALREADY_RELATED`
+  (cliente já é dele) ou `EXISTS` + **token opaco, curto e assinado**, vinculado à sessão
+  e ao parceiro. Nunca devolver nome, id interno, escritório que cadastrou, quantidade de
+  processos, responsáveis, situação financeira ou histórico.
+- O relacionamento só é criado quando o envio é **confirmado** (não na consulta).
+- Registrar `CLIENT_DUPLICATE_DETECTED` na auditoria interna. Aplicar rate limit na
+  consulta (evita enumeração de CPFs).
+
+### 13.6 Process Origin
+
+- Cada processo guarda **duas** origens distintas:
+  - técnica: `origin` = `MANUAL | AGENT | INTEGRATION | IMPORT` ("Origem do cadastro processual");
+  - relacional: `relationship_origin` = `INTERNAL | PARTNER` + `origin_partner_office_id`
+    ("Origem do caso").
+- Cliente e processo **não** compartilham automaticamente a mesma origem: um cliente próprio
+  da Bárbara pode ter um novo processo originado pelo Parceiro A, e esse processo tem
+  `origin_partner_office_id = A`.
+- Processo criado pelo portal recebe a origem do parceiro **da sessão** — o usuário não
+  escolhe escritório. A origem relacional não muda em edições comuns (`updateProcess` a
+  ignora); alterá-la seria operação explícita e auditada.
+- Processo cadastrado pelo parceiro aparece imediatamente para a equipe interna.
+
+### 13.7 Financial Snapshot (regra crítica)
+
+- A divisão do `PartnerOffice` é o padrão **vigente para NOVOS casos**.
+- Quando o caso passa a ter acordo financeiro (no protótipo: na criação de processo de
+  origem PARTNER), a divisão vigente é **copiada** para `ProcessPartnershipAgreement`
+  (`partner_percentage`, `owner_percentage`, `effective_at`).
+- Os percentuais do acordo são **imutáveis**, salvo alteração explícita e auditada no próprio
+  acordo. Mudar o padrão do parceiro (ex.: 50/50 → 60/40) **não** recalcula casos antigos:
+  casos existentes continuam 50/50; somente novos usam 60/40. Auditoria:
+  `PARTNER_SHARE_CHANGED` com antes/depois e quantidade de acordos preservados.
+- O financeiro da parceria pertence ao **processo/acordo**, não ao cliente.
+- Soma das participações = 100%, validada no front **e** no servidor (`CHECK`).
+
+### 13.8 Conceitos financeiros separados
+
+| Conceito | Campo | Observação |
+|---|---|---|
+| Valor da causa | `process.case_value` | Dado jurídico. **Nunca** é dividido. |
+| Resultado econômico estimado | `process.economic_estimate` | Estimativa (futuramente dos agentes). Interno. |
+| Honorários estimados | `agreement.revenue_base` | Base da divisão. Sempre rotulado "estimado". |
+| Honorários realizados | `agreement.realized_revenue` | Efetivamente recebido pelo escritório. |
+| Participação | derivada | `partner_percentage` × base. |
+| Repasses | `agreement.payouts[]` | Fatos append-only; não há transferência pelo sistema. |
+
+Valores derivados (`estimatedPartnerAmount`, `realizedPartnerAmount`, `paidPartnerAmount`,
+`pendingPartnerAmount`, status) são calculados por `lib/domain/partnership.ts`, nunca
+gravados. Exemplo do protótipo: honorários R$ 4.000, 50/50 → R$ 2.000 / R$ 2.000; pago
+R$ 1.000 → a receber R$ 1.000. Estimativas nunca são apresentadas como garantia
+("Honorários estimados", nunca "Você receberá").
+
+Visões: administrador interno vê tudo; `PARTNER_ADMIN` vê só a participação do próprio
+escritório (sem custos internos, outros parceiros ou consumo de IA); `PARTNER_USER` não
+recebe valores de parceria (valor da causa continua visível como dado jurídico).
+
+### 13.9 Document Visibility
+
+- `visibility` = `INTERNAL | PARTNER_VISIBLE`. Padrão: `INTERNAL`.
+- Documentos internos **não são retornados** pela API ao parceiro (não basta a interface não
+  mostrar).
+- Material produzido por agentes ou advogados começa `INTERNAL`. Ao aprovar em Revisões uma
+  minuta de caso de parceiro, o sistema guarda uma cópia congelada da versão aprovada
+  (`approvedContent`, `sourceReviewId`) ainda `INTERNAL`. Ela só vira `PARTNER_VISIBLE` por
+  ação explícita da equipe ("Disponibilizar ao parceiro"), com auditoria
+  `DOCUMENT_SHARED_WITH_PARTNER` e notificação ao parceiro. Conteúdo não aprovado permanece
+  interno.
+
+### 13.10 Document Versioning
+
+- Documento enviado oficialmente (`submittedAt`) **não** pode ser editado, substituído
+  silenciosamente nem apagado pelo parceiro.
+- Correção = **nova versão**: novo registro com o mesmo `version_group_id` e `version + 1`;
+  a versão anterior recebe `superseded_at` e continua acessível (Contrato v1, v2…). Nada é
+  sobrescrito. Auditoria `DOCUMENT_VERSION_ADDED`.
+- No storage: objetos imutáveis (write-once) por versão.
+
+### 13.11 Reviews
+
+- Parceiro não acessa a área de Revisões nem nenhum endpoint dela.
+- O único sinal é o status genérico "Em revisão interna" por processo. Conteúdo, comentários,
+  sugestões da IA, instruções e versões internas nunca saem do servidor para o parceiro.
+- Após aprovação humana, o documento pode ser disponibilizado (13.9) e aparece como
+  "Documento aprovado" com visualização.
+
+### 13.12 Casos enviados (PartnerCaseSubmission) e solicitações (PartnerRequest)
+
+- Envio pelo portal: PF/PJ → CPF/CNPJ → verificação → cadastro básico → documentos →
+  informações do caso → **Revisar envio** → Confirmar e enviar. Em uma transação: cliente
+  (se novo) + relacionamentos + processo PARTNER + acordo (snapshot) + documentos + submissão
+  + notificação interna + auditoria.
+- Situações: `DRAFT → READY_TO_SUBMIT → SUBMITTED → UNDER_ANALYSIS → WAITING_DOCUMENTS →
+  ACCEPTED → IN_PROGRESS → CLOSED`. No protótipo, DRAFT/READY_TO_SUBMIT existem apenas
+  enquanto o assistente está aberto (não há rascunho persistido); o backend pode persistir
+  rascunhos editáveis livremente até o envio. Depois de `SUBMITTED`, valem as regras de
+  documentos (13.10); a equipe interna altera a situação e o parceiro é notificado.
+- Edição de dados básicos do cliente pelo parceiro (contato, endereço) é permitida e
+  auditada (`CLIENT_UPDATED` com os campos). Dados críticos (nome, CPF/CNPJ) podem exigir
+  validação futura.
+- `PartnerRequest`: tipos `DOCUMENT_REQUEST | INFORMATION_REQUEST | CORRECTION_REQUEST |
+  GENERAL_REQUEST`; status `OPEN | ANSWERED | RESOLVED | CANCELLED`; cliente, processo,
+  criado por, data, prazo recomendado e mensagens (append-only). Resposta com documento
+  vincula o documento à mensagem.
+
+### 13.13 Audit Trail (parcerias)
+
+Registrar (append-only, mesmo commit): parceiro cadastrado/editado/situação alterada,
+porcentagem modificada, usuário parceiro criado/alterado, cliente enviado, cliente
+duplicado identificado, vínculo criado, processo parceiro criado, situação do caso,
+documento enviado, nova versão, solicitação criada/respondida/encerrada, documento tornado
+visível ao parceiro, valor financeiro atualizado e repasse registrado. Cada evento guarda
+`partner_office_id`; `partner_summary` (opcional) é o único texto que o parceiro pode ver.
+
+### 13.14 Regras obrigatórias para o backend (checklist)
+
+1. Um cliente canônico pode possuir múltiplos relacionamentos autorizados.
+2. Um parceiro não pode descobrir relacionamentos privados por consultas de CPF/CNPJ.
+3. Processo possui origem de parceria própria (`origin_partner_office_id`).
+4. Cliente e processo não compartilham automaticamente a mesma origem.
+5. O financeiro da parceria pertence ao processo/acordo.
+6. Percentuais históricos são imutáveis, salvo alteração explícita auditada.
+7. Mudança da parceria padrão não altera casos antigos.
+8. Documentos enviados são versionados; nunca sobrescritos.
+9. Documentos internos não são retornados pela API ao parceiro.
+10. Autorização e escopo acontecem **server-side**, a partir da sessão.

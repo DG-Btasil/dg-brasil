@@ -16,6 +16,10 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "reviews.decide": "Aprovar ou rejeitar revisões",
   "finance.view": "Ver honorários e pagamentos",
   "finance.manage": "Gerenciar contratos e pagamentos",
+  "partners.view": "Ver escritórios parceiros",
+  "partners.manage": "Cadastrar e administrar parceiros",
+  "partners.finance.view": "Ver financeiro das parcerias",
+  "partnerRequests.manage": "Criar solicitações a parceiros",
   "dgbrasil.view": "Acessar a Central DG Brasil",
   "dgbrasil.manage": "Configurar agentes e Skills",
   "dgbrasil.activity.view": "Ver atividade dos agentes",
@@ -31,6 +35,14 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "settings.notifications.edit": "Editar preferências de notificação",
   "audit.view": "Ver registro de auditoria",
   "demo.tools": "Ferramentas de demonstração",
+  "partnerPortal.view": "Portal do parceiro",
+  "partnerPortal.clients.create": "Parceiro: cadastrar clientes",
+  "partnerPortal.clients.edit": "Parceiro: editar dados básicos de clientes",
+  "partnerPortal.processes.create": "Parceiro: cadastrar processos",
+  "partnerPortal.documents.submit": "Parceiro: enviar documentos",
+  "partnerPortal.requests.respond": "Parceiro: responder pendências",
+  "partnerPortal.finance.view": "Parceiro: ver participação financeira",
+  "partnerPortal.users.manage": "Parceiro: administrar usuários do escritório",
 };
 
 export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
@@ -38,6 +50,7 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   { label: "Processos", permissions: ["processes.view", "processes.edit", "processes.delete", "processes.caseValue.view"] },
   { label: "Revisões", permissions: ["reviews.view", "reviews.decide"] },
   { label: "Financeiro", permissions: ["finance.view", "finance.manage"] },
+  { label: "Parceiros", permissions: ["partners.view", "partners.manage", "partners.finance.view", "partnerRequests.manage"] },
   { label: "DG Brasil", permissions: ["dgbrasil.view", "dgbrasil.manage", "dgbrasil.activity.view"] },
   {
     label: "Configurações",
