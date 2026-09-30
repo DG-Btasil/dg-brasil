@@ -67,13 +67,18 @@ export function partnerCanSeeAuditEvent(e: AuditEvent, partnerOfficeId: ID): boo
 /* Redação de campos internos                                          */
 /* ------------------------------------------------------------------ */
 
-/** Remove observações internas, resumo jurídico e histórico de inativação. */
-export function redactClientForPartner<C extends Client>(client: C): C {
-  const { notes: _notes, legalSummary: _summary, inactivation: _inactivation, ...rest } = client;
+/**
+ * Remove observações internas, resumo jurídico e histórico de inativação.
+ * Origem e escritório de cadastro só são mantidos quando são do próprio
+ * parceiro ou do escritório proprietário (nunca revela outro parceiro).
+ */
+export function redactClientForPartner<C extends Client>(client: C, partnerOfficeId: ID, ownerOfficeId: ID): C {
+  const { notes: _notes, legalSummary: _summary, inactivation: _inactivation, originOfficeId, createdByOfficeId, ...rest } = client;
   void _notes;
   void _summary;
   void _inactivation;
-  return rest as C;
+  const visible = (id: ID | undefined) => (id === partnerOfficeId || id === ownerOfficeId ? id : undefined);
+  return { ...rest, originOfficeId: visible(originOfficeId), createdByOfficeId: visible(createdByOfficeId) } as C;
 }
 
 /** Remove notas, resumo interno, tese, análise, integração e estimativas econômicas. */

@@ -100,7 +100,7 @@ export function formatEventTime(value: string): string {
 /** "há 18 minutos", "há 3 horas"; acima de um dia, igual a formatEventTime. */
 export function formatSince(value: string, reference: Date = now()): string {
   const minutes = Math.floor((reference.getTime() - new Date(value).getTime()) / 60_000);
-  if (minutes < 1) return "agora há pouco";
+  if (minutes < 1) return "há instantes";
   if (minutes < 60) return `há ${minutes} ${minutes === 1 ? "minuto" : "minutos"}`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `há ${hours} ${hours === 1 ? "hora" : "horas"}`;

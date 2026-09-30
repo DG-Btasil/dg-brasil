@@ -313,11 +313,12 @@ export const REVIEW_STATUS_TONE: Record<ReviewStatus, Tone> = {
 export const OPEN_REVIEW_STATUSES: readonly ReviewStatus[] = ["PENDING", "URGENT", "REOPENED"];
 
 /** Origem de cada versão do conteúdo de uma revisão. */
-export const REVIEW_CONTENT_ORIGINS = ["AGENT", "MANUAL_EDIT"] as const;
+export const REVIEW_CONTENT_ORIGINS = ["AGENT", "AGENT_EDIT", "MANUAL_EDIT"] as const;
 export type ReviewContentOrigin = (typeof REVIEW_CONTENT_ORIGINS)[number];
 export const REVIEW_CONTENT_ORIGIN_LABEL: Record<ReviewContentOrigin, string> = {
   AGENT: "Gerada pelo agente",
-  MANUAL_EDIT: "Edição manual",
+  AGENT_EDIT: "Alterada pelo agente a pedido",
+  MANUAL_EDIT: "Editada manualmente",
 };
 
 export const REVIEW_TYPES = [
@@ -789,3 +790,23 @@ export const PARTNERSHIP_STATUS_TONE: Record<PartnershipStatus, Tone> = {
   TO_RECEIVE: "gold",
   SETTLED: "success",
 };
+
+/* ------------------------------------------------------------------ */
+/* Exportação de documentos                                            */
+/* ------------------------------------------------------------------ */
+
+export const EXPORT_FORMATS = ["PDF", "DOCX"] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+export const EXPORT_FORMAT_LABEL: Record<ExportFormat, string> = { PDF: "PDF", DOCX: "DOCX" };
+
+/** Situação de aprovação de uma versão de documento. */
+export const VERSION_APPROVAL_STATUSES = ["PENDING", "APPROVED", "SUPERSEDED"] as const;
+export type VersionApprovalStatus = (typeof VERSION_APPROVAL_STATUSES)[number];
+export const VERSION_APPROVAL_STATUS_LABEL: Record<VersionApprovalStatus, string> = {
+  PENDING: "Aguardando aprovação",
+  APPROVED: "Aprovada",
+  SUPERSEDED: "Substituída",
+};
+
+/** Marca obrigatória em qualquer exportação de versão não aprovada. */
+export const DRAFT_WATERMARK = "RASCUNHO — NÃO APROVADO";

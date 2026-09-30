@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Callout } from "@/components/feedback/states";
+import { Button } from "@/components/ui/button";
+import { usePermission } from "@/features/auth/hooks";
 import { ChevronLeft, ChevronRight, FilePen, FileSearch } from "lucide-react";
 import { REVIEW_STATUS_LABEL, REVIEW_STATUS_TONE, REVIEW_TYPE_LABEL } from "@/lib/constants/status";
 import { Can, PageContainer } from "@/components/layout/guards";
@@ -9,12 +12,13 @@ import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
 import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/feedback/states";
-import { useAgentMap, usePendingNeighbors, useReview } from "../hooks";
+import { useAgentMap, usePendingNeighbors, useReview, useReviewVersions } from "../hooks";
 import { contentVersionOf, isOpenReview, wasManuallyEdited } from "../utils";
 import { PriorityBadge } from "./priority-badge";
 import { ReviewContext } from "./review-context";
 import { ReopenedNotice, ReviewDecisionBanner, ReviewDecisionBar } from "./review-decision-bar";
 import { ReviewDocument } from "./review-document";
+import { ReviewDocumentToolbar } from "./review-document-toolbar";
 import { ReviewEditor } from "./review-editor";
 
 function PendingNavigation({ id }: { id: string }) {
@@ -41,7 +45,10 @@ function PendingNavigation({ id }: { id: string }) {
 export function ReviewDetail({ id }: { id: string }) {
   const review = useReview(id);
   const agents = useAgentMap();
+  const versions = useReviewVersions(review);
+  const canDecide = usePermission("reviews.decide");
   const [editing, setEditing] = useState(false);
+  const [viewingVersion, setViewingVersion] = useState<number | null>(null);
 
   if (!review) {
     return (
@@ -61,6 +68,10 @@ export function ReviewDetail({ id }: { id: string }) {
   const open = isOpenReview(review);
   // Edição só existe enquanto a revisão aguarda decisão.
   const isEditing = editing && open;
+  const current = versions[0];
+  // Versão exibida: a atual, salvo escolha no seletor (versões antigas são somente leitura).
+  const viewed = versions.find((v) => v.versionNumber === viewingVersion) ?? current;
+  const viewingOld = !!viewed && !viewed.current;
 
   return (
     <PageContainer>
@@ -87,19 +98,54 @@ export function ReviewDetail({ id }: { id: string }) {
         <ReopenedNotice review={review} />
         {open ? (
           <Can permission="reviews.decide">
-            <ReviewDecisionBar review={review} editing={isEditing} onEdit={() => setEditing(true)} />
+            <ReviewDecisionBar review={review} editing={isEditing} />
           </Can>
         ) : (
           <ReviewDecisionBanner review={review} />
         )}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,62fr)_minmax(340px,38fr)] items-start gap-6">
-        {isEditing ? <ReviewEditor review={review} onDone={() => setEditing(false)} /> : <ReviewDocument content={review.content} />}
-        <aside aria-label="Contexto da revisão" className="sticky top-[calc(var(--header-height)+16px)] max-h-[calc(100vh-var(--header-height)-32px)] overflow-y-auto">
-          <ReviewContext review={review} />
-        </aside>
-      </div>
+      {isEditing ? (
+        // Edição manual ocupa a área central inteira.
+        <ReviewEditor review={review} onDone={() => setEditing(false)} />
+      ) : (
+        <div className="grid grid-cols-[minmax(0,62fr)_minmax(340px,38fr)] items-start gap-6">
+          {viewed && (
+            <ReviewDocument
+              content={viewed.content}
+              toolbar={
+                <ReviewDocumentToolbar
+                  review={review}
+                  versions={versions}
+                  viewed={viewed}
+                  onSelectVersion={(v) => setViewingVersion(v === current?.versionNumber ? null : v)}
+                  canEdit={open && canDecide && !viewingOld}
+                  onEditManually={() => setEditing(true)}
+                />
+              }
+              notice={
+                viewingOld ? (
+                  <Callout
+                    tone="neutral"
+                    className="mx-auto mb-4 max-w-[760px]"
+                    title={`Versão ${viewed.versionNumber} — somente leitura`}
+                    action={
+                      <Button size="sm" variant="secondary" onClick={() => setViewingVersion(null)}>
+                        Ver versão atual
+                      </Button>
+                    }
+                  >
+                    Decisões e edições valem apenas para a versão atual (v{current?.versionNumber}).
+                  </Callout>
+                ) : undefined
+              }
+            />
+          )}
+          <aside aria-label="Contexto da revisão" className="sticky top-[calc(var(--header-height)+16px)] max-h-[calc(100vh-var(--header-height)-32px)] overflow-y-auto">
+            <ReviewContext review={review} />
+          </aside>
+        </div>
+      )}
     </PageContainer>
   );
 }

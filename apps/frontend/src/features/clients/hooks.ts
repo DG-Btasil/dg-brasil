@@ -9,6 +9,8 @@ import { useToast } from "@/store/ui-store";
 import type { AuditEvent, Client, ClientDocument, Deadline, ID, Process } from "@/types";
 import { sortAnalysesByRecent } from "@/features/analyses/utils";
 import { documentProgress, type DocumentProgress } from "./utils";
+import { useCurrentPartnerOfficeId, useRole } from "@/features/auth/hooks";
+import { defaultClientOrigin, getAllowedClientOrigins, originOfficeName, type ClientOriginOption, type OriginContext } from "@/lib/permissions/client-origin";
 
 export function useClients(): Client[] {
   return useScopedStore((s) => s.clients);
@@ -154,4 +156,43 @@ export function useClientRows(): ClientRow[] {
       partnerOfficeIds: partnersBy.get(client.id) ?? [],
     }));
   }, [clients, documents, analyses, processes, relationships]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Origem do cliente                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Contexto da sessão para a regra central de origens (lib/permissions/client-origin). */
+export function useClientOriginContext(): OriginContext {
+  const role = useRole();
+  const partnerOfficeId = useCurrentPartnerOfficeId();
+  const office = useScopedStore((s) => s.office);
+  const partners = useScopedStore((s) => s.partnerOffices);
+  return useMemo(() => ({ role, partnerOfficeId, owner: office, partners }), [role, partnerOfficeId, office, partners]);
+}
+
+/**
+ * Opções do Select "Origem do cliente". `current` mantém visível a origem já
+ * gravada mesmo que ela não esteja mais entre as atribuíveis (ex.: parceiro inativo).
+ */
+export function useClientOriginOptions(current?: ID): ClientOriginOption[] {
+  const ctx = useClientOriginContext();
+  return useMemo(() => {
+    const options = getAllowedClientOrigins(ctx);
+    if (current && !options.some((o) => o.value === current)) {
+      const label = originOfficeName(current, ctx.owner, ctx.partners);
+      if (label) return [...options, { value: current, label }];
+    }
+    return options;
+  }, [ctx, current]);
+}
+
+export function useDefaultClientOrigin(): ID {
+  return defaultClientOrigin(useClientOriginContext());
+}
+
+/** Nome do escritório de origem de um cliente (ou undefined se não visível). */
+export function useClientOriginName(client: Client | undefined): string | undefined {
+  const ctx = useClientOriginContext();
+  return originOfficeName(client?.originOfficeId, ctx.owner, ctx.partners);
 }

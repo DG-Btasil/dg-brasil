@@ -5,7 +5,10 @@ import { REVIEW_DECISION_LABEL, type ReviewDecisionKind } from "@/lib/constants/
 import { repositories } from "@/repositories";
 import { useScopedStore } from "@/store/scope";
 import { useToast } from "@/store/ui-store";
-import type { Agent, ClientDocument, ID, LegalThesis, Process, Review, ReviewContent, ReviewDecision, Skill } from "@/types";
+import type { ExportFormat } from "@/lib/constants/status";
+import { reviewVersions } from "@/lib/domain/review-versions";
+import { saveExportedFile } from "@/lib/export/save";
+import type { Agent, ClientDocument, DocumentVersion, ID, LegalThesis, Process, Review, ReviewContent, ReviewDecision, Skill } from "@/types";
 import { APPROVAL_OUTCOME, compareReviewQueue, isOpenReview } from "./utils";
 
 /* ------------------------------------------------------------------ */
@@ -52,6 +55,12 @@ export function useProcessMap(): Map<ID, Process> {
 
 export function useClientList() {
   return useScopedStore((s) => s.clients);
+}
+
+/** Versões do documento (atual primeiro), com a situação de aprovação de cada uma. */
+export function useReviewVersions(review: Review | undefined): DocumentVersion[] {
+  const decisions = useReviewDecisions(review?.id ?? "");
+  return useMemo(() => (review ? reviewVersions(review, decisions) : []), [review, decisions]);
 }
 
 /** Revisões pendentes na ordem da fila, para navegar "anterior/próxima". */
@@ -118,5 +127,40 @@ export function useReviewActions() {
     [toast],
   );
 
-  return { decide, editContent, reopen };
+  const requestAgentEdit = useCallback(
+    async (review: Review, instruction: string): Promise<boolean> => {
+      try {
+        await repositories.reviews.requestAgentEdit(review.id, instruction);
+        toast({
+          tone: "success",
+          title: `Nova versão v${(review.contentVersion ?? 1) + 1} criada pelo agente`,
+          description: "A versão anterior foi preservada. A nova versão aguarda sua decisão.",
+        });
+        return true;
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível solicitar a alteração ao agente." });
+        return false;
+      }
+    },
+    [toast],
+  );
+
+  const download = useCallback(
+    async (review: Review, versionNumber: number, format: ExportFormat): Promise<void> => {
+      try {
+        const file = await repositories.reviews.exportVersion(review.id, versionNumber, format);
+        saveExportedFile(file);
+        toast({
+          tone: file.draft ? "warning" : "success",
+          title: file.draft ? `Rascunho v${versionNumber} baixado (${format})` : `Versão aprovada v${versionNumber} baixada (${format})`,
+          description: file.draft ? "Arquivo marcado como RASCUNHO — NÃO APROVADO. Não protocolar." : undefined,
+        });
+      } catch {
+        toast({ tone: "danger", title: "Não foi possível gerar o arquivo." });
+      }
+    },
+    [toast],
+  );
+
+  return { decide, editContent, reopen, requestAgentEdit, download };
 }

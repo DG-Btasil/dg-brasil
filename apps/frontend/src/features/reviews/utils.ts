@@ -1,6 +1,6 @@
 import { daysSince } from "@/lib/clock";
 import { OPEN_REVIEW_STATUSES, PRIORITY_WEIGHT, type ReviewStatus, type ReviewType } from "@/lib/constants/status";
-import type { Review, ReviewDecision } from "@/types";
+import type { ID, Process, Review, ReviewDecision } from "@/types";
 
 export function isOpenReview(review: Pick<Review, "status">): boolean {
   return OPEN_REVIEW_STATUSES.includes(review.status);
@@ -62,7 +62,15 @@ export interface ReviewFilters {
   assignedUserId: string;
   dateRange: "" | DateRange;
   status: "" | ReviewStatus;
+  /**
+   * Escritório parceiro pela origem RELACIONAL do processo da revisão:
+   * "" = todos; INTERNAL_ORIGIN = casos próprios; id = parceiro.
+   */
+  partnerOfficeId: string;
 }
+
+/** Valor do filtro para "Interno / Bárbara Cardoso Advocacia". */
+export const INTERNAL_ORIGIN = "INTERNAL";
 
 export const EMPTY_REVIEW_FILTERS: ReviewFilters = {
   urgentOnly: false,
@@ -73,6 +81,7 @@ export const EMPTY_REVIEW_FILTERS: ReviewFilters = {
   assignedUserId: "",
   dateRange: "",
   status: "",
+  partnerOfficeId: "",
 };
 
 export function countReviewFilters(f: ReviewFilters): number {
@@ -85,8 +94,18 @@ export function matchesView(review: Review, view: QueueView): boolean {
   return true;
 }
 
-export function filterReviews(reviews: Review[], view: QueueView, f: ReviewFilters): Review[] {
+/**
+ * Filtros combináveis. O parceiro é o de ORIGEM DO PROCESSO da revisão —
+ * não o autor, o agente nem a origem histórica do cliente. Revisão sem
+ * processo (ou de processo próprio) conta como interna.
+ */
+export function filterReviews(reviews: Review[], view: QueueView, f: ReviewFilters, processes: Map<ID, Process> = new Map()): Review[] {
   return reviews.filter((r) => {
+    if (f.partnerOfficeId) {
+      const process = r.processId ? processes.get(r.processId) : undefined;
+      const partnerId = process?.relationshipOrigin === "PARTNER" ? process.originPartnerOfficeId : undefined;
+      if (f.partnerOfficeId === INTERNAL_ORIGIN ? !!partnerId : partnerId !== f.partnerOfficeId) return false;
+    }
     if (!matchesView(r, view)) return false;
     if (f.urgentOnly && r.status !== "URGENT" && r.priority !== "URGENT") return false;
     if (f.type && r.type !== f.type) return false;

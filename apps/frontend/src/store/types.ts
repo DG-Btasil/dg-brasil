@@ -3,6 +3,7 @@ import type {
   DeadlineType,
   DocumentCategory,
   DocumentStatus,
+  ExportFormat,
   IntegrationStatus,
   NotificationType,
   PartnerOfficeStatus,
@@ -189,6 +190,8 @@ export interface PartnerCaseDocumentInput {
 export type PartnerNewClientInput =
   | {
       kind: "INDIVIDUAL";
+      /** Origem do cliente (próprio parceiro ou Bárbara Cardoso Advocacia). */
+      originOfficeId: ID;
       fullName: string;
       cpf: string;
       birthDate?: string;
@@ -197,6 +200,7 @@ export type PartnerNewClientInput =
     }
   | {
       kind: "COMPANY";
+      originOfficeId: ID;
       legalName: string;
       tradeName?: string;
       cnpj: string;
@@ -386,6 +390,10 @@ export interface ReviewActions {
   decideReview: (reviewId: ID, decision: ReviewDecisionKind, comment?: string) => void;
   /** Edição manual: guarda a versão anterior e registra MANUAL_EDIT. */
   editReviewContent: (reviewId: ID, content: ReviewContent) => void;
+  /** Advogado comanda o agente: nova versão (AGENT_EDIT) que continua aguardando decisão. */
+  requestAgentEdit: (reviewId: ID, instruction: string) => void;
+  /** Registra na auditoria o download de uma versão (rascunho ou aprovada). */
+  recordReviewDownload: (reviewId: ID, version: number, format: ExportFormat, draft: boolean) => void;
   /** Reabre uma revisão decidida, preservando a decisão anterior no histórico. */
   reopenReview: (reviewId: ID, reason?: string) => void;
   markNotificationRead: (id: ID) => void;

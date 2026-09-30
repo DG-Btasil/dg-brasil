@@ -6,7 +6,7 @@ import type {
   DocumentVerification,
   DocumentVisibility,
 } from "@/lib/constants/status";
-import type { IdDocumentType, MaritalStatus } from "@/lib/constants/legal";
+import type { Gender, IdDocumentType, MaritalStatus } from "@/lib/constants/legal";
 import type { Address, Contact, ID, ISODate, ISODateTime, OfficeScoped, Timestamps } from "./common";
 
 interface ClientBase extends OfficeScoped, Timestamps {
@@ -22,9 +22,18 @@ interface ClientBase extends OfficeScoped, Timestamps {
   /** Preenchido quando o cliente é inativado (status INACTIVE). Mantido no histórico. */
   inactivation?: ClientInactivation;
   /**
-   * Quem criou o registro canônico: id do escritório proprietário ou de um
-   * parceiro. Serve à auditoria; NÃO define a origem de processos futuros
-   * nem a divisão financeira (que pertencem ao processo).
+   * Origem do cliente: escritório (proprietário ou parceiro) ao qual a
+   * entrada comercial foi atribuída NO CADASTRO. Obrigatória na criação
+   * (formulário + ação). Não é quem digitou (ver createdByOfficeId), nem a
+   * origem de processos, nem o parceiro financeiro de um caso. Nunca é
+   * sobrescrita por deduplicação; mudar exige ação explícita e auditada.
+   * Pode chegar ausente ao parceiro quando pertence a outro escritório.
+   */
+  originOfficeId?: ID;
+  /**
+   * Escritório do usuário que registrou o cadastro canônico (auditoria).
+   * NÃO define a origem do cliente, de processos futuros nem a divisão
+   * financeira (que pertencem ao processo).
    */
   createdByOfficeId?: ID;
 }
@@ -79,7 +88,7 @@ export interface IndividualClient extends ClientBase {
   birthDate?: ISODate;
   nationality?: string;
   birthplace?: string;
-  gender?: string;
+  gender?: Gender;
   maritalStatus?: MaritalStatus;
   stableUnion?: boolean;
   profession?: string;

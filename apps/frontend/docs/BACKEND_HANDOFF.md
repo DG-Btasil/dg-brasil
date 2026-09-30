@@ -186,9 +186,16 @@ decisão de revisão e versionamento de Skills.
   nova versão e guarda a anterior (`previousVersions`) com autoria e origem
   (`AGENT` ou `MANUAL_EDIT`). Nada é sobrescrito. No banco: tabela `review_content_version`
   append-only.
-- **Edição manual** (pequenas correções sem pedir ao agente que regenere): registra
-  usuário, horário, seções alteradas e origem `MANUAL_EDIT`. A revisão continua aguardando
-  decisão.
+- **Duas formas de editar, nunca misturadas** (menu "Editar ▾" na barra do documento):
+  - **Editar manualmente**: o advogado altera o texto no editor; registra usuário, horário,
+    seções alteradas e origem `MANUAL_EDIT`.
+  - **Editar com agente**: o advogado dá uma instrução ("O que deseja alterar?"); o agente
+    gera nova versão com origem `AGENT_EDIT`, guardando instrução, solicitante e horário.
+    No protótipo a reescrita é simulada (a versão registra a instrução e mantém o texto);
+    no backend é um job do worker do agente.
+  - Em ambos: versão anterior preservada, nova versão **aguarda decisão** (nunca aprovada
+    automaticamente). "Solicitar alterações" continua existindo como **decisão formal**
+    (devolução no fluxo), distinta de "Editar com agente".
 - **Decisão atrelada à versão.** `ReviewDecision.contentVersion` guarda a versão decidida.
   **Aprovação vale só para aquela versão:** se a revisão for reaberta e editada, a nova
   versão exige nova aprovação. O backend deve recusar aplicar efeitos de uma aprovação cuja
@@ -471,3 +478,94 @@ visível ao parceiro, valor financeiro atualizado e repasse registrado. Cada eve
 8. Documentos enviados são versionados; nunca sobrescritos.
 9. Documentos internos não são retornados pela API ao parceiro.
 10. Autorização e escopo acontecem **server-side**, a partir da sessão.
+
+## 14. Rodada de refinamento: origem do cliente, versões e exportação
+
+### 14.1 Origem do cliente (`Client.originOfficeId`)
+
+- Todo cliente tem **origem obrigatória**: o escritório (proprietário ou parceiro) ao qual a
+  entrada comercial foi atribuída **no cadastro**. Campo `origin_office_id NOT NULL`.
+- Não confundir com: quem digitou (`created_by_office_id` + usuário na auditoria), origem
+  técnica do processo, origem relacional do processo, nem parceiro financeiro de um caso.
+- Opções atribuíveis (regra em `src/lib/permissions/client-origin.ts`,
+  `getAllowedClientOrigins`), validadas **server-side** a partir da sessão:
+  - equipe interna com permissão de cadastro: escritório proprietário ou qualquer parceiro ATIVO;
+  - `PARTNER_ADMIN` / `PARTNER_USER`: **somente** o próprio `PartnerOffice` ou o `OwnerOffice`.
+  - Nunca aceitar arbitrariamente um `officeId` enviado pelo navegador: rejeitar com 422/403.
+- Padrão ao abrir o cadastro: o escritório do usuário (Bárbara para a equipe interna; o
+  próprio parceiro para usuários de parceiro).
+- **Deduplicação não sobrescreve a origem histórica.** Se o CPF/CNPJ já existe, o cliente
+  canônico mantém `origin_office_id` original; o novo vínculo/processo segue com a própria
+  origem de processo. Ex.: João foi cadastrado pela Bárbara; Almeida informa o CPF → origem
+  do cliente continua "Bárbara Cardoso Advocacia"; o novo processo tem origem Almeida.
+- Alteração posterior de origem é ação explícita, permitida a quem pode atribuir o novo
+  valor, e sempre auditada (`CLIENT_ORIGIN_CHANGED`, antes/depois). A definição inicial gera
+  `CLIENT_ORIGIN_SET`.
+- Ao parceiro, a origem só é retornada quando é o próprio parceiro ou o escritório
+  proprietário (nunca revelar outro parceiro).
+
+### 14.2 Origem do processo continua independente
+
+- `Client.originOfficeId` **não** determina `Process.originPartnerOfficeId`. Cada processo tem
+  origem relacional própria, definida na criação do processo. Isso é o que alimenta
+  comissão, divisão de honorários, relatórios e auditoria.
+- O filtro "Escritório parceiro" de Revisões usa a origem relacional do **processo** da
+  revisão (não o autor, o agente nem a origem do cliente). Revisão sem processo = interna.
+
+### 14.3 Document, DocumentVersion, Review e Approval
+
+```
+Document (id, kind, client_id, process_id, title)
+ └─ DocumentVersion (id, document_id, version_number, source, created_by, created_at,
+                     content | storage_key, approval_status, instruction?)   -- append-only
+Review (id, document_id, status, …)                 -- fila humana
+Approval / ReviewDecision (id, review_id, document_version_id, decision, user_id, at, comment)
+```
+
+- `source`: `AGENT | AGENT_EDIT | MANUAL_EDIT` (futuro: `EXTERNAL_UPLOAD`).
+- `approval_status` por versão: `PENDING | APPROVED | SUPERSEDED` (no protótipo, derivado em
+  `src/lib/domain/review-versions.ts`; tipo `DocumentVersion` em `src/types/review.ts`).
+- **A aprovação aponta para `document_version_id`, não só para `document_id`.** Nova versão
+  (manual, pelo agente, ou após reabertura) exige nova aprovação. Ex.: v3 APROVADA → reabre e
+  edita → v4 PENDENTE; a aprovação de v3 continua no histórico e não vale para v4.
+- Nunca apagar nem sobrescrever versões. A UI permite visualizar versões anteriores
+  (somente leitura) pelo seletor de versão.
+
+### 14.4 Exportação / download (PDF e DOCX)
+
+- Contrato: `src/services/document-export.ts` (`DocumentExportService`) e
+  `ReviewRepository.exportVersion(reviewId, versionNumber, format)`.
+- Protótipo: o arquivo é gerado **no navegador** só para demonstrar a experiência
+  (`src/lib/export/*`). **Produto: gerar no backend.** Documentos sensíveis não devem ser
+  montados no browser. O backend deve:
+  1. validar autorização (inclusive escopo de parceiro);
+  2. identificar a versão exata (`document_version_id`);
+  3. gerar ou obter o arquivo (PDF/DOCX), com cache por versão;
+  4. aplicar a marca **"RASCUNHO — NÃO APROVADO"** (cabeçalho e marca d'água) em toda
+     versão não aprovada — decidido no servidor, nunca pela tela;
+  5. registrar o download (`DOCUMENT_DRAFT_DOWNLOADED` / `DOCUMENT_APPROVED_DOWNLOADED`);
+  6. devolver URL temporária assinada ou stream autorizado.
+- UI: o botão fica na barra do documento (não junto às decisões). Versão não aprovada →
+  "Baixar rascunho ▾"; versão aprovada → "Baixar versão aprovada ▾" (sem marca). Sempre
+  baixa a versão exibida/aprovada específica.
+
+### 14.5 DOCX e edição externa
+
+- O DOCX existe para o advogado continuar editando no Word, revisar fora do sistema e usar
+  em outros fluxos.
+- Alterações feitas externamente **não** alteram a versão armazenada no DG Brasil.
+- Futuro: "Enviar nova versão" (upload do DOCX editado) criaria `DocumentVersion` com
+  `source = EXTERNAL_UPLOAD`, pendente de aprovação como qualquer versão nova. Não
+  implementado nesta etapa.
+
+### 14.6 Auditoria desta rodada
+
+`CLIENT_ORIGIN_SET`, `CLIENT_ORIGIN_CHANGED`, `REVIEW_EDITED` (manual),
+`REVIEW_AGENT_EDITED`, `REVIEW_VERSION_CREATED`, `REVIEW_APPROVED` (com a versão),
+`DOCUMENT_DRAFT_DOWNLOADED`, `DOCUMENT_APPROVED_DOWNLOADED`. Visualizações não geram evento
+nesta etapa.
+
+### 14.7 Gênero
+
+`IndividualClient.gender`: `MALE | FEMALE | OTHER`, opcional (ausente = "Não informado").
+Rótulos em `src/lib/constants/legal.ts`.

@@ -2,12 +2,22 @@
 
 import { useFormContext, useWatch } from "react-hook-form";
 import { Field, FormSection, Input, MaskedInput, Select } from "@/components/ui/form";
-import { BRAZILIAN_STATES, ID_DOCUMENT_TYPES, ID_DOCUMENT_TYPE_LABEL, MARITAL_STATUSES, MARITAL_STATUS_LABEL } from "@/lib/constants/legal";
+import {
+  BRAZILIAN_STATES,
+  GENDER_LABEL,
+  GENDER_NOT_INFORMED,
+  GENDERS,
+  ID_DOCUMENT_TYPES,
+  ID_DOCUMENT_TYPE_LABEL,
+  MARITAL_STATUSES,
+  MARITAL_STATUS_LABEL,
+} from "@/lib/constants/legal";
 import type { IndividualFormValues } from "../../schemas";
 
 const UF_OPTIONS = BRAZILIAN_STATES.map((uf) => ({ value: uf, label: uf }));
 const ID_OPTIONS = ID_DOCUMENT_TYPES.map((t) => ({ value: t, label: ID_DOCUMENT_TYPE_LABEL[t] }));
 const MARITAL_OPTIONS = MARITAL_STATUSES.map((m) => ({ value: m, label: MARITAL_STATUS_LABEL[m] }));
+const GENDER_OPTIONS = GENDERS.map((g) => ({ value: g, label: GENDER_LABEL[g] }));
 
 export function IndividualIdentificationFields() {
   const {
@@ -74,7 +84,7 @@ export function IndividualIdentificationFields() {
         {(p) => <Input {...p} {...register("profession")} />}
       </Field>
       <Field label="Gênero" requirement="optional">
-        {(p) => <Input {...p} {...register("gender")} />}
+        {(p) => <Select placeholder={GENDER_NOT_INFORMED} options={GENDER_OPTIONS} {...p} {...register("gender")} />}
       </Field>
     </FormSection>
   );

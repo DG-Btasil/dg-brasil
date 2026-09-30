@@ -62,7 +62,11 @@ export function createImportSlice(set: SetState, get: GetState): ImportActions {
           result.clientsUpdated += 1;
         } else {
           const id = createId("cli");
-          clients = [{ ...op.input, id, officeId: s.office.id, createdAt: at, updatedAt: at } as Client, ...clients];
+          // Importação interna: origem informada na planilha ou, na falta, o escritório proprietário.
+          clients = [
+            { ...op.input, originOfficeId: op.input.originOfficeId ?? s.office.id, createdByOfficeId: s.office.id, id, officeId: s.office.id, createdAt: at, updatedAt: at } as Client,
+            ...clients,
+          ];
           refToId.set(op.ref, id);
           result.clientsCreated += 1;
         }

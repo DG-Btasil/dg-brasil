@@ -40,8 +40,9 @@ export interface ClientFilterState {
   analysis: AnalysisStatus | "";
   hasProcesses: "" | "yes" | "no";
   pendingDocs: boolean;
-  /** Próprio = cadastro criado pela Bárbara Cardoso Advocacia; Parceiro = cliente com vínculo de parceiro. */
+  /** Origem do cliente: Próprio = Bárbara Cardoso Advocacia; Parceiro = qualquer escritório parceiro. */
   origin: RelationshipOrigin | "";
+  /** Origem = um escritório parceiro específico. */
   partnerOfficeId: string;
 }
 
@@ -69,7 +70,7 @@ function normalize(value: string): string {
 export function applyClientFilters(rows: ClientRow[], f: ClientFilterState): ClientRow[] {
   const term = normalize(f.search.trim());
   const digits = onlyDigits(f.search);
-  return rows.filter(({ client, analysisStatus, activeProcesses, documents, partnerOfficeIds }) => {
+  return rows.filter(({ client, analysisStatus, activeProcesses, documents }) => {
     if (term) {
       const names =
         client.kind === "INDIVIDUAL" ? [client.fullName, client.socialName] : [client.legalName, client.tradeName];
@@ -86,9 +87,11 @@ export function applyClientFilters(rows: ClientRow[], f: ClientFilterState): Cli
     if (f.hasProcesses === "yes" && activeProcesses === 0) return false;
     if (f.hasProcesses === "no" && activeProcesses > 0) return false;
     if (f.pendingDocs && documents.pending === 0) return false;
-    if (f.origin === "INTERNAL" && client.createdByOfficeId !== client.officeId) return false;
-    if (f.origin === "PARTNER" && partnerOfficeIds.length === 0) return false;
-    if (f.partnerOfficeId && !partnerOfficeIds.includes(f.partnerOfficeId)) return false;
+    // Filtra pela ORIGEM do cliente (não pelos vínculos nem pela origem dos processos).
+    const ownOrigin = !client.originOfficeId || client.originOfficeId === client.officeId;
+    if (f.origin === "INTERNAL" && !ownOrigin) return false;
+    if (f.origin === "PARTNER" && ownOrigin) return false;
+    if (f.partnerOfficeId && client.originOfficeId !== f.partnerOfficeId) return false;
     return true;
   });
 }
@@ -157,16 +160,16 @@ export function ClientFilters({
           {partnerOptions && (
             <>
               <Select
-                aria-label="Origem"
-                placeholder="Origem: todos"
+                aria-label="Origem do cliente"
+                placeholder="Origem: todas"
                 options={opts(RELATIONSHIP_ORIGINS, RELATIONSHIP_ORIGIN_LABEL)}
                 value={value.origin}
                 onChange={(e) => onChange({ ...value, origin: e.target.value as RelationshipOrigin | "", partnerOfficeId: e.target.value === "INTERNAL" ? "" : value.partnerOfficeId })}
                 className="h-8 w-[160px] text-[12px]"
               />
               <Select
-                aria-label="Escritório parceiro"
-                placeholder="Escritório parceiro"
+                aria-label="Origem: escritório parceiro"
+                placeholder="Origem: parceiro"
                 options={partnerOptions}
                 value={value.partnerOfficeId}
                 onChange={(e) => onChange({ ...value, partnerOfficeId: e.target.value, origin: e.target.value ? "PARTNER" : value.origin })}

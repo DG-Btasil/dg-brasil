@@ -9,8 +9,8 @@ import { Avatar, Breadcrumbs } from "@/components/ui/display";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatEventTime } from "@/lib/formatting";
 import { usePermission } from "@/features/auth/hooks";
-import { useOffice, useUser } from "@/features/offices/hooks";
-import { usePartnerMap } from "@/features/partners/hooks";
+import { useUser } from "@/features/offices/hooks";
+import { useClientOriginName } from "../../hooks";
 import { CLIENT_INACTIVATION_REASON_LABEL, type Client } from "@/types";
 import { clientDisplayName, clientDocumentLabel, clientSecondaryName, clientShortName, formatClientDocument, maskClientDocument } from "../../utils";
 import { DocumentAddDialog } from "./documents/document-add-dialog";
@@ -86,15 +86,13 @@ export function ClientHeader({ client, hasActiveAnalysis }: { client: Client; ha
   );
 }
 
-/** Origem do cadastro canônico, discreta (auditoria). Não define a origem dos processos. */
+/** Origem do cliente, discreta. Histórica: não define a origem dos processos. */
 function ClientCreatedBy({ client }: { client: Client }) {
-  const office = useOffice();
-  const partners = usePartnerMap();
-  if (!client.createdByOfficeId) return null;
-  const name = client.createdByOfficeId === office.id ? office.name : (partners.get(client.createdByOfficeId)?.name ?? "Escritório parceiro");
+  const name = useClientOriginName(client);
+  if (!name) return null;
   return (
     <span className="text-muted">
-      <span className="text-subtle">Cadastro criado por</span> {name}
+      <span className="text-subtle">Origem</span> {name}
     </span>
   );
 }

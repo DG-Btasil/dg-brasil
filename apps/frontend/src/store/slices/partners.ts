@@ -9,6 +9,7 @@ import { isValidShare, partnershipView, snapshotAgreement } from "@/lib/domain/p
 import { formatCurrency, onlyDigits } from "@/lib/formatting";
 import { createId } from "@/lib/ids";
 import { can, ROLE_LABEL } from "@/lib/permissions";
+import { isAllowedClientOrigin } from "@/lib/permissions/client-origin";
 import type {
   Client,
   ClientDocument,
@@ -24,6 +25,8 @@ import {
   actorOf,
   auditEvent,
   requireOwnerViewer,
+  officeNameOf,
+  originContextOf,
   requirePartnerViewer,
   updateById,
   viewerOf,
@@ -565,8 +568,19 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
         const data = input.client.data;
         const digits = onlyDigits(data.kind === "INDIVIDUAL" ? data.cpf : data.cnpj);
         if (s.clients.some((c) => documentDigits(c) === digits)) throw new Error("Cliente já cadastrado no sistema.");
+        // Parceiro só atribui o próprio escritório ou a Bárbara Cardoso Advocacia (validado aqui, não na tela).
+        if (!isAllowedClientOrigin(originContextOf(s), data.originOfficeId)) throw new Error("Origem do cliente inválida.");
         clientId = createId("cli");
-        const base = { id: clientId, officeId: s.office.id, status: "NEW" as const, responsibleUserId, createdByOfficeId: pid, createdAt: at, updatedAt: at };
+        const base = {
+          id: clientId,
+          officeId: s.office.id,
+          status: "NEW" as const,
+          responsibleUserId,
+          originOfficeId: data.originOfficeId,
+          createdByOfficeId: pid,
+          createdAt: at,
+          updatedAt: at,
+        };
         newClient =
           data.kind === "INDIVIDUAL"
             ? { ...base, kind: "INDIVIDUAL", fullName: data.fullName, cpf: data.cpf, birthDate: data.birthDate, contact: data.contact, address: data.address }
@@ -705,7 +719,12 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
                 }),
               ]
             : []),
-          ...(newClient ? [auditEvent(s, "CLIENT_CREATED", "client", clientId, `Cliente ${name} cadastrado pela ${partner.name}.`, actor, undefined, partnerRef)] : []),
+          ...(newClient
+            ? [
+                auditEvent(s, "CLIENT_ORIGIN_SET", "client", clientId, `Origem de ${name}: ${officeNameOf(s, newClient.originOfficeId)}.`, actor, undefined, partnerRef),
+                auditEvent(s, "CLIENT_CREATED", "client", clientId, `Cliente ${name} cadastrado pela ${partner.name}.`, actor, undefined, partnerRef),
+              ]
+            : []),
           ...s.auditEvents,
         ],
       });

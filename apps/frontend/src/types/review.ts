@@ -1,4 +1,12 @@
-import type { Priority, ReviewContentOrigin, ReviewDecisionKind, ReviewStatus, ReviewType } from "@/lib/constants/status";
+import type {
+  ExportFormat,
+  Priority,
+  ReviewContentOrigin,
+  ReviewDecisionKind,
+  ReviewStatus,
+  ReviewType,
+  VersionApprovalStatus,
+} from "@/lib/constants/status";
 import type { ActorRef, ID, ISODateTime, OfficeScoped } from "./common";
 
 export interface ReviewContentSection {
@@ -35,7 +43,7 @@ export interface ReviewDecision extends OfficeScoped {
   contentVersion?: number;
 }
 
-export const REVIEW_HISTORY_KINDS = ["MANUAL_EDIT", "REOPENED"] as const;
+export const REVIEW_HISTORY_KINDS = ["MANUAL_EDIT", "AGENT_EDIT", "REOPENED"] as const;
 export type ReviewHistoryKind = (typeof REVIEW_HISTORY_KINDS)[number];
 
 /** Eventos da trilha da revisão que não são decisões (estas ficam em ReviewDecision). */
@@ -44,10 +52,12 @@ export interface ReviewHistoryEvent {
   kind: ReviewHistoryKind;
   at: ISODateTime;
   actor: ActorRef;
-  /** MANUAL_EDIT: versões envolvidas e seções alteradas. */
+  /** MANUAL_EDIT / AGENT_EDIT: versões envolvidas e seções alteradas. */
   fromVersion?: number;
   toVersion?: number;
   changedSections?: string[];
+  /** AGENT_EDIT: instrução dada pelo advogado ao agente. */
+  instruction?: string;
   /** REOPENED: decisão que foi reaberta e motivo informado. */
   previousStatus?: ReviewStatus;
   reason?: string;
@@ -85,4 +95,35 @@ export interface Review extends OfficeScoped {
   createdAt: ISODateTime;
   dueAt?: ISODateTime;
   decidedAt?: ISODateTime;
+}
+
+/**
+ * Versão de documento (visão normalizada, derivada da revisão no protótipo).
+ * No backend vira tabela própria (`document_version`), append-only. A
+ * aprovação aponta para `documentVersionId`, nunca só para o documento.
+ */
+export interface DocumentVersion {
+  id: ID;
+  /** Documento/revisão ao qual a versão pertence. */
+  documentId: ID;
+  versionNumber: number;
+  source: ReviewContentOrigin;
+  createdBy: ActorRef;
+  createdAt: ISODateTime;
+  /** Protótipo: conteúdo inline. Backend: storageKey no storage de documentos. */
+  content: ReviewContent;
+  storageKey?: string;
+  approvalStatus: VersionApprovalStatus;
+  /** AGENT_EDIT: instrução que originou a versão. */
+  instruction?: string;
+  current: boolean;
+}
+
+/** Arquivo exportado de uma versão. No backend: URL temporária/stream autorizado. */
+export interface ExportedDocument {
+  fileName: string;
+  format: ExportFormat;
+  /** true = versão não aprovada, exportada com a marca de rascunho. */
+  draft: boolean;
+  blob: Blob;
 }

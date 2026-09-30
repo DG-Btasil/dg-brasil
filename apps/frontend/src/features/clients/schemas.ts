@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { IdDocumentType, MaritalStatus } from "@/lib/constants/legal";
+import { GENDERS, type Gender, type IdDocumentType, type MaritalStatus } from "@/lib/constants/legal";
 import { isCnpjFormat, isCpfFormat, msg, zCepOptional, zCnpj, zCpf, zPhone, zPhoneOptional, zRequired } from "@/lib/validation";
 import { createId } from "@/lib/ids";
 import type { NewCompanyClientInput, NewIndividualClientInput } from "@/store/types";
@@ -35,7 +35,7 @@ export const individualSchema = z.object({
   birthDate: text(),
   nationality: text(),
   birthplace: text(),
-  gender: text(),
+  gender: z.enum(["", ...GENDERS]),
   maritalStatus: text(),
   stableUnion: z.enum(["", "yes", "no"]),
   profession: text(),
@@ -44,6 +44,7 @@ export const individualSchema = z.object({
   secondaryPhone: zPhoneOptional(),
   address: addressSchema,
   responsibleUserId: zRequired("Selecione o responsável."),
+  originOfficeId: zRequired("Selecione a origem do cliente."),
   legalSummary: text(),
   notes: text(),
 });
@@ -90,6 +91,7 @@ export const companySchema = z.object({
     .refine((list) => list.filter((r) => r.isPrimary).length === 1, "Marque exatamente um representante como principal."),
   partners: z.array(partnerSchema),
   responsibleUserId: zRequired("Selecione o responsável."),
+  originOfficeId: zRequired("Selecione a origem do cliente."),
   legalSummary: text(),
   notes: text(),
 });
@@ -128,11 +130,11 @@ function contact(email: string, phone: string, secondaryPhone?: string, website?
   return { email: opt(email), phone: opt(phone), secondaryPhone: opt(secondaryPhone), website: opt(website) };
 }
 
-export function emptyIndividualValues(responsibleUserId = ""): IndividualFormValues {
+export function emptyIndividualValues(responsibleUserId = "", originOfficeId = ""): IndividualFormValues {
   return {
     fullName: "", socialName: "", cpf: "", idType: "", idNumber: "", idIssuer: "", idState: "", birthDate: "",
     nationality: "Brasileira", birthplace: "", gender: "", maritalStatus: "", stableUnion: "", profession: "",
-    email: "", phone: "", secondaryPhone: "", address: EMPTY_ADDRESS, responsibleUserId, legalSummary: "", notes: "",
+    email: "", phone: "", secondaryPhone: "", address: EMPTY_ADDRESS, responsibleUserId, originOfficeId, legalSummary: "", notes: "",
   };
 }
 
@@ -150,13 +152,14 @@ export function individualToInput(v: IndividualFormValues): Omit<NewIndividualCl
     birthDate: opt(v.birthDate),
     nationality: opt(v.nationality),
     birthplace: opt(v.birthplace),
-    gender: opt(v.gender),
+    gender: (v.gender || undefined) as Gender | undefined,
     maritalStatus: marital,
     stableUnion: marital === "MARRIED" || !v.stableUnion ? undefined : v.stableUnion === "yes",
     profession: opt(v.profession),
     contact: contact(v.email, v.phone, v.secondaryPhone),
     address: toAddress(v.address),
     responsibleUserId: v.responsibleUserId,
+    originOfficeId: v.originOfficeId,
     legalSummary: opt(v.legalSummary),
     notes: opt(v.notes),
   };
@@ -183,6 +186,7 @@ export function individualToValues(c: IndividualClient): IndividualFormValues {
     secondaryPhone: c.contact.secondaryPhone ?? "",
     address: fromAddress(c.address),
     responsibleUserId: c.responsibleUserId,
+    originOfficeId: c.originOfficeId ?? "",
     legalSummary: c.legalSummary ?? "",
     notes: c.notes ?? "",
   };
@@ -196,11 +200,11 @@ export function newPartner(): CompanyFormValues["partners"][number] {
   return { id: createId("qsa"), name: "", document: "", qualification: "", sharePercent: "" };
 }
 
-export function emptyCompanyValues(responsibleUserId = ""): CompanyFormValues {
+export function emptyCompanyValues(responsibleUserId = "", originOfficeId = ""): CompanyFormValues {
   return {
     legalName: "", tradeName: "", cnpj: "", registrationStatus: "", openingDate: "", legalNature: "", mainCnae: "",
     secondaryCnaes: "", email: "", phone: "", website: "", address: EMPTY_ADDRESS,
-    representatives: [newRepresentative(true)], partners: [], responsibleUserId, legalSummary: "", notes: "",
+    representatives: [newRepresentative(true)], partners: [], responsibleUserId, originOfficeId, legalSummary: "", notes: "",
   };
 }
 
@@ -231,6 +235,7 @@ export function companyToInput(v: CompanyFormValues): Omit<NewCompanyClientInput
         sharePercent: p.sharePercent ? Number(p.sharePercent.replace(",", ".")) : undefined,
       })),
     responsibleUserId: v.responsibleUserId,
+    originOfficeId: v.originOfficeId,
     legalSummary: opt(v.legalSummary),
     notes: opt(v.notes),
   };
@@ -261,6 +266,7 @@ export function companyToValues(c: CompanyClient): CompanyFormValues {
       sharePercent: p.sharePercent === undefined ? "" : String(p.sharePercent).replace(".", ","),
     })),
     responsibleUserId: c.responsibleUserId,
+    originOfficeId: c.originOfficeId ?? "",
     legalSummary: c.legalSummary ?? "",
     notes: c.notes ?? "",
   };

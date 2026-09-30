@@ -7,11 +7,12 @@ import { StatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/display";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
-import { ID_DOCUMENT_TYPE_LABEL, MARITAL_STATUS_LABEL } from "@/lib/constants/legal";
+import { GENDER_LABEL, GENDER_NOT_INFORMED, ID_DOCUMENT_TYPE_LABEL, MARITAL_STATUS_LABEL } from "@/lib/constants/legal";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatDate, formatDateTime } from "@/lib/formatting";
 import { useUser } from "@/features/offices/hooks";
 import type { Client, CompanyClient, IndividualClient } from "@/types";
+import { useClientOriginName } from "../../../hooks";
 import { clientDocumentLabel, maskClientDocument } from "../../../utils";
 
 export function Block({ title, clientId, children, editable = true }: { title: string; clientId: string; children: ReactNode; editable?: boolean }) {
@@ -51,7 +52,7 @@ function individualIdentification(c: IndividualClient) {
     { label: "Estado civil", value: c.maritalStatus ? MARITAL_STATUS_LABEL[c.maritalStatus] : undefined },
     ...(c.maritalStatus !== "MARRIED" && c.stableUnion !== undefined ? [{ label: "União estável", value: c.stableUnion ? "Sim" : "Não" }] : []),
     { label: "Profissão", value: c.profession },
-    ...(c.gender ? [{ label: "Gênero", value: c.gender }] : []),
+    ...(c.gender ? [{ label: "Gênero", value: GENDER_LABEL[c.gender] ?? GENDER_NOT_INFORMED }] : []),
   ];
 }
 
@@ -116,6 +117,7 @@ export function AddressBlock({ client }: { client: Client }) {
 
 export function ResponsibleBlock({ client }: { client: Client }) {
   const user = useUser(client.responsibleUserId);
+  const origin = useClientOriginName(client);
   return (
     <Block title="Responsável e status" clientId={client.id}>
       <DefinitionGrid
@@ -130,6 +132,7 @@ export function ResponsibleBlock({ client }: { client: Client }) {
             ) : undefined,
           },
           { label: "Status", value: <StatusBadge status={client.status} labels={CLIENT_STATUS_LABEL} tones={CLIENT_STATUS_TONE} /> },
+          { label: "Origem", value: origin },
           { label: "Tipo", value: CLIENT_KIND_LABEL[client.kind] },
           { label: `Identificador (${clientDocumentLabel(client)})`, value: <span className="tabular">{maskClientDocument(client)}</span> },
           { label: "Cadastrado em", value: formatDateTime(client.createdAt) },

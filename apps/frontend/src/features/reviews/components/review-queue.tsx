@@ -8,7 +8,9 @@ import { PageHeader } from "@/components/ui/display";
 import { Panel } from "@/components/ui/panel";
 import { Tabs } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/feedback/states";
-import { useResponsibleOptions } from "@/features/offices/hooks";
+import { useOffice, useResponsibleOptions } from "@/features/offices/hooks";
+import { usePermission } from "@/features/auth/hooks";
+import { usePartnerOffices } from "@/features/partners/hooks";
 import { clientDisplayName } from "@/features/processes/utils";
 import { useAgentMap, useClientList, useProcessMap, useReviews } from "../hooks";
 import {
@@ -16,6 +18,7 @@ import {
   countReviewFilters,
   EMPTY_REVIEW_FILTERS,
   filterReviews,
+  INTERNAL_ORIGIN,
   matchesView,
   QUEUE_VIEW_LABEL,
   QUEUE_VIEWS,
@@ -31,17 +34,27 @@ export function ReviewQueue() {
   const processes = useProcessMap();
   const clientList = useClientList();
   const userOptions = useResponsibleOptions();
+  const office = useOffice();
+  const partners = usePartnerOffices();
+  const canPartners = usePermission("partners.view");
+  const partnerOptions = useMemo(
+    () => [
+      { value: INTERNAL_ORIGIN, label: `Interno / ${office.name}` },
+      ...partners.filter((p) => p.status === "ACTIVE").map((p) => ({ value: p.id, label: p.name })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+    ],
+    [office.name, partners],
+  );
   const [view, setView] = useState<QueueView>("pendentes");
   const [filters, setFilters] = useState<Filters>(EMPTY_REVIEW_FILTERS);
 
   const clients = useMemo(() => new Map(clientList.map((c) => [c.id, c])), [clientList]);
 
   const visible = useMemo(() => {
-    const list = filterReviews(reviews, view, filters);
+    const list = filterReviews(reviews, view, filters, processes);
     return view === "decididas"
       ? list.sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? ""))
       : list.sort(compareReviewQueue);
-  }, [reviews, view, filters]);
+  }, [reviews, view, filters, processes]);
 
   const tabItems = QUEUE_VIEWS.map((key) => ({
     key,
@@ -77,6 +90,7 @@ export function ReviewQueue() {
           clientOptions={options.clients}
           processOptions={options.processes}
           userOptions={userOptions}
+          partnerOptions={canPartners ? partnerOptions : undefined}
           showStatus={view !== "pendentes"}
         />
         {visible.length === 0 ? (

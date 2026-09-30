@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowRight, CheckCircle2, FilePen, FileText, Info, RotateCcw, type LucideIcon } from "lucide-react";
+import { ArrowRight, Bot, CheckCircle2, FilePen, FileText, Info, RotateCcw, type LucideIcon } from "lucide-react";
 import { REVIEW_CONTENT_ORIGIN_LABEL, REVIEW_DECISION_LABEL, REVIEW_STATUS_LABEL } from "@/lib/constants/status";
 import { formatDateTime, formatWaitingTime } from "@/lib/formatting";
 import { Dialog } from "@/components/ui/dialog";
@@ -68,14 +68,23 @@ export function ReviewContext({ review }: { review: Review }) {
       ...(review.history ?? []).map((h) => ({
         id: h.id,
         at: h.at,
-        icon: h.kind === "MANUAL_EDIT" ? FilePen : RotateCcw,
+        icon: h.kind === "MANUAL_EDIT" ? FilePen : h.kind === "AGENT_EDIT" ? Bot : RotateCcw,
         title:
           h.kind === "MANUAL_EDIT"
             ? `Editada manualmente · v${h.fromVersion} → v${h.toVersion}`
-            : `Reaberta${h.previousStatus ? ` (antes: ${REVIEW_STATUS_LABEL[h.previousStatus].toLowerCase()})` : ""}`,
+            : h.kind === "AGENT_EDIT"
+              ? `Alteração pedida ao agente · v${h.fromVersion} → v${h.toVersion}`
+              : `Reaberta${h.previousStatus ? ` (antes: ${REVIEW_STATUS_LABEL[h.previousStatus].toLowerCase()})` : ""}`,
         who: h.actor.name,
-        detail: h.kind === "MANUAL_EDIT" ? `Origem: edição manual. Alterado: ${h.changedSections?.join(", ") ?? "—"}.` : h.reason ? `Motivo: “${h.reason}”` : undefined,
-        version: h.kind === "MANUAL_EDIT" ? review.previousVersions?.find((v) => v.version === h.fromVersion) : undefined,
+        detail:
+          h.kind === "MANUAL_EDIT"
+            ? `Origem: edição manual. Alterado: ${h.changedSections?.join(", ") ?? "—"}.`
+            : h.kind === "AGENT_EDIT"
+              ? `Instrução: “${h.instruction ?? ""}”`
+              : h.reason
+                ? `Motivo: “${h.reason}”`
+                : undefined,
+        version: h.kind !== "REOPENED" ? review.previousVersions?.find((v) => v.version === h.fromVersion) : undefined,
       })),
     ];
     return items.sort((a, b) => b.at.localeCompare(a.at));

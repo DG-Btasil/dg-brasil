@@ -25,7 +25,8 @@ import type { AppState, AppStore } from "./types";
 export const STORAGE_KEY = "dg-brasil:demo";
 // v2: status financeiro derivado, dados da Bárbara Cardoso Advocacia, Integração Judicial.
 // v3: escritório proprietário único + escritórios parceiros (cliente canônico, origem relacional, snapshot financeiro).
-const STORAGE_VERSION = 3;
+// v4: origem obrigatória do cliente (originOfficeId), gênero padronizado, versões de revisão por agente.
+const STORAGE_VERSION = 4;
 
 export const useAppStore = create<AppStore>()(
   persist(

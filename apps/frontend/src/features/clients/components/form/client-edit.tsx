@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/display";
 import { repositories } from "@/repositories";
 import { useToast } from "@/store/ui-store";
-import { useClient } from "../../hooks";
+import { useClient, useDefaultClientOrigin } from "../../hooks";
 import { companyToInput, companyToValues, individualToInput, individualToValues } from "../../schemas";
 import { clientShortName } from "../../utils";
 import { ClientNotFound } from "../detail/client-not-found";
@@ -16,9 +16,18 @@ export function ClientEdit({ id }: { id: string }) {
   const router = useRouter();
   const toast = useToast();
   const client = useClient(id);
+  const defaultOrigin = useDefaultClientOrigin();
   if (!client) return <ClientNotFound />;
 
   const back = () => router.push(`/clientes/${id}`);
+  async function save(run: () => Promise<void>) {
+    try {
+      await run();
+      await done();
+    } catch (error) {
+      toast({ tone: "danger", title: "Não foi possível salvar.", description: error instanceof Error ? error.message : undefined });
+    }
+  }
   async function done() {
     toast({ tone: "success", title: "Cadastro atualizado", description: "As alterações foram salvas." });
     back();
@@ -37,23 +46,17 @@ export function ClientEdit({ id }: { id: string }) {
       />
       {client.kind === "INDIVIDUAL" ? (
         <IndividualForm
-          defaultValues={individualToValues(client)}
+          defaultValues={{ ...individualToValues(client), originOfficeId: client.originOfficeId ?? defaultOrigin }}
           submitLabel="Salvar alterações"
           onCancel={back}
-          onSubmit={async (values) => {
-            await repositories.clients.update(id, individualToInput(values));
-            await done();
-          }}
+          onSubmit={(values) => save(() => repositories.clients.update(id, individualToInput(values)))}
         />
       ) : (
         <CompanyForm
-          defaultValues={companyToValues(client)}
+          defaultValues={{ ...companyToValues(client), originOfficeId: client.originOfficeId ?? defaultOrigin }}
           submitLabel="Salvar alterações"
           onCancel={back}
-          onSubmit={async (values) => {
-            await repositories.clients.update(id, companyToInput(values));
-            await done();
-          }}
+          onSubmit={(values) => save(() => repositories.clients.update(id, companyToInput(values)))}
         />
       )}
       <Can permission="clients.edit">

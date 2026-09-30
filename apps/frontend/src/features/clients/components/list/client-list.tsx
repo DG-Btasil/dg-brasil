@@ -11,7 +11,8 @@ import { sortBy, type SortDirection } from "@/components/ui/table";
 import { CLIENT_STATUSES } from "@/lib/constants/status";
 import { useResponsibleOptions, useUserMap } from "@/features/offices/hooks";
 import { usePermission } from "@/features/auth/hooks";
-import { usePartnerOptions } from "@/features/partners/hooks";
+import { usePartnerOffices, usePartnerOptions } from "@/features/partners/hooks";
+import { useOffice } from "@/features/offices/hooks";
 import { useClientRows } from "../../hooks";
 import { clientDisplayName } from "../../utils";
 import { applyClientFilters, ClientFilters, EMPTY_FILTERS, type ClientFilterState } from "./client-filters";
@@ -23,6 +24,9 @@ export function ClientList() {
   const responsibleOptions = useResponsibleOptions();
   const canPartners = usePermission("partners.view");
   const partnerOptions = usePartnerOptions();
+  const office = useOffice();
+  const partners = usePartnerOffices();
+  const originNames = useMemo(() => new Map([[office.id, office.name], ...partners.map((p) => [p.id, p.name] as [string, string])]), [office, partners]);
   const [filters, setFilters] = useState<ClientFilterState>(EMPTY_FILTERS);
   const [sortKey, setSortKey] = useState<ClientSortKey | null>("updated");
   const [direction, setDirection] = useState<SortDirection>("desc");
@@ -86,7 +90,7 @@ export function ClientList() {
               }
             />
           ) : (
-            <ClientTable rows={visible} userMap={userMap} sortKey={sortKey} direction={direction} onSort={onSort} />
+            <ClientTable rows={visible} userMap={userMap} sortKey={sortKey} direction={direction} onSort={onSort} originNames={canPartners ? originNames : undefined} />
           )}
         </Panel>
       )}

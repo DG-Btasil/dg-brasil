@@ -63,6 +63,12 @@ export const AUDIT_ACTIONS = [
   "PARTNER_REQUEST_RESOLVED",
   "PARTNERSHIP_VALUE_UPDATED",
   "PARTNER_PAYOUT_REGISTERED",
+  "CLIENT_ORIGIN_SET",
+  "CLIENT_ORIGIN_CHANGED",
+  "REVIEW_AGENT_EDITED",
+  "REVIEW_VERSION_CREATED",
+  "DOCUMENT_DRAFT_DOWNLOADED",
+  "DOCUMENT_APPROVED_DOWNLOADED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -129,6 +135,12 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   PARTNER_REQUEST_RESOLVED: "Solicitação encerrada",
   PARTNERSHIP_VALUE_UPDATED: "Valor da parceria atualizado",
   PARTNER_PAYOUT_REGISTERED: "Repasse registrado",
+  CLIENT_ORIGIN_SET: "Origem do cliente definida",
+  CLIENT_ORIGIN_CHANGED: "Origem do cliente alterada",
+  REVIEW_AGENT_EDITED: "Alteração solicitada ao agente",
+  REVIEW_VERSION_CREATED: "Nova versão do documento",
+  DOCUMENT_DRAFT_DOWNLOADED: "Rascunho baixado",
+  DOCUMENT_APPROVED_DOWNLOADED: "Versão aprovada baixada",
 };
 
 export interface AuditEvent extends OfficeScoped {

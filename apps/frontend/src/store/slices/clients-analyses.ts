@@ -6,11 +6,14 @@ import { maskCNPJ, maskCPF } from "@/lib/formatting";
 import { createId } from "@/lib/ids";
 import { buildSteps } from "@/mocks";
 import { CLIENT_INACTIVATION_REASON_LABEL, type AgentTask, type Client, type LegalAnalysis, type Notification, type Review } from "@/types";
+import { isAllowedClientOrigin } from "@/lib/permissions/client-origin";
 import {
   actorOf,
   agentActor,
   auditEvent,
   integrityNotification,
+  officeNameOf,
+  originContextOf,
   timelineEvent,
   updateById,
   withStep,
@@ -79,6 +82,8 @@ export function createClientSlice(set: SetState, get: GetState): ClientActions {
   return {
     createClient: (input) => {
       const s = get();
+      // Origem obrigatória e restrita ao que o usuário da SESSÃO pode atribuir.
+      if (!isAllowedClientOrigin(originContextOf(s), input.originOfficeId)) throw new Error("Origem do cliente inválida.");
       const id = createId("cli");
       const at = nowISO();
       // Cadastro interno: o registro canônico nasce do escritório proprietário, com relacionamento OWNER.
@@ -89,17 +94,36 @@ export function createClientSlice(set: SetState, get: GetState): ClientActions {
           { id: createId("rel"), officeId: s.office.id, clientId: id, officeType: "OWNER", status: "ACTIVE", createdAt: at, createdBy: actorOf(s).id },
           ...s.clientRelationships,
         ],
-        auditEvents: [auditEvent(s, "CLIENT_CREATED", "client", id, `Cliente ${clientName(client)} cadastrado.`), ...s.auditEvents],
+        auditEvents: [
+          auditEvent(s, "CLIENT_ORIGIN_SET", "client", id, `Origem de ${clientName(client)}: ${officeNameOf(s, input.originOfficeId)}.`),
+          auditEvent(s, "CLIENT_CREATED", "client", id, `Cliente ${clientName(client)} cadastrado.`),
+          ...s.auditEvents,
+        ],
       });
       return id;
     },
     updateClient: (id, patch) =>
       set((s) => {
+        const before = s.clients.find((c) => c.id === id);
+        const originChanged = patch.originOfficeId !== undefined && patch.originOfficeId !== before?.originOfficeId;
+        if (originChanged && !isAllowedClientOrigin(originContextOf(s), patch.originOfficeId)) throw new Error("Origem do cliente inválida.");
         const clients = updateById(s.clients, id, (c) => ({ ...c, ...patch, updatedAt: nowISO() }) as Client);
         const updated = clients.find((c) => c.id === id);
         return {
           clients,
-          auditEvents: [auditEvent(s, "CLIENT_UPDATED", "client", id, `Cadastro de ${clientName(updated)} editado.`), ...s.auditEvents],
+          auditEvents: [
+            // Mudança de origem é explícita e auditada com antes/depois.
+            ...(originChanged
+              ? [
+                  auditEvent(s, "CLIENT_ORIGIN_CHANGED", "client", id, `Origem de ${clientName(updated)} alterada.`, undefined, [
+                    { label: "Antes", value: officeNameOf(s, before?.originOfficeId) },
+                    { label: "Depois", value: officeNameOf(s, patch.originOfficeId) },
+                  ]),
+                ]
+              : []),
+            auditEvent(s, "CLIENT_UPDATED", "client", id, `Cadastro de ${clientName(updated)} editado.`),
+            ...s.auditEvents,
+          ],
         };
       }),
     inactivateClient: (id, { reason, note }) =>

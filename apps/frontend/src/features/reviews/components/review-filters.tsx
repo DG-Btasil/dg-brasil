@@ -26,6 +26,7 @@ export function ReviewFilters({
   processOptions,
   clientOptions,
   userOptions,
+  partnerOptions,
   showStatus,
 }: {
   filters: Filters;
@@ -34,6 +35,8 @@ export function ReviewFilters({
   processOptions: Option[];
   clientOptions: Option[];
   userOptions: Option[];
+  /** "Interno / Bárbara" + parceiros ativos. Ausente = filtro oculto. */
+  partnerOptions?: Option[];
   showStatus: boolean;
 }) {
   const active = countReviewFilters(filters);
@@ -53,6 +56,9 @@ export function ReviewFilters({
         <FilterSelect label="Cliente" value={filters.clientId} options={clientOptions} onChange={(v) => set("clientId", v)} />
         <FilterSelect label="Processo" value={filters.processId} options={processOptions} onChange={(v) => set("processId", v)} />
         <FilterSelect label="Responsável" value={filters.assignedUserId} options={userOptions} onChange={(v) => set("assignedUserId", v)} />
+        {partnerOptions && (
+          <FilterSelect label="Escritório parceiro" value={filters.partnerOfficeId} options={partnerOptions} onChange={(v) => set("partnerOfficeId", v)} />
+        )}
         <FilterSelect label="Período" value={filters.dateRange} options={dateOptions} onChange={(v) => set("dateRange", v as Filters["dateRange"])} />
         {showStatus && <FilterSelect label="Status" value={filters.status} options={statusOptions} onChange={(v) => set("status", v as Filters["status"])} />}
       </div>

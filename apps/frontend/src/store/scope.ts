@@ -119,8 +119,8 @@ function partnerScope(state: AppState, viewer: Viewer): ScopedData {
     users: memo(k("users"), [vk, state.users], () => state.users.filter((u) => u.partnerOfficeId === partnerId)),
     invitations: memo(k("invitations"), [vk, state.invitations], () => state.invitations.filter((i) => i.partnerOfficeId === partnerId)),
     sessions: memo(k("sessions"), [vk, state.sessions], () => state.sessions.filter((s) => s.userId === viewer.userId)),
-    clients: memo(k("clients"), [state.clients, relatedClientIds], () =>
-      state.clients.filter((c) => relatedClientIds.has(c.id)).map(redactClientForPartner),
+    clients: memo(k("clients"), [state.clients, relatedClientIds, state.office.id], () =>
+      state.clients.filter((c) => relatedClientIds.has(c.id)).map((c) => redactClientForPartner(c, partnerId, state.office.id)),
     ),
     documents: memo(k("documents"), [vk, state.documents, processIds], () =>
       state.documents.filter((d) => partnerCanSeeDocument(d, partnerId, processIds)).map(redactDocumentForPartner),

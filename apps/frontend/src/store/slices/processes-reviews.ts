@@ -1,6 +1,7 @@
 import { nowISO } from "@/lib/clock";
 import { OPEN_REVIEW_STATUSES, REVIEW_DECISION_LABEL, REVIEW_STATUS_LABEL } from "@/lib/constants/status";
 import { createId } from "@/lib/ids";
+import type { ReviewContentOrigin } from "@/lib/constants/status";
 import type { AuditAction, Process, ProcessEvent, Review } from "@/types";
 import {
   actorOf,
@@ -18,6 +19,13 @@ import { clientName } from "./clients-analyses";
 import { partnershipSnapshotFor } from "./partners";
 
 const PETITION_AGENT = "agt_peticoes";
+
+/** Origem da versão ATUAL do conteúdo (a última edição registrada, ou o agente). */
+function currentContentOrigin(review: Review): ReviewContentOrigin {
+  const version = review.contentVersion ?? 1;
+  const edit = [...(review.history ?? [])].reverse().find((h) => (h.kind === "MANUAL_EDIT" || h.kind === "AGENT_EDIT") && h.toVersion === version);
+  return edit?.kind === "MANUAL_EDIT" ? "MANUAL_EDIT" : edit?.kind === "AGENT_EDIT" ? "AGENT_EDIT" : "AGENT";
+}
 
 /** Caixa de notificações do usuário da sessão (interna × parceiro). */
 function inboxOf(state: AppState): (n: AppState["notifications"][number]) => boolean {
@@ -421,7 +429,7 @@ export function createReviewSlice(set: SetState, get: GetState): ReviewActions {
           .map((section) => section.heading);
         if (content.title !== review.content.title) changedSections.unshift("Título");
         if (changedSections.length === 0) return {};
-        const archivedOrigin = review.history?.some((h) => h.kind === "MANUAL_EDIT" && h.toVersion === fromVersion) ? "MANUAL_EDIT" : "AGENT";
+        const archivedOrigin = currentContentOrigin(review);
         return {
           reviews: updateById(s.reviews, reviewId, (r) => ({
             ...r,
@@ -431,10 +439,69 @@ export function createReviewSlice(set: SetState, get: GetState): ReviewActions {
             history: [...(r.history ?? []), { id: createId("rvh"), kind: "MANUAL_EDIT" as const, at, actor, fromVersion, toVersion, changedSections }],
           })),
           auditEvents: [
+            auditEvent(s, "REVIEW_VERSION_CREATED", "review", reviewId, `“${review.title}”: versão v${toVersion} criada (v${fromVersion} preservada). Aguarda nova aprovação.`, actor),
             auditEvent(s, "REVIEW_EDITED", "review", reviewId, `“${review.title}” editada manualmente (v${fromVersion} → v${toVersion}).`, actor, [
               { label: "Origem", value: "MANUAL_EDIT" },
               { label: "Seções alteradas", value: changedSections.join(", ") },
             ]),
+            ...s.auditEvents,
+          ],
+        };
+      }),
+    /**
+     * "Editar com agente": o advogado dá uma instrução e o agente gera nova
+     * versão (AGENT_EDIT). Protótipo: a reescrita é SIMULADA — o texto é
+     * mantido e a instrução fica registrada; no backend, o worker do agente
+     * produz o conteúdo. A versão anterior é preservada e a revisão continua
+     * aguardando decisão (nunca aprovada automaticamente).
+     */
+    requestAgentEdit: (reviewId, instruction) =>
+      set((s) => {
+        const review = s.reviews.find((r) => r.id === reviewId);
+        const text = instruction.trim();
+        if (!review || !OPEN_REVIEW_STATUSES.includes(review.status) || !text) return {};
+        const at = nowISO();
+        const actor = actorOf(s);
+        const fromVersion = review.contentVersion ?? 1;
+        const toVersion = fromVersion + 1;
+        const archivedOrigin = currentContentOrigin(review);
+        return {
+          reviews: updateById(s.reviews, reviewId, (r) => ({
+            ...r,
+            content: { ...r.content, sections: r.content.sections.map((section) => ({ ...section })) },
+            contentVersion: toVersion,
+            // Reaberta volta a "Pendente": a nova versão aguarda decisão como qualquer outra.
+            status: r.status === "REOPENED" ? ("PENDING" as const) : r.status,
+            previousVersions: [...(r.previousVersions ?? []), { version: fromVersion, content: r.content, origin: archivedOrigin, at, actor }],
+            history: [...(r.history ?? []), { id: createId("rvh"), kind: "AGENT_EDIT" as const, at, actor, fromVersion, toVersion, instruction: text }],
+          })),
+          agentTasks: [
+            { id: createId("tsk"), officeId: s.office.id, agentId: review.agentId, title: `Nova versão de “${review.title}” a pedido de ${actor.name}`, status: "COMPLETED" as const, clientId: review.clientId, processId: review.processId, reviewId, at },
+            ...s.agentTasks,
+          ],
+          auditEvents: [
+            auditEvent(s, "REVIEW_VERSION_CREATED", "review", reviewId, `“${review.title}”: versão v${toVersion} criada pelo agente (v${fromVersion} preservada). Aguarda nova aprovação.`, actor),
+            auditEvent(s, "REVIEW_AGENT_EDITED", "review", reviewId, `Alteração solicitada ao agente em “${review.title}” (v${fromVersion} → v${toVersion}).`, actor, [
+              { label: "Origem", value: "AGENT_EDIT" },
+              { label: "Instrução", value: text },
+            ]),
+            ...s.auditEvents,
+          ],
+        };
+      }),
+    recordReviewDownload: (reviewId, version, format, draft) =>
+      set((s) => {
+        const review = s.reviews.find((r) => r.id === reviewId);
+        if (!review) return {};
+        return {
+          auditEvents: [
+            auditEvent(
+              s,
+              draft ? "DOCUMENT_DRAFT_DOWNLOADED" : "DOCUMENT_APPROVED_DOWNLOADED",
+              "review",
+              reviewId,
+              `“${review.title}” v${version} baixada em ${format}${draft ? " como rascunho (não aprovada)" : " (versão aprovada)"}.`,
+            ),
             ...s.auditEvents,
           ],
         };

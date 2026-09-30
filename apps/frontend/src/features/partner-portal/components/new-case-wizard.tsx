@@ -17,6 +17,7 @@ import type { ClientLookupResult, PartnerCaseInput, PartnerCaseResult } from "@/
 import type { ID } from "@/types";
 import { usePortalActions, usePortalClientMap } from "../hooks";
 import { clientDisplayName } from "@/features/processes/utils";
+import { useClientOriginOptions, useDefaultClientOrigin } from "@/features/clients/hooks";
 
 type StepKey = "identify" | "basic" | "documents" | "case" | "review";
 const STEP_LABEL: Record<StepKey, string> = {
@@ -29,6 +30,8 @@ const STEP_LABEL: Record<StepKey, string> = {
 
 interface Values {
   kind: ClientKind;
+  /** Origem do cliente: próprio escritório parceiro (padrão) ou Bárbara Cardoso Advocacia. */
+  originOfficeId: string;
   document: string;
   fullName: string;
   birthDate: string;
@@ -90,11 +93,15 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
   const [documents, setDocuments] = useState<DraftDocument[]>([]);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<PartnerCaseResult | null>(null);
+  // Opções vêm da regra central: somente o próprio escritório e a Bárbara Cardoso Advocacia.
+  const originOptions = useClientOriginOptions();
+  const defaultOrigin = useDefaultClientOrigin();
 
   const form = useForm<Values>({
     mode: "onTouched",
     defaultValues: {
       kind: "INDIVIDUAL",
+      originOfficeId: defaultOrigin,
       document: "",
       fullName: "",
       birthDate: "",
@@ -171,6 +178,7 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
                 v.kind === "INDIVIDUAL"
                   ? {
                       kind: "INDIVIDUAL",
+                      originOfficeId: v.originOfficeId,
                       fullName: v.fullName.trim(),
                       cpf: v.document,
                       birthDate: blank(v.birthDate),
@@ -179,6 +187,7 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
                     }
                   : {
                       kind: "COMPANY",
+                      originOfficeId: v.originOfficeId,
                       legalName: v.legalName.trim(),
                       tradeName: blank(v.tradeName),
                       cnpj: v.document,
@@ -341,6 +350,21 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
         <Panel className="max-w-[900px]">
           <PanelHeader title="Cadastro básico" description="O essencial para a Bárbara Cardoso Advocacia iniciar a análise. Dados complementares podem ser enviados depois." />
           <PanelBody className="grid grid-cols-2 gap-x-5 gap-y-4">
+            <Field
+              label="Origem do cliente"
+              requirement="required"
+              error={errors.originOfficeId?.message}
+              hint="Escritório ao qual a entrada deste cliente é atribuída."
+              className="col-span-2 max-w-[420px]"
+            >
+              {(p) => (
+                <Select
+                  {...p}
+                  options={originOptions}
+                  {...register("originOfficeId", { validate: (x) => originOptions.some((o) => o.value === x) || "Selecione a origem do cliente." })}
+                />
+              )}
+            </Field>
             {kind === "INDIVIDUAL" ? (
               <>
                 <Field label="Nome completo" requirement="required" error={errors.fullName?.message} className="col-span-2">
@@ -392,7 +416,9 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
             <Button variant="ghost" onClick={back}>
               Voltar
             </Button>
-            <Button onClick={() => validateAndNext(kind === "INDIVIDUAL" ? ["fullName", "email", "phone"] : ["legalName", "email", "phone"])}>Continuar</Button>
+            <Button onClick={() => validateAndNext(kind === "INDIVIDUAL" ? ["originOfficeId", "fullName", "email", "phone"] : ["originOfficeId", "legalName", "email", "phone"])}>
+              Continuar
+            </Button>
           </PanelFooter>
         </Panel>
       )}
@@ -526,6 +552,7 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
                   columns={3}
                   items={[
                     { label: "Tipo", value: CLIENT_KIND_LABEL[v.kind] },
+                    { label: "Origem do cliente", value: originOptions.find((o) => o.value === v.originOfficeId)?.label },
                     { label: v.kind === "INDIVIDUAL" ? "CPF" : "CNPJ", value: v.document },
                     { label: "Nome", value: v.kind === "INDIVIDUAL" ? v.fullName : v.legalName },
                     { label: "E-mail", value: blank(v.email) },

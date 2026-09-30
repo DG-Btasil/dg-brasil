@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, CircleSlash, FilePen, PencilLine, RotateCcw } from "lucide-react";
+import { Check, CircleSlash, PencilLine, RotateCcw } from "lucide-react";
 import { REVIEW_DECISION_LABEL, REVIEW_STATUS_LABEL, type ReviewDecisionKind } from "@/lib/constants/status";
 import { formatDateTime } from "@/lib/formatting";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,13 @@ import { contentVersionOf } from "../utils";
 import { DecisionDialog } from "./decision-dialog";
 import { ReopenDialog } from "./reopen-dialog";
 
-/** Barra de decisão (somente revisões em aberto e com reviews.decide). */
-export function ReviewDecisionBar({ review, editing, onEdit }: { review: Review; editing: boolean; onEdit: () => void }) {
+/**
+ * Ações de DECISÃO (somente revisões em aberto e com reviews.decide).
+ * Editar e baixar são ações do documento e ficam na barra do visualizador.
+ * "Solicitar alterações" é a devolução formal no fluxo; "Editar com agente"
+ * é o advogado comandando diretamente uma nova versão.
+ */
+export function ReviewDecisionBar({ review, editing }: { review: Review; editing: boolean }) {
   const { decide } = useReviewActions();
   const [open, setOpen] = useState<ReviewDecisionKind | null>(null);
 
@@ -35,14 +40,11 @@ export function ReviewDecisionBar({ review, editing, onEdit }: { review: Review;
             </>
           ) : (
             <>
-              <span className="font-medium text-foreground">Sua decisão é necessária.</span> Nada segue sem confirmação humana.
+              <span className="font-medium text-foreground">Sua decisão é necessária</span> sobre a versão v{contentVersionOf(review)}. Nada segue sem confirmação humana.
             </>
           )}
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" icon={<FilePen className="size-4" aria-hidden />} onClick={onEdit} disabled={editing}>
-            Editar manualmente
-          </Button>
           <Button variant="danger" icon={<CircleSlash className="size-4" aria-hidden />} onClick={() => setOpen("REJECTED")} disabled={editing}>
             Rejeitar
           </Button>

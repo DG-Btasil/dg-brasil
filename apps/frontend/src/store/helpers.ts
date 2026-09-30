@@ -2,6 +2,7 @@ import type { StoreApi } from "zustand";
 import { nowISO } from "@/lib/clock";
 import { createId } from "@/lib/ids";
 import { audienceOf, type Audience, type Role } from "@/lib/permissions";
+import type { OriginContext } from "@/lib/permissions/client-origin";
 import type { ActorRef, AnalysisEvent, AuditAction, AuditEvent, ID, LegalAnalysis, Notification, User } from "@/types";
 import type { AppState, AppStore } from "./types";
 
@@ -25,6 +26,19 @@ export function viewerOf(state: AppState): Viewer | undefined {
   if (!user) return undefined;
   const audience = audienceOf(user.role) ?? "OWNER";
   return { userId: user.id, role: user.role, audience, partnerOfficeId: audience === "PARTNER" ? user.partnerOfficeId : undefined };
+}
+
+/** Contexto para validar a origem do cliente a partir da SESSÃO (nunca da tela). */
+export function originContextOf(state: AppState): OriginContext {
+  const viewer = viewerOf(state);
+  return { role: viewer?.role, partnerOfficeId: viewer?.partnerOfficeId, owner: state.office, partners: state.partnerOffices };
+}
+
+/** Nome do escritório (proprietário ou parceiro) para textos de auditoria. */
+export function officeNameOf(state: AppState, officeId: ID | undefined): string {
+  if (!officeId) return "—";
+  if (officeId === state.office.id) return state.office.name;
+  return state.partnerOffices.find((p) => p.id === officeId)?.name ?? "Escritório parceiro";
 }
 
 /**

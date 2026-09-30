@@ -28,9 +28,12 @@ export function ClientTable({
   sortKey,
   direction,
   onSort,
+  originNames,
 }: {
   rows: ClientRow[];
   userMap: Map<ID, User>;
+  /** Nomes dos escritórios de origem; ausente = coluna oculta. */
+  originNames?: Map<ID, string>;
   sortKey: ClientSortKey | null;
   direction: SortDirection;
   onSort: (key: ClientSortKey) => void;
@@ -45,6 +48,7 @@ export function ClientTable({
           <Th>Tipo</Th>
           <Th>CPF/CNPJ</Th>
           <Th>Responsável</Th>
+          {originNames && <Th>Origem</Th>}
           <SortableTh label="Status" sortKey="status" {...sortProps} />
           <Th>Análise jurídica</Th>
           <SortableTh label="Processos ativos" sortKey="processes" {...sortProps} />
@@ -88,6 +92,11 @@ export function ClientTable({
                   <span className="text-subtle">—</span>
                 )}
               </Td>
+              {originNames && (
+                <Td className="max-w-[160px] truncate whitespace-nowrap text-[12.5px] text-muted">
+                  {(client.originOfficeId && originNames.get(client.originOfficeId)) ?? "—"}
+                </Td>
+              )}
               <Td>
                 <StatusBadge status={client.status} labels={CLIENT_STATUS_LABEL} tones={CLIENT_STATUS_TONE} />
               </Td>

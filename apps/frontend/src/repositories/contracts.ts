@@ -11,7 +11,7 @@
  * parceiro recebe apenas os registros da própria relação (ver
  * `lib/permissions/partner-scope.ts` e docs/BACKEND_HANDOFF.md).
  */
-import type { DocumentStatus, IntegrationStatus, PartnerOfficeStatus, ReviewDecisionKind, SubmissionStatus } from "@/lib/constants/status";
+import type { DocumentStatus, ExportFormat, IntegrationStatus, PartnerOfficeStatus, ReviewDecisionKind, SubmissionStatus } from "@/lib/constants/status";
 import type {
   AgentTask,
   Agent,
@@ -20,6 +20,7 @@ import type {
   Client,
   ClientDocument,
   Deadline,
+  ExportedDocument,
   FeeModel,
   FinancialAgreement,
   ID,
@@ -147,6 +148,14 @@ export interface ReviewRepository {
   editContent(reviewId: ID, content: ReviewContent): Promise<void>;
   /** Reabre revisão decidida; a decisão anterior permanece no histórico. */
   reopen(reviewId: ID, reason?: string): Promise<void>;
+  /** "Editar com agente": nova versão (AGENT_EDIT) a partir da instrução do advogado. */
+  requestAgentEdit(reviewId: ID, instruction: string): Promise<void>;
+  /**
+   * Exporta UMA versão específica. Versão não aprovada sai como rascunho
+   * (marca "RASCUNHO — NÃO APROVADO"). Backend: gera/obtém o arquivo, registra
+   * o download e devolve URL temporária ou stream autorizado.
+   */
+  exportVersion(reviewId: ID, versionNumber: number, format: ExportFormat): Promise<ExportedDocument>;
 }
 
 export interface NotificationRepository {

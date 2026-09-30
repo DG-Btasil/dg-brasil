@@ -4,6 +4,8 @@
  * contratos e trocar a exportação em `repositories/index.ts`.
  */
 import { JUDICIAL_PROVIDERS } from "@/services/judicial-integration";
+import { mockDocumentExportService } from "@/services/document-export";
+import { currentVersionNumber, isApprovedVersion } from "@/lib/domain/review-versions";
 import { useAppStore } from "@/store/app-store";
 import { selectScoped } from "@/store/scope";
 import type {
@@ -91,6 +93,27 @@ export const mockReviewRepository: ReviewRepository = {
   decide: async (id, decision, comment) => state().decideReview(id, decision, comment),
   editContent: async (id, content) => state().editReviewContent(id, content),
   reopen: async (id, reason) => state().reopenReview(id, reason),
+  requestAgentEdit: async (id, instruction) => state().requestAgentEdit(id, instruction),
+  exportVersion: async (id, versionNumber, format) => {
+    const review = data().reviews.find((r) => r.id === id);
+    if (!review) throw new Error("Revisão não encontrada.");
+    const content =
+      versionNumber === currentVersionNumber(review) ? review.content : review.previousVersions?.find((v) => v.version === versionNumber)?.content;
+    if (!content) throw new Error("Versão não encontrada.");
+    const decisions = data().reviewDecisions.filter((d) => d.reviewId === id).sort((a, b) => b.at.localeCompare(a.at));
+    // O rascunho é decidido aqui (servidor, no produto), nunca pela tela.
+    const draft = !isApprovedVersion(review, decisions, versionNumber);
+    const file = await mockDocumentExportService.exportVersion({
+      title: review.title,
+      content,
+      versionNumber,
+      draft,
+      format,
+      footer: `${data().office.name} · ${review.title} · versão ${versionNumber}${draft ? " · rascunho" : " · aprovada"}`,
+    });
+    state().recordReviewDownload(id, versionNumber, format, draft);
+    return file;
+  },
 };
 
 export const mockNotificationRepository: NotificationRepository = {

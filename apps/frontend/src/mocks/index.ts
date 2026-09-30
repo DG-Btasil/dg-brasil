@@ -110,7 +110,8 @@ export interface DataState {
 
 /** Gera um conjunto novo de dados, com datas relativas ao dia de hoje. */
 export function createSeedData(): DataState {
-  const ownClients = buildClients().map((c) => ({ ...c, createdByOfficeId: OFFICE_ID }));
+  // Clientes próprios: origem e cadastro da Bárbara Cardoso Advocacia.
+  const ownClients = buildClients().map((c) => ({ ...c, originOfficeId: OFFICE_ID, createdByOfficeId: OFFICE_ID }));
   return {
     office: buildOffice(),
     subscription: buildSubscription(),
