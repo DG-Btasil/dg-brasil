@@ -34,6 +34,21 @@ export function originContextOf(state: AppState): OriginContext {
   return { role: viewer?.role, partnerOfficeId: viewer?.partnerOfficeId, owner: state.office, partners: state.partnerOffices };
 }
 
+/**
+ * Garante o relacionamento PARTNER entre cliente e parceiro (para o parceiro
+ * enxergar o cliente do caso que originou). Devolve a mesma lista se já existe.
+ */
+export function withPartnerRelationship(state: AppState, clientId: ID, partnerOfficeId: ID, createdBy: ID, at: string): AppState["clientRelationships"] {
+  const exists = state.clientRelationships.some(
+    (r) => r.clientId === clientId && r.officeType === "PARTNER" && r.partnerOfficeId === partnerOfficeId && r.status === "ACTIVE",
+  );
+  if (exists) return state.clientRelationships;
+  return [
+    { id: createId("rel"), officeId: state.office.id, clientId, officeType: "PARTNER", partnerOfficeId, status: "ACTIVE", createdAt: at, createdBy },
+    ...state.clientRelationships,
+  ];
+}
+
 /** Nome do escritório (proprietário ou parceiro) para textos de auditoria. */
 export function officeNameOf(state: AppState, officeId: ID | undefined): string {
   if (!officeId) return "—";

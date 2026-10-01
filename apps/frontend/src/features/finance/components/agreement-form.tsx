@@ -10,19 +10,19 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { todayISO } from "@/lib/clock";
 import { BILLING_MOMENT_LABEL } from "@/lib/constants/status";
 import type { ID } from "@/types";
-import { useClientOptions, useClientProcesses, useFeeModels, useFinanceActions } from "../hooks";
+import { useCaseValue, useClientCasesForFinance, useClientOptions, useFeeModels, useFinanceActions } from "../hooks";
 import { agreementSchema, feeModelToFeeFields, formToFeeValues, type AgreementFormValues } from "../schemas";
-import { processLabel } from "../utils";
+import { caseLabel } from "../utils";
 import { FeeValuesFields } from "./fee-values-fields";
 import { SchedulePreview } from "./schedule-preview";
 
 interface AgreementFormProps {
-  /** Cliente fixo (ex.: aba Financeiro do processo). */
+  /** Cliente fixo (ex.: aba Financeiro do caso). */
   fixedClientId?: ID;
-  /** Processo fixo (ex.: aba Financeiro do processo). */
-  fixedProcessId?: ID;
+  /** Caso fixo (ex.: aba Financeiro do caso). */
+  fixedCaseId?: ID;
   defaultClientId?: ID;
-  defaultProcessId?: ID;
+  defaultCaseId?: ID;
   onCreated?: (id: ID) => void;
   onCancel?: () => void;
   submitLabel?: string;
@@ -33,7 +33,7 @@ interface AgreementFormProps {
  * leitura); "Personalizar para este cliente" libera a edição. Nenhuma regra
  * de cobrança é imposta: cada escritório define seus próprios modelos.
  */
-export function AgreementForm({ fixedClientId, fixedProcessId, defaultClientId, defaultProcessId, onCreated, onCancel, submitLabel = "Criar contrato" }: AgreementFormProps) {
+export function AgreementForm({ fixedClientId, fixedCaseId, defaultClientId, defaultCaseId, onCreated, onCancel, submitLabel = "Criar contrato" }: AgreementFormProps) {
   const feeModels = useFeeModels();
   const clientOptions = useClientOptions();
   const { createAgreement } = useFinanceActions();
@@ -48,7 +48,7 @@ export function AgreementForm({ fixedClientId, fixedProcessId, defaultClientId, 
     resolver: zodResolver(agreementSchema),
     defaultValues: {
       clientId: fixedClientId ?? defaultClientId ?? "",
-      processId: fixedProcessId ?? defaultProcessId ?? "",
+      legalCaseId: fixedCaseId ?? defaultCaseId ?? "",
       feeModelId: "",
       customized: true,
       ...feeModelToFeeFields(undefined),
@@ -58,10 +58,10 @@ export function AgreementForm({ fixedClientId, fixedProcessId, defaultClientId, 
   });
 
   const values = useWatch({ control });
-  const clientProcesses = useClientProcesses(values.clientId);
+  const clientCases = useClientCasesForFinance(values.clientId);
+  const caseValue = useCaseValue(values.legalCaseId);
   const selectedModel = feeModels.find((m) => m.id === values.feeModelId);
   const readOnly = Boolean(selectedModel) && !values.customized;
-  const process = clientProcesses.find((p) => p.id === values.processId);
 
   const modelOptions = useMemo(
     () => feeModels.filter((m) => m.active || m.id === values.feeModelId).map((m) => ({ value: m.id, label: m.name })),
@@ -79,7 +79,7 @@ export function AgreementForm({ fixedClientId, fixedProcessId, defaultClientId, 
     const fee = formToFeeValues(data);
     const id = await createAgreement({
       clientId: data.clientId,
-      processId: data.processId || undefined,
+      legalCaseId: data.legalCaseId,
       feeModelId: data.feeModelId || undefined,
       customized: data.customized,
       upfrontFee: fee.upfrontFee,
@@ -103,18 +103,18 @@ export function AgreementForm({ fixedClientId, fixedProcessId, defaultClientId, 
                 {...p}
                 placeholder="Selecione o cliente"
                 options={clientOptions}
-                {...register("clientId", { onChange: () => setValue("processId", "") })}
+                {...register("clientId", { onChange: () => setValue("legalCaseId", "") })}
               />
             )}
           </Field>
-          <Field label="Processo" requirement="optional" hint="Sem processo, o contrato abrange todos os processos do cliente.">
+          <Field label="Caso" requirement="required" error={errors.legalCaseId?.message} hint="O contrato pertence ao caso e abrange todos os processos dele.">
             {(p) => (
               <Select
                 {...p}
                 disabled={!values.clientId}
-                placeholder={values.clientId ? "Todos os processos do cliente" : "Selecione o cliente primeiro"}
-                options={clientProcesses.map((pr) => ({ value: pr.id, label: processLabel(pr) }))}
-                {...register("processId")}
+                placeholder={values.clientId ? "Selecione o caso" : "Selecione o cliente primeiro"}
+                options={clientCases.map((c) => ({ value: c.id, label: caseLabel(c) }))}
+                {...register("legalCaseId")}
               />
             )}
           </Field>
@@ -166,7 +166,7 @@ export function AgreementForm({ fixedClientId, fixedProcessId, defaultClientId, 
         </Field>
       </div>
 
-      <SchedulePreview values={formToFeeValues(values)} startDate={values.startDate ?? ""} caseValue={process?.caseValue} />
+      <SchedulePreview values={formToFeeValues(values)} startDate={values.startDate ?? ""} caseValue={caseValue} />
 
       <div className="flex items-center justify-end gap-2">
         {onCancel && (

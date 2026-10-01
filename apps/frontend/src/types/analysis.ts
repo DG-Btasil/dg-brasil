@@ -62,6 +62,8 @@ export interface AnalysisResult {
 
 export interface LegalAnalysis extends OfficeScoped, Timestamps {
   clientId: ID;
+  /** Cada análise pertence a um caso (um cliente pode ter vários casos e análises). */
+  legalCaseId?: ID;
   templateId: ID;
   status: AnalysisStatus;
   /** Respostas aos campos específicos do template (dados da relação bancária etc.). */

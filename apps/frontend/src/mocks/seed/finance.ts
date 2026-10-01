@@ -58,7 +58,8 @@ export function buildFeeModels(): FeeModel[] {
   ];
 }
 
-export function buildAgreements(): FinancialAgreement[] {
+/** Contratos de honorários. O caso (`legalCaseId`) é ligado em mocks/index. */
+export function buildAgreements(): (Omit<FinancialAgreement, "legalCaseId"> & { processId?: string })[] {
   return [
     {
       ...o,

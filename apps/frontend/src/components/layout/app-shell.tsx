@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useIsPartner } from "@/features/auth/hooks";
-import { ProductTour } from "@/features/onboarding/tour/product-tour";
+import { ProductTour } from "@/features/tour/product-tour";
 import { AppHeader } from "./app-header";
 import { AuthGuard, HydrationGate } from "./guards";
 

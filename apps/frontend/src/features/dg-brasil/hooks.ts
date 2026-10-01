@@ -96,7 +96,7 @@ export interface DgOverview {
   activeSkills: number;
   activeTheses: number;
   changesLast30Days: number;
-  monthTokens: number;
+  monthRuns: number;
 }
 
 export function useDgOverview(): DgOverview {
@@ -112,7 +112,7 @@ export function useDgOverview(): DgOverview {
       activeSkills: skills.filter((s) => s.status === "ACTIVE").length,
       activeTheses: theses.filter((t) => t.status === "ACTIVE").length,
       changesLast30Days: history.filter((h) => h.status === "APPLIED" && daysSince(h.at) <= 30).length,
-      monthTokens: usage.inputTokens + usage.outputTokens,
+      monthRuns: usage.runs,
     }),
     [agents, skills, theses, history, usage],
   );

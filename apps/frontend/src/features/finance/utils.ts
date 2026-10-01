@@ -1,11 +1,14 @@
 import { addDays, parseISODate, toISODate, todayISO } from "@/lib/clock";
 import type { PaymentStatus } from "@/lib/constants/status";
-import type { AgreementSummary, Client, FeeModel, FinancialAgreement, PaymentView, Process } from "@/types";
+import type { AgreementSummary, Client, FeeModel, LegalCase, PaymentView } from "@/types";
 
 /** Linha consolidada da tabela de contratos. */
 export interface AgreementRow extends AgreementSummary {
   clientName: string;
-  process?: Process;
+  /** Caso do contrato (o contrato abrange todos os processos dele). */
+  legalCase?: LegalCase;
+  /** Soma do valor da causa dos processos do caso (dado jurídico, referência para êxito). */
+  caseValue?: number;
   feeModel?: FeeModel;
   payments: PaymentView[];
 }
@@ -15,8 +18,8 @@ export function clientLabel(client: Client | undefined): string {
   return client.kind === "INDIVIDUAL" ? client.fullName : (client.tradeName ?? client.legalName);
 }
 
-export function processLabel(process: Process): string {
-  return process.cnj ? `${process.title} · ${process.cnj}` : process.title;
+export function caseLabel(legalCase: LegalCase): string {
+  return legalCase.title;
 }
 
 const moneyInputFmt = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -85,11 +88,6 @@ export function estimateSuccessFee(percent: number | undefined, caseValue: numbe
   return Math.round(caseValue * (percent / 100));
 }
 
-/** Contratos que valem para o processo: vinculados a ele ou ao cliente como um todo. */
-export function agreementAppliesToProcess(agreement: FinancialAgreement, process: Process): boolean {
-  if (agreement.processId) return agreement.processId === process.id;
-  return agreement.clientId === process.clientId;
-}
 
 /* ------------------------------------------------------------------ */
 /* Séries para os gráficos                                             */

@@ -4,9 +4,7 @@ import type {
   PartnerRequestStatus,
   PartnerRequestType,
   PartnershipStatus,
-  SubmissionStatus,
 } from "@/lib/constants/status";
-import type { LegalArea } from "@/lib/constants/legal";
 import type { PartnerRole } from "@/lib/permissions";
 import type { ActorRef, Address, ID, ISODate, ISODateTime, OfficeScoped } from "./common";
 import type { User } from "./user";
@@ -64,29 +62,6 @@ export interface ClientOfficeRelationship extends OfficeScoped {
   createdBy: ID;
 }
 
-/**
- * Caso enviado por um parceiro (cliente + documentos + informações iniciais).
- * Ao ser confirmado, gera o processo de origem PARTNER.
- */
-export interface PartnerCaseSubmission extends OfficeScoped {
-  partnerOfficeId: ID;
-  clientId: ID;
-  processId?: ID;
-  status: SubmissionStatus;
-  area: LegalArea;
-  /** Relato inicial do caso, escrito pelo parceiro. */
-  summary: string;
-  notes?: string;
-  documentIds: ID[];
-  /** true quando o cliente já existia no DG Brasil (não houve novo cadastro). */
-  existingClient: boolean;
-  createdAt: ISODateTime;
-  createdBy: ID;
-  submittedAt?: ISODateTime;
-  submittedBy?: ID;
-  updatedAt: ISODateTime;
-}
-
 export interface PartnerRequestMessage {
   id: ID;
   at: ISODateTime;
@@ -101,6 +76,7 @@ export interface PartnerRequestMessage {
 export interface PartnerRequest extends OfficeScoped {
   partnerOfficeId: ID;
   clientId?: ID;
+  legalCaseId?: ID;
   processId?: ID;
   type: PartnerRequestType;
   title: string;
@@ -125,15 +101,15 @@ export interface PartnerPayout {
 }
 
 /**
- * Acordo financeiro da parceria NO CASO. É um SNAPSHOT: os percentuais são
- * copiados do PartnerOffice no momento em que o caso passa a ter acordo e
- * não são recalculados quando o padrão do parceiro muda.
+ * Acordo de parceria do CASO. Nasce no ACEITE de um caso cuja origem é um
+ * parceiro. É um SNAPSHOT: os percentuais são copiados do PartnerOffice no
+ * aceite e não mudam quando o padrão do parceiro muda.
  *
  * Valores guardados = fatos. Estimativas e saldos são derivados em
  * `lib/domain/partnership.ts`.
  */
-export interface ProcessPartnershipAgreement extends OfficeScoped {
-  processId: ID;
+export interface CasePartnershipAgreement extends OfficeScoped {
+  legalCaseId: ID;
   partnerOfficeId: ID;
   partnerPercentage: number;
   ownerPercentage: number;
@@ -144,12 +120,14 @@ export interface ProcessPartnershipAgreement extends OfficeScoped {
   realizedRevenue?: number;
   /** Repasses já registrados ao parceiro. */
   payouts: PartnerPayout[];
+  /** Encerrado quando a origem do caso é alterada após o aceite (histórico preservado). */
+  cancelledAt?: ISODateTime;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
 
 /** Acordo com os valores derivados. Só existe em leitura. */
-export interface PartnershipAgreementView extends ProcessPartnershipAgreement {
+export interface PartnershipAgreementView extends CasePartnershipAgreement {
   status: PartnershipStatus;
   estimatedPartnerAmount?: number;
   estimatedOwnerAmount?: number;

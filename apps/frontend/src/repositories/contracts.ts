@@ -11,7 +11,7 @@
  * parceiro recebe apenas os registros da própria relação (ver
  * `lib/permissions/partner-scope.ts` e docs/BACKEND_HANDOFF.md).
  */
-import type { DocumentStatus, ExportFormat, IntegrationStatus, PartnerOfficeStatus, ReviewDecisionKind, SubmissionStatus } from "@/lib/constants/status";
+import type { DocumentStatus, ExportFormat, IntegrationStatus, LegalCaseStatus, PartnerOfficeStatus, ReviewDecisionKind } from "@/lib/constants/status";
 import type {
   AgentTask,
   Agent,
@@ -30,14 +30,15 @@ import type {
   LegalThesis,
   Notification,
   Office,
-  PartnerCaseSubmission,
   PartnerOffice,
   PartnerRequest,
   PartnerRole,
   Payment,
   Process,
   ProcessEvent,
-  ProcessPartnershipAgreement,
+  CasePartnershipAgreement,
+  LegalCase,
+  ReferenceMaterial,
   Review,
   ReviewContent,
   Role,
@@ -46,6 +47,10 @@ import type {
 } from "@/types";
 import type { JudicialSyncResult } from "@/services/judicial-integration";
 import type {
+  CaseRejectionInput,
+  LegalCasePatch,
+  NewLegalCaseInput,
+  NewReferenceInput,
   ClientLookupResult,
   ClientPatch,
   NewPartnerOfficeInput,
@@ -57,7 +62,6 @@ import type {
   PartnerOfficePatch,
   PartnerProcessInput,
   PartnershipValuesInput,
-  CreateOfficeInput,
   DeleteClientResult,
   ImportPlan,
   ImportResult,
@@ -78,13 +82,10 @@ import type {
   UserPreferences,
 } from "@/store/types";
 
+/** Escritório proprietário único (Bárbara Cardoso Advocacia). Não há criação de escritórios. */
 export interface OfficeRepository {
   get(): Promise<Office>;
-  create(input: CreateOfficeInput): Promise<void>;
-  update(patch: Partial<Omit<Office, "id" | "onboarding">>): Promise<void>;
-  saveOnboardingStep(stepKey: string, answers: Record<string, unknown>, nextStep: number, skipped?: boolean): Promise<void>;
-  setOnboardingStep(step: number): Promise<void>;
-  completeOnboarding(): Promise<void>;
+  update(patch: Partial<Omit<Office, "id">>): Promise<void>;
 }
 
 export interface UserRepository {
@@ -223,11 +224,9 @@ export interface PartnerRepository {
   listRequests(): Promise<PartnerRequest[]>;
   createRequest(input: NewPartnerRequestInput): Promise<ID>;
   resolveRequest(id: ID, resolution: "RESOLVED" | "CANCELLED"): Promise<void>;
-  listSubmissions(): Promise<PartnerCaseSubmission[]>;
-  setSubmissionStatus(id: ID, status: SubmissionStatus): Promise<void>;
   /** Torna PARTNER_VISIBLE um documento (já aprovado) de caso de parceiro. */
   shareDocument(documentId: ID): Promise<void>;
-  listAgreements(): Promise<ProcessPartnershipAgreement[]>;
+  listAgreements(): Promise<CasePartnershipAgreement[]>;
   updateAgreementValues(id: ID, input: PartnershipValuesInput): Promise<void>;
   registerPayout(id: ID, amount: number, note?: string): Promise<void>;
 }
@@ -245,4 +244,30 @@ export interface PartnerPortalRepository {
   /** Envio oficial. Com `replacesDocumentId`, cria nova versão e preserva a anterior. */
   submitDocument(input: PartnerDocumentInput): Promise<ID>;
   respondRequest(requestId: ID, message: string): Promise<void>;
+}
+
+/**
+ * Casos jurídicos: Client → LegalCase → LegalProcess.
+ * Regras no servidor: origem permitida pela sessão; após o aceite só
+ * Administrador muda a origem; aceite exige advogado responsável e cria o
+ * acordo de parceria (snapshot) quando a origem é parceiro; a nota interna
+ * da rejeição nunca é devolvida a parceiros.
+ */
+export interface CaseRepository {
+  list(): Promise<LegalCase[]>;
+  get(id: ID): Promise<LegalCase | undefined>;
+  create(input: NewLegalCaseInput): Promise<ID>;
+  update(id: ID, patch: LegalCasePatch): Promise<void>;
+  submit(id: ID): Promise<void>;
+  changeOrigin(id: ID, originOfficeId: ID): Promise<void>;
+  assignLawyer(id: ID, lawyerId: ID): Promise<void>;
+  accept(id: ID, lawyerId?: ID): Promise<void>;
+  reject(id: ID, input: CaseRejectionInput): Promise<void>;
+  setStatus(id: ID, status: Extract<LegalCaseStatus, "IN_PROGRESS" | "CLOSED" | "ARCHIVED">): Promise<void>;
+}
+
+/** Referências do DG Brasil (somente Administrador). */
+export interface ReferenceRepository {
+  list(): Promise<ReferenceMaterial[]>;
+  create(input: NewReferenceInput): Promise<ID>;
 }

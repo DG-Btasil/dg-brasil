@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { OPEN_REVIEW_STATUSES, type PartnerOfficeStatus, type SubmissionStatus } from "@/lib/constants/status";
+import { OPEN_REVIEW_STATUSES, type PartnerOfficeStatus } from "@/lib/constants/status";
 import { partnershipView, summarizePartnerFinance } from "@/lib/domain/partnership";
 import { repositories } from "@/repositories";
 import { useScopedStore } from "@/store/scope";
@@ -11,7 +11,7 @@ import type {
   AuditEvent,
   Client,
   ID,
-  PartnerCaseSubmission,
+  LegalCase,
   PartnerFinancialSummary,
   PartnerOffice,
   PartnerRequest,
@@ -57,36 +57,38 @@ export function useProcessMap(): Map<ID, Process> {
   return useMemo(() => new Map(processes.map((p) => [p.id, p])), [processes]);
 }
 
-export function usePartnerRequests(filter?: { partnerOfficeId?: ID; processId?: ID; clientId?: ID }): PartnerRequest[] {
+export function usePartnerRequests(filter?: { partnerOfficeId?: ID; processId?: ID; clientId?: ID; legalCaseId?: ID }): PartnerRequest[] {
   const requests = useScopedStore((s) => s.partnerRequests);
-  const { partnerOfficeId, processId, clientId } = filter ?? {};
+  const { partnerOfficeId, processId, clientId, legalCaseId } = filter ?? {};
   return useMemo(
     () =>
       requests
-        .filter((r) => (!partnerOfficeId || r.partnerOfficeId === partnerOfficeId) && (!processId || r.processId === processId) && (!clientId || r.clientId === clientId))
+        .filter(
+          (r) =>
+            (!partnerOfficeId || r.partnerOfficeId === partnerOfficeId) &&
+            (!processId || r.processId === processId) &&
+            (!clientId || r.clientId === clientId) &&
+            (!legalCaseId || r.legalCaseId === legalCaseId),
+        )
         .sort((a, b) => (a.status === "OPEN" ? 0 : 1) - (b.status === "OPEN" ? 0 : 1) || b.createdAt.localeCompare(a.createdAt)),
-    [requests, partnerOfficeId, processId, clientId],
+    [requests, partnerOfficeId, processId, clientId, legalCaseId],
   );
 }
 
-export function usePartnerSubmissions(): PartnerCaseSubmission[] {
-  return useScopedStore((s) => s.partnerSubmissions);
-}
-
-export function useSubmissionByProcess(processId: ID | undefined): PartnerCaseSubmission | undefined {
-  const submissions = usePartnerSubmissions();
-  return useMemo(() => submissions.find((s) => s.processId === processId), [submissions, processId]);
+/** Casos originados por um parceiro (ou enviados por ele). */
+export function usePartnerCases(partnerOfficeId: ID | undefined): LegalCase[] {
+  const cases = useScopedStore((s) => s.legalCases);
+  return useMemo(
+    () => cases.filter((c) => !!partnerOfficeId && (c.originOfficeId === partnerOfficeId || c.createdByOfficeId === partnerOfficeId)),
+    [cases, partnerOfficeId],
+  );
 }
 
 /** Acordos com valores derivados (estimado, realizado, repassado, pendente). */
 export function usePartnershipViews(): PartnershipAgreementView[] {
   const agreements = useScopedStore((s) => s.partnershipAgreements);
-  return useMemo(() => agreements.map(partnershipView), [agreements]);
-}
-
-export function useProcessPartnership(processId: ID | undefined): PartnershipAgreementView | undefined {
-  const views = usePartnershipViews();
-  return useMemo(() => views.find((v) => v.processId === processId), [views, processId]);
+  // Acordos encerrados (origem alterada após o aceite) ficam só no histórico.
+  return useMemo(() => agreements.filter((a) => !a.cancelledAt).map(partnershipView), [agreements]);
 }
 
 export function usePartnerFinancialSummary(partnerOfficeId: ID | undefined): PartnerFinancialSummary | undefined {
@@ -109,13 +111,14 @@ export function usePartnerClients(partnerOfficeId: ID | undefined): Client[] {
   }, [clients, relationships, partnerOfficeId]);
 }
 
-/** Processos cuja origem relacional é o parceiro. */
+/** Processos dos casos originados pelo parceiro (a origem é do caso, não do processo). */
 export function usePartnerProcesses(partnerOfficeId: ID | undefined): Process[] {
   const processes = useScopedStore((s) => s.processes);
-  return useMemo(
-    () => processes.filter((p) => p.relationshipOrigin === "PARTNER" && p.originPartnerOfficeId === partnerOfficeId),
-    [processes, partnerOfficeId],
-  );
+  const cases = usePartnerCases(partnerOfficeId);
+  return useMemo(() => {
+    const ids = new Set(cases.filter((c) => c.originOfficeId === partnerOfficeId).map((c) => c.id));
+    return processes.filter((p) => ids.has(p.legalCaseId));
+  }, [processes, cases, partnerOfficeId]);
 }
 
 export function usePartnerActivity(partnerOfficeId: ID | undefined): AuditEvent[] {
@@ -141,61 +144,65 @@ export function usePartnerRows(): PartnerRow[] {
   const relationships = useScopedStore((s) => s.clientRelationships);
   const processes = useScopedStore((s) => s.processes);
   const requests = useScopedStore((s) => s.partnerRequests);
-  const submissions = useScopedStore((s) => s.partnerSubmissions);
+  const cases = useScopedStore((s) => s.legalCases);
   const events = useScopedStore((s) => s.auditEvents);
   return useMemo(
-    () =>
-      partners.map((partner) => {
+    () => {
+      const partnerCaseIds = (pid: ID) => new Set(cases.filter((c) => c.originOfficeId === pid).map((c) => c.id));
+      return partners.map((partner) => {
         const last = events.filter((e) => e.partnerOfficeId === partner.id).reduce<string | undefined>((max, e) => (!max || e.at > max ? e.at : max), undefined);
         return {
           partner,
           clients: relationships.filter((r) => r.officeType === "PARTNER" && r.partnerOfficeId === partner.id && r.status === "ACTIVE").length,
-          activeProcesses: processes.filter((p) => p.originPartnerOfficeId === partner.id && p.status !== "CLOSED").length,
+          activeProcesses: processes.filter((p) => partnerCaseIds(partner.id).has(p.legalCaseId) && p.status !== "CLOSED").length,
           openRequests: requests.filter((r) => r.partnerOfficeId === partner.id && r.status === "OPEN").length,
-          newCases: submissions.filter((s) => s.partnerOfficeId === partner.id && s.status === "SUBMITTED").length,
+          newCases: cases.filter((c) => c.originOfficeId === partner.id && c.status === "SUBMITTED").length,
           lastActivityAt: last,
         };
-      }),
-    [partners, relationships, processes, requests, submissions, events],
+      });
+    },
+    [partners, relationships, processes, requests, cases, events],
   );
 }
 
 export interface NewPartnerCaseRow {
-  submission: PartnerCaseSubmission;
+  legalCase: LegalCase;
   clientName: string;
   partnerName: string;
   documents: number;
 }
 
-/** Casos enviados por parceiros que ainda aguardam a equipe (Home interna). */
+/** Casos enviados por parceiros que aguardam a equipe (Home interna). */
 export function useNewPartnerCases(limit = 5): { rows: NewPartnerCaseRow[]; total: number } {
-  const submissions = usePartnerSubmissions();
+  const cases = useScopedStore((s) => s.legalCases);
   const clients = useScopedStore((s) => s.clients);
+  const documents = useScopedStore((s) => s.documents);
+  const office = useScopedStore((s) => s.office);
   const partners = usePartnerMap();
   return useMemo(() => {
-    const pending = submissions
-      .filter((s) => s.status === "SUBMITTED" || s.status === "UNDER_ANALYSIS")
+    const pending = cases
+      .filter((c) => c.createdByOfficeId !== office.id && (c.status === "SUBMITTED" || c.status === "WAITING_DOCUMENTS" || c.status === "READY_FOR_ANALYSIS"))
       .sort((a, b) => (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt));
     const clientMap = new Map(clients.map((c) => [c.id, c]));
     return {
       total: pending.length,
-      rows: pending.slice(0, limit).map((submission) => ({
-        submission,
-        clientName: clientDisplayName(clientMap.get(submission.clientId)),
-        partnerName: partners.get(submission.partnerOfficeId)?.name ?? "Parceiro",
-        documents: submission.documentIds.length,
+      rows: pending.slice(0, limit).map((legalCase) => ({
+        legalCase,
+        clientName: clientDisplayName(clientMap.get(legalCase.clientId)),
+        partnerName: partners.get(legalCase.createdByOfficeId)?.name ?? "Parceiro",
+        documents: documents.filter((d) => d.legalCaseId === legalCase.id).length,
       })),
     };
-  }, [submissions, clients, partners, limit]);
+  }, [cases, clients, documents, office.id, partners, limit]);
 }
 
-/** Existe revisão interna em aberto neste processo? (interno: revisões; parceiro: sinais genéricos). */
-export function useOpenInternalReviews(processId: ID): number {
+/** Revisões internas em aberto no caso (interno: revisões; parceiro: sinais genéricos). */
+export function useOpenInternalReviews(legalCaseId: ID): number {
   const reviews = useScopedStore((s) => s.reviews);
   const signals = useScopedStore((s) => s.reviewSignals);
   return useMemo(
-    () => reviews.filter((r) => r.processId === processId && OPEN_REVIEW_STATUSES.includes(r.status)).length + signals.filter((s) => s.processId === processId).length,
-    [reviews, signals, processId],
+    () => reviews.filter((r) => r.legalCaseId === legalCaseId && OPEN_REVIEW_STATUSES.includes(r.status)).length + signals.filter((s) => s.legalCaseId === legalCaseId).length,
+    [reviews, signals, legalCaseId],
   );
 }
 
@@ -240,8 +247,6 @@ export function usePartnerActions() {
       run(() => repositories.partners.createRequest(input), { title: "Solicitação enviada ao parceiro", description: input.title }, "Não foi possível criar a solicitação."),
     resolveRequest: (id: ID, resolution: "RESOLVED" | "CANCELLED") =>
       run(() => repositories.partners.resolveRequest(id, resolution), { title: resolution === "RESOLVED" ? "Solicitação resolvida" : "Solicitação cancelada" }, "Não foi possível atualizar a solicitação."),
-    setSubmissionStatus: (id: ID, status: SubmissionStatus) =>
-      run(() => repositories.partners.setSubmissionStatus(id, status), { title: "Situação do caso atualizada", description: "O parceiro foi notificado." }, "Não foi possível atualizar o caso."),
     shareDocument: (documentId: ID) =>
       run(() => repositories.partners.shareDocument(documentId), { title: "Documento disponibilizado ao parceiro" }, "Não foi possível disponibilizar o documento."),
     updateValues: (agreementId: ID, input: PartnershipValuesInput) =>

@@ -10,6 +10,7 @@ export interface Notification extends OfficeScoped {
   at: ISODateTime;
   read: boolean;
   clientId?: ID;
+  legalCaseId?: ID;
   processId?: ID;
   reviewId?: ID;
   cta: { label: string; href: string };

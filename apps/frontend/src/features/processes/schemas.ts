@@ -18,7 +18,8 @@ const requiredEnum = <T extends readonly [string, ...string[]]>(values: T) =>
 /** Formulário de cadastro manual de processo. */
 export const processFormSchema = z
   .object({
-    clientId: zRequired("Selecione o cliente."),
+    /** Todo processo pertence a um caso (o cliente é o do caso). */
+    legalCaseId: zRequired("Selecione o caso relacionado."),
     cnj: zCnjOptional(),
     title: zRequired("Informe um nome resumido para o processo."),
     court: z.string().optional(),
@@ -47,8 +48,6 @@ export const processFormSchema = z
       .min(1, DUE_DATE_REQUIRED)
       .refine((v) => isoDate.test(v), msg.date),
     notes: z.string().optional(),
-    /** Origem do caso: vazio = próprio; id = originado por escritório parceiro. */
-    originPartnerOfficeId: z.string().optional(),
   });
 
 export type ProcessFormInput = z.input<typeof processFormSchema>;

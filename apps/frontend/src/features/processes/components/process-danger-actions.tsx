@@ -96,8 +96,7 @@ export function DeleteProcessDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const canFinance = usePermission("finance.view");
-  const impact = useProcessDeletionImpact(process.id, canFinance);
+  const impact = useProcessDeletionImpact(process.id);
   const { deleteProcess } = useProcessActions();
   const [saving, setSaving] = useState(false);
 
@@ -106,8 +105,6 @@ export function DeleteProcessDialog({
       `${pluralize(impact.reviews, "revisão", "revisões")} (mantidas no histórico)`,
     impact.openDeadlines > 0 &&
       `${pluralize(impact.openDeadlines, "prazo em aberto", "prazos em aberto")} (serão removidos)`,
-    impact.agreements > 0 &&
-      `${pluralize(impact.agreements, "registro financeiro", "registros financeiros")} (contratos mantidos)`,
     impact.documents > 0 &&
       `${pluralize(impact.documents, "documento vinculado", "documentos vinculados")} (continuam no cliente)`,
   ].filter(Boolean) as string[];

@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/feedback/states";
-import type { Client, ID, PartnershipAgreementView, Process } from "@/types";
+import type { Client, ID, PartnershipAgreementView } from "@/types";
+import { useCaseMap } from "@/features/cases/hooks";
 import { clientDisplayName } from "@/features/processes/utils";
 import { PartnershipValuesDialog, PayoutDialog } from "./partner-dialogs";
 
@@ -21,15 +22,14 @@ import { PartnershipValuesDialog, PayoutDialog } from "./partner-dialogs";
  */
 export function PartnershipAgreementsTable({
   agreements,
-  processMap,
   clientMap,
   partnerNames,
 }: {
   agreements: PartnershipAgreementView[];
-  processMap: Map<ID, Process>;
   clientMap: Map<ID, Client>;
   partnerNames?: Map<ID, string>;
 }) {
+  const caseMap = useCaseMap();
   const [dialog, setDialog] = useState<{ kind: "values" | "payout"; agreement: PartnershipAgreementView } | null>(null);
   if (agreements.length === 0) return <EmptyState compact icon={Banknote} title="Nenhum caso com acordo de parceria." />;
   return (
@@ -37,7 +37,7 @@ export function PartnershipAgreementsTable({
       <Table caption="Acordos de parceria por caso">
         <THead>
           <tr>
-            <Th>Cliente / processo</Th>
+            <Th>Cliente / caso</Th>
             {partnerNames && <Th>Parceiro</Th>}
             <Th className="text-right">Divisão</Th>
             <Th className="text-right">Honorários</Th>
@@ -52,15 +52,15 @@ export function PartnershipAgreementsTable({
         </THead>
         <TBody>
           {agreements.map((a) => {
-            const process = processMap.get(a.processId);
-            const client = process ? clientMap.get(process.clientId) : undefined;
+            const legalCase = caseMap.get(a.legalCaseId);
+            const client = legalCase ? clientMap.get(legalCase.clientId) : undefined;
             return (
               <Tr key={a.id}>
                 <Td className="max-w-[260px]">
                   <div className="truncate font-medium text-foreground">{clientDisplayName(client)}</div>
-                  {process && (
-                    <Link href={`/processos/${process.id}?aba=parceria`} className="block truncate text-[12px] text-navy-700 hover:underline underline-offset-2">
-                      {process.title}
+                  {legalCase && (
+                    <Link href={`/casos/${legalCase.id}?aba=financeiro`} className="block truncate text-[12px] text-navy-700 hover:underline underline-offset-2">
+                      {legalCase.title}
                     </Link>
                   )}
                 </Td>

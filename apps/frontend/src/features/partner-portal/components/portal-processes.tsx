@@ -16,8 +16,8 @@ import {
   PROCESS_PHASE_LABEL,
   PROCESS_STATUS_LABEL,
   PROCESS_STATUS_TONE,
-  SUBMISSION_STATUS_LABEL,
-  SUBMISSION_STATUS_TONE,
+  LEGAL_CASE_STATUS_TONE,
+  PARTNER_CASE_STATUS_LABEL,
   type ClientPole,
 } from "@/lib/constants/status";
 import { formatCurrency, formatDate, formatEventTime, pluralize } from "@/lib/formatting";
@@ -33,7 +33,7 @@ import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/feedback/states";
 import { useCan } from "@/features/auth/hooks";
-import { useProcessPartnership } from "@/features/partners/hooks";
+import { useCaseMap, useCasePartnership, useLegalCases } from "@/features/cases/hooks";
 import { PartnerRequestList } from "@/features/partners/components/request-list";
 import { clientDisplayName } from "@/features/processes/utils";
 import { useScopedStore } from "@/store/scope";
@@ -43,10 +43,8 @@ import {
   useDocumentVersions,
   usePortalActions,
   usePortalClientMap,
-  usePortalClients,
   usePortalProcesses,
   usePortalRequests,
-  useSubmissionStatusByProcess,
 } from "../hooks";
 import { ApprovedDocumentDialog, RespondRequestDialog, SendDocumentDialog } from "./portal-dialogs";
 
@@ -58,7 +56,7 @@ function normalize(v: string) {
 export function PortalProcessList() {
   const processes = usePortalProcesses();
   const clientMap = usePortalClientMap();
-  const submission = useSubmissionStatusByProcess();
+  const caseMap = useCaseMap();
   const [q, setQ] = useState("");
   const filtered = useMemo(() => {
     const term = normalize(q.trim());
@@ -80,7 +78,7 @@ export function PortalProcessList() {
       <PageHeader title="Processos" description="Andamento dos casos do seu escritório conduzidos pela Bárbara Cardoso Advocacia." actions={cta} />
       {processes.length === 0 ? (
         <Panel>
-          <EmptyState icon={Briefcase} title="Nenhum processo ainda." description="Envie um caso em Clientes → Novo cliente, ou cadastre um processo já existente." action={cta} />
+          <EmptyState icon={Briefcase} title="Nenhum processo ainda." description="Processos são cadastrados dentro de um caso. Envie um caso em Casos → Novo caso." action={cta} />
         </Panel>
       ) : (
         <Panel>
@@ -104,7 +102,7 @@ export function PortalProcessList() {
               </THead>
               <TBody>
                 {filtered.map((p) => {
-                  const sub = submission.get(p.id);
+                  const legalCase = caseMap.get(p.legalCaseId);
                   return (
                     <Tr key={p.id}>
                       <Td>
@@ -118,7 +116,15 @@ export function PortalProcessList() {
                       <Td>
                         <StatusBadge status={p.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
                       </Td>
-                      <Td>{sub ? <StatusBadge status={sub} labels={SUBMISSION_STATUS_LABEL} tones={SUBMISSION_STATUS_TONE} /> : <span className="text-[12px] text-subtle">—</span>}</Td>
+                      <Td className="max-w-[220px]">
+                        {legalCase ? (
+                          <Link href={`/casos/${legalCase.id}`} className="block truncate text-[12.5px] text-navy hover:underline underline-offset-2">
+                            {legalCase.title}
+                          </Link>
+                        ) : (
+                          <span className="text-[12px] text-subtle">—</span>
+                        )}
+                      </Td>
                       <Td className="text-[12px] text-muted">{formatEventTime(p.lastMovementAt ?? p.updatedAt)}</Td>
                     </Tr>
                   );
@@ -134,7 +140,7 @@ export function PortalProcessList() {
 
 /* ------------------------------------------------------------------ */
 
-const TAB_KEYS = ["visao-geral", "movimentacoes", "documentos", "pendencias", "financeiro"] as const;
+const TAB_KEYS = ["visao-geral", "movimentacoes", "documentos", "pendencias"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 /** Detalhe do processo no portal. Nenhum conteúdo interno chega aqui. */
@@ -142,23 +148,21 @@ export function PortalProcessDetail({ id }: { id: string }) {
   const processes = usePortalProcesses();
   const process = processes.find((p) => p.id === id);
   const clientMap = usePortalClientMap();
-  const submission = useSubmissionStatusByProcess().get(id);
+  const legalCase = useCaseMap().get(process?.legalCaseId ?? "");
   const allRequests = usePortalRequests();
   const requests = useMemo(() => allRequests.filter((r) => r.processId === id), [allRequests, id]);
-  const agreement = useProcessPartnership(id);
-  const can = useCan();
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
 
-  const tabs = useMemo(() => {
-    const items: TabItem<TabKey>[] = [
+  // O financeiro pertence ao caso: fica na página do caso.
+  const tabs = useMemo<TabItem<TabKey>[]>(
+    () => [
       { key: "visao-geral", label: "Visão geral" },
       { key: "movimentacoes", label: "Movimentações" },
       { key: "documentos", label: "Documentos" },
       { key: "pendencias", label: "Pendências", count: requests.filter((r) => r.status === "OPEN").length, attention: requests.some((r) => r.status === "OPEN") },
-    ];
-    if (can("partnerPortal.finance.view")) items.push({ key: "financeiro", label: "Financeiro" });
-    return items;
-  }, [can, requests]);
+    ],
+    [requests],
+  );
 
   // Processo de outro escritório (ou inexistente): não está no estado recortado.
   if (!process) {
@@ -192,9 +196,13 @@ export function PortalProcessDetail({ id }: { id: string }) {
               </Link>
             )}
             <StatusBadge status={process.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
-            {submission && (
+            {legalCase && (
               <span className="inline-flex items-center gap-1.5">
-                Caso: <StatusBadge status={submission} labels={SUBMISSION_STATUS_LABEL} tones={SUBMISSION_STATUS_TONE} />
+                Caso:{" "}
+                <Link href={`/casos/${legalCase.id}`} className="font-medium text-navy hover:underline underline-offset-2">
+                  {legalCase.title}
+                </Link>
+                <StatusBadge status={legalCase.status} labels={PARTNER_CASE_STATUS_LABEL} tones={LEGAL_CASE_STATUS_TONE} />
               </span>
             )}
           </>
@@ -206,7 +214,6 @@ export function PortalProcessDetail({ id }: { id: string }) {
         {active === "movimentacoes" && <EventsTab processId={process.id} />}
         {active === "documentos" && <DocumentsTab process={process} />}
         {active === "pendencias" && <RequestsTab processId={process.id} />}
-        {active === "financeiro" && can("partnerPortal.finance.view") && <PartnerFinancePanel caseValue={process.caseValue} agreementStatus={agreement} />}
       </TabPanel>
     </PageContainer>
   );
@@ -362,7 +369,9 @@ function DocumentsTab({ process }: { process: Process }) {
         )}
       </Panel>
 
-      {sending && <SendDocumentDialog clientId={process.clientId} processId={process.id} replaces={sending.replaces} open onOpenChange={(o) => !o && setSending(null)} />}
+      {sending && (
+        <SendDocumentDialog clientId={process.clientId} legalCaseId={process.legalCaseId} processId={process.id} replaces={sending.replaces} open onOpenChange={(o) => !o && setSending(null)} />
+      )}
       {viewing && <ApprovedDocumentDialog doc={viewing} open onOpenChange={(o) => !o && setViewing(null)} />}
       {history && <VersionsList doc={history} onClose={() => setHistory(null)} />}
     </div>
@@ -436,10 +445,10 @@ function RequestsTab({ processId }: { processId: ID }) {
 }
 
 /**
- * Financeiro do processo para o ADMINISTRADOR DO PARCEIRO: só a participação
+ * Financeiro do CASO para o ADMINISTRADOR DO PARCEIRO: só a participação
  * do próprio parceiro. Sem custos internos, outros parceiros ou consumo.
  */
-function PartnerFinancePanel({ caseValue, agreementStatus: a }: { caseValue?: number; agreementStatus?: ReturnType<typeof useProcessPartnership> }) {
+export function PartnerFinancePanel({ caseValue, agreementStatus: a }: { caseValue?: number; agreementStatus?: ReturnType<typeof useCasePartnership> }) {
   if (!a) {
     return (
       <Panel>
@@ -476,7 +485,7 @@ function PartnerFinancePanel({ caseValue, agreementStatus: a }: { caseValue?: nu
 /* ------------------------------------------------------------------ */
 
 interface ProcessValues {
-  clientId: string;
+  legalCaseId: string;
   cnj: string;
   title: string;
   court: string;
@@ -495,22 +504,31 @@ const opts = <T extends string>(values: readonly T[], labels?: Record<T, string>
 const blank = (v: string) => (v.trim() ? v.trim() : undefined);
 
 /**
- * Cadastro de processo pelo parceiro. Não há campo de escritório: a origem
- * (parceiro da sessão) é aplicada pelo sistema, sem escolha na tela.
+ * Cadastro de processo pelo parceiro: sempre dentro de um caso do próprio
+ * escritório. A origem é a do caso; não há escolha de escritório na tela.
  */
 export function PortalProcessForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const clients = usePortalClients();
+  const clientMap = usePortalClientMap();
+  const cases = useLegalCases();
   const actions = usePortalActions();
-  const clientOptions = useMemo(() => clients.map((c) => ({ value: c.id, label: clientDisplayName(c) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")), [clients]);
+  const clientFilter = params.get("cliente");
+  const caseOptions = useMemo(
+    () =>
+      cases
+        .filter((c) => c.status !== "REJECTED" && c.status !== "ARCHIVED" && (!clientFilter || c.clientId === clientFilter))
+        .map((c) => ({ value: c.id, label: `${c.title} · ${clientDisplayName(clientMap.get(c.clientId))}` }))
+        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+    [cases, clientMap, clientFilter],
+  );
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<ProcessValues>({
     defaultValues: {
-      clientId: params.get("cliente") ?? "",
+      legalCaseId: params.get("caso") ?? "",
       cnj: "",
       title: "",
       court: "",
@@ -527,7 +545,7 @@ export function PortalProcessForm() {
   });
   const onSubmit = handleSubmit(async (v) => {
     const id = await actions.createProcess({
-      clientId: v.clientId,
+      legalCaseId: v.legalCaseId,
       cnj: blank(v.cnj),
       title: v.title.trim(),
       court: blank(v.court),
@@ -549,18 +567,18 @@ export function PortalProcessForm() {
       <PageHeader
         breadcrumbs={[{ label: "Processos", href: "/processos" }, { label: "Cadastrar processo" }]}
         title="Cadastrar processo"
-        description="Para um cliente que ainda não está no portal, use Clientes → Novo cliente."
+        description="Todo processo pertence a um caso. Para uma nova demanda, envie antes um caso em Casos → Novo caso."
       />
-      {clients.length === 0 ? (
+      {caseOptions.length === 0 ? (
         <Panel>
-          <EmptyState compact title="Cadastre um cliente primeiro." action={<ButtonLink href="/clientes/novo">Novo cliente</ButtonLink>} />
+          <EmptyState compact title="Envie um caso primeiro." action={<ButtonLink href="/casos/novo">Novo caso</ButtonLink>} />
         </Panel>
       ) : (
         <form onSubmit={onSubmit} noValidate>
           <Panel className="max-w-[900px]">
             <PanelBody className="grid grid-cols-2 gap-x-5 gap-y-4">
-              <Field label="Cliente" requirement="required" error={errors.clientId?.message}>
-                {(p) => <Select {...p} placeholder="Selecione" options={clientOptions} {...register("clientId", { required: "Selecione o cliente." })} />}
+              <Field label="Caso relacionado" requirement="required" error={errors.legalCaseId?.message}>
+                {(p) => <Select {...p} placeholder="Selecione" options={caseOptions} {...register("legalCaseId", { required: "Selecione o caso." })} />}
               </Field>
               <Field label="Número CNJ" requirement="optional" error={errors.cnj?.message}>
                 {(p) => <MaskedInput mask="cnj" placeholder="0000000-00.0000.0.00.0000" {...p} {...register("cnj", { validate: (x) => !x || isCnjFormat(x) || msg.cnj })} />}

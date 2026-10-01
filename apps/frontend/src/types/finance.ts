@@ -27,7 +27,8 @@ export interface FeeModel extends OfficeScoped {
  */
 export interface FinancialAgreement extends OfficeScoped {
   clientId: ID;
-  processId?: ID;
+  /** O contrato pertence ao CASO e abrange todos os processos dele. */
+  legalCaseId: ID;
   feeModelId?: ID;
   /** true quando os valores foram ajustados para este cliente. */
   customized: boolean;

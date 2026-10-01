@@ -3,12 +3,12 @@
  *
  * - A divisão do PartnerOffice é o padrão para NOVOS casos.
  * - Quando o caso passa a ter acordo, os percentuais são COPIADOS para o
- *   ProcessPartnershipAgreement (snapshot) e nunca recalculados.
+ *   CasePartnershipAgreement (snapshot) e nunca recalculados.
  * - O que se divide são os honorários (receita do escritório), nunca o
  *   valor da causa.
  * - Estimativas são estimativas: a interface as rotula como tal.
  */
-import type { ID, PartnerFinancialSummary, PartnerOffice, PartnershipAgreementView, ProcessPartnershipAgreement } from "@/types";
+import type { CasePartnershipAgreement, ID, PartnerFinancialSummary, PartnerOffice, PartnershipAgreementView } from "@/types";
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
@@ -22,17 +22,17 @@ export function shareOf(amount: number, percentage: number): number {
   return round2((amount * percentage) / 100);
 }
 
-/** Copia a divisão VIGENTE do parceiro para um novo acordo de caso. */
+/** Copia a divisão VIGENTE do parceiro para o acordo do caso (no ACEITE). */
 export function snapshotAgreement(
   partner: Pick<PartnerOffice, "id" | "officeId" | "partnershipPercentage" | "ownerPercentage">,
-  processId: ID,
+  legalCaseId: ID,
   id: ID,
   at: string,
-): ProcessPartnershipAgreement {
+): CasePartnershipAgreement {
   return {
     id,
     officeId: partner.officeId,
-    processId,
+    legalCaseId,
     partnerOfficeId: partner.id,
     partnerPercentage: partner.partnershipPercentage,
     ownerPercentage: partner.ownerPercentage,
@@ -43,12 +43,12 @@ export function snapshotAgreement(
   };
 }
 
-export function paidToPartner(agreement: ProcessPartnershipAgreement): number {
+export function paidToPartner(agreement: CasePartnershipAgreement): number {
   return round2(agreement.payouts.reduce((sum, p) => sum + p.amount, 0));
 }
 
 /** Acordo com estimativas, realizados e saldo derivados. */
-export function partnershipView(agreement: ProcessPartnershipAgreement): PartnershipAgreementView {
+export function partnershipView(agreement: CasePartnershipAgreement): PartnershipAgreementView {
   const { revenueBase, realizedRevenue, partnerPercentage, ownerPercentage } = agreement;
   const paid = paidToPartner(agreement);
   const realizedPartner = realizedRevenue !== undefined ? shareOf(realizedRevenue, partnerPercentage) : undefined;
@@ -75,8 +75,9 @@ export function partnershipView(agreement: ProcessPartnershipAgreement): Partner
   };
 }
 
-export function summarizePartnerFinance(partnerOfficeId: ID, agreements: ProcessPartnershipAgreement[]): PartnerFinancialSummary {
-  const views = agreements.filter((a) => a.partnerOfficeId === partnerOfficeId).map(partnershipView);
+export function summarizePartnerFinance(partnerOfficeId: ID, agreements: CasePartnershipAgreement[]): PartnerFinancialSummary {
+  // Acordos encerrados (origem do caso alterada após o aceite) ficam só no histórico.
+  const views = agreements.filter((a) => a.partnerOfficeId === partnerOfficeId && !a.cancelledAt).map(partnershipView);
   return {
     partnerOfficeId,
     accumulatedShare: round2(views.reduce((s, v) => s + (v.realizedPartnerAmount ?? 0), 0)),

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { Bell, Briefcase, CircleAlert, FileClock, FileWarning, Info, UserPlus, Users } from "lucide-react";
+import { Bell, Briefcase, CheckCircle2, CircleAlert, FileClock, FileWarning, FolderPlus, Hourglass, Info } from "lucide-react";
 import { now } from "@/lib/clock";
 import { formatCurrency, formatEventTime, greeting } from "@/lib/formatting";
 import { cn } from "@/lib/cn";
@@ -13,7 +13,9 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { EmptyState } from "@/components/feedback/states";
 import { useCurrentPartnerOffice, useCurrentUser } from "@/features/auth/hooks";
 import { usePartnerFinancialSummary } from "@/features/partners/hooks";
-import { usePortalAttention, usePortalClients, usePortalProcesses, usePortalRequests, usePortalUpdates } from "../hooks";
+import { ACCEPTED_CASE_STATUSES, IN_ANALYSIS_CASE_STATUSES } from "@/lib/constants/status";
+import { useLegalCases } from "@/features/cases/hooks";
+import { usePortalAttention, usePortalProcesses, usePortalRequests, usePortalUpdates } from "../hooks";
 
 const TONE_ICON = { warning: FileWarning, orange: CircleAlert, info: Info } as const;
 const TONE_CLASS = { warning: "text-warning", orange: "text-orange", info: "text-info" } as const;
@@ -22,7 +24,7 @@ const TONE_CLASS = { warning: "text-warning", orange: "text-orange", info: "text
 export function PortalHome() {
   const user = useCurrentUser();
   const office = useCurrentPartnerOffice();
-  const clients = usePortalClients();
+  const cases = useLegalCases();
   const processes = usePortalProcesses();
   const requests = usePortalRequests();
   const attention = usePortalAttention();
@@ -30,12 +32,13 @@ export function PortalHome() {
 
   const kpis = useMemo(
     () => ({
-      activeClients: clients.filter((c) => c.status !== "INACTIVE").length,
+      inAnalysis: cases.filter((c) => IN_ANALYSIS_CASE_STATUSES.includes(c.status)).length,
+      accepted: cases.filter((c) => ACCEPTED_CASE_STATUSES.includes(c.status) && c.status !== "ARCHIVED").length,
       activeProcesses: processes.filter((p) => p.status !== "CLOSED").length,
       pendingDocs: requests.filter((r) => r.status === "OPEN" && r.type === "DOCUMENT_REQUEST").length,
       recentUpdates: updates.filter((u) => now().getTime() - new Date(u.at).getTime() < 7 * 86_400_000).length,
     }),
-    [clients, processes, requests, updates],
+    [cases, processes, requests, updates],
   );
 
   return (
@@ -46,16 +49,17 @@ export function PortalHome() {
         title={`${greeting(now())}, ${user?.displayName ?? ""}`}
         description="Acompanhe os casos do seu escritório com a Bárbara Cardoso Advocacia."
         actions={
-          <Can permission="partnerPortal.clients.create">
-            <ButtonLink href="/clientes/novo" icon={<UserPlus className="size-4" aria-hidden />}>
-              Novo cliente
+          <Can permission="partnerPortal.cases.create">
+            <ButtonLink href="/casos/novo" icon={<FolderPlus className="size-4" aria-hidden />}>
+              Novo caso
             </ButtonLink>
           </Can>
         }
       />
 
-      <div className="grid grid-cols-4 gap-4">
-        <Stat label="Clientes ativos" value={kpis.activeClients} icon={Users} href="/clientes" />
+      <div className="grid grid-cols-5 gap-4">
+        <Stat label="Casos em análise" value={kpis.inAnalysis} icon={Hourglass} href="/casos" />
+        <Stat label="Casos aceitos" value={kpis.accepted} icon={CheckCircle2} href="/casos" />
         <Stat label="Processos ativos" value={kpis.activeProcesses} icon={Briefcase} href="/processos" />
         <Stat label="Documentos pendentes" value={kpis.pendingDocs} icon={FileClock} tone={kpis.pendingDocs ? "warning" : "neutral"} href="/pendencias" />
         <Stat label="Atualizações recentes" value={kpis.recentUpdates} icon={Bell} hint="Últimos 7 dias" href="/notificacoes" />

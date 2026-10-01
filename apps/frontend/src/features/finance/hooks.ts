@@ -7,8 +7,8 @@ import { repositories } from "@/repositories";
 import { useScopedStore } from "@/store/scope";
 import type { NewAgreementInput, NewFeeModelInput } from "@/store/types";
 import { useToast } from "@/store/ui-store";
-import type { Client, FeeModel, ID, Process } from "@/types";
-import { agreementAppliesToProcess, clientLabel, type AgreementRow } from "./utils";
+import type { Client, FeeModel, ID, LegalCase, Process } from "@/types";
+import { clientLabel, type AgreementRow } from "./utils";
 
 /* ------------------------------------------------------------------ */
 /* Leitura                                                             */
@@ -43,15 +43,22 @@ export function useClientOptions(): { value: ID; label: string }[] {
   );
 }
 
-/** Processos do cliente, para o seletor opcional de processo. */
-export function useClientProcesses(clientId: ID | undefined): Process[] {
-  const processes = useProcesses();
-  return useMemo(() => (clientId ? processes.filter((p) => p.clientId === clientId) : []), [processes, clientId]);
+/** Casos do cliente, para o seletor de caso do contrato. */
+export function useClientCasesForFinance(clientId: ID | undefined): LegalCase[] {
+  const cases = useScopedStore((s) => s.legalCases);
+  return useMemo(
+    () => (clientId ? cases.filter((c) => c.clientId === clientId && c.status !== "REJECTED" && c.status !== "ARCHIVED") : []),
+    [cases, clientId],
+  );
 }
 
-export function useProcessForFinance(processId: ID | undefined): Process | undefined {
+/** Soma do valor da causa dos processos de um caso. */
+export function useCaseValue(legalCaseId: ID | undefined): number | undefined {
   const processes = useProcesses();
-  return useMemo(() => processes.find((p) => p.id === processId), [processes, processId]);
+  return useMemo(() => {
+    const total = processes.filter((p) => p.legalCaseId === legalCaseId).reduce((sum, p) => sum + (p.caseValue ?? 0), 0);
+    return total || undefined;
+  }, [processes, legalCaseId]);
 }
 
 /**
@@ -65,38 +72,42 @@ export function useAgreementRows(): AgreementRow[] {
   const payments = usePayments();
   const clients = useClients();
   const processes = useProcesses();
+  const cases = useScopedStore((s) => s.legalCases);
   const feeModels = useFeeModels();
   const removedClients = useScopedStore((s) => s.removedClients);
   return useMemo(() => {
     const clientMap = new Map(clients.map((c) => [c.id, c]));
     // Contrato de cliente excluído continua visível (histórico financeiro), identificado.
     const removedMap = new Map(removedClients.map((r) => [r.id, `${r.name} (cliente removido)`]));
-    const processMap = new Map(processes.map((p) => [p.id, p]));
+    const caseMap = new Map(cases.map((c) => [c.id, c]));
+    const caseValue = new Map<ID, number>();
+    processes.forEach((p) => caseValue.set(p.legalCaseId, (caseValue.get(p.legalCaseId) ?? 0) + (p.caseValue ?? 0)));
     const modelMap = new Map(feeModels.map((m) => [m.id, m]));
     const today = todayISO();
     return agreements.map((agreement) => ({
       ...summarizeAgreement(agreement, payments, today),
       clientName: removedMap.get(agreement.clientId) ?? clientLabel(clientMap.get(agreement.clientId)),
-      process: agreement.processId ? processMap.get(agreement.processId) : undefined,
+      legalCase: caseMap.get(agreement.legalCaseId),
+      caseValue: caseValue.get(agreement.legalCaseId) || undefined,
       feeModel: agreement.feeModelId ? modelMap.get(agreement.feeModelId) : undefined,
       payments: payments
         .filter((p) => p.agreementId === agreement.id)
         .map((p) => toPaymentView(p, today))
         .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
     }));
-  }, [agreements, payments, clients, processes, feeModels, removedClients]);
+  }, [agreements, payments, clients, processes, cases, feeModels, removedClients]);
 }
 
-/** Contratos aplicáveis a um processo (diretos ou do cliente inteiro). */
-export function useProcessFinance(processId: ID) {
+/** Contratos do caso (o financeiro pertence ao caso). */
+export function useCaseFinance(legalCaseId: ID | undefined) {
   const rows = useAgreementRows();
-  const process = useProcessForFinance(processId);
+  const cases = useScopedStore((s) => s.legalCases);
   const clients = useClients();
   return useMemo(() => {
-    const client = process ? clients.find((c) => c.id === process.clientId) : undefined;
-    const applicable = process ? rows.filter((r) => agreementAppliesToProcess(r.agreement, process)) : [];
-    return { process, clientName: clientLabel(client), rows: applicable };
-  }, [rows, process, clients]);
+    const legalCase = cases.find((c) => c.id === legalCaseId);
+    const client = legalCase ? clients.find((c) => c.id === legalCase.clientId) : undefined;
+    return { legalCase, clientName: clientLabel(client), rows: rows.filter((r) => r.agreement.legalCaseId === legalCaseId) };
+  }, [rows, cases, clients, legalCaseId]);
 }
 
 /* ------------------------------------------------------------------ */

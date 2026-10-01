@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/cn";
-import { formatCompact, formatNumber } from "@/lib/formatting";
+import { formatNumber } from "@/lib/formatting";
 import { useDgOverview } from "../../hooks";
 import { DG_SECTIONS, DG_SECTION_LABEL, dgRoutes, type DgSection } from "../../utils";
 
@@ -28,7 +28,7 @@ function OverviewStrip() {
     { label: "Skills ativas", value: formatNumber(o.activeSkills) },
     { label: "Teses vigentes", value: formatNumber(o.activeTheses) },
     { label: "Alterações (30 dias)", value: formatNumber(o.changesLast30Days) },
-    { label: "Consumo do mês", value: formatCompact(o.monthTokens), hint: "tokens" },
+    { label: "Execuções no mês", value: formatNumber(o.monthRuns) },
   ];
   return (
     <dl className="mb-5 grid grid-cols-5 divide-x divide-line rounded-lg border border-line bg-surface shadow-hairline">

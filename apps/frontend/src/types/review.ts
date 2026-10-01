@@ -73,6 +73,9 @@ export interface Review extends OfficeScoped {
   status: ReviewStatus;
   priority: Priority;
   clientId?: ID;
+  /** Caso da revisão. Uma revisão pode existir antes de qualquer processo. */
+  legalCaseId?: ID;
+  /** Processo judicial (legalProcessId), quando houver. */
   processId?: ID;
   analysisId?: ID;
   agentId: ID;

@@ -17,14 +17,23 @@ import type {
   ClientDocument,
   ClientOfficeRelationship,
   ID,
+  LegalCase,
   Notification,
   Process,
   ProcessEvent,
 } from "@/types";
 
-/** Processo originado pelo parceiro. Origem do CLIENTE não conta: vale a do processo. */
-export function partnerCanSeeProcess(process: Process, partnerOfficeId: ID): boolean {
-  return process.relationshipOrigin === "PARTNER" && process.originPartnerOfficeId === partnerOfficeId;
+/**
+ * Caso visível ao parceiro: originado por ele OU enviado por ele (mesmo que
+ * tenha escolhido a Bárbara como origem). A origem do CLIENTE não conta.
+ */
+export function partnerCanSeeCase(legalCase: Pick<LegalCase, "originOfficeId" | "createdByOfficeId">, partnerOfficeId: ID): boolean {
+  return legalCase.originOfficeId === partnerOfficeId || legalCase.createdByOfficeId === partnerOfficeId;
+}
+
+/** Processo visível ao parceiro: o do CASO dele (processo sempre pertence a um caso). */
+export function partnerCanSeeProcess(process: Pick<Process, "legalCaseId">, visibleCaseIds: ReadonlySet<ID>): boolean {
+  return visibleCaseIds.has(process.legalCaseId);
 }
 
 /** Cliente com relacionamento ativo com o parceiro. O registro canônico sozinho não dá acesso. */
@@ -38,13 +47,14 @@ export function partnerRelatedClientIds(relationships: ClientOfficeRelationship[
 
 /**
  * Documento visível ao parceiro: precisa estar marcado PARTNER_VISIBLE e
- * ser do próprio parceiro OU pertencer a um processo do parceiro.
+ * ser do próprio parceiro OU pertencer a um caso/processo do parceiro.
  * Documentos INTERNAL nunca são entregues.
  */
-export function partnerCanSeeDocument(doc: ClientDocument, partnerOfficeId: ID, visibleProcessIds: ReadonlySet<ID>): boolean {
+export function partnerCanSeeDocument(doc: ClientDocument, partnerOfficeId: ID, visibleCaseIds: ReadonlySet<ID>, visibleProcessIds: ReadonlySet<ID>): boolean {
   if (doc.visibility !== "PARTNER_VISIBLE") return false;
   if (doc.uploadedByPartnerOfficeId === partnerOfficeId) return true;
-  return !doc.uploadedByPartnerOfficeId && !!doc.processId && visibleProcessIds.has(doc.processId);
+  if (doc.uploadedByPartnerOfficeId) return false;
+  return (!!doc.legalCaseId && visibleCaseIds.has(doc.legalCaseId)) || (!!doc.processId && visibleProcessIds.has(doc.processId));
 }
 
 /** Movimentações públicas do processo. Notas internas e registros de agentes ficam de fora. */
@@ -94,6 +104,16 @@ export function redactProcessForPartner(process: Process): Process {
   } = process;
   void [_notes, _summary, _thesis, _analysis, _integration, _estimate];
   return rest;
+}
+
+/**
+ * Caso sem dados internos: notas, nota interna de rejeição, análise,
+ * responsável interno e quem aceitou. O motivo PÚBLICO da rejeição permanece.
+ */
+export function redactCaseForPartner(legalCase: LegalCase): LegalCase {
+  const { notes: _notes, rejectionReasonInternal: _internal, analysisId: _analysis, acceptedBy: _acceptedBy, ...rest } = legalCase;
+  void [_notes, _internal, _analysis, _acceptedBy];
+  return { ...rest, assignedLawyerId: null };
 }
 
 /** Documento sem observações internas. */

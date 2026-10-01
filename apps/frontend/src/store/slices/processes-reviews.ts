@@ -16,9 +16,7 @@ import {
 } from "../helpers";
 import type { AppState, ProcessActions, ReviewActions } from "../types";
 import { clientName } from "./clients-analyses";
-import { partnershipSnapshotFor } from "./partners";
 
-const PETITION_AGENT = "agt_peticoes";
 
 /** Origem da versão ATUAL do conteúdo (a última edição registrada, ou o agente). */
 function currentContentOrigin(review: Review): ReviewContentOrigin {
@@ -44,28 +42,28 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
       const s = get();
       const id = createId("prc");
       const at = nowISO();
-      const { nextDeadline, origin, relationshipOrigin, originPartnerOfficeId, ...data } = input;
-      const partnerOrigin = relationshipOrigin === "PARTNER" && originPartnerOfficeId;
+      const { nextDeadline, origin, ...data } = input;
+      // Processo SEMPRE pertence a um caso; o cliente é o do caso.
+      const legalCase = s.legalCases.find((c) => c.id === input.legalCaseId);
+      if (!legalCase) throw new Error("Selecione o caso relacionado.");
+      if (legalCase.status === "REJECTED" || legalCase.status === "ARCHIVED" || legalCase.status === "DRAFT") throw new Error("Não é possível vincular processo a este caso na situação atual.");
       const process: Process = {
         ...data,
+        clientId: legalCase.clientId,
         id,
         officeId: s.office.id,
         origin: origin ?? "MANUAL",
-        relationshipOrigin: partnerOrigin ? "PARTNER" : "INTERNAL",
-        ...(partnerOrigin ? { originPartnerOfficeId } : {}),
         createdAt: at,
         updatedAt: at,
         lastMovementAt: at,
       };
-      // Caso originado por parceiro: copia a divisão vigente (snapshot) para o acordo do caso.
-      const agreement = partnershipSnapshotFor(s, process);
       const deadlines = nextDeadline
         ? [
             {
               id: createId("dl"),
               officeId: s.office.id,
               processId: id,
-              clientId: input.clientId,
+              clientId: legalCase.clientId,
               title: nextDeadline.title,
               type: nextDeadline.type,
               dueDate: nextDeadline.dueDate,
@@ -79,14 +77,11 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
         processes: [process, ...s.processes],
         processEvents: [processEvent(s, id, "Processo cadastrado manualmente", "MANUAL", `Cadastrado por ${actorOf(s).name}.`), ...s.processEvents],
         deadlines: [...deadlines, ...s.deadlines],
-        partnershipAgreements: agreement ? [agreement, ...s.partnershipAgreements] : s.partnershipAgreements,
+        // Caso aceito passa a "em andamento" com o primeiro processo.
+        legalCases: updateById(s.legalCases, legalCase.id, (c) => (c.status === "ACCEPTED" ? { ...c, status: "IN_PROGRESS" as const, updatedAt: at } : c)),
         auditEvents: [
-          agreement
-            ? auditEvent(s, "PARTNER_PROCESS_CREATED", "process", id, `Processo “${input.title}” cadastrado com origem em parceiro (divisão ${agreement.partnerPercentage}% / ${agreement.ownerPercentage}%).`, undefined, undefined, {
-                partnerOfficeId: agreement.partnerOfficeId,
-                summary: `Processo criado: ${input.title}.`,
-              })
-            : auditEvent(s, "PROCESS_CREATED", "process", id, `Processo “${input.title}” cadastrado.`),
+          auditEvent(s, "PROCESS_CREATED", "process", id, `Processo “${input.title}” cadastrado no caso “${legalCase.title}”.`, undefined, undefined,
+            legalCase.originOfficeId !== s.office.id ? { partnerOfficeId: legalCase.originOfficeId, summary: `Processo cadastrado: ${input.title}.` } : undefined),
           ...s.auditEvents,
         ],
       });
@@ -94,9 +89,9 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
     },
     updateProcess: (id, patch) =>
       set((s) => {
-        // Origem relacional não muda por edição comum: ela define o acordo financeiro do caso.
-        const { nextDeadline: _ignored, relationshipOrigin: _ro, originPartnerOfficeId: _po, ...rest } = patch;
-        void [_ignored, _ro, _po];
+        // O caso do processo não muda por edição comum.
+        const { nextDeadline: _ignored, legalCaseId: _case, ...rest } = patch;
+        void [_ignored, _case];
         return {
           processes: updateById(s.processes, id, (p) => ({ ...p, ...rest, updatedAt: nowISO() })),
           auditEvents: [auditEvent(s, "PROCESS_UPDATED", "process", id, "Dados do processo atualizados."), ...s.auditEvents],
@@ -139,7 +134,8 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
         if (!process) return {};
         const reviews = s.reviews.filter((r) => r.processId === id).length;
         const deadlines = s.deadlines.filter((d) => d.processId === id && d.status === "OPEN").length;
-        const agreements = s.agreements.filter((a) => a.processId === id).length;
+        // Contratos pertencem ao caso: excluir o processo não os afeta.
+        const agreements = s.agreements.filter((a) => a.legalCaseId === process.legalCaseId).length;
         const documents = s.documents.filter((d) => d.processId === id).length;
         return {
           processes: s.processes.filter((p) => p.id !== id),
@@ -152,7 +148,7 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
               ...(process.cnj ? [{ label: "Número CNJ", value: process.cnj }] : []),
               { label: "Revisões associadas (mantidas)", value: String(reviews) },
               { label: "Prazos em aberto removidos", value: String(deadlines) },
-              { label: "Contratos de honorários associados (mantidos)", value: String(agreements) },
+              { label: "Contratos de honorários do caso (mantidos)", value: String(agreements) },
               { label: "Documentos desvinculados", value: String(documents) },
             ]),
             ...s.auditEvents,
@@ -166,6 +162,8 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
         if (!process || !client) return {};
         const wasPending = process.clientLinkStatus === "PENDING_LINK";
         return {
+          // O cliente do processo é o cliente do caso: os dois mudam juntos.
+          legalCases: updateById(s.legalCases, process.legalCaseId, (c) => ({ ...c, clientId, updatedAt: nowISO() })),
           processes: updateById(s.processes, processId, (p) => ({
             ...p,
             clientId,
@@ -202,73 +200,55 @@ function applyApproval(state: AppState, review: Review): Partial<AppState> {
     case "ANALYSIS_RESULT": {
       const analysis = state.analyses.find((a) => a.id === review.analysisId);
       if (!analysis) return {};
-      const template = state.templates.find((t) => t.id === analysis.templateId);
+      const legalCase = analysis.legalCaseId ? state.legalCases.find((c) => c.id === analysis.legalCaseId) : undefined;
       const client = state.clients.find((c) => c.id === analysis.clientId);
-      const processId = analysis.processId ?? createId("prc");
-      const newProcess: Process | null = analysis.processId
-        ? null
-        : {
-            id: processId,
-            officeId: state.office.id,
-            clientId: analysis.clientId,
-            title: `Ação a partir da ${template?.name.toLowerCase() ?? "análise"}`,
-            area: template?.area ?? "BANKING",
-            actionType: "A definir na minuta",
-            clientPole: "ACTIVE",
-            opposingParty: analysis.fields.instituicao,
-            responsibleUserId: client?.responsibleUserId ?? actor.id,
-            status: "PRE_FILING",
-            phase: "PRELIMINARY",
-            origin: "AGENT",
-            relationshipOrigin: "INTERNAL",
-            thesisId: review.thesisId,
-            analysisId: analysis.id,
-            summary: analysis.result?.summary,
-            createdAt: at,
-            updatedAt: at,
-            lastMovementAt: at,
-          };
+      // Análise aprovada conclui a análise. O processo NÃO é criado aqui: o caso
+      // segue para a decisão humana (aceitar com advogado responsável, ou rejeitar).
+      const needsLawyer = legalCase && !legalCase.assignedLawyerId;
       return {
         analyses: updateById(state.analyses, analysis.id, (a) => ({
           ...a,
           status: "COMPLETED",
           completedAt: at,
-          processId,
           steps: withStep(a, { review: "DONE", conclusion: "DONE" }),
-          timeline: [...a.timeline, timelineEvent(actor, "Resultado aprovado. Processo criado em pré-ajuizamento.")],
+          timeline: [...a.timeline, timelineEvent(actor, "Resultado aprovado. Caso pronto para aceite ou rejeição.")],
           updatedAt: at,
         })),
-        processes: newProcess ? [newProcess, ...state.processes] : state.processes,
-        processEvents: newProcess
-          ? [processEvent(state, processId, "Processo criado a partir de análise aprovada", "AGENT", `Aprovado por ${actor.name}.`), ...state.processEvents]
-          : state.processEvents,
-        agentTasks: [
-          {
-            id: createId("tsk"),
-            officeId: state.office.id,
-            agentId: PETITION_AGENT,
-            title: `Preparar minuta de petição inicial — ${clientName(client)}`,
-            status: "RUNNING",
-            clientId: analysis.clientId,
-            processId,
-            at,
-          },
-          ...state.agentTasks,
-        ],
+        notifications: needsLawyer
+          ? [
+              {
+                id: createId("ntf"),
+                officeId: state.office.id,
+                type: "CASE_LAWYER_REQUIRED" as const,
+                severity: "warning" as const,
+                title: "Advogado responsável necessário",
+                description: `${legalCase.title} · análise aprovada; defina o responsável para aceitar o caso.`,
+                at,
+                read: false,
+                clientId: client?.id,
+                legalCaseId: legalCase.id,
+                cta: { label: "Abrir caso", href: `/casos/${legalCase.id}` },
+                requiredPermission: "cases.decide" as const,
+              },
+              ...state.notifications,
+            ]
+          : state.notifications,
       };
     }
     case "PETITION_DRAFT": {
       const process = review.processId ? state.processes.find((p) => p.id === review.processId) : undefined;
+      const legalCase = state.legalCases.find((c) => c.id === (review.legalCaseId ?? process?.legalCaseId));
       // Caso de parceiro: guarda uma cópia congelada da versão aprovada como documento
       // INTERNAL. Ela só chega ao parceiro quando a equipe a disponibilizar.
       const approvedCopy =
-        process?.relationshipOrigin === "PARTNER" && review.clientId
+        legalCase && legalCase.originOfficeId !== state.office.id && review.clientId
           ? [
               {
                 id: createId("doc"),
                 officeId: state.office.id,
                 clientId: review.clientId,
-                processId: process.id,
+                legalCaseId: legalCase.id,
+                processId: process?.id,
                 name: `${review.content.title} — versão aprovada`,
                 category: "PETITION" as const,
                 status: "RECEIVED" as const,
@@ -304,7 +284,8 @@ function applyApproval(state: AppState, review: Review): Partial<AppState> {
               ...state.processEvents,
             ],
           }
-        : {};
+        : // Minuta pré-protocolo (caso ainda sem processo): só guarda a versão aprovada.
+          { documents: approvedCopy.length ? [...approvedCopy, ...state.documents] : state.documents };
     }
     case "DEADLINE_PROPOSAL":
     case "PROCESS_UPDATE":

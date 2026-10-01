@@ -10,7 +10,7 @@ export function buildIntegrations(): Integration[] {
       ...o,
       id: "int_ai",
       kind: "AI_PROVIDER",
-      name: "Claude Platform",
+      name: "Claude",
       status: "CONNECTED",
       lastSyncAt: daysFromNowISO(0, 9, 0),
       details: [
@@ -73,8 +73,10 @@ export function buildAIUsage(): AIUsage {
     const inputTokens = Math.max(20_000, base + wave);
     const outputTokens = Math.round(inputTokens * 0.28);
     const costUsd = Number(((inputTokens / 1e6) * 3 + (outputTokens / 1e6) * 15).toFixed(2));
-    return { date: dateFromNow(-day), inputTokens, outputTokens, costUsd };
+    const runs = Math.round((inputTokens + outputTokens) / 14_000);
+    return { date: dateFromNow(-day), runs, inputTokens, outputTokens, costUsd };
   });
+  const runs = daily.reduce((s, d) => s + d.runs, 0);
   const inputTokens = daily.reduce((s, d) => s + d.inputTokens, 0);
   const outputTokens = daily.reduce((s, d) => s + d.outputTokens, 0);
   const estimatedCostUsd = Number(daily.reduce((s, d) => s + d.costUsd, 0).toFixed(2));
@@ -90,20 +92,23 @@ export function buildAIUsage(): AIUsage {
     month: dateFromNow(0).slice(0, 7),
     organization: "Bárbara Cardoso Advocacia — Produção (demonstração)",
     primaryModel: "claude-sonnet-5",
+    runs,
+    runLimit: 3000,
     inputTokens,
     outputTokens,
     estimatedCostUsd,
     daily,
     byAgent: share.map(([agentId, s]) => ({
       agentId,
+      runs: Math.round(runs * s),
       inputTokens: Math.round(inputTokens * s),
       outputTokens: Math.round(outputTokens * s),
       costUsd: Number((estimatedCostUsd * s).toFixed(2)),
     })),
     byModel: [
-      { model: "claude-sonnet-5", tokens: Math.round((inputTokens + outputTokens) * 0.52), costUsd: Number((estimatedCostUsd * 0.44).toFixed(2)) },
-      { model: "claude-opus-5-5", tokens: Math.round((inputTokens + outputTokens) * 0.24), costUsd: Number((estimatedCostUsd * 0.49).toFixed(2)) },
-      { model: "claude-haiku-4-5", tokens: Math.round((inputTokens + outputTokens) * 0.24), costUsd: Number((estimatedCostUsd * 0.07).toFixed(2)) },
+      { model: "claude-sonnet-5", runs: Math.round(runs * 0.52), tokens: Math.round((inputTokens + outputTokens) * 0.52), costUsd: Number((estimatedCostUsd * 0.44).toFixed(2)) },
+      { model: "claude-opus-5-5", runs: Math.round(runs * 0.24), tokens: Math.round((inputTokens + outputTokens) * 0.24), costUsd: Number((estimatedCostUsd * 0.49).toFixed(2)) },
+      { model: "claude-haiku-4-5", runs: Math.round(runs * 0.24), tokens: Math.round((inputTokens + outputTokens) * 0.24), costUsd: Number((estimatedCostUsd * 0.07).toFixed(2)) },
     ],
     lastSyncAt: daysFromNowISO(0, 9, 0),
   };

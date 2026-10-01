@@ -9,12 +9,13 @@ import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { ANALYSIS_STATUS_LABEL, ANALYSIS_STATUS_TONE } from "@/lib/constants/status";
 import { formatDate } from "@/lib/formatting";
 import { usePermission } from "@/features/auth/hooks";
-import type { Client, LegalAnalysis } from "@/types";
+import type { LegalAnalysis } from "@/types";
 import { useTemplates } from "../hooks";
 import { currentAnalysis } from "../utils";
 import { AnalysisDetail } from "./analysis-detail";
 
-export function AnalysisTab({ client, analyses, onGoToDocuments }: { client: Client; analyses: LegalAnalysis[]; onGoToDocuments: () => void }) {
+/** Análise jurídica do CASO. `newHref`: rota do assistente de nova análise. */
+export function AnalysisTab({ newHref, analyses, onGoToDocuments }: { newHref: string; analyses: LegalAnalysis[]; onGoToDocuments: () => void }) {
   const canStart = usePermission("analyses.start");
   const templates = useTemplates();
   const current = currentAnalysis(analyses);
@@ -28,7 +29,7 @@ export function AnalysisTab({ client, analyses, onGoToDocuments }: { client: Cli
           description="A análise jurídica verifica a documentação, coleta os dados da relação e envia o material ao agente da área. O resultado sempre passa por revisão humana antes de qualquer providência."
           action={
             canStart ? (
-              <ButtonLink href={`/clientes/${client.id}/analise/nova`}>Iniciar análise jurídica</ButtonLink>
+              <ButtonLink href={newHref}>Iniciar análise jurídica</ButtonLink>
             ) : (
               <p className="text-[12.5px] text-muted">Somente advogados e administradores podem iniciar análises.</p>
             )
@@ -47,7 +48,7 @@ export function AnalysisTab({ client, analyses, onGoToDocuments }: { client: Cli
       {previous.length > 0 && (
         <Panel>
           <PanelHeader title="Análises anteriores" as="h3" />
-          <Table caption="Análises anteriores do cliente">
+          <Table caption="Análises anteriores do caso">
             <THead>
               <tr>
                 <Th>Modelo</Th>

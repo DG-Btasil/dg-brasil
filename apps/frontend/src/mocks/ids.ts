@@ -159,3 +159,39 @@ export const PR = {
   sandraComprovante: "prq_sandra_comprovante",
   ritaProcuracao: "prq_rita_procuracao",
 } as const;
+
+/* ------------------------------------------------------------------ */
+/* Casos jurídicos                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Casos próprios (origem Bárbara Cardoso Advocacia). */
+export const CS = {
+  helenaBancaria: "cas_helena_bancaria",
+  franciscoBancaria: "cas_francisco_bancaria",
+  ferragensBancaria: "cas_ferragens_bancaria",
+  transportesCobranca: "cas_transportes_cobranca",
+  transportesTrabalhista: "cas_transportes_trabalhista",
+  pedroVeiculo: "cas_pedro_veiculo",
+  pedroCartaoLoja: "cas_pedro_cartao_loja",
+  luizaTelefonia: "cas_luiza_telefonia",
+  luizaBancaria: "cas_luiza_bancaria",
+  joaoCredito: "cas_joao_credito",
+  joaoDescontos: "cas_joao_descontos",
+  clinicaTributario: "cas_clinica_tributario",
+  clinicaBancaria: "cas_clinica_bancaria",
+  marlenePensao: "cas_marlene_pensao",
+  marleneEmprestimos: "cas_marlene_emprestimos",
+  robertoCartao: "cas_roberto_cartao",
+  anaSuperendividamento: "cas_ana_superendividamento",
+  panificadoraCapitalGiro: "cas_panificadora_capital_giro",
+} as const;
+
+/** Casos originados por escritórios parceiros. */
+export const PCS = {
+  sandraRevisional: "cas_p_sandra_revisional",
+  sandraTarifa: "cas_p_sandra_tarifa",
+  otavioConsignado: "cas_p_otavio_consignado",
+  merceariaCapitalGiro: "cas_p_mercearia_capital_giro",
+  ritaIndenizatoria: "cas_p_rita_indenizatoria",
+  helenaCartao: "cas_p_helena_cartao",
+} as const;

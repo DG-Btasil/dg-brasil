@@ -492,10 +492,16 @@ export const NOTIFICATION_TYPES = [
   "INTEGRATION_ISSUE",
   "TASK_OVERDUE",
   "DATA_INTEGRITY",
-  "PARTNER_SUBMISSION",
+  "CASE_SUBMITTED",
+  "CASE_DOCUMENTS_PENDING",
+  "CASE_READY_FOR_ANALYSIS",
+  "CASE_WAITING_REVIEW",
+  "CASE_ACCEPTED",
+  "CASE_REJECTED",
+  "CASE_LAWYER_REQUIRED",
+  "CASE_UPDATE",
   "PARTNER_REQUEST",
   "DOCUMENT_APPROVED",
-  "CASE_UPDATE",
   "PAYOUT_UPDATE",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -508,10 +514,16 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   INTEGRATION_ISSUE: "Integração",
   TASK_OVERDUE: "Tarefa atrasada",
   DATA_INTEGRITY: "Integridade de dados",
-  PARTNER_SUBMISSION: "Novo caso de parceiro",
+  CASE_SUBMITTED: "Novo caso enviado",
+  CASE_DOCUMENTS_PENDING: "Documentos pendentes",
+  CASE_READY_FOR_ANALYSIS: "Caso pronto para análise",
+  CASE_WAITING_REVIEW: "Caso aguardando revisão",
+  CASE_ACCEPTED: "Caso aceito",
+  CASE_REJECTED: "Caso não aceito",
+  CASE_LAWYER_REQUIRED: "Advogado responsável necessário",
+  CASE_UPDATE: "Atualização do caso",
   PARTNER_REQUEST: "Solicitação",
   DOCUMENT_APPROVED: "Documento aprovado",
-  CASE_UPDATE: "Atualização do caso",
   PAYOUT_UPDATE: "Repasse",
 };
 
@@ -571,7 +583,7 @@ export const PAYMENT_STATUS_TONE: Record<PaymentStatus, Tone> = {
 export const INTEGRATION_KINDS = ["AI_PROVIDER", "LEGAL_PROCESS", "STORAGE", "EMAIL", "WHATSAPP"] as const;
 export type IntegrationKind = (typeof INTEGRATION_KINDS)[number];
 export const INTEGRATION_KIND_LABEL: Record<IntegrationKind, string> = {
-  AI_PROVIDER: "Anthropic / Claude Platform",
+  AI_PROVIDER: "Conexão Claude",
   LEGAL_PROCESS: "Provedor de acompanhamento processual",
   STORAGE: "Armazenamento de documentos",
   EMAIL: "E-mail",
@@ -699,47 +711,6 @@ export const ORIGIN_FILTER_LABEL: Record<OriginFilter, string> = {
 export const CLIENT_RELATIONSHIP_STATUSES = ["ACTIVE", "ENDED"] as const;
 export type ClientRelationshipStatus = (typeof CLIENT_RELATIONSHIP_STATUSES)[number];
 
-/** Situação de um caso enviado por parceiro. */
-export const SUBMISSION_STATUSES = [
-  "DRAFT",
-  "READY_TO_SUBMIT",
-  "SUBMITTED",
-  "UNDER_ANALYSIS",
-  "WAITING_DOCUMENTS",
-  "ACCEPTED",
-  "IN_PROGRESS",
-  "CLOSED",
-] as const;
-export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
-export const SUBMISSION_STATUS_LABEL: Record<SubmissionStatus, string> = {
-  DRAFT: "Rascunho",
-  READY_TO_SUBMIT: "Pronto para envio",
-  SUBMITTED: "Enviado",
-  UNDER_ANALYSIS: "Em análise",
-  WAITING_DOCUMENTS: "Aguardando documentos",
-  ACCEPTED: "Aceito",
-  IN_PROGRESS: "Em andamento",
-  CLOSED: "Concluído",
-};
-export const SUBMISSION_STATUS_TONE: Record<SubmissionStatus, Tone> = {
-  DRAFT: "neutral",
-  READY_TO_SUBMIT: "info",
-  SUBMITTED: "gold",
-  UNDER_ANALYSIS: "navy",
-  WAITING_DOCUMENTS: "warning",
-  ACCEPTED: "success",
-  IN_PROGRESS: "success",
-  CLOSED: "neutral",
-};
-/** Situações que a equipe interna pode atribuir depois do envio. */
-export const OWNER_SUBMISSION_TRANSITIONS: readonly SubmissionStatus[] = [
-  "UNDER_ANALYSIS",
-  "WAITING_DOCUMENTS",
-  "ACCEPTED",
-  "IN_PROGRESS",
-  "CLOSED",
-];
-
 export const PARTNER_REQUEST_TYPES = ["DOCUMENT_REQUEST", "INFORMATION_REQUEST", "CORRECTION_REQUEST", "GENERAL_REQUEST"] as const;
 export type PartnerRequestType = (typeof PARTNER_REQUEST_TYPES)[number];
 export const PARTNER_REQUEST_TYPE_LABEL: Record<PartnerRequestType, string> = {
@@ -810,3 +781,102 @@ export const VERSION_APPROVAL_STATUS_LABEL: Record<VersionApprovalStatus, string
 
 /** Marca obrigatória em qualquer exportação de versão não aprovada. */
 export const DRAFT_WATERMARK = "RASCUNHO — NÃO APROVADO";
+
+/* ------------------------------------------------------------------ */
+/* Casos jurídicos                                                     */
+/* ------------------------------------------------------------------ */
+
+export const LEGAL_CASE_STATUSES = [
+  "DRAFT",
+  "SUBMITTED",
+  "WAITING_DOCUMENTS",
+  "READY_FOR_ANALYSIS",
+  "ANALYZING",
+  "WAITING_REVIEW",
+  "ACCEPTED",
+  "REJECTED",
+  "IN_PROGRESS",
+  "CLOSED",
+  "ARCHIVED",
+] as const;
+export type LegalCaseStatus = (typeof LEGAL_CASE_STATUSES)[number];
+export const LEGAL_CASE_STATUS_LABEL: Record<LegalCaseStatus, string> = {
+  DRAFT: "Rascunho",
+  SUBMITTED: "Enviado",
+  WAITING_DOCUMENTS: "Aguardando documentos",
+  READY_FOR_ANALYSIS: "Pronto para análise",
+  ANALYZING: "Em análise",
+  WAITING_REVIEW: "Aguardando revisão",
+  ACCEPTED: "Aceito",
+  REJECTED: "Rejeitado",
+  IN_PROGRESS: "Em andamento",
+  CLOSED: "Encerrado",
+  ARCHIVED: "Arquivado",
+};
+export const LEGAL_CASE_STATUS_TONE: Record<LegalCaseStatus, Tone> = {
+  DRAFT: "neutral",
+  SUBMITTED: "gold",
+  WAITING_DOCUMENTS: "warning",
+  READY_FOR_ANALYSIS: "info",
+  ANALYZING: "navy",
+  WAITING_REVIEW: "gold",
+  ACCEPTED: "success",
+  REJECTED: "danger",
+  IN_PROGRESS: "success",
+  CLOSED: "neutral",
+  ARCHIVED: "neutral",
+};
+/**
+ * Como o parceiro vê a situação: os estados técnicos de análise viram
+ * simplesmente "Em análise"; rejeitado vira "Não aceito".
+ */
+export const PARTNER_CASE_STATUS_LABEL: Record<LegalCaseStatus, string> = {
+  DRAFT: "Rascunho",
+  SUBMITTED: "Enviado",
+  WAITING_DOCUMENTS: "Aguardando documentos",
+  READY_FOR_ANALYSIS: "Em análise",
+  ANALYZING: "Em análise",
+  WAITING_REVIEW: "Em análise",
+  ACCEPTED: "Aceito",
+  REJECTED: "Não aceito",
+  IN_PROGRESS: "Em andamento",
+  CLOSED: "Concluído",
+  ARCHIVED: "Arquivado",
+};
+/** Estados anteriores à decisão (aceite/rejeição). Origem pode ser corrigida por quem tem permissão. */
+export const PRE_DECISION_CASE_STATUSES: readonly LegalCaseStatus[] = ["DRAFT", "SUBMITTED", "WAITING_DOCUMENTS", "READY_FOR_ANALYSIS", "ANALYZING", "WAITING_REVIEW"];
+/** Estados em que o caso pode ser aceito ou rejeitado. */
+export const DECIDABLE_CASE_STATUSES: readonly LegalCaseStatus[] = ["SUBMITTED", "WAITING_DOCUMENTS", "READY_FOR_ANALYSIS", "ANALYZING", "WAITING_REVIEW"];
+/** Estados após o aceite (origem só muda por Administrador). */
+export const ACCEPTED_CASE_STATUSES: readonly LegalCaseStatus[] = ["ACCEPTED", "IN_PROGRESS", "CLOSED", "ARCHIVED"];
+/** Casos "ativos" para indicadores. */
+export const ACTIVE_CASE_STATUSES: readonly LegalCaseStatus[] = ["SUBMITTED", "WAITING_DOCUMENTS", "READY_FOR_ANALYSIS", "ANALYZING", "WAITING_REVIEW", "ACCEPTED", "IN_PROGRESS"];
+export const IN_ANALYSIS_CASE_STATUSES: readonly LegalCaseStatus[] = ["SUBMITTED", "WAITING_DOCUMENTS", "READY_FOR_ANALYSIS", "ANALYZING", "WAITING_REVIEW"];
+
+/* ------------------------------------------------------------------ */
+/* Referências (DG Brasil)                                             */
+/* ------------------------------------------------------------------ */
+
+export const REFERENCE_MATERIAL_TYPES = ["APPROVED_PETITION", "WRITING_EXAMPLE", "LEGAL_REFERENCE", "INTERNAL_GUIDELINE", "DOCTRINE", "OTHER"] as const;
+export type ReferenceMaterialType = (typeof REFERENCE_MATERIAL_TYPES)[number];
+export const REFERENCE_MATERIAL_TYPE_LABEL: Record<ReferenceMaterialType, string> = {
+  APPROVED_PETITION: "Petição aprovada",
+  WRITING_EXAMPLE: "Exemplo de redação",
+  LEGAL_REFERENCE: "Referência jurídica",
+  INTERNAL_GUIDELINE: "Orientação interna",
+  DOCTRINE: "Material doutrinário",
+  OTHER: "Outro",
+};
+
+export const REFERENCE_MATERIAL_STATUSES = ["ACTIVE", "DRAFT", "ARCHIVED"] as const;
+export type ReferenceMaterialStatus = (typeof REFERENCE_MATERIAL_STATUSES)[number];
+export const REFERENCE_MATERIAL_STATUS_LABEL: Record<ReferenceMaterialStatus, string> = {
+  ACTIVE: "Em uso",
+  DRAFT: "Rascunho",
+  ARCHIVED: "Arquivada",
+};
+export const REFERENCE_MATERIAL_STATUS_TONE: Record<ReferenceMaterialStatus, Tone> = {
+  ACTIVE: "success",
+  DRAFT: "neutral",
+  ARCHIVED: "neutral",
+};

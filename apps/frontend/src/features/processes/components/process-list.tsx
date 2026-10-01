@@ -22,6 +22,9 @@ import {
 } from "../utils";
 import { ProcessFilters } from "./process-filters";
 import { ProcessSummaryStrip } from "./process-summary-strip";
+import { useCaseMap } from "@/features/cases/hooks";
+import { useOffice } from "@/features/offices/hooks";
+import { casePartnerId } from "@/lib/domain/legal-case";
 import { ProcessTable } from "./process-table";
 
 export function ProcessList() {
@@ -36,15 +39,22 @@ export function ProcessList() {
   const partnerMap = usePartnerMap();
   const [filters, setFilters] = useState<Filters>(EMPTY_PROCESS_FILTERS);
 
+  const caseMap = useCaseMap();
+  const office = useOffice();
   const rows = useMemo<ProcessRow[]>(() => {
     const next = nextOpenDeadlineByProcess(deadlines);
-    return processes.map((process) => ({
-      process,
-      clientName: processClientLabel(process, clientMap.get(process.clientId)),
-      responsibleName: userMap.get(process.responsibleUserId)?.name ?? "—",
-      nextDeadline: next.get(process.id),
-    }));
-  }, [processes, deadlines, clientMap, userMap]);
+    return processes.map((process) => {
+      const legalCase = caseMap.get(process.legalCaseId);
+      return {
+        process,
+        clientName: processClientLabel(process, clientMap.get(process.clientId)),
+        responsibleName: userMap.get(process.responsibleUserId)?.name ?? "—",
+        nextDeadline: next.get(process.id),
+        casePartnerId: legalCase ? casePartnerId(legalCase, office.id) : undefined,
+        caseTitle: legalCase?.title,
+      };
+    });
+  }, [processes, deadlines, clientMap, userMap, caseMap, office.id]);
 
   const filtered = useMemo(() => filterProcessRows(rows, filters), [rows, filters]);
 

@@ -37,8 +37,12 @@ na seção **13. Parcerias**.
 
 - Todos os tipos mantêm `officeId` (= o escritório proprietário). No backend ele vem da
   configuração/sessão, nunca do cliente.
-- O fluxo "Criar escritório" (`/criar-escritorio`) é legado do modelo anterior e só existe
-  como ferramenta de demonstração; não faz parte do produto.
+- Não há "Criar escritório", implantação de tenant, plano SaaS nem assinatura (removidos do
+  front-end). Escritórios parceiros entram por **Parceiros → Adicionar parceiro**.
+- Domínios (mesmo app, mesmo deploy): `app.barbaracardoso.adv.br` (equipe interna) e
+  `portal.barbaracardoso.adv.br` (parceiros). Configuráveis por `NEXT_PUBLIC_APP_HOST` /
+  `NEXT_PUBLIC_PORTAL_HOST` (`src/lib/hosts.ts`). O host só ajusta textos do login; o acesso é
+  decidido pelo papel na sessão, no servidor.
 
 ## 3. RBAC no servidor
 
@@ -55,11 +59,12 @@ na seção **13. Parcerias**.
 
 Entidades mapeadas em `src/types`: Office (proprietário), PartnerOffice, User (com
 `partnerOfficeId` opcional), Invitation, Client (PF/PJ, canônico), ClientOfficeRelationship,
-PartnerCaseSubmission, PartnerRequest, ProcessPartnershipAgreement (+ payouts),
+LegalCase, PartnerRequest, CasePartnershipAgreement (+ payouts), ReferenceMaterial,
 LegalRepresentative, Partner, ClientDocument, AnalysisTemplate, LegalAnalysis
 (+ steps/timeline), Process, ProcessEvent, Deadline, Review, ReviewDecision, Agent,
 AgentTask, Skill, LegalThesis (+ versões), ChangeHistoryEntry, Notification, FeeModel,
-FinancialAgreement, Payment, Integration, AIUsage, AuditEvent, Subscription.
+FinancialAgreement (pertence ao caso: `legal_case_id`), Payment, Integration, AIUsage,
+AuditEvent. `Process` (= `LegalProcess`) tem `legal_case_id NOT NULL`.
 
 As regras de transição estão em `src/store/slices/*` e são a especificação funcional
 dos serviços. Principais: reavaliação de documentos, ciclo da análise, efeitos da
@@ -86,14 +91,16 @@ decisão de revisão e versionamento de Skills.
 - Skills versionadas: o Tutor DG gera propostas, e a aplicação cria nova versão com diff
   (`ChangeHistoryEntry`). Reverter = aplicar a versão anterior.
 
-## 7. Anthropic / Claude Platform
+## 7. Conexão Claude
 
 - Contrato: `src/services/ai-provider.ts` (`AIProviderService`).
 - Cada escritório conecta a própria organização e arca com o próprio consumo.
 - A credencial é enviada direto ao backend, guardada **criptografada** (KMS/secret manager)
   e **nunca** volta ao navegador. O front-end não pede, não guarda e não transmite API key.
-- Consumo (tokens, custo por agente e por modelo) apurado no backend e exposto ao front
-  como leitura.
+- Uso apurado no backend e exposto ao front como leitura. A interface ("Configuração
+  Claude") mostra apenas status, uso, **execuções** (por dia, agente e modelo) e limites;
+  tokens e custo ficam no backend (`AIUsage.inputTokens/outputTokens/estimatedCostUsd`
+  existem só como dado técnico) — não é cobrança por token.
 
 ## 8. Integrações
 
@@ -361,31 +368,27 @@ visibilidade, puras), `src/store/scope.ts` (recorte aplicado ao estado inteiro),
 - Registrar `CLIENT_DUPLICATE_DETECTED` na auditoria interna. Aplicar rate limit na
   consulta (evita enumeração de CPFs).
 
-### 13.6 Process Origin
+### 13.6 Origem do caso (substitui a origem relacional do processo)
 
-- Cada processo guarda **duas** origens distintas:
-  - técnica: `origin` = `MANUAL | AGENT | INTEGRATION | IMPORT` ("Origem do cadastro processual");
-  - relacional: `relationship_origin` = `INTERNAL | PARTNER` + `origin_partner_office_id`
-    ("Origem do caso").
-- Cliente e processo **não** compartilham automaticamente a mesma origem: um cliente próprio
-  da Bárbara pode ter um novo processo originado pelo Parceiro A, e esse processo tem
-  `origin_partner_office_id = A`.
-- Processo criado pelo portal recebe a origem do parceiro **da sessão** — o usuário não
-  escolhe escritório. A origem relacional não muda em edições comuns (`updateProcess` a
-  ignora); alterá-la seria operação explícita e auditada.
-- Processo cadastrado pelo parceiro aparece imediatamente para a equipe interna.
+- **Atualizado na rodada 3 (seção 15):** a origem relacional saiu do processo e passou para o
+  **caso** (`legal_case.origin_office_id`). O processo guarda só a origem técnica
+  (`origin` = `MANUAL | AGENT | INTEGRATION | IMPORT`) e `legal_case_id`.
+- Cliente e caso **não** compartilham automaticamente a mesma origem: um cliente próprio da
+  Bárbara pode ter um caso originado pelo Parceiro A.
+- Processo cadastrado pelo parceiro só pode ser vinculado a caso do próprio parceiro e
+  aparece imediatamente para a equipe interna.
 
 ### 13.7 Financial Snapshot (regra crítica)
 
 - A divisão do `PartnerOffice` é o padrão **vigente para NOVOS casos**.
-- Quando o caso passa a ter acordo financeiro (no protótipo: na criação de processo de
-  origem PARTNER), a divisão vigente é **copiada** para `ProcessPartnershipAgreement`
-  (`partner_percentage`, `owner_percentage`, `effective_at`).
+- No **aceite** do caso de origem parceiro, a divisão vigente é **copiada** para
+  `CasePartnershipAgreement` (`legal_case_id`, `partner_percentage`, `owner_percentage`,
+  `effective_at`).
 - Os percentuais do acordo são **imutáveis**, salvo alteração explícita e auditada no próprio
   acordo. Mudar o padrão do parceiro (ex.: 50/50 → 60/40) **não** recalcula casos antigos:
   casos existentes continuam 50/50; somente novos usam 60/40. Auditoria:
   `PARTNER_SHARE_CHANGED` com antes/depois e quantidade de acordos preservados.
-- O financeiro da parceria pertence ao **processo/acordo**, não ao cliente.
+- O financeiro da parceria pertence ao **caso/acordo**, não ao cliente nem ao processo.
 - Soma das participações = 100%, validada no front **e** no servidor (`CHECK`).
 
 ### 13.8 Conceitos financeiros separados
@@ -433,22 +436,20 @@ recebe valores de parceria (valor da causa continua visível como dado jurídico
 ### 13.11 Reviews
 
 - Parceiro não acessa a área de Revisões nem nenhum endpoint dela.
-- O único sinal é o status genérico "Em revisão interna" por processo. Conteúdo, comentários,
+- O único sinal é o status genérico "Em revisão interna" (e a situação simplificada do caso,
+  "Em análise"). Conteúdo, comentários,
   sugestões da IA, instruções e versões internas nunca saem do servidor para o parceiro.
 - Após aprovação humana, o documento pode ser disponibilizado (13.9) e aparece como
   "Documento aprovado" com visualização.
 
-### 13.12 Casos enviados (PartnerCaseSubmission) e solicitações (PartnerRequest)
+### 13.12 Casos enviados pelo parceiro e solicitações (PartnerRequest)
 
-- Envio pelo portal: PF/PJ → CPF/CNPJ → verificação → cadastro básico → documentos →
-  informações do caso → **Revisar envio** → Confirmar e enviar. Em uma transação: cliente
-  (se novo) + relacionamentos + processo PARTNER + acordo (snapshot) + documentos + submissão
-  + notificação interna + auditoria.
-- Situações: `DRAFT → READY_TO_SUBMIT → SUBMITTED → UNDER_ANALYSIS → WAITING_DOCUMENTS →
-  ACCEPTED → IN_PROGRESS → CLOSED`. No protótipo, DRAFT/READY_TO_SUBMIT existem apenas
-  enquanto o assistente está aberto (não há rascunho persistido); o backend pode persistir
-  rascunhos editáveis livremente até o envio. Depois de `SUBMITTED`, valem as regras de
-  documentos (13.10); a equipe interna altera a situação e o parceiro é notificado.
+- `PartnerCaseSubmission` **deixou de existir**: o envio cria diretamente um `LegalCase`
+  (seção 15). Fluxo do portal: Cliente (CPF/CNPJ, duplicidade, cadastro básico) → Novo caso
+  (com origem permitida) → documentos → revisar → **"Confirmar e enviar para Bárbara
+  Cardoso Advocacia"** → `SUBMITTED`. Em uma transação: cliente (se novo) + relacionamento +
+  caso + documentos (com `legal_case_id`) + notificação interna + auditoria. Nenhum
+  processo nem acordo é criado no envio.
 - Edição de dados básicos do cliente pelo parceiro (contato, endereço) é permitida e
   auditada (`CLIENT_UPDATED` com os campos). Dados críticos (nome, CPF/CNPJ) podem exigir
   validação futura.
@@ -470,9 +471,9 @@ visível ao parceiro, valor financeiro atualizado e repasse registrado. Cada eve
 
 1. Um cliente canônico pode possuir múltiplos relacionamentos autorizados.
 2. Um parceiro não pode descobrir relacionamentos privados por consultas de CPF/CNPJ.
-3. Processo possui origem de parceria própria (`origin_partner_office_id`).
-4. Cliente e processo não compartilham automaticamente a mesma origem.
-5. O financeiro da parceria pertence ao processo/acordo.
+3. A origem de parceria é do **caso** (`legal_case.origin_office_id`).
+4. Cliente e caso não compartilham automaticamente a mesma origem.
+5. O financeiro da parceria pertence ao caso/acordo.
 6. Percentuais históricos são imutáveis, salvo alteração explícita auditada.
 7. Mudança da parceria padrão não altera casos antigos.
 8. Documentos enviados são versionados; nunca sobrescritos.
@@ -504,13 +505,12 @@ visível ao parceiro, valor financeiro atualizado e repasse registrado. Cada eve
 - Ao parceiro, a origem só é retornada quando é o próprio parceiro ou o escritório
   proprietário (nunca revelar outro parceiro).
 
-### 14.2 Origem do processo continua independente
+### 14.2 Origem do caso continua independente do cliente
 
-- `Client.originOfficeId` **não** determina `Process.originPartnerOfficeId`. Cada processo tem
-  origem relacional própria, definida na criação do processo. Isso é o que alimenta
-  comissão, divisão de honorários, relatórios e auditoria.
-- O filtro "Escritório parceiro" de Revisões usa a origem relacional do **processo** da
-  revisão (não o autor, o agente nem a origem do cliente). Revisão sem processo = interna.
+- `Client.originOfficeId` **não** determina a origem do caso. Cada caso tem origem própria,
+  definida na criação. É ela que alimenta divisão de honorários, relatórios e auditoria.
+- O filtro "Escritório parceiro" de Revisões usa **revisão → caso → origem do caso** (não o
+  autor, o agente nem a origem do cliente). Revisão sem caso = interna.
 
 ### 14.3 Document, DocumentVersion, Review e Approval
 
@@ -569,3 +569,109 @@ nesta etapa.
 
 `IndividualClient.gender`: `MALE | FEMALE | OTHER`, opcional (ausente = "Não informado").
 Rótulos em `src/lib/constants/legal.ts`.
+
+## 15. Rodada final do front-end: Client → LegalCase → LegalProcess
+
+### 15.1 Modelo
+
+```
+Client (canônico)
+ └─ LegalCase (legal_case)         -- a demanda; existe antes (ou sem) processo
+     ├─ origin_office_id            -- Bárbara ou parceiro (independe da origem do cliente)
+     ├─ created_by_office_id, created_by
+     ├─ assigned_lawyer_id NULL     -- obrigatório para aceitar
+     ├─ status, submitted_at, accepted_at, accepted_by, rejected_at, closed_at, archived_at
+     ├─ rejection_reason_public     -- visível ao parceiro
+     ├─ rejection_reason_internal   -- NUNCA retornado ao parceiro
+     ├─ Documents (legal_case_id)   -- documento pode pertencer a cliente, caso ou processo
+     ├─ LegalAnalysis (legal_case_id)
+     ├─ Review (legal_case_id, process_id opcional)
+     ├─ LegalProcess (legal_case_id NOT NULL; 0..n por caso)
+     ├─ FinancialAgreement (legal_case_id NOT NULL)
+     └─ CasePartnershipAgreement (legal_case_id; criado no aceite; cancelled_at)
+```
+
+Tipos: `src/types/case.ts`, `src/types/process.ts`, `src/types/partner.ts`,
+`src/types/reference.ts`. Regras: `src/store/slices/cases.ts`, `src/lib/domain/legal-case.ts`.
+
+### 15.2 Status do caso
+
+`DRAFT → SUBMITTED → WAITING_DOCUMENTS → READY_FOR_ANALYSIS → ANALYZING → WAITING_REVIEW →
+ACCEPTED | REJECTED → IN_PROGRESS → CLOSED → ARCHIVED`.
+
+- Os estados de análise são **derivados** da análise do caso (`syncCaseStatuses`).
+- Aceitar/rejeitar: só em `SUBMITTED … WAITING_REVIEW`, com `cases.decide`.
+- Parceiro vê rótulos simplificados (`PARTNER_CASE_STATUS_LABEL`): estados de análise →
+  "Em análise"; `REJECTED` → "Não aceito"; `CLOSED` → "Concluído".
+
+### 15.3 Regras definitivas (checklist do backend)
+
+1. Todo processo pertence a um caso (`legal_case_id NOT NULL`); o cliente do processo é o do caso.
+2. Um caso pode existir sem processo e ter vários processos.
+3. Processo não pode ser vinculado a caso em rascunho, rejeitado ou arquivado.
+4. A origem do caso é independente da origem do cliente; o mesmo cliente pode ter casos de
+   origens diferentes.
+5. Origens permitidas na criação (`getAllowedClientOrigins`, mesma regra do cliente):
+   interno → Bárbara + parceiros ATIVOS (padrão Bárbara); parceiro → próprio escritório ou
+   Bárbara (padrão o próprio). Validar no servidor; rejeitar qualquer outro valor.
+6. Antes do aceite, a origem pode ser corrigida por quem tem a origem nas opções permitidas.
+7. Depois do aceite, **somente Administrador** (`cases.origin.override`) altera a origem,
+   com confirmação forte ("Alterar a origem de um caso aceito pode afetar regras financeiras
+   e de parceria.") e auditoria antes/depois. O acordo de parceria vigente é encerrado
+   (`cancelled_at`, nunca apagado) e, se a nova origem for parceiro, um novo snapshot é criado.
+8. Aceitar exige advogado responsável: usuário interno ATIVO com papel `LAWYER`, ou `ADMIN`
+   com OAB. Sem ele, o aceite é recusado ("Defina o advogado responsável antes de aceitar o caso.").
+9. O acordo de parceria nasce **no aceite**, copiando a divisão vigente do parceiro
+   (snapshot). Mudar a divisão padrão (ex.: 50/50 → 60/40) não altera casos já aceitos;
+   novos aceites usam a nova divisão.
+10. Rejeição exige `rejection_reason_public`; `rejection_reason_internal` é opcional e **nunca**
+    sai do servidor para o parceiro (nem em notificações, auditoria visível ou exportações).
+11. Contrato de honorários (`FinancialAgreement`) pertence ao caso e abrange todos os
+    processos dele. A estimativa de êxito usa a soma do valor da causa dos processos do caso.
+12. Revisões têm `legal_case_id` (+ `process_id` opcional). Filtro por parceiro = revisão →
+    caso → origem.
+13. Parceiro vê: casos com origem nele ou criados por ele; documentos `PARTNER_VISIBLE` ou
+    enviados por ele; processos dos seus casos; financeiro só com `PARTNER_ADMIN`.
+14. Cadastro de CPF/CNPJ duplicado: "Cliente já cadastrado no sistema." + "Criar novo caso
+    para este cliente", sem revelar dados (13.5).
+15. Importação (XLSX/CSV) cria um caso próprio por processo importado.
+16. Exatamente 5 papéis: `ADMIN`, `LAWYER`, `ASSISTANT`, `PARTNER_ADMIN`, `PARTNER_USER`.
+
+### 15.4 Notificações de caso
+
+`CASE_SUBMITTED` (novo caso enviado), `CASE_DOCUMENTS_PENDING`, `CASE_READY_FOR_ANALYSIS`,
+`CASE_WAITING_REVIEW`, `CASE_ACCEPTED`, `CASE_REJECTED` (ao parceiro só com o motivo
+público), `CASE_LAWYER_REQUIRED` (caso aguardando decisão sem responsável).
+
+### 15.5 Auditoria
+
+`CASE_CREATED`, `CASE_SUBMITTED`, `CASE_UPDATED`, `CASE_STATUS_CHANGED`,
+`CASE_ORIGIN_CHANGED` (antes/depois), `CASE_ACCEPTED`, `CASE_REJECTED`,
+`CASE_REJECTION_PUBLIC`, `CASE_REJECTION_INTERNAL_NOTE` (só interno), `CASE_LAWYER_ASSIGNED`
+(antes/depois), `PARTNERSHIP_SNAPSHOT_CREATED`, `REFERENCE_CREATED`.
+
+### 15.6 Referências (DG Brasil)
+
+- `/dg-brasil/referencias`, somente Administrador (`dgbrasil.manage`).
+- `ReferenceMaterial`: título, categoria (`APPROVED_PETITION | WRITING_EXAMPLE |
+  LEGAL_REFERENCE | INTERNAL_GUIDELINE | DOCTRINE | OTHER`), descrição, área, arquivo
+  (protótipo: só metadados; backend: `storage_key`), tags e vínculos com Skills, Teses e
+  Agentes. Sem embeddings/RAG nesta etapa: indexação e recuperação são decisão do backend.
+
+### 15.7 Google Drive
+
+"Exportar para Google Drive" aparece desabilitado no menu de download da **versão aprovada**
+("Disponível após configuração do backend"). Não há sincronização. Backend: OAuth do
+escritório, pasta por cliente/caso, exportar somente versões aprovadas, auditoria.
+
+### 15.8 Convite e acesso
+
+Convite → criar senha → aceitar documentos legais (Termos de Uso, Política de Privacidade/LGPD,
+Termo de Confidencialidade; registrar versão e data) → configurar 2FA TOTP (placeholder na
+interface) → acessar. Tudo real fica no backend (Supabase Auth ou equivalente).
+
+### 15.9 Fora do escopo do front-end
+
+Sem ADVBOX (importação genérica por planilha permanece), sem Asaas, sem cobrança SaaS.
+Não implementados: Supabase/Postgres/RLS, autenticação real, TOTP, storage, worker de
+agentes, chamadas ao Claude, APIs e geração de PDF no servidor.

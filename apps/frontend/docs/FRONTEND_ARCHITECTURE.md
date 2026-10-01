@@ -11,16 +11,25 @@ BÁRBARA CARDOSO ADVOCACIA — escritório proprietário único (officeId)
  └─ ESCRITÓRIOS PARCEIROS (PartnerOffice)
      └─ USUÁRIOS PARCEIROS (Administrador do parceiro · Usuário do parceiro)
      └─ RELACIONAMENTOS com clientes canônicos (ClientOfficeRelationship)
-     └─ CASOS ENVIADOS · SOLICITAÇÕES · ACORDOS POR CASO (snapshot da divisão)
- └─ CLIENTES canônicos (PF | PJ, únicos por CPF/CNPJ)
-     └─ DOCUMENTOS
-     └─ ANÁLISES JURÍDICAS (a partir de um AnalysisTemplate)
-         └─ REVISÃO HUMANA ─► aprovação continua o fluxo
-     └─ PROCESSOS (origem técnica: AGENT | INTEGRATION | MANUAL | IMPORT;
-                    origem do caso: INTERNAL | PARTNER + originPartnerOfficeId)
-         └─ MOVIMENTAÇÕES · PRAZOS · REVISÕES · FINANCEIRO (admin)
- └─ DG BRASIL: AGENTES · SKILLS · TESES · HISTÓRICO DE ALTERAÇÕES
+     └─ SOLICITAÇÕES · ACORDOS DE PARCERIA POR CASO (snapshot no aceite)
+ └─ CLIENTES canônicos (PF | PJ, únicos por CPF/CNPJ; origem do cliente = histórica)
+     └─ DOCUMENTOS do cadastro
+     └─ CASOS (LegalCase) — a demanda; origem do CASO, advogado responsável, status
+         └─ DOCUMENTOS do caso
+         └─ ANÁLISE JURÍDICA (a partir de um AnalysisTemplate)
+         └─ REVISÕES (legalCaseId) ─► decisão humana
+         └─ ACEITE (exige advogado) ─► acordo de parceria (snapshot) se origem = parceiro
+         └─ REJEIÇÃO: motivo público (parceiro) + nota interna (nunca ao parceiro)
+         └─ PROCESSOS (0..n; LegalProcess, sempre com legalCaseId;
+                       origem técnica: AGENT | INTEGRATION | MANUAL | IMPORT)
+             └─ MOVIMENTAÇÕES · PRAZOS · DOCUMENTOS
+         └─ FINANCEIRO (contratos de honorários pertencem ao caso)
+ └─ DG BRASIL: AGENTES · SKILLS · TESES · REFERÊNCIAS · HISTÓRICO DE ALTERAÇÕES
 ```
+
+**Client → LegalCase → LegalProcess.** A origem relevante para parceria e financeiro é a
+do **caso** (`LegalCase.originOfficeId`), independente da origem do cliente. O mesmo
+cliente pode ter casos de origens diferentes. Um caso pode existir sem processo judicial.
 
 A IA trabalha nos bastidores. Fora da área **DG Brasil**, o usuário vê um software
 jurídico completo, não um "gerenciador de agentes". O ponto de contato explícito com o
@@ -33,22 +42,23 @@ necessário, `schemas.ts` (Zod) e `utils.ts`.
 
 | Feature | Rotas | Observação |
 |---|---|---|
-| `auth` | `/login`, `/criar-escritorio`, `/convite/[token]` | sessão simulada |
-| `onboarding` | `/onboarding` | 13 etapas + assistente de implantação; `tour/` = tour do produto |
-| `home` | `/home` | adapta KPIs e seções ao papel |
-| `clients`, `analyses` | `/clientes/**` | cadastro PF/PJ, documentos, fluxo de análise |
+| `auth` | `/login`, `/convite/[token]` | sessão simulada; login ajusta textos pelo domínio (`lib/hosts.ts`); convite em etapas (senha → documentos legais → 2FA placeholder) |
+| `home` | `/home` | KPIs: casos ativos, casos aguardando análise, processos ativos, revisões pendentes, prazos urgentes |
+| `clients` | `/clientes/**` | cadastro PF/PJ, documentos, abas Casos e Processos |
+| `cases`, `analyses` | `/casos/**` | lista com filtros, novo caso, detalhe (Visão geral, Documentos, Análise, Revisões, Processos, Financeiro, Atividade), aceite/rejeição/origem; análise em `/casos/[id]/analise/nova` |
 | `processes` | `/processos/**` | lista, cadastro manual, detalhe com abas |
 | `reviews` | `/revisoes/**` | fila e decisão (human-in-the-loop) |
 | `finance` | `/financeiro/**` | somente Administrador |
-| `dg-brasil` | `/dg-brasil/**` | agentes, Skills, teses, histórico, Tutor DG |
+| `dg-brasil` | `/dg-brasil/**` | agentes, Skills, teses, referências (`/dg-brasil/referencias`, só Administrador), histórico, Tutor DG |
 | `settings`, `integrations` | `/configuracoes` | seções por permissão |
 | `partners` | `/parceiros/**` | área interna de parceiros; hooks de parceria compartilhados com o portal |
-| `partner-portal` | `/home`, `/clientes/**`, `/processos/**`, `/pendencias`, `/financeiro`, `/notificacoes`, `/minha-conta` | Portal do Parceiro (mesmas URLs; a página escolhe a tela pelo público com `AudienceSwitch`) |
+| `partner-portal` | `/home`, `/clientes/**`, `/casos/**`, `/processos/**`, `/pendencias`, `/financeiro`, `/notificacoes`, `/minha-conta` | Portal do Parceiro (mesmas URLs; a página escolhe a tela pelo público com `AudienceSwitch`) |
 | `notifications`, `navigation`, `offices` | — | hooks compartilhados |
 
 Rotas em `src/app` são finas: páginas dinâmicas aguardam `params` (Next 16) e delegam
 para um componente da feature. `src/app/(app)/layout.tsx` monta o `AppShell`
-(hidratação → guarda de sessão/implantação → header → conteúdo → tour).
+(hidratação → guarda de sessão → header → conteúdo → tour). Não há criação de escritório
+nem implantação de tenant: o escritório proprietário é único.
 
 ## 3. RBAC
 
@@ -122,10 +132,16 @@ Dois stores Zustand:
 - **Cliente ↔ processo:** ciclos de vida independentes. Excluir cliente mantém os
   processos com vínculo pendente + alerta `DATA_INTEGRITY`; excluir processo mantém o cliente.
   Inativar (status `INACTIVE`) é o caminho preferencial.
+- **Casos:** `store/slices/cases.ts`. Rascunho → Enviado → (status sincronizado com a
+  análise pelo `set` do `app-store`: aguardando documentos, pronto, em análise, aguardando
+  revisão) → Aceito/Rejeitado → Em andamento → Encerrado → Arquivado. Aceite exige advogado
+  responsável e cria o acordo de parceria (snapshot) quando a origem é parceiro. Após o
+  aceite, só Administrador altera a origem (encerra o acordo anterior e cria outro).
 - **Revisões:** edição manual cria nova versão (a anterior fica guardada); reabrir leva a
   `REOPENED` sem apagar a decisão anterior; aprovação vale apenas para a versão aprovada.
 - **Importação:** `features/data-import` valida, detecta conflitos e monta um `ImportPlan`;
-  `importData` cria clientes, processos e vínculos numa única operação.
+  `importData` cria clientes, um caso próprio por processo importado, processos e vínculos
+  numa única operação (Configurações → Importação de Dados, XLSX/CSV).
 
 ## 5. Abstração de repositório
 
@@ -149,7 +165,8 @@ Componente ──► hook da feature ──► (leitura) useAppStore
   para quando as leituras passarem a ter loading e erro de verdade.
 
 `services/` guarda contratos de integrações que não são CRUD:
-`AIProviderService` (Claude Platform, sempre via backend) e `JudicialIntegrationProvider`
+`AIProviderService` (Conexão Claude, sempre via backend; a interface mostra status, uso,
+execuções e limites — não tokens nem custo) e `JudicialIntegrationProvider`
 (`judicial-integration.ts`: DJEN, DataJud e futuros fornecedores, cada um declarando o que
 fornece; a tela de Integração Judicial se monta a partir do registro `JUDICIAL_PROVIDERS`).
 

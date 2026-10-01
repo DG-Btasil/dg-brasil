@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Check } from "lucide-react";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { AGENT_AUTONOMY_DESCRIPTION, AGENT_AUTONOMY_LABEL } from "@/lib/constants/status";
-import { formatCompact, formatNumber, formatUsd } from "@/lib/formatting";
+import { formatNumber } from "@/lib/formatting";
 import type { Agent, AgentTask } from "@/types";
 import { useAiUsage } from "../../hooks";
 
@@ -83,18 +83,17 @@ export function AgentOverviewTab({ agent, tasks }: { agent: Agent; tasks: AgentT
           </PanelBody>
         </Panel>
         <Panel>
-          <PanelHeader title="Consumo do mês" description={`Referência: ${usage.month}`} />
+          <PanelHeader title="Uso no mês" description={`Referência: ${usage.month}`} />
           <PanelBody>
             {agentUsage ? (
               <MetricGrid
                 items={[
-                  { label: "Tokens de entrada", value: formatCompact(agentUsage.inputTokens) },
-                  { label: "Tokens de saída", value: formatCompact(agentUsage.outputTokens) },
-                  { label: "Custo estimado", value: formatUsd(agentUsage.costUsd) },
+                  { label: "Execuções", value: formatNumber(agentUsage.runs) },
+                  { label: "Participação no uso do escritório", value: usage.runs ? `${Math.round((agentUsage.runs / usage.runs) * 100)}%` : "—" },
                 ]}
               />
             ) : (
-              <p className="text-[13px] text-muted">Sem consumo registrado neste mês.</p>
+              <p className="text-[13px] text-muted">Sem execuções registradas neste mês.</p>
             )}
           </PanelBody>
         </Panel>

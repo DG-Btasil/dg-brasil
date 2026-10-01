@@ -32,6 +32,7 @@ type DocValues = z.infer<typeof docSchema>;
  */
 export function SendDocumentDialog({
   clientId,
+  legalCaseId,
   processId,
   request,
   replaces,
@@ -39,6 +40,7 @@ export function SendDocumentDialog({
   onOpenChange,
 }: {
   clientId: ID;
+  legalCaseId?: ID;
   processId?: ID;
   request?: PartnerRequest;
   replaces?: ClientDocument;
@@ -58,6 +60,7 @@ export function SendDocumentDialog({
   const onSubmit = form.handleSubmit(async (v) => {
     const id = await actions.submitDocument({
       clientId,
+      legalCaseId: legalCaseId ?? request?.legalCaseId ?? replaces?.legalCaseId,
       processId: processId ?? request?.processId,
       requestId: request?.id,
       replacesDocumentId: replaces?.id,

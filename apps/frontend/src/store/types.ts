@@ -7,9 +7,10 @@ import type {
   IntegrationStatus,
   NotificationType,
   PartnerOfficeStatus,
+  LegalCaseStatus,
   PartnerRequestType,
+  ReferenceMaterialType,
   ReviewDecisionKind,
-  SubmissionStatus,
 } from "@/lib/constants/status";
 import type { LegalArea } from "@/lib/constants/legal";
 import type {
@@ -21,8 +22,10 @@ import type {
   FeeModel,
   ID,
   IndividualClient,
+  LegalCase,
   LegalThesis,
   Office,
+  ReferenceMaterial,
   PartnerOffice,
   PartnerRole,
   Process,
@@ -60,13 +63,6 @@ export type NewCompanyClientInput = Omit<CompanyClient, ClientOwnFields>;
 export type NewClientInput = NewIndividualClientInput | NewCompanyClientInput;
 export type ClientPatch = Partial<NewIndividualClientInput> | Partial<NewCompanyClientInput>;
 
-export interface CreateOfficeInput {
-  officeName: string;
-  adminName: string;
-  adminEmail: string;
-  oab?: string;
-  phone?: string;
-}
 
 export interface NewDocumentInput {
   clientId: ID;
@@ -74,24 +70,23 @@ export interface NewDocumentInput {
   category: DocumentCategory;
   fileName?: string;
   sizeKb?: number;
+  /** Documento pode pertencer ao cliente, ao caso ou ao processo. */
+  legalCaseId?: ID;
   processId?: ID;
   notes?: string;
 }
 
 export interface StartAnalysisInput {
+  /** Caso analisado (o cliente é o do caso). */
+  legalCaseId: ID;
   clientId: ID;
   templateId: ID;
   fields: Record<string, string>;
 }
 
-export type NewProcessInput = Omit<
-  Process,
-  "id" | "officeId" | "createdAt" | "updatedAt" | "origin" | "lastMovementAt" | "relationshipOrigin" | "originPartnerOfficeId"
-> & {
+/** Processo sempre pertence a um caso; o cliente é o do caso (preenchido pelo sistema). */
+export type NewProcessInput = Omit<Process, "id" | "officeId" | "createdAt" | "updatedAt" | "origin" | "lastMovementAt" | "clientId"> & {
   origin?: Process["origin"];
-  /** Ausente = INTERNAL. PARTNER exige originPartnerOfficeId e gera o acordo (snapshot). */
-  relationshipOrigin?: Process["relationshipOrigin"];
-  originPartnerOfficeId?: ID;
   nextDeadline?: { title: string; type: DeadlineType; dueDate: string };
 };
 
@@ -108,7 +103,8 @@ export type NewFeeModelInput = Omit<FeeModel, "id" | "officeId" | "updatedAt">;
 
 export interface NewAgreementInput {
   clientId: ID;
-  processId?: ID;
+  /** Caso do contrato (abrange todos os processos dele). */
+  legalCaseId: ID;
   feeModelId?: ID;
   customized: boolean;
   upfrontFee: number;
@@ -209,32 +205,31 @@ export type PartnerNewClientInput =
       representativeName?: string;
     };
 
+/** Envio de caso pelo parceiro: cliente (novo ou existente) + caso + documentos. Não cria processo. */
 export interface PartnerCaseInput {
   client: { mode: "NEW"; data: PartnerNewClientInput } | { mode: "EXISTING"; matchToken?: string; clientId?: ID };
   documents: PartnerCaseDocumentInput[];
   caseInfo: {
     title: string;
     area: LegalArea;
-    actionType: string;
+    caseType: string;
     opposingParty?: string;
     summary: string;
-    cnj?: string;
-    court?: string;
-    caseValue?: number;
+    /** Origem do caso: o próprio parceiro (padrão) ou Bárbara Cardoso Advocacia. */
+    originOfficeId: ID;
   };
   notes?: string;
 }
 
 export interface PartnerCaseResult {
   clientId: ID;
-  processId: ID;
-  submissionId: ID;
+  legalCaseId: ID;
 }
 
-/** Processo cadastrado pelo parceiro. A origem (parceiro) é aplicada pelo sistema. */
+/** Processo cadastrado pelo parceiro: sempre para um caso dele. */
 export type PartnerProcessInput = Pick<
   Process,
-  "clientId" | "cnj" | "title" | "court" | "unit" | "district" | "state" | "area" | "actionType" | "subject" | "clientPole" | "opposingParty" | "distributionDate" | "caseValue"
+  "legalCaseId" | "cnj" | "title" | "court" | "unit" | "district" | "state" | "area" | "actionType" | "subject" | "clientPole" | "opposingParty" | "distributionDate" | "caseValue"
 >;
 
 export type PartnerClientBasicsPatch = {
@@ -244,6 +239,7 @@ export type PartnerClientBasicsPatch = {
 
 export interface PartnerDocumentInput extends PartnerCaseDocumentInput {
   clientId: ID;
+  legalCaseId?: ID;
   processId?: ID;
   /** Envio em resposta a uma solicitação. */
   requestId?: ID;
@@ -257,6 +253,7 @@ export interface NewPartnerRequestInput {
   title: string;
   description: string;
   clientId?: ID;
+  legalCaseId?: ID;
   processId?: ID;
   dueDate?: string;
 }
@@ -265,6 +262,38 @@ export interface PartnershipValuesInput {
   revenueBase?: number;
   realizedRevenue?: number;
 }
+
+/* ------------------------------------------------------------------ */
+/* Casos jurídicos                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface NewLegalCaseInput {
+  clientId: ID;
+  title: string;
+  area: LegalArea;
+  caseType: string;
+  originOfficeId: ID;
+  summary: string;
+  opposingParty?: string;
+  assignedLawyerId?: ID | null;
+  notes?: string;
+  /** true = enviar para análise já na criação; false = rascunho. */
+  submit: boolean;
+}
+
+export type LegalCasePatch = Partial<Pick<LegalCase, "title" | "area" | "caseType" | "summary" | "opposingParty" | "notes">>;
+
+export interface CaseRejectionInput {
+  /** Visível ao parceiro. Obrigatório. */
+  publicReason: string;
+  /** Nota interna. Nunca chega ao parceiro. */
+  internalNote?: string;
+}
+
+export type NewReferenceInput = Pick<ReferenceMaterial, "title" | "description" | "type" | "area" | "tags" | "skillIds" | "thesisIds" | "agentIds"> & {
+  file?: { name: string; sizeKb: number };
+  type: ReferenceMaterialType;
+};
 
 /* ------------------------------------------------------------------ */
 /* Importação                                                          */
@@ -290,8 +319,8 @@ interface ImportProcessLink {
 
 /** CREATE traz o processo completo; UPDATE traz só os campos presentes na planilha. */
 export type ImportProcessOperation =
-  | (ImportProcessLink & { action: "CREATE"; input: Omit<NewProcessInput, "clientId">; missingResponsible: boolean })
-  | (ImportProcessLink & { action: "UPDATE"; existingId: ID; patch: Partial<Omit<NewProcessInput, "clientId" | "nextDeadline">> });
+  | (ImportProcessLink & { action: "CREATE"; input: Omit<NewProcessInput, "legalCaseId">; missingResponsible: boolean })
+  | (ImportProcessLink & { action: "UPDATE"; existingId: ID; patch: Partial<Omit<NewProcessInput, "legalCaseId" | "nextDeadline">> });
 
 export interface ImportPlan {
   fileName: string;
@@ -340,11 +369,7 @@ export interface SessionActions {
 }
 
 export interface OfficeActions {
-  createOffice: (input: CreateOfficeInput) => void;
-  updateOffice: (patch: Partial<Omit<Office, "id" | "onboarding">>) => void;
-  saveOnboardingStep: (stepKey: string, answers: Record<string, unknown>, nextStep: number, skipped?: boolean) => void;
-  setOnboardingStep: (step: number) => void;
-  completeOnboarding: () => void;
+  updateOffice: (patch: Partial<Omit<Office, "id">>) => void;
   inviteUser: (input: { name: string; email: string; role: Role }) => string;
   acceptInvitation: (token: string, name: string) => boolean;
   changeUserRole: (userId: ID, role: Role) => void;
@@ -434,7 +459,6 @@ export interface PartnerActions {
   setPartnerOfficeStatus: (id: ID, status: PartnerOfficeStatus) => void;
   /** Muda a divisão PADRÃO. Vale só para novos casos; acordos existentes não mudam. */
   changePartnerShare: (id: ID, partnerPercentage: number, ownerPercentage: number) => void;
-  setSubmissionStatus: (submissionId: ID, status: SubmissionStatus) => void;
   shareDocumentWithPartner: (documentId: ID) => void;
   createPartnerRequest: (input: NewPartnerRequestInput) => ID;
   resolvePartnerRequest: (id: ID, resolution: "RESOLVED" | "CANCELLED") => void;
@@ -453,6 +477,25 @@ export interface PartnerActions {
   respondPartnerRequest: (requestId: ID, message: string) => void;
 }
 
+export interface CaseActions {
+  createCase: (input: NewLegalCaseInput) => ID;
+  updateCase: (id: ID, patch: LegalCasePatch) => void;
+  /** Rascunho → Enviado. */
+  submitCase: (id: ID) => void;
+  /** Antes do aceite: conforme as origens permitidas. Depois do aceite: somente Administrador interno. */
+  changeCaseOrigin: (id: ID, originOfficeId: ID) => void;
+  assignCaseLawyer: (id: ID, lawyerId: ID) => void;
+  /** Exige advogado responsável; cria o acordo de parceria (snapshot) se a origem for parceiro. */
+  acceptCase: (id: ID, lawyerId?: ID) => void;
+  rejectCase: (id: ID, input: CaseRejectionInput) => void;
+  /** Transições simples após o aceite: em andamento, encerrado, arquivado. */
+  setCaseStatus: (id: ID, status: Extract<LegalCaseStatus, "IN_PROGRESS" | "CLOSED" | "ARCHIVED">) => void;
+}
+
+export interface ReferenceActions {
+  createReference: (input: NewReferenceInput) => ID;
+}
+
 export type AppActions = SessionActions &
   OfficeActions &
   ClientActions &
@@ -462,7 +505,9 @@ export type AppActions = SessionActions &
   ReviewActions &
   FinanceActions &
   DgActions &
-  PartnerActions;
+  PartnerActions &
+  CaseActions &
+  ReferenceActions;
 
 export type AppStore = AppState & AppActions;
 

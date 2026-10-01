@@ -7,12 +7,17 @@ import type {
   ProcessOrigin,
   ProcessPhase,
   ProcessStatus,
-  RelationshipOrigin,
 } from "@/lib/constants/status";
 import type { LegalArea } from "@/lib/constants/legal";
 import type { ID, ISODate, ISODateTime, OfficeScoped, Timestamps } from "./common";
 
+/**
+ * Processo judicial. Pertence SEMPRE a um Caso (`legalCaseId`); `clientId`
+ * é mantido por conveniência e é sempre o cliente do caso. A origem do caso
+ * (e a parceria) vem do Caso, não do processo.
+ */
 export interface Process extends OfficeScoped, Timestamps {
+  legalCaseId: ID;
   clientId: ID;
   /** Número CNJ. Nos mocks, sempre fictício. Vazio em processos pré-ajuizamento. */
   cnj?: string;
@@ -32,16 +37,9 @@ export interface Process extends OfficeScoped, Timestamps {
   caseValue?: number;
   status: ProcessStatus;
   phase: ProcessPhase;
-  /** Origem TÉCNICA do cadastro (manual, integração, DG Brasil, importação). */
+  /** Origem TÉCNICA do cadastro (manual, integração, DG Brasil, importação). Não é a origem do caso. */
   origin: ProcessOrigin;
-  /**
-   * Origem RELACIONAL do caso: próprio (INTERNAL) ou originado por parceiro
-   * (PARTNER). Independe de quem criou o cliente. Define o acordo financeiro.
-   */
-  relationshipOrigin: RelationshipOrigin;
-  /** Obrigatório quando relationshipOrigin = PARTNER. */
-  originPartnerOfficeId?: ID;
-  /** Resultado econômico estimado do caso. Sempre estimativa, nunca garantia. */
+  /** Resultado econômico estimado. Sempre estimativa, nunca garantia. */
   economicEstimate?: number;
   integrationId?: ID;
   thesisId?: ID;
@@ -80,3 +78,6 @@ export interface Deadline extends OfficeScoped {
   createdAt: ISODateTime;
   completedAt?: ISODateTime;
 }
+
+/** Nome do domínio: processo judicial (mesmo tipo de `Process`). */
+export type LegalProcess = Process;

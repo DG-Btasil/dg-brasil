@@ -69,7 +69,7 @@ export function ProcessTable({
         </tr>
       </THead>
       <TBody>
-        {sorted.map(({ process: p, clientName, responsibleName, nextDeadline }) => (
+        {sorted.map(({ process: p, clientName, responsibleName, nextDeadline, casePartnerId }) => (
           <Tr key={p.id} className="hover:bg-navy-50/40">
             <Td className="whitespace-nowrap">
               <Link href={`/processos/${p.id}`} className="font-medium text-navy hover:underline underline-offset-2">
@@ -111,9 +111,9 @@ export function ProcessTable({
             {showCaseValue && <Td className="whitespace-nowrap text-right tabular">{formatCurrency(p.caseValue)}</Td>}
             <Td>
               <ProcessOriginBadge origin={p.origin} />
-              {partnerMap && p.relationshipOrigin === "PARTNER" && p.originPartnerOfficeId && (
+              {partnerMap && casePartnerId && (
                 <div className="mt-1 max-w-[160px] truncate text-[11.5px] font-medium text-navy-700" title="Origem do caso">
-                  {partnerMap.get(p.originPartnerOfficeId)?.name ?? "Parceiro"}
+                  {partnerMap.get(casePartnerId)?.name ?? "Parceiro"}
                 </div>
               )}
             </Td>

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -11,7 +10,8 @@ import { HydrationGate } from "@/components/layout/guards";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
-import { isPartnerRole, ROLE_LABEL, type Role } from "@/lib/permissions";
+import { HOSTS, useHostAudience } from "@/lib/hosts";
+import { audienceOf, isPartnerRole, ROLE_LABEL, type Role } from "@/lib/permissions";
 import { msg, zEmail, zRequired } from "@/lib/validation";
 import { useDemoAccounts, useSessionActions } from "@/features/auth/hooks";
 import { AuthLayout, AuthLoading } from "./auth-layout";
@@ -33,7 +33,11 @@ const DEMO_ROLES: { role: Role; icon: typeof ShieldCheck }[] = [
 function LoginForm() {
   const router = useRouter();
   const { login, simulateRole } = useSessionActions();
-  const demoUsers = useDemoAccounts();
+  const allDemoUsers = useDemoAccounts();
+  // Mesmo app nos dois domínios: o host só filtra os atalhos e ajusta os textos.
+  const hostAudience = useHostAudience();
+  const demoRoles = DEMO_ROLES.filter(({ role }) => !hostAudience || audienceOf(role) === hostAudience);
+  const demoUsers = allDemoUsers.filter((u) => !hostAudience || audienceOf(u.role) === hostAudience);
   const [notFound, setNotFound] = useState(false);
   const {
     register,
@@ -53,7 +57,10 @@ function LoginForm() {
   }
 
   return (
-    <AuthLayout title="Entrar no DG Brasil" description="Acesse o ambiente do seu escritório.">
+    <AuthLayout
+      title={hostAudience === "PARTNER" ? "Portal do Parceiro" : "Entrar no DG Brasil"}
+      description={hostAudience === "PARTNER" ? "Acesse os casos do seu escritório com a Bárbara Cardoso Advocacia." : "Acesse o ambiente do seu escritório."}
+    >
       <form onSubmit={onSubmit} noValidate className="space-y-4">
         {notFound && (
           <Callout tone="danger" title="Não encontramos um usuário ativo com este e-mail.">
@@ -81,7 +88,7 @@ function LoginForm() {
           Acesso de demonstração
         </h2>
         <div className="mt-3 grid gap-2">
-          {DEMO_ROLES.map(({ role, icon: Icon }) => (
+          {demoRoles.map(({ role, icon: Icon }) => (
             <Button key={role} variant="secondary" className="justify-start" icon={<Icon className="size-4 text-navy-600" aria-hidden />} onClick={() => enterAs(role)}>
               Entrar como {ROLE_LABEL[role]}
               {isPartnerRole(role) && <span className="text-muted">· Almeida Advocacia</span>}
@@ -104,10 +111,7 @@ function LoginForm() {
       </section>
 
       <p className="mt-8 text-[13px] text-muted">
-        Seu escritório ainda não usa o DG Brasil?{" "}
-        <Link href="/criar-escritorio" className="font-medium text-navy-700 underline-offset-4 hover:underline">
-          Criar escritório
-        </Link>
+        Acesso somente por convite. Equipe interna: {HOSTS.OWNER}. Escritórios parceiros: {HOSTS.PARTNER}.
       </p>
     </AuthLayout>
   );

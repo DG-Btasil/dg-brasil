@@ -4,6 +4,7 @@ import {
   Briefcase,
   ClipboardCheck,
   ClipboardList,
+  FolderOpen,
   Handshake,
   Home,
   Landmark,
@@ -16,6 +17,7 @@ import type { Audience, Permission } from "@/lib/permissions";
 export type NavKey =
   | "home"
   | "clients"
+  | "cases"
   | "processes"
   | "reviews"
   | "finance"
@@ -42,7 +44,8 @@ export interface NavItem {
  */
 export const NAV_ITEMS: NavItem[] = [
   { key: "home", label: "Home", href: "/home", description: "Visão geral e o que precisa da sua atenção", icon: Home, permission: "home.view", audience: "OWNER" },
-  { key: "clients", label: "Clientes", href: "/clientes", description: "Cadastro, documentos e análises jurídicas", icon: Users, permission: "clients.view", audience: "OWNER" },
+  { key: "clients", label: "Clientes", href: "/clientes", description: "Cadastro, documentos e casos de cada cliente", icon: Users, permission: "clients.view", audience: "OWNER" },
+  { key: "cases", label: "Casos", href: "/casos", description: "Demandas dos clientes: origem, análise, aceite e processos", icon: FolderOpen, permission: "cases.view", audience: "OWNER" },
   { key: "processes", label: "Processos", href: "/processos", description: "Acompanhamento, movimentações e prazos", icon: Briefcase, permission: "processes.view", audience: "OWNER" },
   { key: "reviews", label: "Revisões", href: "/revisoes", description: "Materiais dos agentes aguardando decisão", icon: ClipboardCheck, permission: "reviews.view", audience: "OWNER" },
   { key: "finance", label: "Financeiro", href: "/financeiro", description: "Honorários, recebimentos e contratos", icon: Banknote, permission: "finance.view", audience: "OWNER" },
@@ -52,7 +55,8 @@ export const NAV_ITEMS: NavItem[] = [
   // Portal do parceiro: escopo e vocabulário próprios, sem áreas internas.
   { key: "home", label: "Início", href: "/home", description: "Seus casos e o que precisa da sua atenção", icon: Home, permission: "partnerPortal.view", audience: "PARTNER" },
   { key: "clients", label: "Clientes", href: "/clientes", description: "Clientes do seu escritório e novos cadastros", icon: Users, permission: "partnerPortal.view", audience: "PARTNER" },
-  { key: "processes", label: "Processos", href: "/processos", description: "Andamento dos casos enviados", icon: Briefcase, permission: "partnerPortal.view", audience: "PARTNER" },
+  { key: "cases", label: "Casos", href: "/casos", description: "Casos enviados e sua situação", icon: FolderOpen, permission: "partnerPortal.view", audience: "PARTNER" },
+  { key: "processes", label: "Processos", href: "/processos", description: "Andamento dos processos dos seus casos", icon: Briefcase, permission: "partnerPortal.view", audience: "PARTNER" },
   { key: "pending", label: "Documentos e Pendências", href: "/pendencias", description: "Solicitações, documentos e respostas", icon: ClipboardList, permission: "partnerPortal.view", audience: "PARTNER" },
   { key: "finance", label: "Financeiro", href: "/financeiro", description: "Sua participação nos casos", icon: Banknote, permission: "partnerPortal.finance.view", audience: "PARTNER" },
   { key: "notifications", label: "Notificações", href: "/notificacoes", description: "Atualizações dos seus casos", icon: Bell, permission: "partnerPortal.view", audience: "PARTNER" },

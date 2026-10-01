@@ -15,7 +15,8 @@ import { EmptyState } from "@/components/feedback/states";
 import { useCurrentPartnerOfficeId } from "@/features/auth/hooks";
 import { usePartnerFinancialSummary, usePartnershipViews } from "@/features/partners/hooks";
 import { clientDisplayName } from "@/features/processes/utils";
-import { usePortalClientMap, usePortalProcesses } from "../hooks";
+import { useCaseMap } from "@/features/cases/hooks";
+import { usePortalClientMap } from "../hooks";
 
 /**
  * Financeiro do parceiro (somente administrador do parceiro): participação
@@ -26,13 +27,12 @@ export function PortalFinance() {
   const partnerOfficeId = useCurrentPartnerOfficeId();
   const summary = usePartnerFinancialSummary(partnerOfficeId);
   const views = usePartnershipViews();
-  const processes = usePortalProcesses();
+  const caseMap = useCaseMap();
   const clientMap = usePortalClientMap();
-  const processMap = useMemo(() => new Map(processes.map((p) => [p.id, p])), [processes]);
   const payouts = useMemo(
     () =>
       views
-        .flatMap((v) => v.payouts.map((p) => ({ ...p, processId: v.processId })))
+        .flatMap((v) => v.payouts.map((p) => ({ ...p, legalCaseId: v.legalCaseId })))
         .sort((a, b) => b.at.localeCompare(a.at))
         .slice(0, 5),
     [views],
@@ -51,15 +51,15 @@ export function PortalFinance() {
       )}
 
       <Panel className="mt-5">
-        <PanelHeader title="Processos com valores" />
+        <PanelHeader title="Casos com valores" />
         {views.length === 0 ? (
           <EmptyState compact title="Nenhum caso com valores registrados." />
         ) : (
-          <Table caption="Participação por processo">
+          <Table caption="Participação por caso">
             <THead>
               <tr>
                 <Th>Cliente</Th>
-                <Th>Processo</Th>
+                <Th>Caso</Th>
                 <Th className="text-right">Honorários</Th>
                 <Th className="text-right">Participação</Th>
                 <Th className="text-right">Recebido</Th>
@@ -69,15 +69,15 @@ export function PortalFinance() {
             </THead>
             <TBody>
               {views.map((v) => {
-                const process = processMap.get(v.processId);
+                const legalCase = caseMap.get(v.legalCaseId);
                 const realized = v.realizedRevenue !== undefined;
                 return (
                   <Tr key={v.id}>
-                    <Td className="text-[12.5px]">{process ? clientDisplayName(clientMap.get(process.clientId)) : "—"}</Td>
+                    <Td className="text-[12.5px]">{legalCase ? clientDisplayName(clientMap.get(legalCase.clientId)) : "—"}</Td>
                     <Td>
-                      {process ? (
-                        <Link href={`/processos/${process.id}?aba=financeiro`} className="font-medium text-navy hover:underline underline-offset-2">
-                          {process.title}
+                      {legalCase ? (
+                        <Link href={`/casos/${legalCase.id}?aba=financeiro`} className="font-medium text-navy hover:underline underline-offset-2">
+                          {legalCase.title}
                         </Link>
                       ) : (
                         "—"
@@ -115,7 +115,7 @@ export function PortalFinance() {
             {payouts.map((p) => (
               <li key={p.id} className="flex items-center justify-between px-5 py-2.5 text-[13px]">
                 <span>
-                  {processMap.get(p.processId)?.title ?? "Processo"} <span className="text-muted">· {formatDate(p.at)}</span>
+                  {caseMap.get(p.legalCaseId)?.title ?? "Caso"} <span className="text-muted">· {formatDate(p.at)}</span>
                 </span>
                 <span className="font-medium tabular">{formatCurrency(p.amount)}</span>
               </li>

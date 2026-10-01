@@ -10,6 +10,8 @@ import { useAppStore } from "@/store/app-store";
 import { selectScoped } from "@/store/scope";
 import type {
   AnalysisRepository,
+  CaseRepository,
+  ReferenceRepository,
   ClientRepository,
   DgRepository,
   DocumentRepository,
@@ -32,11 +34,7 @@ const ok = <T>(value: T) => Promise.resolve(value);
 
 export const mockOfficeRepository: OfficeRepository = {
   get: () => ok(data().office),
-  create: async (input) => state().createOffice(input),
   update: async (patch) => state().updateOffice(patch),
-  saveOnboardingStep: async (key, answers, next, skipped) => state().saveOnboardingStep(key, answers, next, skipped),
-  setOnboardingStep: async (step) => state().setOnboardingStep(step),
-  completeOnboarding: async () => state().completeOnboarding(),
 };
 
 export const mockUserRepository: UserRepository = {
@@ -182,8 +180,6 @@ export const mockPartnerRepository: PartnerRepository = {
   listRequests: () => ok(data().partnerRequests),
   createRequest: async (input) => state().createPartnerRequest(input),
   resolveRequest: async (id, resolution) => state().resolvePartnerRequest(id, resolution),
-  listSubmissions: () => ok(data().partnerSubmissions),
-  setSubmissionStatus: async (id, status) => state().setSubmissionStatus(id, status),
   shareDocument: async (documentId) => state().shareDocumentWithPartner(documentId),
   listAgreements: () => ok(data().partnershipAgreements),
   updateAgreementValues: async (id, input) => state().updatePartnershipValues(id, input),
@@ -197,4 +193,22 @@ export const mockPartnerPortalRepository: PartnerPortalRepository = {
   updateClientBasics: async (clientId, patch) => state().updatePartnerClientBasics(clientId, patch),
   submitDocument: async (input) => state().submitPartnerDocument(input),
   respondRequest: async (requestId, message) => state().respondPartnerRequest(requestId, message),
+};
+
+export const mockCaseRepository: CaseRepository = {
+  list: () => ok(data().legalCases),
+  get: (id) => ok(data().legalCases.find((c) => c.id === id)),
+  create: async (input) => state().createCase(input),
+  update: async (id, patch) => state().updateCase(id, patch),
+  submit: async (id) => state().submitCase(id),
+  changeOrigin: async (id, originOfficeId) => state().changeCaseOrigin(id, originOfficeId),
+  assignLawyer: async (id, lawyerId) => state().assignCaseLawyer(id, lawyerId),
+  accept: async (id, lawyerId) => state().acceptCase(id, lawyerId),
+  reject: async (id, input) => state().rejectCase(id, input),
+  setStatus: async (id, status) => state().setCaseStatus(id, status),
+};
+
+export const mockReferenceRepository: ReferenceRepository = {
+  list: () => ok(data().references),
+  create: async (input) => state().createReference(input),
 };

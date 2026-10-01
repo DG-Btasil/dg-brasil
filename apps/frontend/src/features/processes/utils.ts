@@ -90,6 +90,9 @@ export interface ProcessRow {
   clientName: string;
   responsibleName: string;
   nextDeadline?: Deadline;
+  /** Parceiro de origem do CASO do processo (a origem é do caso). */
+  casePartnerId?: ID;
+  caseTitle?: string;
 }
 
 export function matchesDeadlineFilter(filter: DeadlineFilter, deadline: Deadline | undefined): boolean {
@@ -103,7 +106,7 @@ export function matchesDeadlineFilter(filter: DeadlineFilter, deadline: Deadline
 export function filterProcessRows(rows: ProcessRow[], filters: ProcessFilters): ProcessRow[] {
   const q = normalize(filters.q.trim());
   const qDigits = onlyDigits(filters.q);
-  return rows.filter(({ process: p, clientName, nextDeadline }) => {
+  return rows.filter(({ process: p, clientName, nextDeadline, casePartnerId }) => {
     if (q) {
       const haystack = normalize([p.title, clientName, p.opposingParty ?? "", p.actionType, p.cnj ?? ""].join(" "));
       const digitHit = qDigits.length >= 3 && onlyDigits(p.cnj ?? "").includes(qDigits);
@@ -114,8 +117,9 @@ export function filterProcessRows(rows: ProcessRow[], filters: ProcessFilters): 
     if (filters.court && p.court !== filters.court) return false;
     if (filters.status && p.status !== filters.status) return false;
     if (filters.origin && p.origin !== filters.origin) return false;
-    if (filters.caseOrigin && p.relationshipOrigin !== filters.caseOrigin) return false;
-    if (filters.partnerOfficeId && p.originPartnerOfficeId !== filters.partnerOfficeId) return false;
+    if (filters.caseOrigin === "PARTNER" && !casePartnerId) return false;
+    if (filters.caseOrigin === "INTERNAL" && casePartnerId) return false;
+    if (filters.partnerOfficeId && casePartnerId !== filters.partnerOfficeId) return false;
     if (filters.phase && p.phase !== filters.phase) return false;
     if (filters.deadline && !matchesDeadlineFilter(filters.deadline, nextDeadline)) return false;
     return true;

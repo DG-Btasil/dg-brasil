@@ -1,18 +1,19 @@
 import type { ID } from "@/types";
 
-export const DG_SECTIONS = ["agentes", "skills", "teses", "historico"] as const;
+export const DG_SECTIONS = ["agentes", "skills", "teses", "referencias", "historico"] as const;
 export type DgSection = (typeof DG_SECTIONS)[number];
 
 export const DG_SECTION_LABEL: Record<DgSection, string> = {
   agentes: "Agentes",
   skills: "Skills",
   teses: "Teses",
+  referencias: "Referências",
   historico: "Histórico de alterações",
 };
 
 export const dgRoutes = {
   home: "/dg-brasil",
-  section: (s: DgSection) => (s === "agentes" ? "/dg-brasil" : s === "historico" ? "/dg-brasil/historico" : `/dg-brasil?secao=${s}`),
+  section: (s: DgSection) => (s === "agentes" ? "/dg-brasil" : s === "historico" || s === "referencias" ? `/dg-brasil/${s}` : `/dg-brasil?secao=${s}`),
   agent: (id: ID) => `/dg-brasil/agentes/${id}`,
   skill: (id: ID) => `/dg-brasil/skills/${id}`,
   thesis: (id: ID) => `/dg-brasil/teses/${id}`,

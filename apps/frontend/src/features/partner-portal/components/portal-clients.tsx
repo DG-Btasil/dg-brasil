@@ -6,7 +6,7 @@ import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Briefcase, FilePlus2, Pencil, Plus, SearchX, UserPlus, Users } from "lucide-react";
-import { CLIENT_KIND_LABEL, DOCUMENT_CATEGORY_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE, SUBMISSION_STATUS_LABEL, SUBMISSION_STATUS_TONE } from "@/lib/constants/status";
+import { CLIENT_KIND_LABEL, DOCUMENT_CATEGORY_LABEL, PARTNER_CASE_STATUS_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
 import { formatDate, formatEventTime, formatPhone, pluralize } from "@/lib/formatting";
 import { msg } from "@/lib/validation";
 import { Can, PageContainer } from "@/components/layout/guards";
@@ -24,7 +24,9 @@ import { maskClientDocument } from "@/features/clients/utils";
 import { clientDisplayName } from "@/features/processes/utils";
 import { isPhoneFormat } from "@/lib/validation";
 import type { Client } from "@/types";
-import { useCurrentDocuments, usePortalActions, usePortalClientMap, usePortalClientRows, usePortalProcesses, useSubmissionStatusByProcess } from "../hooks";
+import { useCurrentDocuments, usePortalActions, usePortalClientMap, usePortalClientRows, usePortalProcesses } from "../hooks";
+import { useCaseMap, useCaseRows } from "@/features/cases/hooks";
+import { CaseTable } from "@/features/cases/components/case-table";
 import { SendDocumentDialog } from "./portal-dialogs";
 
 function normalize(v: string) {
@@ -108,7 +110,9 @@ export function PortalClientDetail({ id }: { id: string }) {
   const allProcesses = usePortalProcesses();
   const processes = useMemo(() => allProcesses.filter((p) => p.clientId === id), [allProcesses, id]);
   const documents = useCurrentDocuments({ clientId: id });
-  const submissionStatus = useSubmissionStatusByProcess();
+  const caseMap = useCaseMap();
+  const allCases = useCaseRows();
+  const cases = useMemo(() => allCases.filter((r) => r.legalCase.clientId === id), [allCases, id]);
   const [editing, setEditing] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -147,9 +151,9 @@ export function PortalClientDetail({ id }: { id: string }) {
                 Enviar documento
               </Button>
             </Can>
-            <Can permission="partnerPortal.processes.create">
-              <ButtonLink href={`/processos/novo?cliente=${client.id}`} icon={<Plus className="size-4" aria-hidden />}>
-                Novo processo
+            <Can permission="partnerPortal.cases.create">
+              <ButtonLink href={`/casos/novo?cliente=${client.id}`} icon={<Plus className="size-4" aria-hidden />}>
+                Novo caso
               </ButtonLink>
             </Can>
           </>
@@ -202,7 +206,16 @@ export function PortalClientDetail({ id }: { id: string }) {
         </Panel>
 
         <Panel className="col-span-12">
-          <PanelHeader title="Processos" description="Somente os processos do seu escritório para este cliente." />
+          <PanelHeader title="Casos" description="Casos do seu escritório para este cliente." />
+          {cases.length === 0 ? (
+            <EmptyState compact icon={Briefcase} title="Nenhum caso seu para este cliente." />
+          ) : (
+            <CaseTable rows={cases} statusLabels={PARTNER_CASE_STATUS_LABEL} showLawyer={false} />
+          )}
+        </Panel>
+
+        <Panel className="col-span-12">
+          <PanelHeader title="Processos" description="Somente os processos dos casos do seu escritório para este cliente." />
           {processes.length === 0 ? (
             <EmptyState compact icon={Briefcase} title="Nenhum processo seu para este cliente." />
           ) : (
@@ -217,7 +230,7 @@ export function PortalClientDetail({ id }: { id: string }) {
               </THead>
               <TBody>
                 {processes.map((p) => {
-                  const sub = submissionStatus.get(p.id);
+                  const legalCase = caseMap.get(p.legalCaseId);
                   return (
                     <Tr key={p.id}>
                       <Td>
@@ -229,7 +242,15 @@ export function PortalClientDetail({ id }: { id: string }) {
                       <Td>
                         <StatusBadge status={p.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
                       </Td>
-                      <Td>{sub ? <StatusBadge status={sub} labels={SUBMISSION_STATUS_LABEL} tones={SUBMISSION_STATUS_TONE} /> : "—"}</Td>
+                      <Td>
+                        {legalCase ? (
+                          <Link href={`/casos/${legalCase.id}`} className="text-[12.5px] text-navy hover:underline underline-offset-2">
+                            {legalCase.title}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </Td>
                       <Td className="text-[12px] text-muted">{formatEventTime(p.lastMovementAt ?? p.updatedAt)}</Td>
                     </Tr>
                   );

@@ -25,6 +25,8 @@ import {
   type QueueView,
   type ReviewFilters as Filters,
 } from "../utils";
+import { useLegalCases } from "@/features/cases/hooks";
+import { casePartnerId } from "@/lib/domain/legal-case";
 import { ReviewFilters } from "./review-filters";
 import { ReviewTable } from "./review-table";
 
@@ -48,13 +50,23 @@ export function ReviewQueue() {
   const [filters, setFilters] = useState<Filters>(EMPTY_REVIEW_FILTERS);
 
   const clients = useMemo(() => new Map(clientList.map((c) => [c.id, c])), [clientList]);
+  // Filtro de parceiro: revisão → caso → origem do caso.
+  const cases = useLegalCases();
+  const casePartners = useMemo(() => {
+    const map = new Map<string, string>();
+    cases.forEach((c) => {
+      const pid = casePartnerId(c, office.id);
+      if (pid) map.set(c.id, pid);
+    });
+    return map;
+  }, [cases, office.id]);
 
   const visible = useMemo(() => {
-    const list = filterReviews(reviews, view, filters, processes);
+    const list = filterReviews(reviews, view, filters, casePartners);
     return view === "decididas"
       ? list.sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? ""))
       : list.sort(compareReviewQueue);
-  }, [reviews, view, filters, processes]);
+  }, [reviews, view, filters, casePartners]);
 
   const tabItems = QUEUE_VIEWS.map((key) => ({
     key,

@@ -4,10 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { Building2, CheckCircle2, FileUp, Plus, Search, Trash2, UserRound } from "lucide-react";
-import { BRAZILIAN_STATES, COURTS, LEGAL_AREA_LABEL, LEGAL_AREAS, type LegalArea } from "@/lib/constants/legal";
+import { BRAZILIAN_STATES, LEGAL_AREA_LABEL, LEGAL_AREAS, type LegalArea } from "@/lib/constants/legal";
 import { CLIENT_KIND_LABEL, DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABEL, type ClientKind, type DocumentCategory } from "@/lib/constants/status";
-import { formatCurrency, formatPhone } from "@/lib/formatting";
-import { isCnjFormat, isCnpjFormat, isCpfFormat, isPhoneFormat, msg, parseCurrencyInput } from "@/lib/validation";
+import { formatPhone } from "@/lib/formatting";
+import { isCnpjFormat, isCpfFormat, isPhoneFormat, msg } from "@/lib/validation";
 import { Callout } from "@/components/feedback/states";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { PageHeader, Steps, type StepState } from "@/components/ui/display";
@@ -24,7 +24,7 @@ const STEP_LABEL: Record<StepKey, string> = {
   identify: "CPF/CNPJ",
   basic: "Cadastro básico",
   documents: "Documentos",
-  case: "Informações do caso",
+  case: "Novo caso",
   review: "Revisão e envio",
 };
 
@@ -48,12 +48,11 @@ interface Values {
   state: string;
   title: string;
   area: LegalArea | "";
-  actionType: string;
+  caseType: string;
+  /** Origem do CASO (independe da origem do cliente): o próprio parceiro (padrão) ou Bárbara Cardoso Advocacia. */
+  caseOriginOfficeId: string;
   opposingParty: string;
   summary: string;
-  cnj: string;
-  court: string;
-  caseValue: string;
   notes: string;
 }
 
@@ -69,24 +68,22 @@ type ClientTarget = { mode: "NEW" } | { mode: "EXISTING"; matchToken?: string; c
 
 const UF_OPTIONS = BRAZILIAN_STATES.map((uf) => ({ value: uf, label: uf }));
 const AREA_OPTIONS = LEGAL_AREAS.map((a) => ({ value: a, label: LEGAL_AREA_LABEL[a] }));
-const COURT_OPTIONS = COURTS.map((c) => ({ value: c, label: c }));
 const CATEGORY_OPTIONS = DOCUMENT_CATEGORIES.filter((c) => c !== "PETITION" && c !== "COURT_DECISION").map((c) => ({ value: c, label: DOCUMENT_CATEGORY_LABEL[c] }));
 const blank = (v: string) => (v.trim() ? v.trim() : undefined);
 
 /**
- * Novo Cliente (portal do parceiro):
- * PF/PJ → CPF/CNPJ → verificação de duplicidade → cadastro básico →
- * documentos → informações do caso → revisão → envio à Bárbara Cardoso Advocacia.
- *
- * Enquanto o assistente está aberto, o envio é um rascunho (DRAFT) editável;
- * na revisão fica pronto para envio (READY_TO_SUBMIT); ao confirmar, SUBMITTED.
+ * Envio de caso pelo portal do parceiro:
+ * Cliente (CPF/CNPJ, duplicidade, cadastro básico) → Novo caso (com a origem
+ * permitida) → documentos → revisão → envio à Bárbara Cardoso Advocacia.
+ * Ao confirmar, o caso nasce como SUBMITTED. O processo judicial é
+ * cadastrado depois, dentro do caso.
  */
-export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
+export function NewCaseWizard({ initialClientId, mode = "client" }: { initialClientId?: ID; mode?: "client" | "case" }) {
   const router = useRouter();
   const actions = usePortalActions();
   const clientMap = usePortalClientMap();
   const presetClient = initialClientId ? clientMap.get(initialClientId) : undefined;
-  const [step, setStep] = useState<StepKey>(presetClient ? "documents" : "identify");
+  const [step, setStep] = useState<StepKey>(presetClient ? "case" : "identify");
   const [target, setTarget] = useState<ClientTarget | null>(presetClient ? { mode: "EXISTING", clientId: presetClient.id } : null);
   const [lookup, setLookup] = useState<ClientLookupResult | null>(null);
   const [checking, setChecking] = useState(false);
@@ -118,12 +115,10 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
       state: "",
       title: "",
       area: "",
-      actionType: "",
+      caseType: "",
+      caseOriginOfficeId: defaultOrigin,
       opposingParty: "",
       summary: "",
-      cnj: "",
-      court: "",
-      caseValue: "",
       notes: "",
     },
   });
@@ -137,7 +132,7 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
   } = form;
   const kind = useWatch({ control, name: "kind" });
 
-  const flow: StepKey[] = target?.mode === "EXISTING" ? ["identify", "documents", "case", "review"] : ["identify", "basic", "documents", "case", "review"];
+  const flow: StepKey[] = target?.mode === "EXISTING" ? ["identify", "case", "documents", "review"] : ["identify", "basic", "case", "documents", "review"];
   const steps = flow.map((key, i) => {
     const current = flow.indexOf(step);
     const state: StepState = i < current ? "done" : i === current ? "current" : "pending";
@@ -201,12 +196,10 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
       caseInfo: {
         title: v.title.trim(),
         area: v.area as LegalArea,
-        actionType: v.actionType.trim(),
+        caseType: v.caseType.trim(),
         opposingParty: blank(v.opposingParty),
         summary: v.summary.trim(),
-        cnj: blank(v.cnj),
-        court: blank(v.court),
-        caseValue: parseCurrencyInput(v.caseValue),
+        originOfficeId: v.caseOriginOfficeId,
       },
       notes: blank(v.notes),
     };
@@ -226,13 +219,13 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
           </div>
           <h1 className="font-serif text-[24px] text-navy">Enviado para Bárbara Cardoso Advocacia</h1>
           <p className="mx-auto mt-2 max-w-[440px] text-[13px] text-muted">
-            O caso está com a situação <strong>Enviado</strong>. Você será notificado quando for analisado e poderá acompanhar pelo portal.
+            O caso está com a situação <strong>Enviado</strong>. Você será notificado quando for analisado e poderá acompanhar em Casos.
           </p>
           <div className="mt-6 flex justify-center gap-2">
             <ButtonLink href={`/clientes/${result.clientId}`} variant="secondary">
               Ver cliente
             </ButtonLink>
-            <ButtonLink href={`/processos/${result.processId}`}>Acompanhar processo</ButtonLink>
+            <ButtonLink href={`/casos/${result.legalCaseId}`}>Acompanhar caso</ButtonLink>
           </div>
         </PanelBody>
       </Panel>
@@ -245,9 +238,9 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Clientes", href: "/clientes" }, { label: "Novo cliente" }]}
-        title="Novo cliente"
-        description="Cadastre o cliente, anexe os documentos e descreva o caso. Revise tudo antes de enviar."
+        breadcrumbs={mode === "case" ? [{ label: "Casos", href: "/casos" }, { label: "Novo caso" }] : [{ label: "Clientes", href: "/clientes" }, { label: "Novo cliente" }]}
+        title={mode === "case" ? "Novo caso" : "Novo cliente"}
+        description="Identifique o cliente, descreva o caso e anexe os documentos. Revise tudo antes de enviar."
       />
       <Steps steps={steps} className="mb-6 max-w-[900px]" />
 
@@ -302,14 +295,14 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
                     size="sm"
                     onClick={() => {
                       setTarget({ mode: "EXISTING", matchToken: lookup.matchToken });
-                      go("documents");
+                      go("case");
                     }}
                   >
-                    Vincular novo processo
+                    Criar novo caso para este cliente
                   </Button>
                 }
               >
-                Este cliente já possui cadastro no DG Brasil. Você pode criar um novo processo relacionado a ele.
+                Este cliente já possui cadastro no DG Brasil. Você pode criar um novo caso para ele, sem duplicar o cadastro.
               </Callout>
             )}
             {lookup?.status === "ALREADY_RELATED" && (
@@ -325,10 +318,10 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
                       size="sm"
                       onClick={() => {
                         setTarget({ mode: "EXISTING", clientId: lookup.clientId });
-                        go("documents");
+                        go("case");
                       }}
                     >
-                      Cadastrar novo processo para este cliente
+                      Criar novo caso para este cliente
                     </Button>
                   </div>
                 }
@@ -338,7 +331,7 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
             )}
           </PanelBody>
           <PanelFooter>
-            <Button variant="ghost" onClick={() => router.push("/clientes")}>
+            <Button variant="ghost" onClick={() => router.push(mode === "case" ? "/casos" : "/clientes")}>
               Cancelar
             </Button>
           </PanelFooter>
@@ -431,11 +424,6 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
             description="Anexe os documentos que você já tem. Depois do envio, eles não podem ser editados nem apagados — correções são enviadas como nova versão."
           />
           <PanelBody className="space-y-3">
-            {existingClient && (
-              <p className="text-[12.5px] text-muted">
-                Cliente: <strong className="text-foreground">{clientDisplayName(existingClient)}</strong>
-              </p>
-            )}
             {documents.length === 0 && <p className="text-[12.5px] text-muted">Nenhum documento adicionado. Você também pode enviar documentos depois.</p>}
             {documents.map((d, i) => (
               <div key={d.key} className="grid grid-cols-[1.4fr_1fr_1.2fr_auto] items-end gap-3 rounded-md border border-line px-3 py-3">
@@ -484,7 +472,7 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
               Voltar
             </Button>
             <Button onClick={next} disabled={documents.some((d) => !d.name.trim() || !d.fileName)}>
-              Continuar
+              Revisar envio
             </Button>
           </PanelFooter>
         </Panel>
@@ -493,28 +481,39 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
       {/* ----------------------------- Caso ----------------------------- */}
       {step === "case" && (
         <Panel className="max-w-[900px]">
-          <PanelHeader title="Informações iniciais do caso" description="Conte o que aconteceu. Se o processo já existe, informe o número CNJ." />
+          <PanelHeader title="Novo caso" description="Conte o que aconteceu. O processo judicial, quando existir, é cadastrado depois dentro do caso." />
           <PanelBody className="grid grid-cols-2 gap-x-5 gap-y-4">
+            {existingClient && (
+              <p className="col-span-2 text-[12.5px] text-muted">
+                Cliente: <strong className="text-foreground">{clientDisplayName(existingClient)}</strong>
+              </p>
+            )}
+            <Field
+              label="Origem do caso"
+              requirement="required"
+              error={errors.caseOriginOfficeId?.message}
+              hint="Independe da origem do cliente. Define a parceria deste caso."
+              className="col-span-2 max-w-[420px]"
+            >
+              {(p) => (
+                <Select
+                  {...p}
+                  options={originOptions}
+                  {...register("caseOriginOfficeId", { validate: (x) => originOptions.some((o) => o.value === x) || "Selecione a origem do caso." })}
+                />
+              )}
+            </Field>
             <Field label="Nome resumido do caso" requirement="required" error={errors.title?.message} className="col-span-2">
               {(p) => <Input {...p} placeholder="Ex.: Descontos de consignado não reconhecidos" {...register("title", { validate: (x) => !!x.trim() || "Informe um nome resumido." })} />}
             </Field>
             <Field label="Área" requirement="required" error={errors.area?.message}>
               {(p) => <Select {...p} placeholder="Selecione" options={AREA_OPTIONS} {...register("area", { validate: (x) => !!x || "Selecione a área." })} />}
             </Field>
-            <Field label="Tipo de ação" requirement="required" error={errors.actionType?.message}>
-              {(p) => <Input {...p} placeholder="Ex.: Ação declaratória" {...register("actionType", { validate: (x) => !!x.trim() || "Informe o tipo de ação." })} />}
+            <Field label="Tipo" requirement="required" error={errors.caseType?.message}>
+              {(p) => <Input {...p} placeholder="Ex.: Ação declaratória" {...register("caseType", { validate: (x) => !!x.trim() || "Informe o tipo do caso." })} />}
             </Field>
-            <Field label="Parte contrária" requirement="recommended">
+            <Field label="Parte contrária" requirement="recommended" className="col-span-2">
               {(p) => <Input {...p} {...register("opposingParty")} />}
-            </Field>
-            <Field label="Valor da causa" requirement="optional" hint="Dado jurídico — não é honorário.">
-              {(p) => <Input {...p} inputMode="decimal" placeholder="R$ 0,00" {...register("caseValue")} />}
-            </Field>
-            <Field label="Número CNJ" requirement="optional" error={errors.cnj?.message}>
-              {(p) => <MaskedInput mask="cnj" placeholder="0000000-00.0000.0.00.0000" {...p} {...register("cnj", { validate: (x) => !x || isCnjFormat(x) || msg.cnj })} />}
-            </Field>
-            <Field label="Tribunal" requirement="optional">
-              {(p) => <Select {...p} placeholder="Selecione" options={COURT_OPTIONS} {...register("court")} />}
             </Field>
             <Field label="Relato do caso" requirement="required" error={errors.summary?.message} className="col-span-2">
               {(p) => <Textarea {...p} rows={4} {...register("summary", { validate: (x) => !!x.trim() || "Descreva o caso." })} />}
@@ -527,7 +526,7 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
             <Button variant="ghost" onClick={back}>
               Voltar
             </Button>
-            <Button onClick={() => validateAndNext(["title", "area", "actionType", "summary", "cnj"])}>Revisar envio</Button>
+            <Button onClick={() => validateAndNext(["caseOriginOfficeId", "title", "area", "caseType", "summary"])}>Continuar</Button>
           </PanelFooter>
         </Panel>
       )}
@@ -584,10 +583,9 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
                 items={[
                   { label: "Nome", value: v.title },
                   { label: "Área", value: v.area ? LEGAL_AREA_LABEL[v.area] : undefined },
-                  { label: "Tipo de ação", value: v.actionType },
+                  { label: "Tipo", value: v.caseType },
+                  { label: "Origem do caso", value: originOptions.find((o) => o.value === v.caseOriginOfficeId)?.label },
                   { label: "Parte contrária", value: blank(v.opposingParty) },
-                  { label: "Processo (CNJ)", value: blank(v.cnj) ?? "Ainda não informado" },
-                  { label: "Valor da causa", value: v.caseValue ? formatCurrency(parseCurrencyInput(v.caseValue)) : undefined },
                   { label: "Relato", value: v.summary, wide: true },
                   { label: "Observações", value: blank(v.notes), wide: true },
                 ]}
@@ -599,7 +597,7 @@ export function NewCaseWizard({ initialClientId }: { initialClientId?: ID }) {
               Voltar e revisar
             </Button>
             <Button onClick={submit} loading={sending}>
-              Confirmar e enviar
+              Confirmar e enviar para Bárbara Cardoso Advocacia
             </Button>
           </PanelFooter>
         </Panel>

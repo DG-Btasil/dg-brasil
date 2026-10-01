@@ -1,26 +1,12 @@
 import { nowISO } from "@/lib/clock";
-import {
-  DOCUMENT_CATEGORY_LABEL,
-  PARTNER_OFFICE_STATUS_LABEL,
-  PARTNER_REQUEST_TYPE_LABEL,
-  SUBMISSION_STATUS_LABEL,
-} from "@/lib/constants/status";
-import { isValidShare, partnershipView, snapshotAgreement } from "@/lib/domain/partnership";
+import { DOCUMENT_CATEGORY_LABEL, PARTNER_OFFICE_STATUS_LABEL, PARTNER_REQUEST_TYPE_LABEL } from "@/lib/constants/status";
+import { isValidShare, partnershipView } from "@/lib/domain/partnership";
+import { partnerCanSeeCase } from "@/lib/permissions/partner-scope";
 import { formatCurrency, onlyDigits } from "@/lib/formatting";
 import { createId } from "@/lib/ids";
 import { can, ROLE_LABEL } from "@/lib/permissions";
 import { isAllowedClientOrigin } from "@/lib/permissions/client-origin";
-import type {
-  Client,
-  ClientDocument,
-  ClientOfficeRelationship,
-  ID,
-  Notification,
-  PartnerCaseSubmission,
-  PartnerOffice,
-  Process,
-  ProcessEvent,
-} from "@/types";
+import type { Client, ClientDocument, ClientOfficeRelationship, ID, LegalCase, Notification, PartnerOffice } from "@/types";
 import {
   actorOf,
   auditEvent,
@@ -56,6 +42,18 @@ function isRelated(state: AppState, clientId: ID, partnerOfficeId: ID): boolean 
   );
 }
 
+/** Caso acessível ao parceiro da sessão (origem dele ou enviado por ele). */
+function partnerCase(state: AppState, legalCaseId: ID | undefined, partnerOfficeId: ID): LegalCase | undefined {
+  const legalCase = legalCaseId ? state.legalCases.find((c) => c.id === legalCaseId) : undefined;
+  return legalCase && partnerCanSeeCase(legalCase, partnerOfficeId) ? legalCase : undefined;
+}
+
+/** Parceiro de origem do caso (ausente = caso próprio). */
+function casePartnerOf(state: AppState, legalCaseId: ID | undefined): ID | undefined {
+  const legalCase = legalCaseId ? state.legalCases.find((c) => c.id === legalCaseId) : undefined;
+  return legalCase && legalCase.originOfficeId !== state.office.id ? legalCase.originOfficeId : undefined;
+}
+
 /** Responsável interno padrão para casos recebidos de parceiros (primeiro administrador ativo). */
 function defaultResponsible(state: AppState): ID {
   return state.users.find((u) => u.role === "ADMIN" && u.status === "ACTIVE")?.id ?? state.session.currentUserId;
@@ -65,7 +63,7 @@ function defaultResponsible(state: AppState): ID {
 function partnerNotification(
   state: AppState,
   partnerOfficeId: ID,
-  input: Pick<Notification, "type" | "severity" | "title" | "description" | "cta"> & Partial<Pick<Notification, "clientId" | "processId" | "requiredPermission">>,
+  input: Pick<Notification, "type" | "severity" | "title" | "description" | "cta"> & Partial<Pick<Notification, "clientId" | "legalCaseId" | "processId" | "requiredPermission">>,
 ): Notification {
   return {
     id: createId("ntf"),
@@ -81,13 +79,9 @@ function partnerNotification(
 /** Notificação para a equipe interna. */
 function ownerNotification(
   state: AppState,
-  input: Pick<Notification, "type" | "severity" | "title" | "description" | "cta" | "requiredPermission"> & Partial<Pick<Notification, "clientId" | "processId">>,
+  input: Pick<Notification, "type" | "severity" | "title" | "description" | "cta" | "requiredPermission"> & Partial<Pick<Notification, "clientId" | "legalCaseId" | "processId">>,
 ): Notification {
   return { id: createId("ntf"), officeId: state.office.id, at: nowISO(), read: false, ...input };
-}
-
-function systemEvent(state: AppState, processId: ID, title: string, description?: string): ProcessEvent {
-  return { id: createId("mov"), officeId: state.office.id, processId, at: nowISO(), title, description, source: "SYSTEM", important: false };
 }
 
 /**
@@ -99,7 +93,7 @@ const matchTokens = new Map<string, { clientId: ID; partnerOfficeId: ID }>();
 
 function newDocument(
   state: AppState,
-  input: PartnerCaseDocumentInput & { clientId: ID; processId?: ID },
+  input: PartnerCaseDocumentInput & { clientId: ID; legalCaseId?: ID; processId?: ID },
   partnerOfficeId: ID,
   uploadedBy: ID,
   version: { groupId?: ID; number?: number } = {},
@@ -110,6 +104,7 @@ function newDocument(
     id,
     officeId: state.office.id,
     clientId: input.clientId,
+    legalCaseId: input.legalCaseId,
     processId: input.processId,
     name: input.name,
     category: input.category,
@@ -129,16 +124,6 @@ function newDocument(
     versionGroupId: version.groupId ?? id,
     version: version.number ?? 1,
   };
-}
-
-/**
- * Efeitos de um processo de origem PARTNER: acordo financeiro com a divisão
- * VIGENTE copiada (snapshot). Usado pelo cadastro interno e pelo portal.
- */
-export function partnershipSnapshotFor(state: AppState, process: Process) {
-  if (process.relationshipOrigin !== "PARTNER" || !process.originPartnerOfficeId) return null;
-  const partner = partnerOf(state, process.originPartnerOfficeId);
-  return snapshotAgreement(partner, process.id, createId("ppa"), nowISO());
 }
 
 /* ------------------------------------------------------------------ */
@@ -264,48 +249,15 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
         };
       }),
 
-    setSubmissionStatus: (submissionId, status) =>
-      set((s) => {
-        requireOwnerViewer(s);
-        const submission = s.partnerSubmissions.find((x) => x.id === submissionId);
-        if (!submission || submission.status === status) return {};
-        const client = s.clients.find((c) => c.id === submission.clientId);
-        const label = SUBMISSION_STATUS_LABEL[status];
-        return {
-          partnerSubmissions: updateById(s.partnerSubmissions, submissionId, (x) => ({ ...x, status, updatedAt: nowISO() })),
-          notifications: [
-            partnerNotification(s, submission.partnerOfficeId, {
-              type: "CASE_UPDATE",
-              severity: "info",
-              title: `Caso: ${label}`,
-              description: `${clientName(client)} · situação atualizada pela Bárbara Cardoso Advocacia.`,
-              clientId: submission.clientId,
-              processId: submission.processId,
-              cta: { label: "Abrir processo", href: submission.processId ? `/processos/${submission.processId}` : "/processos" },
-            }),
-            ...s.notifications,
-          ],
-          auditEvents: [
-            auditEvent(s, "SUBMISSION_STATUS_CHANGED", "submission", submissionId, `Caso de ${clientName(client)}: ${SUBMISSION_STATUS_LABEL[submission.status]} → ${label}.`, undefined, undefined, {
-              partnerOfficeId: submission.partnerOfficeId,
-              summary: `Caso de ${clientName(client)}: ${label}.`,
-            }),
-            ...s.auditEvents,
-          ],
-        };
-      }),
-
     shareDocumentWithPartner: (documentId) =>
       set((s) => {
         requireOwnerViewer(s);
         const doc = s.documents.find((d) => d.id === documentId);
-        const process = doc?.processId ? s.processes.find((p) => p.id === doc.processId) : undefined;
-        if (!doc || !process || process.relationshipOrigin !== "PARTNER" || !process.originPartnerOfficeId) {
-          throw new Error("Somente documentos de casos de parceiros podem ser disponibilizados.");
-        }
+        const legalCaseId = doc?.legalCaseId ?? s.processes.find((p) => p.id === doc?.processId)?.legalCaseId;
+        const pid = casePartnerOf(s, legalCaseId);
+        if (!doc || !legalCaseId || !pid) throw new Error("Somente documentos de casos de parceiros podem ser disponibilizados.");
         if (doc.visibility === "PARTNER_VISIBLE") return {};
         const client = s.clients.find((c) => c.id === doc.clientId);
-        const pid = process.originPartnerOfficeId;
         return {
           documents: updateById(s.documents, documentId, (d) => ({ ...d, visibility: "PARTNER_VISIBLE" as const, updatedAt: nowISO() })),
           notifications: [
@@ -315,8 +267,8 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
               title: "Documento aprovado",
               description: `${clientName(client)} · ${doc.name}.`,
               clientId: doc.clientId,
-              processId: process.id,
-              cta: { label: "Ver documento", href: `/processos/${process.id}?aba=documentos` },
+              legalCaseId,
+              cta: { label: "Ver documento", href: `/casos/${legalCaseId}?aba=documentos` },
             }),
             ...s.notifications,
           ],
@@ -350,6 +302,7 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
             title: `${PARTNER_REQUEST_TYPE_LABEL[input.type]}: ${input.title}`,
             description: `${client ? `${clientName(client)} · ` : ""}Bárbara Cardoso Advocacia enviou uma nova solicitação.`,
             clientId: input.clientId,
+            legalCaseId: input.legalCaseId,
             processId: input.processId,
             cta: { label: input.type === "DOCUMENT_REQUEST" ? "Enviar documento" : "Responder", href: "/pendencias" },
           }),
@@ -390,8 +343,8 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
         if (!can(viewer.role, "partners.finance.view")) throw new Error("Sem permissão financeira.");
         const agreement = s.partnershipAgreements.find((a) => a.id === agreementId);
         if (!agreement) return {};
-        const process = s.processes.find((p) => p.id === agreement.processId);
-        const client = process ? s.clients.find((c) => c.id === process.clientId) : undefined;
+        const legalCase = s.legalCases.find((c) => c.id === agreement.legalCaseId);
+        const client = legalCase ? s.clients.find((c) => c.id === legalCase.clientId) : undefined;
         const details = [
           ...(input.revenueBase !== undefined ? [{ label: "Honorários estimados", value: `${formatCurrency(agreement.revenueBase)} → ${formatCurrency(input.revenueBase)}` }] : []),
           ...(input.realizedRevenue !== undefined ? [{ label: "Honorários realizados", value: `${formatCurrency(agreement.realizedRevenue)} → ${formatCurrency(input.realizedRevenue)}` }] : []),
@@ -407,7 +360,7 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
                     severity: "info",
                     title: "Valores do caso atualizados",
                     description: `${clientName(client)} · honorários realizados registrados.`,
-                    processId: agreement.processId,
+                    legalCaseId: agreement.legalCaseId,
                     cta: { label: "Abrir Financeiro", href: "/financeiro" },
                     requiredPermission: "partnerPortal.finance.view",
                   }),
@@ -432,8 +385,8 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
         if (!agreement) return {};
         const pending = partnershipView(agreement).pendingPartnerAmount;
         if (!(amount > 0) || amount > pending + 0.001) throw new Error("Valor do repasse inválido.");
-        const process = s.processes.find((p) => p.id === agreement.processId);
-        const client = process ? s.clients.find((c) => c.id === process.clientId) : undefined;
+        const legalCase = s.legalCases.find((c) => c.id === agreement.legalCaseId);
+        const client = legalCase ? s.clients.find((c) => c.id === legalCase.clientId) : undefined;
         const at = nowISO();
         return {
           partnershipAgreements: updateById(s.partnershipAgreements, agreementId, (a) => ({
@@ -447,7 +400,7 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
               severity: "info",
               title: "Repasse registrado",
               description: `${clientName(client)} · repasse de ${formatCurrency(amount)} registrado.`,
-              processId: agreement.processId,
+              legalCaseId: agreement.legalCaseId,
               cta: { label: "Abrir Financeiro", href: "/financeiro" },
               requiredPermission: "partnerPortal.finance.view",
             }),
@@ -552,7 +505,7 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
     submitPartnerCase: (input) => {
       const s = get();
       const viewer = requirePartnerViewer(s);
-      if (!can(viewer.role, "partnerPortal.clients.create")) throw new Error("Sem permissão para enviar casos.");
+      if (!can(viewer.role, "partnerPortal.cases.create")) throw new Error("Sem permissão para enviar casos.");
       const pid = viewer.partnerOfficeId;
       const partner = partnerOf(s, pid);
       if (partner.status !== "ACTIVE") throw new Error("A parceria não está ativa.");
@@ -619,86 +572,59 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
         newRelationships.push({ id: createId("rel"), officeId: s.office.id, clientId, officeType: "PARTNER", partnerOfficeId: pid, status: "ACTIVE", createdAt: at, createdBy: actor.id });
       }
 
-      // 3. Processo com origem relacional PARTNER + acordo (snapshot da divisão vigente).
-      const processId = createId("prc");
-      const process: Process = {
-        id: processId,
+      // 3. Caso jurídico (SUBMITTED). Origem: próprio parceiro ou Bárbara (validado na sessão).
+      //    Processo e acordo de parceria NÃO nascem aqui: o acordo nasce no aceite.
+      if (!isAllowedClientOrigin(originContextOf(s), input.caseInfo.originOfficeId)) throw new Error("Origem do caso inválida.");
+      const legalCaseId = createId("cas");
+      const legalCase: LegalCase = {
+        id: legalCaseId,
         officeId: s.office.id,
         clientId,
-        cnj: input.caseInfo.cnj,
         title: input.caseInfo.title,
-        court: input.caseInfo.court,
         area: input.caseInfo.area,
-        actionType: input.caseInfo.actionType,
-        clientPole: "ACTIVE",
-        opposingParty: input.caseInfo.opposingParty,
-        responsibleUserId,
-        caseValue: input.caseInfo.caseValue,
-        status: "PRE_FILING",
-        phase: "PRELIMINARY",
-        origin: "MANUAL",
-        relationshipOrigin: "PARTNER",
-        originPartnerOfficeId: pid,
-        summary: input.caseInfo.summary,
-        notes: input.notes,
-        createdAt: at,
-        updatedAt: at,
-        lastMovementAt: at,
-      };
-      const agreement = snapshotAgreement(partner, processId, createId("ppa"), at);
-
-      // 4. Documentos enviados oficialmente.
-      const documents = input.documents.map((d) => newDocument(s, { ...d, clientId, processId }, pid, actor.id));
-
-      // 5. Submissão.
-      const submissionId = createId("sub");
-      const submission: PartnerCaseSubmission = {
-        id: submissionId,
-        officeId: s.office.id,
-        partnerOfficeId: pid,
-        clientId,
-        processId,
-        status: "SUBMITTED",
-        area: input.caseInfo.area,
-        summary: input.caseInfo.summary,
-        notes: input.notes,
-        documentIds: documents.map((d) => d.id),
-        existingClient,
-        createdAt: at,
+        caseType: input.caseInfo.caseType,
+        originOfficeId: input.caseInfo.originOfficeId,
+        createdByOfficeId: pid,
         createdBy: actor.id,
+        assignedLawyerId: null,
+        summary: input.caseInfo.summary,
+        opposingParty: input.caseInfo.opposingParty,
+        partnerNotes: input.notes,
+        status: "SUBMITTED",
         submittedAt: at,
-        submittedBy: actor.id,
+        createdAt: at,
         updatedAt: at,
       };
+
+      // 4. Documentos enviados oficialmente (pertencem ao caso).
+      const documents = input.documents.map((d) => newDocument(s, { ...d, clientId, legalCaseId }, pid, actor.id));
       const name = clientName(client);
       const partnerRef = { partnerOfficeId: pid };
 
       set({
         clients,
         clientRelationships: [...newRelationships, ...s.clientRelationships],
-        processes: [process, ...s.processes],
-        processEvents: [systemEvent(s, processId, `Caso recebido da ${partner.name}`, `${documents.length} documento(s) enviados junto com o cadastro.`), ...s.processEvents],
-        partnershipAgreements: [agreement, ...s.partnershipAgreements],
+        legalCases: [legalCase, ...s.legalCases],
         documents: [...documents, ...s.documents],
-        partnerSubmissions: [submission, ...s.partnerSubmissions],
         notifications: [
           ownerNotification(s, {
-            type: "PARTNER_SUBMISSION",
+            type: "CASE_SUBMITTED",
             severity: "warning",
             title: `Novo caso enviado pela ${partner.name}`,
             description: `${name} · ${documents.length} documento(s)${existingClient ? " · cliente já cadastrado" : ""}.`,
             clientId,
-            processId,
-            cta: { label: "Abrir caso", href: `/processos/${processId}` },
-            requiredPermission: "partners.view",
+            legalCaseId,
+            cta: { label: "Abrir caso", href: `/casos/${legalCaseId}` },
+            requiredPermission: "cases.view",
           }),
           ...s.notifications,
         ],
         auditEvents: [
-          auditEvent(s, "CLIENT_SUBMITTED", "client", clientId, `Caso de ${name} enviado pela ${partner.name} (${documents.length} documentos).`, actor, undefined, {
+          auditEvent(s, "CASE_SUBMITTED", "legalCase", legalCaseId, `Caso “${legalCase.title}” de ${name} enviado pela ${partner.name} (${documents.length} documentos).`, actor, undefined, {
             ...partnerRef,
             summary: `Caso de ${name} enviado com ${documents.length} documento(s).`,
           }),
+          auditEvent(s, "CASE_CREATED", "legalCase", legalCaseId, `Caso “${legalCase.title}” criado (origem: ${officeNameOf(s, legalCase.originOfficeId)}).`, actor, undefined, partnerRef),
           ...(documents.length
             ? [
                 auditEvent(s, "DOCUMENT_ADDED", "document", documents[0]!.id, `${documents.length} documento(s) enviados pela ${partner.name}: ${documents.map((d) => DOCUMENT_CATEGORY_LABEL[d.category]).join(", ")}.`, actor, undefined, {
@@ -707,10 +633,6 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
                 }),
               ]
             : []),
-          auditEvent(s, "PARTNER_PROCESS_CREATED", "process", processId, `Processo de parceiro criado: ${process.title} (divisão ${agreement.partnerPercentage}% / ${agreement.ownerPercentage}%).`, actor, undefined, {
-            ...partnerRef,
-            summary: `Processo criado: ${process.title}.`,
-          }),
           ...(relationshipIsNew && existingClient
             ? [
                 auditEvent(s, "CLIENT_RELATIONSHIP_CREATED", "client", clientId, `Vínculo da ${partner.name} com cliente já cadastrado criado para novo caso.`, actor, undefined, {
@@ -728,7 +650,7 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
           ...s.auditEvents,
         ],
       });
-      return { clientId, processId, submissionId };
+      return { clientId, legalCaseId };
     },
 
     createPartnerProcess: (input) => {
@@ -738,47 +660,51 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
       const pid = viewer.partnerOfficeId;
       const partner = partnerOf(s, pid);
       if (partner.status !== "ACTIVE") throw new Error("A parceria não está ativa.");
-      if (!isRelated(s, input.clientId, pid)) throw new Error("Cliente não encontrado.");
+      // Processo sempre pertence a um caso do próprio parceiro (nunca de outro escritório).
+      const legalCase = partnerCase(s, input.legalCaseId, pid);
+      if (!legalCase) throw new Error("Caso não encontrado.");
+      if (legalCase.status === "REJECTED" || legalCase.status === "ARCHIVED") throw new Error("Este caso não aceita novos processos.");
       const at = nowISO();
       const id = createId("prc");
-      // A origem vem da SESSÃO: o parceiro não escolhe escritório.
-      const process: Process = {
+      const process = {
         ...input,
+        clientId: legalCase.clientId,
         id,
         officeId: s.office.id,
-        responsibleUserId: defaultResponsible(s),
-        status: input.cnj ? "FILED" : "PRE_FILING",
-        phase: input.cnj ? "PLEADINGS" : "PRELIMINARY",
-        origin: "MANUAL",
-        relationshipOrigin: "PARTNER",
-        originPartnerOfficeId: pid,
+        responsibleUserId: legalCase.assignedLawyerId ?? defaultResponsible(s),
+        status: input.cnj ? ("FILED" as const) : ("PRE_FILING" as const),
+        phase: input.cnj ? ("PLEADINGS" as const) : ("PRELIMINARY" as const),
+        origin: "MANUAL" as const,
         createdAt: at,
         updatedAt: at,
         lastMovementAt: at,
       };
-      const agreement = snapshotAgreement(partner, id, createId("ppa"), at);
-      const client = s.clients.find((c) => c.id === input.clientId);
+      const client = s.clients.find((c) => c.id === legalCase.clientId);
       set({
         processes: [process, ...s.processes],
-        processEvents: [systemEvent(s, id, `Processo cadastrado pela ${partner.name}`), ...s.processEvents],
-        partnershipAgreements: [agreement, ...s.partnershipAgreements],
+        processEvents: [
+          { id: createId("mov"), officeId: s.office.id, processId: id, at, title: `Processo cadastrado pela ${partner.name}`, source: "SYSTEM" as const, important: false },
+          ...s.processEvents,
+        ],
+        legalCases: updateById(s.legalCases, legalCase.id, (c) => (c.status === "ACCEPTED" ? { ...c, status: "IN_PROGRESS" as const, updatedAt: at } : c)),
         notifications: [
           ownerNotification(s, {
-            type: "PARTNER_SUBMISSION",
+            type: "CASE_UPDATE",
             severity: "info",
             title: `Processo cadastrado pela ${partner.name}`,
-            description: `${clientName(client)} · ${process.title}.`,
-            clientId: input.clientId,
+            description: `${clientName(client)} · ${process.title} (caso “${legalCase.title}”).`,
+            clientId: legalCase.clientId,
+            legalCaseId: legalCase.id,
             processId: id,
             cta: { label: "Abrir processo", href: `/processos/${id}` },
-            requiredPermission: "partners.view",
+            requiredPermission: "cases.view",
           }),
           ...s.notifications,
         ],
         auditEvents: [
-          auditEvent(s, "PARTNER_PROCESS_CREATED", "process", id, `Processo de parceiro criado: ${process.title} (divisão ${agreement.partnerPercentage}% / ${agreement.ownerPercentage}%).`, undefined, undefined, {
+          auditEvent(s, "PARTNER_PROCESS_CREATED", "process", id, `Processo cadastrado pela ${partner.name} no caso “${legalCase.title}”: ${process.title}.`, undefined, undefined, {
             partnerOfficeId: pid,
-            summary: `Processo criado: ${process.title} (${clientName(client)}).`,
+            summary: `Processo cadastrado: ${process.title} (${clientName(client)}).`,
           }),
           ...s.auditEvents,
         ],
@@ -815,9 +741,10 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
       if (!can(viewer.role, "partnerPortal.documents.submit")) throw new Error("Sem permissão para enviar documentos.");
       const pid = viewer.partnerOfficeId;
       if (!isRelated(s, input.clientId, pid)) throw new Error("Cliente não encontrado.");
+      if (input.legalCaseId && !partnerCase(s, input.legalCaseId, pid)) throw new Error("Caso não encontrado.");
       if (input.processId) {
         const process = s.processes.find((p) => p.id === input.processId);
-        if (!process || process.originPartnerOfficeId !== pid) throw new Error("Processo não encontrado.");
+        if (!process || !partnerCase(s, process.legalCaseId, pid)) throw new Error("Processo não encontrado.");
       }
       const partner = partnerOf(s, pid);
       const actor = actorOf(s);
@@ -830,7 +757,7 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
         if (!previous || previous.uploadedByPartnerOfficeId !== pid) throw new Error("Documento não encontrado.");
         const groupId = previous.versionGroupId ?? previous.id;
         const latest = Math.max(...s.documents.filter((d) => (d.versionGroupId ?? d.id) === groupId).map((d) => d.version ?? 1));
-        doc = newDocument(s, { ...input, processId: input.processId ?? previous.processId }, pid, actor.id, { groupId, number: latest + 1 });
+        doc = newDocument(s, { ...input, legalCaseId: input.legalCaseId ?? previous.legalCaseId, processId: input.processId ?? previous.processId }, pid, actor.id, { groupId, number: latest + 1 });
         // A versão anterior NUNCA é sobrescrita: só é marcada como substituída.
         documents = updateById(documents, previous.id, (d) => ({ ...d, supersededAt: nowISO() }));
         versionNote = `v${latest} → v${latest + 1}`;
@@ -838,6 +765,8 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
         doc = newDocument(s, input, pid, actor.id);
       }
       const request = input.requestId ? s.partnerRequests.find((r) => r.id === input.requestId && r.partnerOfficeId === pid) : undefined;
+      // Documento enviado em resposta a pendência do caso pertence ao caso da pendência.
+      if (request?.legalCaseId && !doc.legalCaseId) doc = { ...doc, legalCaseId: request.legalCaseId };
       const at = nowISO();
       set({
         documents: [doc, ...documents],
@@ -856,8 +785,9 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
             title: request ? `Solicitação respondida pela ${partner.name}` : versionNote ? `Nova versão de documento — ${partner.name}` : `Documento enviado pela ${partner.name}`,
             description: `${clientName(client)} · ${doc.name}${versionNote ? ` (${versionNote})` : ""}.`,
             clientId: input.clientId,
+            legalCaseId: doc.legalCaseId,
             processId: doc.processId,
-            cta: { label: "Ver documentos", href: doc.processId ? `/processos/${doc.processId}?aba=documentos` : `/clientes/${input.clientId}?aba=documentos` },
+            cta: { label: "Ver documentos", href: doc.legalCaseId ? `/casos/${doc.legalCaseId}?aba=documentos` : `/clientes/${input.clientId}?aba=documentos` },
             requiredPermission: "partners.view",
           }),
           ...s.notifications,

@@ -3,14 +3,10 @@
 import { useMemo } from "react";
 import { useAppStore } from "@/store/app-store";
 import { useScopedStore } from "@/store/scope";
-import type { ID, Office, Subscription, User } from "@/types";
+import type { ID, Office, User } from "@/types";
 
 export function useOffice(): Office {
   return useScopedStore((s) => s.office);
-}
-
-export function useSubscription(): Subscription {
-  return useScopedStore((s) => s.subscription);
 }
 
 /** Todos os usuários visíveis na sessão (equipe interna e, para a equipe interna, também os de parceiros). */

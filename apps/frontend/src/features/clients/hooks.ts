@@ -16,12 +16,12 @@ export function useClients(): Client[] {
   return useScopedStore((s) => s.clients);
 }
 
-export function useClient(id: ID): Client | undefined {
+export function useClient(id: ID | undefined): Client | undefined {
   const clients = useClients();
   return useMemo(() => clients.find((c) => c.id === id), [clients, id]);
 }
 
-export function useClientDocuments(clientId: ID): ClientDocument[] {
+export function useClientDocuments(clientId: ID | undefined): ClientDocument[] {
   const documents = useScopedStore((s) => s.documents);
   return useMemo(
     () => documents.filter((d) => d.clientId === clientId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),

@@ -31,7 +31,7 @@ export function buildReviews(): Review[] {
         "Classificar o caso na tese “Cartão de crédito consignado contratado como empréstimo”.",
         "Encaminhar ao Agente de Petições para minuta de inicial após aprovação.",
       ],
-      nextStepOnApproval: "a análise será concluída e o Agente de Petições preparará a minuta da petição inicial, que voltará para Revisões",
+      nextStepOnApproval: "a análise será concluída e o caso ficará pronto para aceite ou rejeição",
       content: {
         title: "Parecer preliminar — Análise Bancária",
         sections: [

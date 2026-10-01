@@ -1,5 +1,5 @@
 import { daysFromNowISO } from "@/lib/clock";
-import type { Invitation, Office, Subscription, User, UserSession } from "@/types";
+import type { Invitation, Office, User, UserSession } from "@/types";
 import { OFFICE_ID, U } from "../ids";
 
 export function buildOffice(): Office {
@@ -26,29 +26,8 @@ export function buildOffice(): Office {
     oab: "OAB/SP 000.101",
     statesOfPractice: ["SP", "MG", "PR"],
     units: ["São Paulo — Sede"],
-    onboarding: {
-      completed: true,
-      completedAt: daysFromNowISO(-60),
-      currentStep: 12,
-      // Escritório de demonstração já implantado: etapas respondidas; honorários pulada.
-      completedSteps: ["identity", "team", "practice-areas", "client-profile", "legal-criteria", "writing-style", "workflow", "approvals", "communication", "integrations", "agents-skills"],
-      skippedSteps: ["fee-models"],
-      answers: {},
-    },
     createdAt: daysFromNowISO(-62),
     updatedAt: daysFromNowISO(-3),
-  };
-}
-
-export function buildSubscription(): Subscription {
-  return {
-    officeId: OFFICE_ID,
-    planName: "Plano Escritório — Implantação assistida",
-    status: "ACTIVE",
-    implementationStatus: "COMPLETED",
-    nextBillingAt: daysFromNowISO(12),
-    seats: 6,
-    supportContact: "suporte@dgbrasil.exemplo",
   };
 }
 

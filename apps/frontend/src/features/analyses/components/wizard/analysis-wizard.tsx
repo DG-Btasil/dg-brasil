@@ -12,7 +12,9 @@ import { useToast } from "@/store/ui-store";
 import { ClientNotFound } from "@/features/clients/components/detail/client-not-found";
 import { useClient, useClientDocuments } from "@/features/clients/hooks";
 import { clientShortName } from "@/features/clients/utils";
-import { useAgentMap, useClientAnalyses, useTemplates } from "../../hooks";
+import { useCaseAnalyses, useLegalCase } from "@/features/cases/hooks";
+import { CaseNotFound } from "@/features/cases/components/case-not-found";
+import { useAgentMap, useTemplates } from "../../hooks";
 import { isActiveAnalysis } from "../../utils";
 import { StepConfirm } from "./step-confirm";
 import { StepDocuments } from "./step-documents";
@@ -21,12 +23,14 @@ import { StepTemplate } from "./step-template";
 
 const STEP_LABELS = ["Área e tipo", "Documentação", "Dados específicos", "Confirmação"] as const;
 
-export function AnalysisWizard({ clientId }: { clientId: string }) {
+/** Análise jurídica de um CASO (a análise mora dentro do caso). */
+export function AnalysisWizard({ legalCaseId }: { legalCaseId: string }) {
   const router = useRouter();
   const toast = useToast();
-  const client = useClient(clientId);
-  const documents = useClientDocuments(clientId);
-  const analyses = useClientAnalyses(clientId);
+  const legalCase = useLegalCase(legalCaseId);
+  const client = useClient(legalCase?.clientId);
+  const documents = useClientDocuments(legalCase?.clientId);
+  const analyses = useCaseAnalyses(legalCaseId);
   const templates = useTemplates();
   const agents = useAgentMap();
 
@@ -42,9 +46,10 @@ export function AnalysisWizard({ clientId }: { clientId: string }) {
     [template, client, documents],
   );
 
+  if (!legalCase) return <CaseNotFound />;
   if (!client) return <ClientNotFound />;
   const active = analyses.find(isActiveAnalysis);
-  const clientHref = `/clientes/${client.id}`;
+  const caseHref = `/casos/${legalCase.id}`;
   const agentName = (template && agents.get(template.primaryAgentId)?.name) ?? "agente da área";
 
   function next() {
@@ -62,16 +67,16 @@ export function AnalysisWizard({ clientId }: { clientId: string }) {
   }
 
   async function submit() {
-    if (!template || !client) return;
+    if (!template || !client || !legalCase) return;
     setSubmitting(true);
     const fields = Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== "").map(([k, v]) => [k, v.trim()]));
-    await repositories.analyses.start({ clientId: client.id, templateId: template.id, fields });
+    await repositories.analyses.start({ clientId: client.id, legalCaseId: legalCase.id, templateId: template.id, fields });
     toast({
       tone: "success",
       title: "Análise jurídica iniciada",
       description: missing.length ? "A análise aguarda os documentos pendentes." : `${agentName} iniciou a avaliação do material.`,
     });
-    router.push(`${clientHref}?aba=analise`);
+    router.push(`${caseHref}?aba=analise`);
   }
 
   const steps = STEP_LABELS.map((label, i) => ({
@@ -84,19 +89,19 @@ export function AnalysisWizard({ clientId }: { clientId: string }) {
     <>
       <PageHeader
         breadcrumbs={[
-          { label: "Clientes", href: "/clientes" },
-          { label: clientShortName(client), href: clientHref },
+          { label: "Casos", href: "/casos" },
+          { label: legalCase.title, href: caseHref },
           { label: "Iniciar análise jurídica" },
         ]}
         title="Iniciar análise jurídica"
-        description={`Cliente: ${clientShortName(client)}. A análise coleta documentação e dados da relação e envia o material ao agente da área.`}
+        description={`Caso: ${legalCase.title} · Cliente: ${clientShortName(client)}. A análise coleta documentação e dados da relação e envia o material ao agente da área.`}
       />
       {active && !submitting ? (
         <Callout
           tone="warning"
           title="Este cliente já possui uma análise em andamento."
           action={
-            <ButtonLink href={`${clientHref}?aba=analise`} variant="secondary" size="sm">
+            <ButtonLink href={`${caseHref}?aba=analise`} variant="secondary" size="sm">
               Ver análise
             </ButtonLink>
           }
@@ -130,7 +135,7 @@ export function AnalysisWizard({ clientId }: { clientId: string }) {
             {step === 3 && template && <StepConfirm template={template} client={client} values={values} missing={missing} agentName={agentName} />}
           </div>
           <div className="mt-8 flex max-w-[900px] items-center justify-between border-t border-line pt-5">
-            <Button variant="secondary" onClick={() => (step === 0 ? router.push(clientHref) : setStep((s) => s - 1))} icon={step === 0 ? undefined : <ArrowLeft className="size-4" aria-hidden />}>
+            <Button variant="secondary" onClick={() => (step === 0 ? router.push(caseHref) : setStep((s) => s - 1))} icon={step === 0 ? undefined : <ArrowLeft className="size-4" aria-hidden />}>
               {step === 0 ? "Cancelar" : "Voltar"}
             </Button>
             {step < STEP_LABELS.length - 1 ? (

@@ -12,7 +12,7 @@ export function ManageConnectionDialog({ open, onOpenChange }: { open: boolean; 
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Gerenciar conexão com a Claude Platform"
+      title="Gerenciar Conexão Claude"
       description="Como a credencial do escritório é tratada."
       footer={
         <>
@@ -33,7 +33,7 @@ export function ManageConnectionDialog({ open, onOpenChange }: { open: boolean; 
           {[
             "A conexão será iniciada por um fluxo servidor-a-servidor, fora desta interface.",
             "A credencial fica criptografada no backend seguro, segregada por escritório.",
-            "A interface recebe apenas metadados: status, organização, modelos e consumo.",
+            "A interface recebe apenas metadados: status, organização, modelos, execuções e limites.",
             "Rotação e revogação da chave serão feitas pelo backend, com registro na auditoria.",
           ].map((item) => (
             <li key={item} className="flex items-start gap-2.5">

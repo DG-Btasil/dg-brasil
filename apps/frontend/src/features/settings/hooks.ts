@@ -10,18 +10,17 @@ import type { UserPreferences } from "@/store/types";
 import { useToast } from "@/store/ui-store";
 import type { ID, Office, Role } from "@/types";
 
-export const SETTINGS_SECTIONS = ["geral", "equipe", "integracoes", "ia", "honorarios", "notificacoes", "seguranca", "assinatura"] as const;
+export const SETTINGS_SECTIONS = ["geral", "equipe", "integracoes", "ia", "honorarios", "notificacoes", "seguranca"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const SECTION_META: Record<SettingsSection, { label: string; description: string; permission: Permission }> = {
   geral: { label: "Geral", description: "Dados do escritório, preferências e identidade", permission: "settings.view" },
   equipe: { label: "Equipe e permissões", description: "Usuários, convites e papéis", permission: "settings.team.manage" },
-  integracoes: { label: "Integrações", description: "Integração Judicial, importação de dados, e-mail, WhatsApp", permission: "settings.integrations.view" },
-  ia: { label: "IA e consumo", description: "Conexão com a Claude Platform e uso", permission: "settings.ai.view" },
+  integracoes: { label: "Integrações", description: "Integração Judicial, importação de dados (XLSX/CSV), e-mail", permission: "settings.integrations.view" },
+  ia: { label: "IA e uso", description: "Conexão Claude, execuções e limites", permission: "settings.ai.view" },
   honorarios: { label: "Modelos de honorários", description: "Modelos usados nos contratos", permission: "settings.fees.manage" },
   notificacoes: { label: "Notificações", description: "Suas preferências de aviso", permission: "settings.notifications.edit" },
   seguranca: { label: "Segurança e auditoria", description: "Sessões e registro de atividades", permission: "settings.security.view" },
-  assinatura: { label: "Assinatura", description: "Plano e implantação", permission: "settings.billing.view" },
 };
 
 /** Seções permitidas para o papel atual (as demais não são renderizadas). */

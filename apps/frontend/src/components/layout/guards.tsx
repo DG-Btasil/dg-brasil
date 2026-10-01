@@ -6,7 +6,6 @@ import { useEffect, type ReactNode } from "react";
 import { ShieldAlert } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
 import { useIsAuthenticated, useIsPartner, usePermission } from "@/features/auth/hooks";
-import { useOffice } from "@/features/offices/hooks";
 import { useHydrated, useRehydrateOnMount } from "@/store/hydration";
 import { Skeleton } from "@/components/feedback/states";
 import { buttonClasses } from "@/components/ui/button";
@@ -38,21 +37,18 @@ export function HydrationGate({ children, fallback = <ShellSkeleton /> }: { chil
 }
 
 /**
- * Guard da área autenticada (simulado). Sem sessão → /login;
- * implantação não concluída → /onboarding.
+ * Guard da área autenticada (simulado). Sem sessão → /login.
+ * Não há implantação de escritório: o escritório proprietário é único.
  */
-export function AuthGuard({ children, requireOnboarding = true }: { children: ReactNode; requireOnboarding?: boolean }) {
+export function AuthGuard({ children }: { children: ReactNode }) {
   const router = useRouter();
   const isAuthenticated = useIsAuthenticated();
-  const office = useOffice();
-  const needsOnboarding = requireOnboarding && !office.onboarding.completed;
 
   useEffect(() => {
     if (!isAuthenticated) router.replace("/login");
-    else if (needsOnboarding) router.replace("/onboarding");
-  }, [isAuthenticated, needsOnboarding, router]);
+  }, [isAuthenticated, router]);
 
-  if (!isAuthenticated || needsOnboarding) return <ShellSkeleton />;
+  if (!isAuthenticated) return <ShellSkeleton />;
   return <>{children}</>;
 }
 

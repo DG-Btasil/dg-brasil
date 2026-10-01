@@ -9,7 +9,8 @@ import { ORIGIN_FILTER_LABEL, ORIGIN_FILTERS, type OriginFilter } from "@/lib/co
 import { usePermission } from "@/features/auth/hooks";
 import { useClientMap } from "@/features/processes/hooks";
 import { PartnershipAgreementsTable } from "@/features/partners/components/agreements-table";
-import { usePartnerMap, usePartnerOptions, usePartnershipViews, useProcessMap } from "@/features/partners/hooks";
+import { useOffice } from "@/features/offices/hooks";
+import { usePartnerMap, usePartnerOptions, usePartnershipViews } from "@/features/partners/hooks";
 import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
 import { todayISO } from "@/lib/clock";
@@ -19,7 +20,7 @@ import { AgreementsTable } from "./agreements-table";
 import { CompositionChart, MonthlyReceiptsChart } from "./finance-charts";
 import { FinanceStats, computeTotals } from "./finance-stats";
 
-/** Financeiro jurídico: honorários ligados a clientes e processos. Não é um ERP. */
+/** Financeiro jurídico: honorários ligados aos casos (e seus processos). Não é um ERP. */
 export function FinanceOverview() {
   const allRows = useAgreementRows();
   const feeModels = useFeeModels();
@@ -27,24 +28,24 @@ export function FinanceOverview() {
   const partnerOptions = usePartnerOptions();
   const partnerMap = usePartnerMap();
   const partnerNames = useMemo(() => new Map([...partnerMap].map(([id, p]) => [id, p.name])), [partnerMap]);
-  const processMap = useProcessMap();
   const clientMap = useClientMap();
   const partnershipViews = usePartnershipViews();
   const [origin, setOrigin] = useState<OriginFilter>("ALL");
   const [partnerOfficeId, setPartnerOfficeId] = useState("");
 
-  // Filtro de origem do CASO (o contrato segue o processo; contrato sem processo = próprio).
+  // Filtro pela origem do CASO do contrato (o financeiro pertence ao caso).
+  const office = useOffice();
   const rows = useMemo(
     () =>
       allRows.filter((r) => {
-        const p = r.process;
-        const isPartner = p?.relationshipOrigin === "PARTNER";
+        const caseOrigin = r.legalCase?.originOfficeId;
+        const isPartner = !!caseOrigin && caseOrigin !== office.id;
         if (origin === "INTERNAL" && isPartner) return false;
         if (origin === "PARTNER" && !isPartner) return false;
-        if (partnerOfficeId && p?.originPartnerOfficeId !== partnerOfficeId) return false;
+        if (partnerOfficeId && caseOrigin !== partnerOfficeId) return false;
         return true;
       }),
-    [allRows, origin, partnerOfficeId],
+    [allRows, origin, partnerOfficeId, office.id],
   );
   const partnerships = useMemo(
     () => (origin === "INTERNAL" ? [] : partnershipViews.filter((v) => !partnerOfficeId || v.partnerOfficeId === partnerOfficeId)),
@@ -65,7 +66,7 @@ export function FinanceOverview() {
     <PageContainer>
       <PageHeader
         title="Financeiro"
-        description="Honorários contratados, recebimentos e valores em aberto por cliente e processo."
+        description="Honorários contratados, recebimentos e valores em aberto por caso."
         actions={
           <>
             <ButtonLink href="/configuracoes?secao=honorarios" variant="secondary" icon={<Settings2 className="size-4" aria-hidden />}>
@@ -125,7 +126,7 @@ export function FinanceOverview() {
                 title="Parcerias"
                 description="Divisão dos honorários com escritórios parceiros, por caso. Cada caso mantém a divisão registrada quando o acordo foi criado."
               />
-              <PartnershipAgreementsTable agreements={partnerships} processMap={processMap} clientMap={clientMap} partnerNames={partnerNames} />
+              <PartnershipAgreementsTable agreements={partnerships} clientMap={clientMap} partnerNames={partnerNames} />
             </Panel>
           )}
         </Can>

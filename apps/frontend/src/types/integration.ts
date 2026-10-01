@@ -14,6 +14,8 @@ export interface Integration extends OfficeScoped {
 
 export interface AIUsageDaily {
   date: ISODate;
+  /** Execuções de agentes no dia (métrica exibida na interface). */
+  runs: number;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
@@ -21,6 +23,7 @@ export interface AIUsageDaily {
 
 export interface AIUsageByAgent {
   agentId: ID;
+  runs: number;
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
@@ -28,6 +31,7 @@ export interface AIUsageByAgent {
 
 export interface AIUsageByModel {
   model: string;
+  runs: number;
   tokens: number;
   costUsd: number;
 }
@@ -37,6 +41,10 @@ export interface AIUsage {
   month: string;
   organization: string;
   primaryModel: string;
+  /** Execuções no mês e limite operacional configurado no backend. A interface não exibe tokens nem custo. */
+  runs: number;
+  runLimit: number;
+  /** Dados técnicos do provedor, mantidos para o backend (não exibidos). */
   inputTokens: number;
   outputTokens: number;
   estimatedCostUsd: number;

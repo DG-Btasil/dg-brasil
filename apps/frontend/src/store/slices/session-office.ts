@@ -65,73 +65,10 @@ export function createSessionSlice(set: SetState, get: GetState): SessionActions
 
 export function createOfficeSlice(set: SetState, get: GetState): OfficeActions {
   return {
-    createOffice: (input) => {
-      const now = nowISO();
-      const adminId = DEMO_USER_BY_ROLE.ADMIN;
-      const firstName = input.adminName.trim().split(/\s+/)[0] ?? input.adminName;
-      set((s) => ({
-        // Identidade do escritório começa em branco; os dados operacionais de
-        // demonstração (clientes, processos…) continuam associados a ele.
-        office: {
-          id: s.office.id,
-          name: input.officeName,
-          tradeName: input.officeName,
-          phone: input.phone,
-          email: input.adminEmail,
-          principalLawyer: input.adminName,
-          oab: input.oab,
-          statesOfPractice: [],
-          units: [],
-          onboarding: { completed: false, currentStep: 0, completedSteps: [], skippedSteps: [], answers: {} },
-          createdAt: now,
-          updatedAt: now,
-        },
-        users: updateById(s.users, adminId, (u) => ({
-          ...u,
-          name: input.adminName,
-          displayName: input.oab ? `Dr(a). ${firstName}` : firstName,
-          email: input.adminEmail,
-          oab: input.oab,
-          hasCompletedTour: false,
-        })),
-        session: { isAuthenticated: true, currentUserId: adminId },
-      }));
-      set((s) => ({
-        auditEvents: [auditEvent(s, "OFFICE_CREATED", "office", s.office.id, `Escritório ${input.officeName} criado.`), ...s.auditEvents],
-      }));
-    },
     updateOffice: (patch) =>
       set((s) => ({
         office: { ...s.office, ...patch, updatedAt: nowISO() },
         auditEvents: [auditEvent(s, "OFFICE_UPDATED", "office", s.office.id, "Dados do escritório atualizados."), ...s.auditEvents],
-      })),
-    saveOnboardingStep: (stepKey, answers, nextStep, skipped = false) =>
-      set((s) => {
-        const ob = s.office.onboarding;
-        return {
-          office: {
-            ...s.office,
-            onboarding: {
-              ...ob,
-              currentStep: nextStep,
-              answers: { ...ob.answers, [stepKey]: answers },
-              completedSteps: skipped ? ob.completedSteps.filter((k) => k !== stepKey) : Array.from(new Set([...ob.completedSteps, stepKey])),
-              skippedSteps: skipped ? Array.from(new Set([...ob.skippedSteps, stepKey])) : ob.skippedSteps.filter((k) => k !== stepKey),
-            },
-          },
-        };
-      }),
-    setOnboardingStep: (step) =>
-      set((s) => ({ office: { ...s.office, onboarding: { ...s.office.onboarding, currentStep: step } } })),
-    completeOnboarding: () =>
-      set((s) => ({
-        office: {
-          ...s.office,
-          onboarding: { ...s.office.onboarding, completed: true, completedAt: nowISO() },
-          updatedAt: nowISO(),
-        },
-        subscription: { ...s.subscription, implementationStatus: "COMPLETED" },
-        auditEvents: [auditEvent(s, "ONBOARDING_COMPLETED", "office", s.office.id, "Implantação do escritório concluída."), ...s.auditEvents],
       })),
     inviteUser: ({ name, email, role }) => {
       const s = get();

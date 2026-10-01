@@ -1,6 +1,6 @@
 import { nowISO } from "@/lib/clock";
 import { createId } from "@/lib/ids";
-import type { Client, Deadline, Notification, Process, ProcessEvent } from "@/types";
+import type { Client, Deadline, LegalCase, Notification, Process, ProcessEvent } from "@/types";
 import { actorOf, auditEvent, integrityNotification, type GetState, type SetState } from "../helpers";
 import type { ImportActions, ImportResult } from "../types";
 import { clientName } from "./clients-analyses";
@@ -23,6 +23,7 @@ export function createImportSlice(set: SetState, get: GetState): ImportActions {
       const at = nowISO();
       const actor = actorOf(s);
       const refToId = new Map<string, string>();
+      const newCases: LegalCase[] = [];
       let clients = [...s.clients];
       let processes = [...s.processes];
       const newEvents: ProcessEvent[] = [];
@@ -108,13 +109,33 @@ export function createImportSlice(set: SetState, get: GetState): ImportActions {
             createdAt: at,
           });
         }
+        // Todo processo pertence a um caso: a importação cria o caso próprio correspondente.
+        const legalCaseId = createId("cas");
+        newCases.push({
+          id: legalCaseId,
+          officeId: s.office.id,
+          clientId,
+          title: data.title,
+          area: data.area,
+          caseType: data.actionType,
+          originOfficeId: s.office.id,
+          createdByOfficeId: s.office.id,
+          createdBy: actor.id,
+          assignedLawyerId: data.responsibleUserId || null,
+          summary: `Caso criado pela importação do arquivo ${plan.fileName}.`,
+          opposingParty: data.opposingParty,
+          status: data.status === "CLOSED" ? "CLOSED" : "IN_PROGRESS",
+          acceptedAt: at,
+          createdAt: at,
+          updatedAt: at,
+        });
         const process: Process = {
           ...data,
+          legalCaseId,
           id,
           officeId: s.office.id,
           clientId,
           origin: "IMPORT",
-          relationshipOrigin: "INTERNAL",
           clientLinkStatus: pendingLink ? "PENDING_LINK" : undefined,
           createdAt: at,
           updatedAt: at,

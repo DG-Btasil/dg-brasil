@@ -43,23 +43,25 @@ inicial.
 
 | Papel | Usuário fictício | Acessa |
 |---|---|---|
-| Administrador | Dra. Marina Alves — `marina@alvesmoura.exemplo` | Tudo: Home, Clientes, Processos, Revisões, Financeiro, DG Brasil, Configurações |
-| Advogado | Dr. Rafael Moura — `rafael@alvesmoura.exemplo` | Home, Clientes, Processos, Revisões, configurações permitidas |
-| Assistente | Camila Duarte — `camila@alvesmoura.exemplo` | Home, Clientes, Processos |
+| Administrador | Bárbara Cardoso — `barbara@barbaracardoso.exemplo` | Tudo, inclusive Financeiro, DG Brasil (Referências) e alteração de origem de caso aceito |
+| Advogado | Cláudio — `claudio@barbaracardoso.exemplo` | Home, Clientes, Casos (aceite/rejeição), Processos, Revisões |
+| Assistente | Renata — `renata@barbaracardoso.exemplo` | Home, Clientes, Casos, Processos |
+| Administrador do parceiro | Almeida Advocacia | Portal: Início, Clientes, Casos, Processos, Pendências, Financeiro |
+| Usuário do parceiro | Almeida Advocacia | Portal sem valores de parceria |
 
 Na tela de login, a senha não é verificada (protótipo). O convite de demonstração
 fica em `/convite/demo-convite`.
 
 ## Roteiro sugerido para avaliar
 
-1. `/criar-escritorio` → onboarding de 13 etapas → Home
-2. Clientes → **Ana Cláudia** (documentação completa) → *Iniciar análise jurídica*
-3. Na aba Análise: *Simular conclusão do agente (demonstração)* → abre uma revisão
-4. Revisões → aprovar → a análise conclui e nasce um processo em pré-ajuizamento
-5. Processos → Francisco (prazo de réplica vence hoje) → abas Movimentações e Prazos
-6. Financeiro (Admin) → novo contrato a partir de um modelo de honorários
-7. DG Brasil → Tutor DG → "Meu agente de petições está fazendo introduções muito longas" → aplicar → Histórico
-8. Simular perfil **Assistente** e conferir que Revisões, Financeiro e DG Brasil somem
+1. Entrar como **Administrador** → Home (casos ativos, aguardando análise, novos casos de parceiros)
+2. Casos → **Novo caso** (cliente, área, tipo, origem, documentos) → *Enviar para análise*
+3. No caso: *Iniciar análise* → *Simular conclusão do agente* → revisão em Revisões
+4. *Aceitar* → modal "Definir advogado responsável" → caso aceito (origem parceiro cria o acordo de parceria)
+5. Aba Processos → *Cadastrar processo* (um caso pode ter vários processos)
+6. Caso de parceiro → *Rejeitar* com "Comunicação ao parceiro" e "Nota interna"
+7. Entrar como **Administrador do parceiro** → Casos → ver "Não aceito" com o motivo público; *Novo caso* → *Confirmar e enviar para Bárbara Cardoso Advocacia*
+8. DG Brasil → Referências → *Adicionar referência*
 
 ## Estrutura
 
@@ -115,7 +117,7 @@ assíncronos. Hoje a implementação é `repositories/mock`; o backend entra imp
 - Upload de documentos registra só metadados; nenhum arquivo é enviado.
 - Os agentes não rodam: a conclusão de uma análise é disparada explicitamente por um
   botão de demonstração, sem timers fingindo processamento.
-- O Tutor DG e o assistente de onboarding respondem com cenários pré-definidos.
-- Nenhuma credencial é pedida nem guardada. A conexão com a Claude Platform é só interface.
+- O Tutor DG responde com cenários pré-definidos.
+- Nenhuma credencial é pedida nem guardada. A Conexão Claude é só interface.
 - O protótipo **não** é uma declaração de conformidade com a LGPD. Os requisitos estão
   em [docs/BACKEND_HANDOFF.md](docs/BACKEND_HANDOFF.md).

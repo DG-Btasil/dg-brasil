@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CLIENT_POLE_LABEL, CLIENT_POLES, DEADLINE_TYPE_LABEL, DEADLINE_TYPES, PROCESS_PHASE_LABEL, PROCESS_PHASES, PROCESS_STATUS_LABEL, PROCESS_STATUSES } from "@/lib/constants/status";
 import { BRAZILIAN_STATES, COURTS, LEGAL_AREA_LABEL, LEGAL_AREAS } from "@/lib/constants/legal";
@@ -10,9 +10,8 @@ import { parseCurrencyInput } from "@/lib/validation";
 import { Button } from "@/components/ui/button";
 import { Field, FormSection, Input, MaskedInput, Select, Textarea } from "@/components/ui/form";
 import { Panel, PanelFooter } from "@/components/ui/panel";
-import { usePermission } from "@/features/auth/hooks";
-import { usePartnerOffices } from "@/features/partners/hooks";
-import { useClients, useLawyerOptions, type NewProcessInput } from "../hooks";
+import { useLegalCases, useOfficeNames } from "@/features/cases/hooks";
+import { useClientMap, useLawyerOptions, type NewProcessInput } from "../hooks";
 import { processFormSchema, type ProcessFormInput, type ProcessFormValues } from "../schemas";
 import { clientDisplayName } from "../utils";
 
@@ -22,7 +21,7 @@ const blank = (v?: string) => (v && v.trim() ? v.trim() : undefined);
 
 function toInput(v: ProcessFormValues): NewProcessInput {
   return {
-    clientId: v.clientId,
+    legalCaseId: v.legalCaseId,
     cnj: blank(v.cnj),
     title: v.title,
     court: blank(v.court),
@@ -40,8 +39,6 @@ function toInput(v: ProcessFormValues): NewProcessInput {
     status: v.status,
     phase: v.phase,
     notes: blank(v.notes),
-    // Origem relacional: define o acordo financeiro (divisão copiada do parceiro na criação).
-    ...(blank(v.originPartnerOfficeId) ? { relationshipOrigin: "PARTNER" as const, originPartnerOfficeId: blank(v.originPartnerOfficeId) } : { relationshipOrigin: "INTERNAL" as const }),
     // Vencimento é obrigatório; descrição e tipo têm padrão para não travar o cadastro.
     nextDeadline: {
       title: v.deadlineTitle?.trim() || DEFAULT_DEADLINE_TITLE,
@@ -52,37 +49,43 @@ function toInput(v: ProcessFormValues): NewProcessInput {
 }
 
 export function ProcessForm({
-  initialClientId,
+  initialCaseId,
+  clientFilter,
   onSubmit,
   onCancel,
 }: {
-  initialClientId: string;
+  initialCaseId: string;
+  /** Restringe os casos a um cliente (ex.: vindo da página do cliente). */
+  clientFilter?: string;
   onSubmit: (input: NewProcessInput) => Promise<void>;
   onCancel: () => void;
 }) {
-  const clients = useClients();
+  const cases = useLegalCases();
+  const clientMap = useClientMap();
+  const officeName = useOfficeNames();
   const lawyers = useLawyerOptions();
-  const canPartners = usePermission("partners.view");
-  const partners = usePartnerOffices();
-  const partnerOptions = useMemo(
-    () => partners.filter((p) => p.status === "ACTIVE").map((p) => ({ value: p.id, label: `${p.name} (${p.partnershipPercentage}% / ${p.ownerPercentage}%)` })),
-    [partners],
+  // Processo só entra em caso enviado ou aceito (não em rascunho, rejeitado ou arquivado).
+  const caseOptions = useMemo(
+    () =>
+      cases
+        .filter((c) => c.status !== "DRAFT" && c.status !== "REJECTED" && c.status !== "ARCHIVED" && (!clientFilter || c.clientId === clientFilter))
+        .map((c) => ({ value: c.id, label: `${c.title} · ${clientDisplayName(clientMap.get(c.clientId))}` }))
+        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+    [cases, clientMap, clientFilter],
   );
-  const clientOptions = useMemo(
-    () => clients.map((c) => ({ value: c.id, label: clientDisplayName(c) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
-    [clients],
-  );
-  const initialResponsible = clients.find((c) => c.id === initialClientId)?.responsibleUserId;
+  const initialCase = cases.find((c) => c.id === initialCaseId);
+  const initialResponsible = initialCase?.assignedLawyerId ?? (initialCase ? clientMap.get(initialCase.clientId)?.responsibleUserId : undefined);
 
   const {
     register,
     handleSubmit,
     setValue,
+    control,
     formState: { errors, isSubmitting, dirtyFields },
   } = useForm<ProcessFormInput, unknown, ProcessFormValues>({
     resolver: zodResolver(processFormSchema),
     defaultValues: {
-      clientId: initialClientId,
+      legalCaseId: initialCaseId,
       responsibleUserId: lawyers.some((l) => l.value === initialResponsible) ? initialResponsible : "",
       status: "PRE_FILING",
       phase: "PRELIMINARY",
@@ -90,6 +93,9 @@ export function ProcessForm({
     },
     shouldFocusError: true,
   });
+
+  const caseId = useWatch({ control, name: "legalCaseId" });
+  const selectedCase = cases.find((c) => c.id === caseId);
 
   // Status padrão acompanha o CNJ enquanto o usuário não escolhe outro.
   const cnjField = register("cnj", {
@@ -104,9 +110,9 @@ export function ProcessForm({
   return (
     <form noValidate onSubmit={handleSubmit((values) => onSubmit(toInput(values)))}>
       <Panel className="px-7">
-        <FormSection title="Cliente e identificação" description="Todo processo pertence a um cliente. O número CNJ pode ficar em branco em casos pré-ajuizamento.">
-          <Field label="Cliente" requirement="required" error={errors.clientId?.message}>
-            {(a) => <Select {...a} {...register("clientId")} options={clientOptions} placeholder="Selecione o cliente" />}
+        <FormSection title="Caso e identificação" description="Todo processo pertence a um caso. O cliente e a origem são os do caso. O número CNJ pode ficar em branco em pré-ajuizamento.">
+          <Field label="Caso relacionado" requirement="required" error={errors.legalCaseId?.message} hint={selectedCase ? `Origem do caso: ${officeName(selectedCase.originOfficeId)}` : undefined}>
+            {(a) => <Select {...a} {...register("legalCaseId")} options={caseOptions} placeholder="Selecione o caso" />}
           </Field>
           <Field label="Número CNJ" requirement="optional" hint="Formato 0000000-00.0000.0.00.0000" error={errors.cnj?.message}>
             {(a) => <MaskedInput {...a} {...cnjField} mask="cnj" placeholder="0000000-00.0000.0.00.0000" />}
@@ -114,16 +120,6 @@ export function ProcessForm({
           <Field label="Nome resumido" requirement="required" className="col-span-2" hint="Como a equipe se refere ao caso, ex.: “Revisional de consignados”." error={errors.title?.message}>
             {(a) => <Input {...a} {...register("title")} />}
           </Field>
-          {canPartners && (
-            <Field
-              label="Origem do caso"
-              requirement="optional"
-              className="col-span-2"
-              hint="Caso originado por parceiro recebe a divisão vigente do parceiro, copiada para este processo."
-            >
-              {(a) => <Select {...a} {...register("originPartnerOfficeId")} options={partnerOptions} placeholder="Próprio — Bárbara Cardoso Advocacia" />}
-            </Field>
-          )}
         </FormSection>
 
         <FormSection title="Juízo" description="Onde o processo tramita ou tramitará.">

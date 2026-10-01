@@ -13,7 +13,7 @@ import { formatCurrency, formatDate } from "@/lib/formatting";
 import type { FeeModel } from "@/types";
 import type { AgreementRow } from "../utils";
 import { AgreementDrawer } from "./agreement-drawer";
-import { FeeModelCell, ProcessCell } from "./agreement-summary";
+import { FeeModelCell, CaseCell } from "./agreement-summary";
 
 type SortKey = "client" | "total" | "received" | "pending" | "next";
 const NO_MODEL = "__none__";
@@ -33,7 +33,7 @@ export function AgreementsTable({ rows, feeModels }: { rows: AgreementRow[]; fee
       if (model === NO_MODEL && r.agreement.feeModelId) return false;
       if (model && model !== NO_MODEL && r.agreement.feeModelId !== model) return false;
       if (!q) return true;
-      return [r.clientName, r.process?.title, r.process?.cnj, r.feeModel?.name].some((v) => v?.toLowerCase().includes(q));
+      return [r.clientName, r.legalCase?.title, r.feeModel?.name].some((v) => v?.toLowerCase().includes(q));
     });
     if (!sortKey) return list;
     const getter: Record<SortKey, (r: AgreementRow) => string | number | undefined> = {
@@ -70,7 +70,7 @@ export function AgreementsTable({ rows, feeModels }: { rows: AgreementRow[]; fee
         <EmptyState
           icon={FileSignature}
           title="Nenhum contrato de honorários registrado."
-          description="Associe um modelo de honorários a um cliente ou processo para gerar o cronograma de pagamentos."
+          description="Associe um modelo de honorários a um caso para gerar o cronograma de pagamentos."
           action={
             <ButtonLink href="/financeiro/contratos/novo" icon={<Plus className="size-4" aria-hidden />}>
               Novo contrato de honorários
@@ -81,8 +81,8 @@ export function AgreementsTable({ rows, feeModels }: { rows: AgreementRow[]; fee
         <>
           <div className="flex flex-wrap items-end gap-3 border-b border-line px-5 py-3">
             <label className="w-[280px]">
-              <span className="sr-only">Buscar por cliente, processo ou modelo</span>
-              <SearchInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar cliente, processo ou modelo" />
+              <span className="sr-only">Buscar por cliente, caso ou modelo</span>
+              <SearchInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar cliente, caso ou modelo" />
             </label>
             <label className="w-[180px]">
               <span className="sr-only">Filtrar por status</span>
@@ -105,7 +105,7 @@ export function AgreementsTable({ rows, feeModels }: { rows: AgreementRow[]; fee
               <THead>
                 <tr>
                   <SortableTh label="Cliente" sortKey="client" {...sortProps} />
-                  <Th>Processo</Th>
+                  <Th>Caso</Th>
                   <Th>Modelo de honorários</Th>
                   <SortableTh label="Contratado" sortKey="total" className="text-right" {...sortProps} />
                   <SortableTh label="Recebido" sortKey="received" className="text-right" {...sortProps} />
@@ -122,7 +122,7 @@ export function AgreementsTable({ rows, feeModels }: { rows: AgreementRow[]; fee
                   <Tr key={r.agreement.id} interactive onClick={() => setSelectedId(r.agreement.id)}>
                     <Td className="font-medium text-foreground">{r.clientName}</Td>
                     <Td className="max-w-[240px] truncate" onClick={(e) => e.stopPropagation()}>
-                      <ProcessCell row={r} />
+                      <CaseCell row={r} />
                     </Td>
                     <Td>
                       <FeeModelCell row={r} />

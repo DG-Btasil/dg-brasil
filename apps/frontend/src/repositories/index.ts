@@ -4,6 +4,8 @@
  */
 import {
   mockAnalysisRepository,
+  mockCaseRepository,
+  mockReferenceRepository,
   mockClientRepository,
   mockDgRepository,
   mockDocumentRepository,
@@ -23,6 +25,7 @@ export const repositories = {
   office: mockOfficeRepository,
   users: mockUserRepository,
   clients: mockClientRepository,
+  cases: mockCaseRepository,
   documents: mockDocumentRepository,
   analyses: mockAnalysisRepository,
   processes: mockProcessRepository,
@@ -32,6 +35,7 @@ export const repositories = {
   dg: mockDgRepository,
   integrations: mockIntegrationRepository,
   imports: mockImportRepository,
+  references: mockReferenceRepository,
   partners: mockPartnerRepository,
   partnerPortal: mockPartnerPortalRepository,
 } as const;

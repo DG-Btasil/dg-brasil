@@ -23,12 +23,12 @@ export function FeeModelCell({ row }: { row: AgreementRow }) {
   );
 }
 
-export function ProcessCell({ row }: { row: AgreementRow }) {
-  if (!row.agreement.processId) return <span className="text-muted">Todos os processos do cliente</span>;
-  if (!row.process) return <span className="text-subtle">Processo não encontrado</span>;
+/** Caso do contrato (o contrato abrange todos os processos do caso). */
+export function CaseCell({ row }: { row: AgreementRow }) {
+  if (!row.legalCase) return <span className="text-subtle">Caso não encontrado</span>;
   return (
-    <Link href={`/processos/${row.process.id}`} className="text-navy-700 underline-offset-2 hover:underline">
-      {row.process.title}
+    <Link href={`/casos/${row.legalCase.id}?aba=financeiro`} className="text-navy-700 underline-offset-2 hover:underline">
+      {row.legalCase.title}
     </Link>
   );
 }

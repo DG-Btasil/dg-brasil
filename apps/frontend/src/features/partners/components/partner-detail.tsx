@@ -12,8 +12,6 @@ import {
   PARTNER_OFFICE_STATUS_TONE,
   PROCESS_STATUS_LABEL,
   PROCESS_STATUS_TONE,
-  SUBMISSION_STATUS_LABEL,
-  SUBMISSION_STATUS_TONE,
   USER_STATUS_LABEL,
   USER_STATUS_TONE,
   type PartnerOfficeStatus,
@@ -43,16 +41,18 @@ import {
   usePartnerProcesses,
   usePartnerRequests,
   usePartnershipViews,
-  usePartnerSubmissions,
+  usePartnerCases,
   usePartnerUsers,
   useProcessMap,
 } from "../hooks";
+import { useCaseMap, useCaseRows } from "@/features/cases/hooks";
+import { CaseTable } from "@/features/cases/components/case-table";
 import { PartnershipAgreementsTable } from "./agreements-table";
 import { ChangeShareDialog, InvitePartnerUserDialog, NewPartnerRequestDialog } from "./partner-dialogs";
 import { PartnerEditDrawer } from "./partner-form";
 import { PartnerRequestList } from "./request-list";
 
-const TAB_KEYS = ["visao-geral", "usuarios", "clientes", "processos", "financeiro", "atividade"] as const;
+const TAB_KEYS = ["visao-geral", "usuarios", "clientes", "casos", "processos", "financeiro", "atividade"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 const STATUS_OPTIONS = PARTNER_OFFICE_STATUSES.map((s) => ({ value: s, label: PARTNER_OFFICE_STATUS_LABEL[s] }));
@@ -67,6 +67,7 @@ export function PartnerDetail({ id }: { id: string }) {
   const users = usePartnerUsers(id);
   const clients = usePartnerClients(id);
   const processes = usePartnerProcesses(id);
+  const cases = usePartnerCases(id);
   const requests = usePartnerRequests({ partnerOfficeId: id });
   const openRequests = requests.filter((r) => r.status === "OPEN");
 
@@ -75,12 +76,13 @@ export function PartnerDetail({ id }: { id: string }) {
       { key: "visao-geral", label: "Visão Geral" },
       { key: "usuarios", label: "Usuários", count: users.length },
       { key: "clientes", label: "Clientes", count: clients.length },
+      { key: "casos", label: "Casos", count: cases.length },
       { key: "processos", label: "Processos", count: processes.length },
     ];
     if (can("partners.finance.view")) items.push({ key: "financeiro", label: "Financeiro" });
     items.push({ key: "atividade", label: "Atividade" });
     return items;
-  }, [can, users.length, clients.length, processes.length]);
+  }, [can, users.length, clients.length, cases.length, processes.length]);
 
   if (!partner) {
     return (
@@ -138,6 +140,7 @@ export function PartnerDetail({ id }: { id: string }) {
         )}
         {active === "usuarios" && <PartnerUsersPanel partnerId={id} onInvite={() => setDialog("invite")} />}
         {active === "clientes" && <ClientsTab partnerId={id} />}
+        {active === "casos" && <CasesTab partnerId={id} />}
         {active === "processos" && <ProcessesTab partnerId={id} />}
         {active === "financeiro" && <FinanceTab partnerId={id} />}
         {active === "atividade" && <ActivityTab partnerId={id} />}
@@ -177,7 +180,7 @@ function OverviewTab({
   const actions = usePartnerActions();
   const can = useCan();
   const requests = usePartnerRequests({ partnerOfficeId: partnerId }).filter((r) => r.status === "OPEN");
-  const submissions = usePartnerSubmissions().filter((s) => s.partnerOfficeId === partnerId && s.status === "SUBMITTED");
+  const submitted = usePartnerCases(partnerId).filter((c) => c.status === "SUBMITTED");
   const clientMap = useClientMap();
   const processMap = useProcessMap();
   const a = partner.address;
@@ -187,7 +190,7 @@ function OverviewTab({
       <div className="col-span-12 grid grid-cols-4 gap-4">
         <Stat label="Clientes relacionados" value={clientCount} icon={Handshake} />
         <Stat label="Processos" value={processCount} />
-        <Stat label="Casos novos aguardando" value={submissions.length} tone={submissions.length ? "gold" : "neutral"} />
+        <Stat label="Casos novos aguardando" value={submitted.length} tone={submitted.length ? "gold" : "neutral"} />
         <Stat label="Pendências em aberto" value={openRequests} tone={openRequests ? "warning" : "neutral"} />
       </div>
 
@@ -403,15 +406,25 @@ function ClientsTab({ partnerId }: { partnerId: string }) {
   );
 }
 
+function CasesTab({ partnerId }: { partnerId: string }) {
+  const all = useCaseRows();
+  const rows = useMemo(() => all.filter((r) => r.legalCase.originOfficeId === partnerId || r.legalCase.createdByOfficeId === partnerId), [all, partnerId]);
+  return (
+    <Panel>
+      <PanelHeader title="Casos do parceiro" description="Casos com origem neste parceiro ou enviados por ele." />
+      {rows.length === 0 ? <EmptyState compact title="Nenhum caso deste parceiro." /> : <CaseTable rows={rows} />}
+    </Panel>
+  );
+}
+
 function ProcessesTab({ partnerId }: { partnerId: string }) {
   const processes = usePartnerProcesses(partnerId);
   const clientMap = useClientMap();
-  const submissions = usePartnerSubmissions();
-  const byProcess = useMemo(() => new Map(submissions.filter((s) => s.processId).map((s) => [s.processId as string, s])), [submissions]);
+  const caseMap = useCaseMap();
   const showValue = useCan()("processes.caseValue.view");
   return (
     <Panel>
-      <PanelHeader title="Processos originados pelo parceiro" description="Origem relacional do caso — independe de quem cadastrou o cliente." />
+      <PanelHeader title="Processos dos casos do parceiro" description="A origem é do caso — independe de quem cadastrou o cliente." />
       {processes.length === 0 ? (
         <EmptyState compact title="Nenhum processo originado por este parceiro." />
       ) : (
@@ -421,14 +434,14 @@ function ProcessesTab({ partnerId }: { partnerId: string }) {
               <Th>Processo</Th>
               <Th>Cliente</Th>
               <Th>Status</Th>
-              <Th>Caso enviado</Th>
+              <Th>Caso</Th>
               {showValue && <Th className="text-right">Valor da causa</Th>}
               <Th>Atualização</Th>
             </tr>
           </THead>
           <TBody>
             {processes.map((p) => {
-              const submission = byProcess.get(p.id);
+              const legalCase = caseMap.get(p.legalCaseId);
               return (
                 <Tr key={p.id}>
                   <Td>
@@ -441,7 +454,15 @@ function ProcessesTab({ partnerId }: { partnerId: string }) {
                   <Td>
                     <StatusBadge status={p.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
                   </Td>
-                  <Td>{submission ? <StatusBadge status={submission.status} labels={SUBMISSION_STATUS_LABEL} tones={SUBMISSION_STATUS_TONE} /> : <span className="text-[12px] text-subtle">Cadastro direto</span>}</Td>
+                  <Td>
+                    {legalCase ? (
+                      <Link href={`/casos/${legalCase.id}`} className="text-[12.5px] text-navy hover:underline underline-offset-2">
+                        {legalCase.title}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
                   {showValue && <Td className="text-right tabular">{formatCurrency(p.caseValue)}</Td>}
                   <Td className="text-[12px] text-muted">{formatEventTime(p.lastMovementAt ?? p.updatedAt)}</Td>
                 </Tr>
@@ -458,7 +479,6 @@ function FinanceTab({ partnerId }: { partnerId: string }) {
   const summary = usePartnerFinancialSummary(partnerId);
   const views = usePartnershipViews().filter((v) => v.partnerOfficeId === partnerId);
   const clientMap = useClientMap();
-  const processMap = useProcessMap();
   return (
     <div className="space-y-5">
       <p className="text-[12.5px] text-muted">Somente a relação financeira entre a Bárbara Cardoso Advocacia e este parceiro.</p>
@@ -472,7 +492,7 @@ function FinanceTab({ partnerId }: { partnerId: string }) {
       )}
       <Panel>
         <PanelHeader title="Casos com acordo de parceria" />
-        <PartnershipAgreementsTable agreements={views} clientMap={clientMap} processMap={processMap} />
+        <PartnershipAgreementsTable agreements={views} clientMap={clientMap} />
       </Panel>
     </div>
   );

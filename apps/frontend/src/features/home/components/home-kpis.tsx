@@ -1,56 +1,32 @@
 "use client";
 
-import { Briefcase, CalendarClock, ClipboardCheck, FileClock, FileSearch, History } from "lucide-react";
+import { AlarmClock, Briefcase, ClipboardCheck, FolderOpen, Hourglass, History } from "lucide-react";
 import { Stat } from "@/components/ui/display";
 import { pluralize } from "@/lib/formatting";
 import { useCan } from "@/features/auth/hooks";
 import { useHomeKpis } from "../hooks";
 
 /**
- * Linha de indicadores. O conteúdo varia por PERMISSÃO:
- * quem não tem "reviews.view" vê indicadores operacionais no lugar.
+ * Linha de indicadores: casos, processos, revisões e prazos. O conteúdo varia
+ * por PERMISSÃO: quem não tem "reviews.view" vê um indicador operacional no lugar.
  */
 export function HomeKpis() {
   const k = useHomeKpis();
   const can = useCan();
   const canReviews = can("reviews.view");
-  const canAnalyses = can("analyses.start");
 
   return (
-    <section aria-label="Indicadores do escritório" data-tour="home-kpis" className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+    <section aria-label="Indicadores do escritório" data-tour="home-kpis" className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+      <Stat label="Casos ativos" value={k.activeCases} icon={FolderOpen} href="/casos" hint="Em análise, aceitos e em andamento" />
       <Stat
-        label="Processos ativos"
-        value={k.activeProcesses}
-        icon={Briefcase}
-        href="/processos"
-        hint="Todos os status, exceto encerrados"
+        label="Casos aguardando análise"
+        value={k.casesAwaitingAnalysis}
+        icon={Hourglass}
+        tone={k.casesWithoutLawyer > 0 ? "warning" : "neutral"}
+        href="/casos"
+        hint={k.casesWithoutLawyer > 0 ? `${pluralize(k.casesWithoutLawyer, "sem advogado responsável", "sem advogado responsável")}` : "Aguardando decisão da equipe"}
       />
-      {canAnalyses ? (
-        <Stat
-          label="Análises em andamento"
-          value={k.analysesInProgress}
-          icon={FileSearch}
-          href="/clientes"
-          hint={k.analysesWaitingDocs > 0 ? `${pluralize(k.analysesWaitingDocs, "aguarda", "aguardam")} documentos` : "Nenhuma bloqueada por documentos"}
-        />
-      ) : (
-        <Stat
-          label="Clientes aguardando documentos"
-          value={k.clientsWaitingDocs}
-          icon={FileClock}
-          tone={k.clientsWaitingDocs > 0 ? "warning" : "neutral"}
-          href="/clientes"
-          hint="Pendências de documentação"
-        />
-      )}
-      <Stat
-        label="Prazos nos próximos 7 dias"
-        value={k.upcomingDeadlines}
-        icon={CalendarClock}
-        tone={k.overdueDeadlines > 0 ? "danger" : "neutral"}
-        href="/processos"
-        hint={k.overdueDeadlines > 0 ? `Atenção: ${pluralize(k.overdueDeadlines, "prazo vencido", "prazos vencidos")}` : "Somente prazos em aberto"}
-      />
+      <Stat label="Processos ativos" value={k.activeProcesses} icon={Briefcase} href="/processos" hint="Todos os status, exceto encerrados" />
       {canReviews ? (
         <Stat
           label="Revisões pendentes"
@@ -61,14 +37,16 @@ export function HomeKpis() {
           hint={k.urgentReviews > 0 ? `${pluralize(k.urgentReviews, "urgente", "urgentes")}` : "Nenhuma marcada como urgente"}
         />
       ) : (
-        <Stat
-          label="Processos com atualização recente"
-          value={k.recentlyUpdatedProcesses}
-          icon={History}
-          href="/processos"
-          hint="Movimentados nos últimos 7 dias"
-        />
+        <Stat label="Processos com atualização recente" value={k.recentlyUpdatedProcesses} icon={History} href="/processos" hint="Movimentados nos últimos 7 dias" />
       )}
+      <Stat
+        label="Prazos urgentes"
+        value={k.urgentDeadlines}
+        icon={AlarmClock}
+        tone={k.overdueDeadlines > 0 ? "danger" : k.urgentDeadlines > 0 ? "warning" : "neutral"}
+        href="/processos"
+        hint={k.overdueDeadlines > 0 ? `Atenção: ${pluralize(k.overdueDeadlines, "prazo vencido", "prazos vencidos")}` : "Vencidos ou em até 3 dias"}
+      />
     </section>
   );
 }

@@ -127,6 +127,7 @@ const REQUEST_TYPE_OPTIONS = PARTNER_REQUEST_TYPES.map((t) => ({ value: t, label
 export function NewPartnerRequestDialog({
   partnerOfficeId,
   clientId,
+  legalCaseId,
   processId,
   clientOptions,
   open,
@@ -134,6 +135,7 @@ export function NewPartnerRequestDialog({
 }: {
   partnerOfficeId: ID;
   clientId?: ID;
+  legalCaseId?: ID;
   processId?: ID;
   /** Quando não há cliente fixo, permite escolher entre os clientes do parceiro. */
   clientOptions?: { value: ID; label: string }[];
@@ -158,6 +160,7 @@ export function NewPartnerRequestDialog({
       description: v.description,
       dueDate: v.dueDate || undefined,
       clientId: clientId ?? (selectedClient || undefined),
+      legalCaseId,
       processId,
     });
     if (id) {

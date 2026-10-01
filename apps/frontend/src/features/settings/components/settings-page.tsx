@@ -8,7 +8,6 @@ import { cn } from "@/lib/cn";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import { SECTION_META, useAllowedSections, type SettingsSection } from "../hooks";
 import { AiSection } from "./sections/ai-section";
-import { BillingSection } from "./sections/billing-section";
 import { FeesSection } from "./sections/fees-section";
 import { GeneralSection } from "./sections/general-section";
 import { IntegrationsSection } from "./sections/integrations-section";
@@ -24,7 +23,6 @@ const SECTION_COMPONENT: Record<SettingsSection, ComponentType> = {
   honorarios: FeesSection,
   notificacoes: NotificationsSection,
   seguranca: SecuritySection,
-  assinatura: BillingSection,
 };
 
 export function SettingsPage() {

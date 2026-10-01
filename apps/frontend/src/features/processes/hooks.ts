@@ -191,22 +191,19 @@ export interface ProcessDeletionImpact {
   openDeadlines: number;
   documents: number;
   /** Só é contado para quem pode ver o financeiro. */
-  agreements: number;
 }
 
 /** O que existe associado ao processo, para avisar antes da exclusão. */
-export function useProcessDeletionImpact(processId: ID, includeFinance: boolean): ProcessDeletionImpact {
+export function useProcessDeletionImpact(processId: ID): ProcessDeletionImpact {
   const reviews = useScopedStore((s) => s.reviews);
   const deadlines = useScopedStore((s) => s.deadlines);
   const documents = useScopedStore((s) => s.documents);
-  const agreements = useScopedStore((s) => s.agreements);
   return useMemo(
     () => ({
       reviews: reviews.filter((r) => r.processId === processId).length,
       openDeadlines: deadlines.filter((d) => d.processId === processId && d.status === "OPEN").length,
       documents: documents.filter((d) => d.processId === processId).length,
-      agreements: includeFinance ? agreements.filter((a) => a.processId === processId).length : 0,
     }),
-    [reviews, deadlines, documents, agreements, processId, includeFinance],
+    [reviews, deadlines, documents, processId],
   );
 }

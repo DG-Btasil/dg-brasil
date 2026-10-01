@@ -8,17 +8,16 @@ import type {
   ClientOfficeRelationship,
   Invitation,
   Notification,
-  PartnerCaseSubmission,
   PartnerOffice,
   PartnerRequest,
   Process,
   ProcessEvent,
-  ProcessPartnershipAgreement,
+  CasePartnershipAgreement,
   Review,
   User,
 } from "@/types";
 import type { DocumentCategory, DocumentStatus } from "@/lib/constants/status";
-import { A, C, FICTITIOUS_BANKS, OFFICE_ID, PC, PO, PP, PR, PU, S, U } from "../ids";
+import { A, C, FICTITIOUS_BANKS, OFFICE_ID, PC, PCS, PO, PP, PR, PU, S, U } from "../ids";
 
 /*
  * Escritórios parceiros, usuários, clientes e casos — TODOS FICTÍCIOS.
@@ -346,12 +345,12 @@ export function buildClientRelationships(ownerClientIds: string[]): ClientOffice
 /* ------------------------------------------------------------------ */
 
 export function buildPartnerProcesses(): Process[] {
-  const partnerProcess = (p: Omit<Process, "officeId" | "relationshipOrigin">): Process => ({ ...o, relationshipOrigin: "PARTNER", ...p });
+  const partnerProcess = (p: Omit<Process, "officeId">): Process => ({ ...o, ...p });
   return [
     partnerProcess({
       id: PP.sandraRevisional,
+      legalCaseId: PCS.sandraRevisional,
       clientId: PC.sandra,
-      originPartnerOfficeId: PO.almeida,
       cnj: "0004410-22.2026.8.13.0000",
       title: "Revisional de empréstimo consignado",
       court: "TJMG",
@@ -370,53 +369,16 @@ export function buildPartnerProcesses(): Process[] {
       status: "ACTIVE",
       phase: "PLEADINGS",
       origin: "MANUAL",
-      summary: "Caso enviado pela Almeida Advocacia. Revisão de contrato consignado com taxa acima do parâmetro.",
+      summary: "Revisão de contrato consignado com taxa acima do parâmetro.",
       notes: "Nota interna: avaliar pedido de tutela na réplica.",
       lastMovementAt: daysFromNowISO(-1, 16),
       createdAt: daysFromNowISO(-37, 10),
       updatedAt: daysFromNowISO(-1, 16),
     }),
     partnerProcess({
-      id: PP.otavioConsignado,
-      clientId: PC.otavio,
-      originPartnerOfficeId: PO.almeida,
-      title: "Descontos de consignado não reconhecidos",
-      area: "BANKING",
-      actionType: "Ação declaratória de inexistência de débito",
-      clientPole: "ACTIVE",
-      opposingParty: FICTITIOUS_BANKS.crediplus,
-      responsibleUserId: U.claudio,
-      status: "PRE_FILING",
-      phase: "PRELIMINARY",
-      origin: "MANUAL",
-      summary: "Cliente relata descontos em benefício sem reconhecer a contratação. Seis documentos enviados pelo parceiro.",
-      lastMovementAt: minutesAgoISO(18),
-      createdAt: minutesAgoISO(18),
-      updatedAt: minutesAgoISO(18),
-    }),
-    partnerProcess({
-      id: PP.merceariaCapitalGiro,
-      clientId: PC.mercearia,
-      originPartnerOfficeId: PO.almeida,
-      title: "Revisão de contrato de capital de giro",
-      area: "BANKING",
-      actionType: "Ação revisional de contrato bancário",
-      clientPole: "ACTIVE",
-      opposingParty: FICTITIOUS_BANKS.atlantico,
-      responsibleUserId: U.beatriz,
-      caseValue: 85000,
-      status: "WAITING_CLIENT",
-      phase: "PRELIMINARY",
-      origin: "MANUAL",
-      summary: "Contrato de capital de giro com capitalização questionada. Aguardando extratos do parceiro.",
-      lastMovementAt: daysFromNowISO(-4, 10),
-      createdAt: daysFromNowISO(-12, 14),
-      updatedAt: daysFromNowISO(-4, 10),
-    }),
-    partnerProcess({
       id: PP.ritaIndenizatoria,
+      legalCaseId: PCS.ritaIndenizatoria,
       clientId: PC.rita,
-      originPartnerOfficeId: PO.ferreiraLima,
       cnj: "0008820-35.2026.8.16.0000",
       title: "Indenizatória por negativação indevida",
       court: "TJPR",
@@ -433,17 +395,22 @@ export function buildPartnerProcesses(): Process[] {
       status: "ACTIVE",
       phase: "EVIDENCE",
       origin: "INTEGRATION",
-      summary: "Caso enviado pela Ferreira & Lima. Audiência de instrução designada.",
+      summary: "Audiência de instrução designada.",
       lastMovementAt: daysFromNowISO(-6, 11),
       createdAt: daysFromNowISO(-24, 11),
       updatedAt: daysFromNowISO(-6, 11),
     }),
-    // Helena já era cliente própria da Bárbara (processos internos P.helena*).
-    // Este NOVO caso foi originado pela Ferreira & Lima e segue a divisão desse parceiro.
+    // Helena é cliente de origem Bárbara (caso próprio com 2 processos). Este processo
+    // pertence a OUTRO caso dela, originado pela Ferreira & Lima (com parceria).
     partnerProcess({
       id: PP.helenaCartao,
+      legalCaseId: PCS.helenaCartao,
+      cnj: "0012345-11.2026.8.26.0000",
+      court: "TJSP",
+      district: "Ribeirão Preto",
+      state: "SP",
+      distributionDate: dateFromNow(-2),
       clientId: C.helena,
-      originPartnerOfficeId: PO.ferreiraLima,
       title: "Cartão consignado contratado como empréstimo",
       area: "BANKING",
       actionType: "Ação declaratória c/c repetição de indébito",
@@ -451,10 +418,10 @@ export function buildPartnerProcesses(): Process[] {
       opposingParty: FICTITIOUS_BANKS.crediplus,
       responsibleUserId: U.claudio,
       caseValue: 12000,
-      status: "PREPARING",
-      phase: "PRELIMINARY",
+      status: "FILED",
+      phase: "PLEADINGS",
       origin: "MANUAL",
-      summary: "Novo caso originado pela Ferreira & Lima para cliente já atendida pelo escritório.",
+      summary: "Processo do caso originado pela Ferreira & Lima para cliente já atendida pelo escritório.",
       lastMovementAt: daysFromNowISO(-8, 15),
       createdAt: daysFromNowISO(-8, 15),
       updatedAt: daysFromNowISO(-8, 15),
@@ -469,112 +436,15 @@ export function buildPartnerProcessEvents(): ProcessEvent[] {
     return { ...o, id: `mov_p_${String(seq).padStart(3, "0")}`, processId, at, title, description, source, important };
   };
   return [
-    ev(PP.sandraRevisional, daysFromNowISO(-37, 10), "Caso recebido da Almeida Advocacia", "SYSTEM"),
+    ev(PP.sandraRevisional, daysFromNowISO(-37, 10), "Processo cadastrado (caso da Almeida Advocacia)", "SYSTEM"),
     ev(PP.sandraRevisional, daysFromNowISO(-30, 14), "Distribuído por sorteio", "COURT"),
     ev(PP.sandraRevisional, daysFromNowISO(-12, 11), "Juntada de contestação", "COURT", "Contestação apresentada pela parte ré."),
     ev(PP.sandraRevisional, daysFromNowISO(-9, 10), "Nota interna: estratégia de réplica", "AGENT", "Sugestões preliminares do agente (uso interno)."),
     ev(PP.sandraRevisional, daysFromNowISO(-1, 16), "Intimação para réplica", "COURT", "Prazo de 15 dias para manifestação.", true),
-    ev(PP.otavioConsignado, minutesAgoISO(18), "Caso recebido da Almeida Advocacia", "SYSTEM", "Seis documentos enviados junto com o cadastro."),
-    ev(PP.merceariaCapitalGiro, daysFromNowISO(-12, 14), "Caso recebido da Almeida Advocacia", "SYSTEM"),
-    ev(PP.merceariaCapitalGiro, daysFromNowISO(-4, 10), "Documentação complementar solicitada", "MANUAL", "Solicitado extrato bancário dos últimos 12 meses."),
-    ev(PP.ritaIndenizatoria, daysFromNowISO(-24, 11), "Caso recebido da Ferreira & Lima Advogados", "SYSTEM"),
+    ev(PP.ritaIndenizatoria, daysFromNowISO(-24, 11), "Processo cadastrado (caso da Ferreira & Lima)", "SYSTEM"),
     ev(PP.ritaIndenizatoria, daysFromNowISO(-20, 9), "Distribuído", "INTEGRATION"),
     ev(PP.ritaIndenizatoria, daysFromNowISO(-6, 11), "Audiência de instrução designada", "COURT", undefined, true),
-    ev(PP.helenaCartao, daysFromNowISO(-8, 15), "Caso recebido da Ferreira & Lima Advogados", "SYSTEM"),
-  ];
-}
-
-/* ------------------------------------------------------------------ */
-/* Casos enviados (submissões)                                         */
-/* ------------------------------------------------------------------ */
-
-export function buildPartnerSubmissions(): PartnerCaseSubmission[] {
-  return [
-    {
-      ...o,
-      id: "sub_otavio",
-      partnerOfficeId: PO.almeida,
-      clientId: PC.otavio,
-      processId: PP.otavioConsignado,
-      status: "SUBMITTED",
-      area: "BANKING",
-      summary: "Aposentado relata descontos mensais de consignado que não reconhece. Nunca assinou contrato com o banco.",
-      documentIds: ["doc_p_01", "doc_p_02", "doc_p_03", "doc_p_04", "doc_p_05", "doc_p_06"],
-      existingClient: false,
-      createdAt: minutesAgoISO(26),
-      createdBy: PU.carla,
-      submittedAt: minutesAgoISO(18),
-      submittedBy: PU.carla,
-      updatedAt: minutesAgoISO(18),
-    },
-    {
-      ...o,
-      id: "sub_sandra",
-      partnerOfficeId: PO.almeida,
-      clientId: PC.sandra,
-      processId: PP.sandraRevisional,
-      status: "IN_PROGRESS",
-      area: "BANKING",
-      summary: "Contrato consignado com taxa muito acima da média. Cliente já possui processo distribuído.",
-      documentIds: ["doc_p_07", "doc_p_08", "doc_p_09"],
-      existingClient: false,
-      createdAt: daysFromNowISO(-38, 10),
-      createdBy: PU.marcos,
-      submittedAt: daysFromNowISO(-38, 10),
-      submittedBy: PU.marcos,
-      updatedAt: daysFromNowISO(-30, 14),
-    },
-    {
-      ...o,
-      id: "sub_mercearia",
-      partnerOfficeId: PO.almeida,
-      clientId: PC.mercearia,
-      processId: PP.merceariaCapitalGiro,
-      status: "WAITING_DOCUMENTS",
-      area: "BANKING",
-      summary: "Empresa com contrato de capital de giro renegociado três vezes. Suspeita de capitalização indevida.",
-      documentIds: ["doc_p_11"],
-      existingClient: false,
-      createdAt: daysFromNowISO(-12, 14),
-      createdBy: PU.marcos,
-      submittedAt: daysFromNowISO(-12, 14),
-      submittedBy: PU.marcos,
-      updatedAt: daysFromNowISO(-4, 10),
-    },
-    {
-      ...o,
-      id: "sub_rita",
-      partnerOfficeId: PO.ferreiraLima,
-      clientId: PC.rita,
-      processId: PP.ritaIndenizatoria,
-      status: "IN_PROGRESS",
-      area: "CONSUMER",
-      summary: "Negativação por dívida já quitada.",
-      documentIds: ["doc_p_12"],
-      existingClient: false,
-      createdAt: daysFromNowISO(-25, 11),
-      createdBy: PU.patricia,
-      submittedAt: daysFromNowISO(-25, 11),
-      submittedBy: PU.patricia,
-      updatedAt: daysFromNowISO(-20, 9),
-    },
-    {
-      ...o,
-      id: "sub_helena",
-      partnerOfficeId: PO.ferreiraLima,
-      clientId: C.helena,
-      processId: PP.helenaCartao,
-      status: "ACCEPTED",
-      area: "BANKING",
-      summary: "Cliente contratou cartão acreditando ser empréstimo.",
-      documentIds: ["doc_p_13"],
-      existingClient: true,
-      createdAt: daysFromNowISO(-8, 15),
-      createdBy: PU.patricia,
-      submittedAt: daysFromNowISO(-8, 15),
-      submittedBy: PU.patricia,
-      updatedAt: daysFromNowISO(-7, 10),
-    },
+    ev(PP.helenaCartao, daysFromNowISO(-8, 15), "Processo cadastrado (caso da Ferreira & Lima)", "SYSTEM"),
   ];
 }
 
@@ -616,13 +486,21 @@ export function buildPartnerDocuments(): ClientDocument[] {
     supersededAt: opts.supersededAt,
   });
   const otavioAt = minutesAgoISO(19);
-  return [
-    partnerDoc("doc_p_01", PC.otavio, PP.otavioConsignado, PO.almeida, PU.carla, "IDENTIFICATION", "RG — Otávio", otavioAt, { status: "PENDING" }),
-    partnerDoc("doc_p_02", PC.otavio, PP.otavioConsignado, PO.almeida, PU.carla, "ADDRESS_PROOF", "Comprovante de residência — Otávio", otavioAt, { status: "PENDING" }),
-    partnerDoc("doc_p_03", PC.otavio, PP.otavioConsignado, PO.almeida, PU.carla, "BENEFIT_STATEMENT", "Extrato de benefício INSS", otavioAt, { status: "PENDING" }),
-    partnerDoc("doc_p_04", PC.otavio, PP.otavioConsignado, PO.almeida, PU.carla, "BANK_STATEMENT", "Extrato bancário — últimos 6 meses", otavioAt, { status: "PENDING" }),
-    partnerDoc("doc_p_05", PC.otavio, PP.otavioConsignado, PO.almeida, PU.carla, "POWER_OF_ATTORNEY", "Procuração", otavioAt, { status: "PENDING" }),
-    partnerDoc("doc_p_06", PC.otavio, PP.otavioConsignado, PO.almeida, PU.carla, "HARDSHIP_DECLARATION", "Declaração de hipossuficiência", otavioAt, { status: "PENDING" }),
+  // Documentos do parceiro pertencem ao CASO (e ao processo, quando já existe).
+  const CASE_BY_CLIENT: Record<string, string> = {
+    [PC.otavio]: PCS.otavioConsignado,
+    [PC.mercearia]: PCS.merceariaCapitalGiro,
+    [PC.sandra]: PCS.sandraRevisional,
+    [PC.rita]: PCS.ritaIndenizatoria,
+    [C.helena]: PCS.helenaCartao,
+  };
+  const docs: ClientDocument[] = [
+    partnerDoc("doc_p_01", PC.otavio, undefined, PO.almeida, PU.carla, "IDENTIFICATION", "RG — Otávio", otavioAt, { status: "PENDING" }),
+    partnerDoc("doc_p_02", PC.otavio, undefined, PO.almeida, PU.carla, "ADDRESS_PROOF", "Comprovante de residência — Otávio", otavioAt, { status: "PENDING" }),
+    partnerDoc("doc_p_03", PC.otavio, undefined, PO.almeida, PU.carla, "BENEFIT_STATEMENT", "Extrato de benefício INSS", otavioAt, { status: "PENDING" }),
+    partnerDoc("doc_p_04", PC.otavio, undefined, PO.almeida, PU.carla, "BANK_STATEMENT", "Extrato bancário — últimos 6 meses", otavioAt, { status: "PENDING" }),
+    partnerDoc("doc_p_05", PC.otavio, undefined, PO.almeida, PU.carla, "POWER_OF_ATTORNEY", "Procuração", otavioAt, { status: "PENDING" }),
+    partnerDoc("doc_p_06", PC.otavio, undefined, PO.almeida, PU.carla, "HARDSHIP_DECLARATION", "Declaração de hipossuficiência", otavioAt, { status: "PENDING" }),
     partnerDoc("doc_p_07", PC.sandra, PP.sandraRevisional, PO.almeida, PU.marcos, "IDENTIFICATION", "RG — Sandra", daysFromNowISO(-38, 10)),
     partnerDoc("doc_p_08", PC.sandra, PP.sandraRevisional, PO.almeida, PU.marcos, "LOAN_CONTRACT", "Contrato de empréstimo consignado", daysFromNowISO(-38, 10)),
     // Versionamento: a v1 da procuração foi substituída pela v2, mas continua preservada.
@@ -635,7 +513,7 @@ export function buildPartnerDocuments(): ClientDocument[] {
       versionGroupId: "doc_p_09",
       version: 2,
     }),
-    partnerDoc("doc_p_11", PC.mercearia, PP.merceariaCapitalGiro, PO.almeida, PU.marcos, "CORPORATE_DOCUMENTS", "Contrato social consolidado", daysFromNowISO(-12, 14)),
+    partnerDoc("doc_p_11", PC.mercearia, undefined, PO.almeida, PU.marcos, "CORPORATE_DOCUMENTS", "Contrato social consolidado", daysFromNowISO(-12, 14)),
     partnerDoc("doc_p_12", PC.rita, PP.ritaIndenizatoria, PO.ferreiraLima, PU.patricia, "IDENTIFICATION", "RG — Rita", daysFromNowISO(-25, 11)),
     partnerDoc("doc_p_13", C.helena, PP.helenaCartao, PO.ferreiraLima, PU.patricia, "LOAN_CONTRACT", "Contrato de cartão consignado", daysFromNowISO(-8, 15)),
     // Documento interno do caso da Sandra: nunca chega ao parceiro.
@@ -686,6 +564,7 @@ export function buildPartnerDocuments(): ClientDocument[] {
       },
     },
   ];
+  return docs.map((d) => ({ ...d, legalCaseId: CASE_BY_CLIENT[d.clientId] }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -702,6 +581,7 @@ export function buildPartnerReviews(): Review[] {
       status: "PENDING",
       priority: "HIGH",
       clientId: PC.sandra,
+      legalCaseId: PCS.sandraRevisional,
       processId: PP.sandraRevisional,
       agentId: A.peticoes,
       skillIds: [S.redacaoBancaria],
@@ -741,7 +621,7 @@ export function buildPartnerRequests(): PartnerRequest[] {
       id: PR.merceariaExtrato,
       partnerOfficeId: PO.almeida,
       clientId: PC.mercearia,
-      processId: PP.merceariaCapitalGiro,
+      legalCaseId: PCS.merceariaCapitalGiro,
       type: "DOCUMENT_REQUEST",
       title: "Extrato bancário dos últimos 12 meses",
       description: "Precisamos do extrato bancário dos últimos 12 meses da conta vinculada ao contrato de capital de giro.",
@@ -757,6 +637,7 @@ export function buildPartnerRequests(): PartnerRequest[] {
       id: PR.merceariaCadastro,
       partnerOfficeId: PO.almeida,
       clientId: PC.mercearia,
+      legalCaseId: PCS.merceariaCapitalGiro,
       type: "INFORMATION_REQUEST",
       title: "Telefone de contato da empresa",
       description: "Informação cadastral incompleta: informe um telefone de contato do sócio administrador.",
@@ -772,6 +653,7 @@ export function buildPartnerRequests(): PartnerRequest[] {
       id: PR.sandraComprovante,
       partnerOfficeId: PO.almeida,
       clientId: PC.sandra,
+      legalCaseId: PCS.sandraRevisional,
       processId: PP.sandraRevisional,
       type: "DOCUMENT_REQUEST",
       title: "Comprovante de residência atualizado",
@@ -792,6 +674,7 @@ export function buildPartnerRequests(): PartnerRequest[] {
       id: PR.ritaProcuracao,
       partnerOfficeId: PO.ferreiraLima,
       clientId: PC.rita,
+      legalCaseId: PCS.ritaIndenizatoria,
       processId: PP.ritaIndenizatoria,
       type: "CORRECTION_REQUEST",
       title: "Procuração sem data",
@@ -807,21 +690,21 @@ export function buildPartnerRequests(): PartnerRequest[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Acordos de parceria por caso (snapshot)                             */
+/* Acordos de parceria por caso (nascem no ACEITE, snapshot)           */
 /* ------------------------------------------------------------------ */
 
-export function buildPartnershipAgreements(): ProcessPartnershipAgreement[] {
+export function buildPartnershipAgreements(): CasePartnershipAgreement[] {
   const agreement = (
     id: string,
-    processId: string,
+    legalCaseId: string,
     partnerOfficeId: string,
     partnerPercentage: number,
     at: string,
-    values: Partial<Pick<ProcessPartnershipAgreement, "revenueBase" | "realizedRevenue" | "payouts">> = {},
-  ): ProcessPartnershipAgreement => ({
+    values: Partial<Pick<CasePartnershipAgreement, "revenueBase" | "realizedRevenue" | "payouts">> = {},
+  ): CasePartnershipAgreement => ({
     ...o,
     id,
-    processId,
+    legalCaseId,
     partnerOfficeId,
     partnerPercentage,
     ownerPercentage: 100 - partnerPercentage,
@@ -831,17 +714,16 @@ export function buildPartnershipAgreements(): ProcessPartnershipAgreement[] {
     updatedAt: at,
     ...values,
   });
+  // Somente casos ACEITOS têm acordo: Otávio (enviado) e Mercearia (aguardando documentos) ainda não.
   return [
     // Exemplo do escopo: honorários R$ 4.000, 50/50, R$ 1.000 já repassado.
-    agreement("ppa_sandra", PP.sandraRevisional, PO.almeida, 50, daysFromNowISO(-37, 10), {
+    agreement("ppa_sandra", PCS.sandraRevisional, PO.almeida, 50, daysFromNowISO(-37, 11), {
       revenueBase: 4000,
       realizedRevenue: 4000,
       payouts: [{ id: "pay_p_1", at: daysFromNowISO(-10, 11), amount: 1000, note: "Primeiro repasse", registeredBy: U.barbara }],
     }),
-    agreement("ppa_otavio", PP.otavioConsignado, PO.almeida, 50, minutesAgoISO(18)),
-    agreement("ppa_mercearia", PP.merceariaCapitalGiro, PO.almeida, 50, daysFromNowISO(-12, 14), { revenueBase: 6000 }),
-    agreement("ppa_rita", PP.ritaIndenizatoria, PO.ferreiraLima, 60, daysFromNowISO(-24, 11), { revenueBase: 3000 }),
-    agreement("ppa_helena", PP.helenaCartao, PO.ferreiraLima, 60, daysFromNowISO(-8, 15), { revenueBase: 2500 }),
+    agreement("ppa_rita", PCS.ritaIndenizatoria, PO.ferreiraLima, 60, daysFromNowISO(-24, 11), { revenueBase: 3000 }),
+    agreement("ppa_helena", PCS.helenaCartao, PO.ferreiraLima, 60, daysFromNowISO(-7, 11), { revenueBase: 2500 }),
   ];
 }
 
@@ -851,20 +733,34 @@ export function buildPartnershipAgreements(): ProcessPartnershipAgreement[] {
 
 export function buildPartnerNotifications(): Notification[] {
   return [
-    // Interna: novo caso de parceiro.
+    // Internas: novo caso de parceiro e advogado responsável necessário.
     {
       ...o,
       id: "ntf_p_owner_01",
-      type: "PARTNER_SUBMISSION",
+      type: "CASE_SUBMITTED",
       severity: "warning",
       title: "Novo caso enviado pela Almeida Advocacia",
       description: "Otávio Ferreira Neves · Direito Bancário · 6 documentos.",
       at: minutesAgoISO(18),
       read: false,
       clientId: PC.otavio,
-      processId: PP.otavioConsignado,
-      cta: { label: "Abrir caso", href: `/processos/${PP.otavioConsignado}` },
-      requiredPermission: "partners.view",
+      legalCaseId: PCS.otavioConsignado,
+      cta: { label: "Abrir caso", href: `/casos/${PCS.otavioConsignado}` },
+      requiredPermission: "cases.view",
+    },
+    {
+      ...o,
+      id: "ntf_owner_case_lawyer",
+      type: "CASE_LAWYER_REQUIRED",
+      severity: "warning",
+      title: "Advogado responsável necessário",
+      description: "Cartão consignado — Roberto · análise aguardando revisão sem responsável definido.",
+      at: daysFromNowISO(-1, 9),
+      read: false,
+      clientId: C.roberto,
+      legalCaseId: "cas_roberto_cartao",
+      cta: { label: "Abrir caso", href: "/casos/cas_roberto_cartao" },
+      requiredPermission: "cases.decide",
     },
     // Portal do parceiro (Almeida).
     {
@@ -878,7 +774,7 @@ export function buildPartnerNotifications(): Notification[] {
       at: daysFromNowISO(-4, 10),
       read: false,
       clientId: PC.mercearia,
-      processId: PP.merceariaCapitalGiro,
+      legalCaseId: PCS.merceariaCapitalGiro,
       cta: { label: "Enviar documento", href: "/pendencias" },
       requiredPermission: "partnerPortal.view",
     },
@@ -946,15 +842,30 @@ export function buildPartnerNotifications(): Notification[] {
       ...o,
       id: "ntf_p_fl_02",
       partnerOfficeId: PO.ferreiraLima,
-      type: "CASE_UPDATE",
+      type: "CASE_ACCEPTED",
       severity: "info",
       title: "Caso aceito",
-      description: "Helena Martins Ribeiro · Cartão consignado contratado como empréstimo.",
-      at: daysFromNowISO(-7, 10),
+      description: "Helena Martins Ribeiro · Cartão consignado.",
+      at: daysFromNowISO(-7, 11),
       read: true,
       clientId: C.helena,
-      processId: PP.helenaCartao,
-      cta: { label: "Abrir processo", href: `/processos/${PP.helenaCartao}` },
+      legalCaseId: PCS.helenaCartao,
+      cta: { label: "Abrir caso", href: `/casos/${PCS.helenaCartao}` },
+      requiredPermission: "partnerPortal.view",
+    },
+    {
+      ...o,
+      id: "ntf_p_alm_05",
+      partnerOfficeId: PO.almeida,
+      type: "CASE_REJECTED",
+      severity: "info",
+      title: "Caso não aceito",
+      description: "Sandra Regina Mello · Tarifa de cadastro: Documentação insuficiente para prosseguir.",
+      at: daysFromNowISO(-13, 11),
+      read: true,
+      clientId: PC.sandra,
+      legalCaseId: PCS.sandraTarifa,
+      cta: { label: "Ver caso", href: `/casos/${PCS.sandraTarifa}` },
       requiredPermission: "partnerPortal.view",
     },
   ];
@@ -975,21 +886,24 @@ export function buildPartnerAuditEvents(): AuditEvent[] {
     return { ...o, id: `aud_p_${String(seq).padStart(2, "0")}`, ...e };
   };
   return [
-    ev({ at: minutesAgoISO(18), actor: carla, action: "CLIENT_SUBMITTED", entityType: "client", entityId: PC.otavio, partnerOfficeId: PO.almeida, description: "Caso de Otávio Ferreira Neves enviado pela Almeida Advocacia (6 documentos).", partnerSummary: "Caso de Otávio Ferreira Neves enviado com 6 documentos." }),
-    ev({ at: minutesAgoISO(18), actor: carla, action: "PARTNER_PROCESS_CREATED", entityType: "process", entityId: PP.otavioConsignado, partnerOfficeId: PO.almeida, description: "Processo de parceiro criado: Descontos de consignado não reconhecidos.", partnerSummary: "Processo criado: Descontos de consignado não reconhecidos." }),
+    ev({ at: minutesAgoISO(18), actor: carla, action: "CASE_SUBMITTED", entityType: "legalCase", entityId: PCS.otavioConsignado, partnerOfficeId: PO.almeida, description: "Caso de Otávio Ferreira Neves enviado pela Almeida Advocacia (6 documentos).", partnerSummary: "Caso de Otávio Ferreira Neves enviado com 6 documentos." }),
+    ev({ at: daysFromNowISO(-13, 11), actor: barbara, action: "CASE_REJECTED", entityType: "legalCase", entityId: PCS.sandraTarifa, partnerOfficeId: PO.almeida, description: "Caso “Tarifa de cadastro — Sandra” rejeitado.", partnerSummary: "Caso de Sandra Regina Mello (tarifa de cadastro) não aceito: Documentação insuficiente para prosseguir." }),
+    ev({ at: daysFromNowISO(-13, 11), actor: barbara, action: "CASE_REJECTION_INTERNAL_NOTE", entityType: "legalCase", entityId: PCS.sandraTarifa, partnerOfficeId: PO.almeida, description: "Nota interna registrada na rejeição (não visível ao parceiro)." }),
+    ev({ at: daysFromNowISO(-37, 11), actor: barbara, action: "PARTNERSHIP_SNAPSHOT_CREATED", entityType: "legalCase", entityId: PCS.sandraRevisional, partnerOfficeId: PO.almeida, description: "Acordo de parceria criado no aceite: 50% parceiro / 50% Bárbara.", partnerSummary: "Caso de Sandra Regina Mello aceito." }),
     ev({ at: daysFromNowISO(-1, 16), actor: { type: "SYSTEM", id: "system", name: "DG Brasil" }, action: "PROCESS_UPDATED", entityType: "process", entityId: PP.sandraRevisional, partnerOfficeId: PO.almeida, description: "Nova movimentação: intimação para réplica.", partnerSummary: "Processo de Sandra Regina Mello atualizado: intimação para réplica." }),
     ev({ at: daysFromNowISO(-4, 10), actor: beatrizActor, action: "PARTNER_REQUEST_CREATED", entityType: "partnerRequest", entityId: PR.merceariaExtrato, partnerOfficeId: PO.almeida, description: "Solicitado extrato bancário de 12 meses à Almeida Advocacia.", partnerSummary: "Bárbara Cardoso Advocacia solicitou o extrato bancário dos últimos 12 meses (Mercearia Boa Vista)." }),
     ev({ at: daysFromNowISO(-10, 11), actor: barbara, action: "PARTNER_PAYOUT_REGISTERED", entityType: "partnershipAgreement", entityId: "ppa_sandra", partnerOfficeId: PO.almeida, description: "Repasse de R$ 1.000,00 registrado para Almeida Advocacia.", partnerSummary: "Repasse registrado no caso de Sandra Regina Mello." }),
-    ev({ at: daysFromNowISO(-12, 14), actor: marcos, action: "CLIENT_SUBMITTED", entityType: "client", entityId: PC.mercearia, partnerOfficeId: PO.almeida, description: "Caso de Mercearia Boa Vista enviado.", partnerSummary: "Caso de Mercearia Boa Vista enviado." }),
+    ev({ at: daysFromNowISO(-12, 14), actor: marcos, action: "CASE_SUBMITTED", entityType: "legalCase", entityId: PCS.merceariaCapitalGiro, partnerOfficeId: PO.almeida, description: "Caso de Mercearia Boa Vista enviado.", partnerSummary: "Caso de Mercearia Boa Vista enviado." }),
     ev({ at: daysFromNowISO(-20, 9), actor: marcos, action: "DOCUMENT_VERSION_ADDED", entityType: "document", entityId: "doc_p_10", partnerOfficeId: PO.almeida, description: "Procuração de Sandra Regina Mello: versão 2 enviada (v1 preservada).", partnerSummary: "Nova versão da procuração de Sandra Regina Mello enviada (v2)." }),
     ev({ at: daysFromNowISO(-31, 17), actor: claudioActor, action: "DOCUMENT_SHARED_WITH_PARTNER", entityType: "document", entityId: "doc_p_shared_01", partnerOfficeId: PO.almeida, description: "Petição inicial aprovada disponibilizada à Almeida Advocacia.", partnerSummary: "Documento aprovado disponível: petição inicial de Sandra Regina Mello." }),
     ev({ at: daysFromNowISO(-37, 10), actor: barbara, action: "PARTNERSHIP_VALUE_UPDATED", entityType: "partnershipAgreement", entityId: "ppa_sandra", partnerOfficeId: PO.almeida, description: "Honorários estimados do caso de Sandra Regina Mello: R$ 4.000,00.", partnerSummary: "Valores registrados no caso de Sandra Regina Mello." }),
-    ev({ at: daysFromNowISO(-38, 10), actor: marcos, action: "CLIENT_SUBMITTED", entityType: "client", entityId: PC.sandra, partnerOfficeId: PO.almeida, description: "Caso de Sandra Regina Mello enviado.", partnerSummary: "Caso de Sandra Regina Mello enviado." }),
+    ev({ at: daysFromNowISO(-38, 10), actor: marcos, action: "CASE_SUBMITTED", entityType: "legalCase", entityId: PCS.sandraRevisional, partnerOfficeId: PO.almeida, description: "Caso de Sandra Regina Mello enviado.", partnerSummary: "Caso de Sandra Regina Mello enviado." }),
     ev({ at: daysFromNowISO(-40, 9), actor: barbara, action: "PARTNER_USER_INVITED", entityType: "user", entityId: PU.carla, partnerOfficeId: PO.almeida, description: "Carla Souza convidada como Usuário do parceiro (Almeida Advocacia).", partnerSummary: "Carla Souza foi convidada para o portal." }),
     ev({ at: daysFromNowISO(-45, 9), actor: barbara, action: "PARTNER_CREATED", entityType: "partnerOffice", entityId: PO.almeida, partnerOfficeId: PO.almeida, description: "Parceiro Almeida Advocacia cadastrado (divisão 50% / 50%).", partnerSummary: "Parceria com Bárbara Cardoso Advocacia iniciada." }),
     ev({ at: daysFromNowISO(-2, 15), actor: beatrizActor, action: "PARTNER_REQUEST_CREATED", entityType: "partnerRequest", entityId: PR.ritaProcuracao, partnerOfficeId: PO.ferreiraLima, description: "Solicitada nova procuração datada à Ferreira & Lima.", partnerSummary: "Bárbara Cardoso Advocacia solicitou correção da procuração de Rita de Cássia Carvalho." }),
     ev({ at: daysFromNowISO(-8, 15), actor: patricia, action: "CLIENT_DUPLICATE_DETECTED", entityType: "client", entityId: C.helena, partnerOfficeId: PO.ferreiraLima, description: "CPF já cadastrado informado pela Ferreira & Lima; novo vínculo criado sem duplicar o cliente." }),
     ev({ at: daysFromNowISO(-8, 15), actor: patricia, action: "CLIENT_RELATIONSHIP_CREATED", entityType: "client", entityId: C.helena, partnerOfficeId: PO.ferreiraLima, description: "Vínculo da Ferreira & Lima com Helena Martins Ribeiro criado para novo caso.", partnerSummary: "Novo caso vinculado a Helena Martins Ribeiro." }),
+    ev({ at: daysFromNowISO(-8, 15), actor: patricia, action: "CASE_SUBMITTED", entityType: "legalCase", entityId: PCS.helenaCartao, partnerOfficeId: PO.ferreiraLima, description: "Caso “Cartão consignado — Helena” enviado pela Ferreira & Lima.", partnerSummary: "Caso de Helena Martins Ribeiro enviado." }),
     ev({ at: daysFromNowISO(-30, 10), actor: barbara, action: "PARTNER_CREATED", entityType: "partnerOffice", entityId: PO.ferreiraLima, partnerOfficeId: PO.ferreiraLima, description: "Parceiro Ferreira & Lima Advogados cadastrado (divisão 60% / 40%).", partnerSummary: "Parceria com Bárbara Cardoso Advocacia iniciada." }),
     ev({ at: daysFromNowISO(-3, 15), actor: barbara, action: "PARTNER_CREATED", entityType: "partnerOffice", entityId: PO.costa, partnerOfficeId: PO.costa, description: "Parceiro Costa Jurídico cadastrado (divisão 50% / 50%). Convite enviado.", partnerSummary: "Parceria com Bárbara Cardoso Advocacia iniciada." }),
   ];

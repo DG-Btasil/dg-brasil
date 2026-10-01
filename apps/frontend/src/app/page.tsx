@@ -3,22 +3,18 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useIsAuthenticated } from "@/features/auth/hooks";
-import { useOffice } from "@/features/offices/hooks";
 import { HydrationGate, ShellSkeleton } from "@/components/layout/guards";
 
 function RootRedirect() {
   const router = useRouter();
   const isAuthenticated = useIsAuthenticated();
-  const office = useOffice();
   useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
-    else if (!office.onboarding.completed) router.replace("/onboarding");
-    else router.replace("/home");
-  }, [isAuthenticated, office.onboarding.completed, router]);
+    router.replace(isAuthenticated ? "/home" : "/login");
+  }, [isAuthenticated, router]);
   return <ShellSkeleton />;
 }
 
-/** "/" redireciona conforme o estado mockado (sessão e implantação). */
+/** "/" redireciona conforme a sessão mockada. */
 export default function RootPage() {
   return (
     <HydrationGate>

@@ -4,7 +4,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Drawer } from "@/components/ui/dialog";
 import { AGREEMENT_STATUS_LABEL, AGREEMENT_STATUS_TONE } from "@/lib/constants/status";
 import type { AgreementRow } from "../utils";
-import { AgreementTerms, FeeModelCell, ProcessCell } from "./agreement-summary";
+import { AgreementTerms, FeeModelCell, CaseCell } from "./agreement-summary";
 import { PaymentsTable } from "./payments-table";
 
 export function AgreementDrawer({ row, onOpenChange }: { row: AgreementRow | null; onOpenChange: (open: boolean) => void }) {
@@ -24,9 +24,9 @@ export function AgreementDrawer({ row, onOpenChange }: { row: AgreementRow | nul
             <span className="text-subtle" aria-hidden>
               ·
             </span>
-            <ProcessCell row={row} />
+            <CaseCell row={row} />
           </div>
-          <AgreementTerms row={row} caseValue={row.process?.caseValue} />
+          <AgreementTerms row={row} caseValue={row.caseValue} />
           <section aria-labelledby="drawer-payments">
             <h3 id="drawer-payments" className="mb-2 text-[13.5px] font-semibold text-foreground">
               Cronograma de pagamentos

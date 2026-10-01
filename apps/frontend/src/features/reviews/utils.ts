@@ -1,6 +1,6 @@
 import { daysSince } from "@/lib/clock";
 import { OPEN_REVIEW_STATUSES, PRIORITY_WEIGHT, type ReviewStatus, type ReviewType } from "@/lib/constants/status";
-import type { ID, Process, Review, ReviewDecision } from "@/types";
+import type { ID, Review, ReviewDecision } from "@/types";
 
 export function isOpenReview(review: Pick<Review, "status">): boolean {
   return OPEN_REVIEW_STATUSES.includes(review.status);
@@ -95,15 +95,15 @@ export function matchesView(review: Review, view: QueueView): boolean {
 }
 
 /**
- * Filtros combináveis. O parceiro é o de ORIGEM DO PROCESSO da revisão —
- * não o autor, o agente nem a origem histórica do cliente. Revisão sem
- * processo (ou de processo próprio) conta como interna.
+ * Filtros combináveis. O parceiro é o de ORIGEM DO CASO da revisão
+ * (revisão → caso → origem) — não o autor, o agente nem a origem histórica
+ * do cliente. Revisão sem caso (ou de caso próprio) conta como interna.
+ * `casePartners`: caso → parceiro de origem (somente casos de parceiros).
  */
-export function filterReviews(reviews: Review[], view: QueueView, f: ReviewFilters, processes: Map<ID, Process> = new Map()): Review[] {
+export function filterReviews(reviews: Review[], view: QueueView, f: ReviewFilters, casePartners: Map<ID, ID> = new Map()): Review[] {
   return reviews.filter((r) => {
     if (f.partnerOfficeId) {
-      const process = r.processId ? processes.get(r.processId) : undefined;
-      const partnerId = process?.relationshipOrigin === "PARTNER" ? process.originPartnerOfficeId : undefined;
+      const partnerId = r.legalCaseId ? casePartners.get(r.legalCaseId) : undefined;
       if (f.partnerOfficeId === INTERNAL_ORIGIN ? !!partnerId : partnerId !== f.partnerOfficeId) return false;
     }
     if (!matchesView(r, view)) return false;
@@ -124,7 +124,7 @@ export const LONG_WAIT_DAYS = 3;
 
 /** Mensagem do toast após aprovação, conforme o efeito aplicado pelo store. */
 export const APPROVAL_OUTCOME: Record<ReviewType, string> = {
-  ANALYSIS_RESULT: "Análise concluída e processo criado em pré-ajuizamento. O Agente de Petições iniciou a minuta.",
+  ANALYSIS_RESULT: "Análise concluída. O caso está pronto para aceite ou rejeição.",
   PETITION_DRAFT: "Minuta aprovada. O processo seguiu para protocolo manual pela equipe.",
   DOCUMENT_CHECK: "Conferência documental confirmada na análise do cliente.",
   DEADLINE_PROPOSAL: "Prazo confirmado e registrado nas movimentações do processo.",

@@ -34,7 +34,7 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
 7. **Prioridade nunca só por cor:** sempre ícone e/ou texto junto (`Badge` com texto, `DeadlineBadge`).
 8. **Parceiro vê só a própria relação.** Visibilidade de parceiro se decide em `lib/permissions/partner-scope.ts`, nunca no componente.
    Portal do parceiro não usa vocabulário interno ("agente", "Skill", "tenant", "workflow de IA").
-9. **Duas origens, nunca misturar:** `origin` (técnica: Manual/Integração/DG Brasil) ≠ `relationshipOrigin` (caso próprio ou de parceiro).
+9. **Origens, nunca misturar:** `Process.origin` (técnica: Manual/Integração/DG Brasil/Importação) ≠ `LegalCase.originOfficeId` (origem do caso: Bárbara ou parceiro) ≠ `Client.originOfficeId` (origem histórica do cliente).
 
 ## Next.js 16
 

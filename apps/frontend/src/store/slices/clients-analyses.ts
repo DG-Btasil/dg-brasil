@@ -252,6 +252,7 @@ export function createClientSlice(set: SetState, get: GetState): ClientActions {
         id,
         officeId: s.office.id,
         clientId: input.clientId,
+        legalCaseId: input.legalCaseId ?? placeholder?.legalCaseId,
         processId: input.processId,
         name: input.name,
         category: input.category,
@@ -302,9 +303,12 @@ export function createClientSlice(set: SetState, get: GetState): ClientActions {
 
 export function createAnalysisSlice(set: SetState, get: GetState): AnalysisActions {
   return {
-    startAnalysis: ({ clientId, templateId, fields }) => {
+    startAnalysis: ({ legalCaseId, clientId, templateId, fields }) => {
       const s = get();
       const client = s.clients.find((c) => c.id === clientId);
+      // Cada análise pertence a um caso do cliente.
+      const legalCase = s.legalCases.find((c) => c.id === legalCaseId && c.clientId === clientId);
+      if (!legalCase) throw new Error("Caso inexistente.");
       const template = s.templates.find((t) => t.id === templateId);
       if (!client || !template) throw new Error("Cliente ou template inexistente.");
       const actor = actorOf(s);
@@ -326,6 +330,7 @@ export function createAnalysisSlice(set: SetState, get: GetState): AnalysisActio
         id,
         officeId: s.office.id,
         clientId,
+        legalCaseId,
         templateId,
         status: ready ? "ANALYZING" : "WAITING_DOCUMENTS",
         fields,
@@ -352,6 +357,8 @@ export function createAnalysisSlice(set: SetState, get: GetState): AnalysisActio
         : [];
       set({
         analyses: [analysis, ...s.analyses],
+        // O status do caso passa a acompanhar a análise (store/app-store sincroniza).
+        legalCases: updateById(s.legalCases, legalCaseId, (c) => ({ ...c, analysisId: id, updatedAt: at })),
         agentTasks: [...tasks, ...s.agentTasks],
         clients: updateById(s.clients, clientId, (c) => ({ ...c, status: ready ? "ACTIVE" : "WAITING_DOCUMENTS", updatedAt: at })),
         documents: s.documents.map((d) => (d.clientId === clientId && missing.includes(d.category) ? { ...d, required: true } : d)),
@@ -416,6 +423,7 @@ export function createAnalysisSlice(set: SetState, get: GetState): AnalysisActio
         status: "PENDING",
         priority: "HIGH",
         clientId: a.clientId,
+        legalCaseId: a.legalCaseId,
         analysisId,
         agentId,
         skillIds: template?.skillIds ?? [],
@@ -428,7 +436,7 @@ export function createAnalysisSlice(set: SetState, get: GetState): AnalysisActio
           "Dados do contrato comparados com o extrato apresentado.",
         ],
         proposedActions: thesisNames.map((t) => `Avaliar aplicação da tese “${t}”.`).concat("Encaminhar ao Agente de Petições para minuta após aprovação."),
-        nextStepOnApproval: "a análise será concluída, um processo será criado em pré-ajuizamento e o Agente de Petições preparará a minuta, que voltará para Revisões",
+        nextStepOnApproval: "a análise será concluída e o caso ficará pronto para aceite ou rejeição (aceitar exige advogado responsável)",
         content: {
           title: `Parecer preliminar — ${template?.name ?? "Análise"}`,
           sections: [

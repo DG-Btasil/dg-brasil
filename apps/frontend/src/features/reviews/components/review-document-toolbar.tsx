@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, Download, FileDown, FilePen, FileText, PenLine } from "lucide-react";
+import { Bot, CloudUpload, Download, FileDown, FilePen, FileText, PenLine } from "lucide-react";
 import { REVIEW_CONTENT_ORIGIN_LABEL, VERSION_APPROVAL_STATUS_LABEL } from "@/lib/constants/status";
 import { formatSince } from "@/lib/formatting";
 import { Badge } from "@/components/ui/badge";
@@ -101,13 +101,28 @@ export function ReviewDocumentToolbar({
           label={downloadLabel}
           variant={approved ? "primary" : "secondary"}
           icon={<Download className="size-3.5" aria-hidden />}
-          items={(["PDF", "DOCX"] as const).map((format) => ({
-            key: format,
-            label: `Baixar ${format}`,
-            description: approved ? `Versão aprovada v${viewed.versionNumber}` : `Rascunho v${viewed.versionNumber} — marcado como não aprovado`,
-            icon: <FileDown className="size-4" aria-hidden />,
-            onSelect: () => void download(review, viewed.versionNumber, format),
-          }))}
+          items={[
+            ...(["PDF", "DOCX"] as const).map((format) => ({
+              key: format,
+              label: `Baixar ${format}`,
+              description: approved ? `Versão aprovada v${viewed.versionNumber}` : `Rascunho v${viewed.versionNumber} — marcado como não aprovado`,
+              icon: <FileDown className="size-4" aria-hidden />,
+              onSelect: () => void download(review, viewed.versionNumber, format),
+            })),
+            // Somente versões aprovadas. Sem sincronização nesta etapa.
+            ...(approved
+              ? [
+                  {
+                    key: "gdrive",
+                    label: "Exportar para Google Drive",
+                    description: "Disponível após configuração do backend",
+                    icon: <CloudUpload className="size-4" aria-hidden />,
+                    disabled: true,
+                    onSelect: () => undefined,
+                  },
+                ]
+              : []),
+          ]}
         />
       </div>
 

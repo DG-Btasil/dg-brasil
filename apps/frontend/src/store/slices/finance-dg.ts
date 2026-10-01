@@ -92,9 +92,11 @@ export function createFinanceSlice(set: SetState, get: GetState): FinanceActions
       const s = get();
       const id = createId("agr");
       const totalContracted = input.upfrontFee + input.fixedFee + (input.monthlyFee ? input.monthlyFee * 6 : 0);
-      const process = s.processes.find((p) => p.id === input.processId);
-      const estimatedSuccessFee =
-        input.successFeePercent && process?.caseValue ? Math.round(process.caseValue * (input.successFeePercent / 100)) : undefined;
+      // O contrato pertence ao caso: a estimativa de êxito usa o valor da causa somado dos processos do caso.
+      const legalCase = s.legalCases.find((c) => c.id === input.legalCaseId);
+      if (!legalCase || legalCase.clientId !== input.clientId) throw new Error("Selecione um caso do cliente.");
+      const caseValue = s.processes.filter((p) => p.legalCaseId === input.legalCaseId).reduce((sum, p) => sum + (p.caseValue ?? 0), 0);
+      const estimatedSuccessFee = input.successFeePercent && caseValue ? Math.round(caseValue * (input.successFeePercent / 100)) : undefined;
       const client = s.clients.find((c) => c.id === input.clientId);
       set({
         agreements: [{ ...input, id, officeId: s.office.id, totalContracted, estimatedSuccessFee, createdAt: nowISO() }, ...s.agreements],

@@ -21,12 +21,14 @@ import type { DataState } from "@/mocks";
 import { can } from "@/lib/permissions";
 import {
   partnerCanSeeAuditEvent,
+  partnerCanSeeCase,
   partnerCanSeeDocument,
   partnerCanSeeNotification,
   partnerCanSeeProcess,
   partnerCanSeeProcessEvent,
   partnerRelatedClientIds,
   redactAuditEventForPartner,
+  redactCaseForPartner,
   redactClientForPartner,
   redactDocumentForPartner,
   redactProcessForPartner,
@@ -45,7 +47,8 @@ export { viewerOf, type Viewer };
  */
 export interface InternalReviewSignal {
   id: ID;
-  processId: ID;
+  legalCaseId: ID;
+  processId?: ID;
   type: ReviewType;
   since: ISODateTime;
 }
@@ -73,6 +76,8 @@ const EMPTY_AI_USAGE: AIUsage = {
   month: "",
   organization: "",
   primaryModel: "",
+  runs: 0,
+  runLimit: 0,
   inputTokens: 0,
   outputTokens: 0,
   estimatedCostUsd: 0,
@@ -98,8 +103,12 @@ function partnerScope(state: AppState, viewer: Viewer): ScopedData {
   // Parceiro sem escritório definido não recebe nada.
   const partnerId = pid ?? "__none__";
 
-  const processes = memo(k("processes"), [vk, state.processes], () =>
-    state.processes.filter((p) => partnerCanSeeProcess(p, partnerId)).map(redactProcessForPartner),
+  const legalCases = memo(k("legalCases"), [vk, state.legalCases], () =>
+    state.legalCases.filter((c) => partnerCanSeeCase(c, partnerId)).map(redactCaseForPartner),
+  );
+  const caseIds = memo(k("caseIds"), [legalCases], () => new Set(legalCases.map((c) => c.id)));
+  const processes = memo(k("processes"), [state.processes, caseIds], () =>
+    state.processes.filter((p) => partnerCanSeeProcess(p, caseIds)).map(redactProcessForPartner),
   );
   const processIds = memo(k("processIds"), [processes], () => new Set(processes.map((p) => p.id)));
   const relatedClientIds = memo(k("relatedClientIds"), [vk, state.clientRelationships], () =>
@@ -111,19 +120,16 @@ function partnerScope(state: AppState, viewer: Viewer): ScopedData {
   const canFinance = can(viewer.role, "partnerPortal.finance.view");
 
   return {
-    office: memo(k("office"), [state.office], () => ({
-      ...state.office,
-      onboarding: { ...state.office.onboarding, answers: {} },
-    })),
-    subscription: memo(k("subscription"), [state.subscription], () => ({ ...state.subscription, planName: "", seats: 0, supportContact: "" })),
+    office: state.office,
     users: memo(k("users"), [vk, state.users], () => state.users.filter((u) => u.partnerOfficeId === partnerId)),
     invitations: memo(k("invitations"), [vk, state.invitations], () => state.invitations.filter((i) => i.partnerOfficeId === partnerId)),
     sessions: memo(k("sessions"), [vk, state.sessions], () => state.sessions.filter((s) => s.userId === viewer.userId)),
     clients: memo(k("clients"), [state.clients, relatedClientIds, state.office.id], () =>
       state.clients.filter((c) => relatedClientIds.has(c.id)).map((c) => redactClientForPartner(c, partnerId, state.office.id)),
     ),
-    documents: memo(k("documents"), [vk, state.documents, processIds], () =>
-      state.documents.filter((d) => partnerCanSeeDocument(d, partnerId, processIds)).map(redactDocumentForPartner),
+    legalCases,
+    documents: memo(k("documents"), [vk, state.documents, caseIds, processIds], () =>
+      state.documents.filter((d) => partnerCanSeeDocument(d, partnerId, caseIds, processIds)).map(redactDocumentForPartner),
     ),
     templates: EMPTY,
     analyses: EMPTY,
@@ -166,23 +172,22 @@ function partnerScope(state: AppState, viewer: Viewer): ScopedData {
     clientRelationships: memo(k("clientRelationships"), [vk, state.clientRelationships], () =>
       state.clientRelationships.filter((r) => r.partnerOfficeId === partnerId),
     ),
-    partnerSubmissions: memo(k("partnerSubmissions"), [vk, state.partnerSubmissions], () =>
-      state.partnerSubmissions.filter((s) => s.partnerOfficeId === partnerId),
-    ),
     partnerRequests: memo(k("partnerRequests"), [vk, state.partnerRequests], () =>
       state.partnerRequests.filter((r) => r.partnerOfficeId === partnerId),
     ),
     // Valores da parceria só para quem tem permissão financeira do portal.
     partnershipAgreements: canFinance
       ? memo(k("partnershipAgreements"), [vk, state.partnershipAgreements], () =>
-          state.partnershipAgreements.filter((a) => a.partnerOfficeId === partnerId),
+          state.partnershipAgreements.filter((a) => a.partnerOfficeId === partnerId && !a.cancelledAt),
         )
       : EMPTY,
-    reviewSignals: memo(k("reviewSignals"), [state.reviews, processIds], () =>
+    // Revisões internas: só o sinal genérico "em revisão interna", por caso (pode não haver processo).
+    reviewSignals: memo(k("reviewSignals"), [state.reviews, caseIds], () =>
       state.reviews
-        .filter((r) => r.processId && processIds.has(r.processId) && OPEN_REVIEW_STATUSES.includes(r.status))
-        .map((r) => ({ id: `sig_${r.id}`, processId: r.processId as ID, type: r.type, since: r.createdAt })),
+        .filter((r) => r.legalCaseId && caseIds.has(r.legalCaseId) && OPEN_REVIEW_STATUSES.includes(r.status))
+        .map((r) => ({ id: `sig_${r.id}`, legalCaseId: r.legalCaseId as ID, processId: r.processId, type: r.type, since: r.createdAt })),
     ),
+    references: EMPTY,
   };
 }
 
@@ -190,11 +195,11 @@ function partnerScope(state: AppState, viewer: Viewer): ScopedData {
 function pickData(state: AppState): DataState {
   return {
     office: state.office,
-    subscription: state.subscription,
     users: state.users,
     invitations: state.invitations,
     sessions: state.sessions,
     clients: state.clients,
+    legalCases: state.legalCases,
     documents: state.documents,
     templates: state.templates,
     analyses: state.analyses,
@@ -219,9 +224,9 @@ function pickData(state: AppState): DataState {
     auditEvents: state.auditEvents,
     partnerOffices: state.partnerOffices,
     clientRelationships: state.clientRelationships,
-    partnerSubmissions: state.partnerSubmissions,
     partnerRequests: state.partnerRequests,
     partnershipAgreements: state.partnershipAgreements,
+    references: state.references,
   };
 }
 

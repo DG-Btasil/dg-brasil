@@ -31,12 +31,15 @@ function nameFromFile(fileName: string): string {
  */
 export function DocumentAddDialog({
   clientId,
+  legalCaseId,
   open,
   onOpenChange,
   initialFile,
   defaultCategory,
 }: {
   clientId: string;
+  /** Documento do caso (sem: documento do cliente). */
+  legalCaseId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialFile?: PickedFile;
@@ -82,7 +85,7 @@ export function DocumentAddDialog({
     setErrors(nextErrors);
     if (nextErrors.name || nextErrors.category || !category) return;
     setSaving(true);
-    await repositories.documents.add({ clientId, name: name.trim(), category, fileName: file?.fileName, sizeKb: file?.sizeKb });
+    await repositories.documents.add({ clientId, legalCaseId, name: name.trim(), category, fileName: file?.fileName, sizeKb: file?.sizeKb });
     setSaving(false);
     toast({ tone: "success", title: "Documento registrado", description: `${name.trim()} aguarda verificação.` });
     close(false);

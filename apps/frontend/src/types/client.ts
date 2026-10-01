@@ -129,8 +129,14 @@ export interface CompanyClient extends ClientBase {
 
 export type Client = IndividualClient | CompanyClient;
 
+/**
+ * Documento. Pode pertencer ao Cliente (ex.: RG), ao Caso (ex.: contrato
+ * bancário) ou ao Processo (ex.: petição protocolada — então também ao Caso).
+ * `clientId` sempre presente; `legalCaseId` e `processId` opcionais.
+ */
 export interface ClientDocument extends OfficeScoped {
   clientId: ID;
+  legalCaseId?: ID;
   processId?: ID;
   name: string;
   category: DocumentCategory;

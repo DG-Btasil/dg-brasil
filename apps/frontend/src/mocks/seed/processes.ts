@@ -9,9 +9,8 @@ import { AN, C, FICTITIOUS_BANKS, OFFICE_ID, P, T, U } from "../ids";
 
 const o = { officeId: OFFICE_ID };
 
-export function buildProcesses(): Process[] {
-  // Processos próprios do escritório (origem relacional INTERNAL).
-  const o = { officeId: OFFICE_ID, relationshipOrigin: "INTERNAL" as const };
+/** Processos próprios. O caso de cada um (`legalCaseId`) é ligado em mocks/index (PROCESS_CASE). */
+export function buildProcesses(): Omit<Process, "legalCaseId">[] {
   return [
     {
       ...o,

@@ -1,5 +1,5 @@
 /**
- * Contrato do provedor de IA (Claude Platform / Claude Agent SDK).
+ * Contrato do provedor de IA (Conexão Claude). Implementação real no backend.
  *
  * IMPORTANTE — segurança:
  * - Nenhuma chamada ao provedor sai do navegador. Todas passarão pelo
@@ -33,7 +33,7 @@ export function createMockAIProviderService(getUsage: () => AIUsage): AIProvider
     },
     getUsage: async () => getUsage(),
     startConnectionFlow: async () => {
-      throw new Error("Conexão com a Claude Platform disponível em uma próxima etapa (backend).");
+      throw new Error("Conexão Claude disponível após configuração do backend.");
     },
     disconnect: async () => {
       throw new Error("Disponível em uma próxima etapa (backend).");

@@ -87,7 +87,8 @@ export function formToFeeModelInput(values: FeeModelFormValues): NewFeeModelInpu
 
 export const agreementSchema = z.object({
   clientId: zRequired("Selecione o cliente."),
-  processId: z.string().optional(),
+  /** O contrato pertence ao CASO (abrange todos os processos dele). */
+  legalCaseId: zRequired("Selecione o caso."),
   feeModelId: z.string().optional(),
   customized: z.boolean(),
   ...feeValueFields,

@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo } from "react";
 import { daysSince } from "@/lib/clock";
-import type { SubmissionStatus } from "@/lib/constants/status";
 import { repositories } from "@/repositories";
 import { useScopedStore } from "@/store/scope";
 import type { PartnerCaseInput, PartnerClientBasicsPatch, PartnerDocumentInput, PartnerProcessInput } from "@/store/types";
@@ -37,12 +36,6 @@ export function usePortalClientMap(): Map<ID, Client> {
   return useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 }
 
-/** Situação mais recente do caso enviado para cada processo. */
-export function useSubmissionStatusByProcess(): Map<ID, SubmissionStatus> {
-  const submissions = useScopedStore((s) => s.partnerSubmissions);
-  return useMemo(() => new Map(submissions.filter((s) => s.processId).map((s) => [s.processId as ID, s.status])), [submissions]);
-}
-
 export interface PortalClientRow {
   client: Client;
   name: string;
@@ -74,15 +67,15 @@ export function usePortalClientRows(): PortalClientRow[] {
 }
 
 /** Documentos em versão vigente (as substituídas ficam no histórico). */
-export function useCurrentDocuments(filter: { clientId?: ID; processId?: ID } = {}): ClientDocument[] {
+export function useCurrentDocuments(filter: { clientId?: ID; processId?: ID; legalCaseId?: ID } = {}): ClientDocument[] {
   const documents = usePortalDocuments();
-  const { clientId, processId } = filter;
+  const { clientId, processId, legalCaseId } = filter;
   return useMemo(
     () =>
       documents
-        .filter((d) => !d.supersededAt && (!clientId || d.clientId === clientId) && (!processId || d.processId === processId))
+        .filter((d) => !d.supersededAt && (!clientId || d.clientId === clientId) && (!processId || d.processId === processId) && (!legalCaseId || d.legalCaseId === legalCaseId))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    [documents, clientId, processId],
+    [documents, clientId, processId, legalCaseId],
   );
 }
 

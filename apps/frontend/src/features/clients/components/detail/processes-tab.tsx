@@ -23,12 +23,22 @@ import { useNextDeadlineByProcess } from "../../hooks";
 
 const ORIGIN_ICON: Record<ProcessOrigin, LucideIcon> = { AGENT: Workflow, INTEGRATION: Plug, MANUAL: Hand, IMPORT: FileSpreadsheet };
 
-export function ProcessesTab({ client, processes }: { client: Client; processes: Process[] }) {
+export function ProcessesTab({
+  client,
+  processes,
+  newHref = `/processos/novo?cliente=${client.id}`,
+  title = "Processos do cliente",
+}: {
+  client: Client;
+  processes: Process[];
+  newHref?: string;
+  title?: string;
+}) {
   const deadlines = useNextDeadlineByProcess(client.id);
   const users = useUserMap();
   const cta = (
     <Can permission="processes.edit">
-      <ButtonLink href={`/processos/novo?cliente=${client.id}`} variant="secondary" size="sm" icon={<FolderPlus className="size-4" aria-hidden />}>
+      <ButtonLink href={newHref} variant="secondary" size="sm" icon={<FolderPlus className="size-4" aria-hidden />}>
         Cadastrar processo
       </ButtonLink>
     </Can>
@@ -36,16 +46,16 @@ export function ProcessesTab({ client, processes }: { client: Client; processes:
 
   return (
     <Panel>
-      <PanelHeader title="Processos do cliente" description="Inclui processos em pré-ajuizamento criados a partir de análises." actions={processes.length > 0 ? cta : undefined} />
+      <PanelHeader title={title} description="Todo processo pertence a um caso do cliente." actions={processes.length > 0 ? cta : undefined} />
       {processes.length === 0 ? (
         <EmptyState
           icon={FolderPlus}
           title="Nenhum processo vinculado a este cliente."
-          description="Processos surgem de análises aprovadas em Revisões ou podem ser cadastrados manualmente."
+          description="Processos são cadastrados dentro de um caso do cliente."
           action={cta}
         />
       ) : (
-        <Table caption="Processos do cliente">
+        <Table caption={title}>
           <THead>
             <tr>
               <Th>Número</Th>

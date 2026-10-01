@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { FilePlus2, Pencil, FileSearch } from "lucide-react";
+import { FilePlus2, FolderPlus, Pencil } from "lucide-react";
 import { Can } from "@/components/layout/guards";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Avatar, Breadcrumbs } from "@/components/ui/display";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatEventTime } from "@/lib/formatting";
-import { usePermission } from "@/features/auth/hooks";
 import { useUser } from "@/features/offices/hooks";
 import { useClientOriginName } from "../../hooks";
 import { CLIENT_INACTIVATION_REASON_LABEL, type Client } from "@/types";
@@ -16,9 +15,8 @@ import { clientDisplayName, clientDocumentLabel, clientSecondaryName, clientShor
 import { DocumentAddDialog } from "./documents/document-add-dialog";
 import { MaskedIdentifier } from "./masked-identifier";
 
-export function ClientHeader({ client, hasActiveAnalysis }: { client: Client; hasActiveAnalysis: boolean }) {
+export function ClientHeader({ client }: { client: Client }) {
   const responsible = useUser(client.responsibleUserId);
-  const canStart = usePermission("analyses.start");
   const [addOpen, setAddOpen] = useState(false);
   const secondary = clientSecondaryName(client);
 
@@ -75,11 +73,11 @@ export function ClientHeader({ client, hasActiveAnalysis }: { client: Client; ha
             </Button>
             <DocumentAddDialog clientId={client.id} open={addOpen} onOpenChange={setAddOpen} />
           </Can>
-          {canStart && !hasActiveAnalysis && (
-            <ButtonLink href={`/clientes/${client.id}/analise/nova`} icon={<FileSearch className="size-4" aria-hidden />}>
-              Iniciar análise jurídica
+          <Can permission="cases.edit">
+            <ButtonLink href={`/casos/novo?cliente=${client.id}`} icon={<FolderPlus className="size-4" aria-hidden />}>
+              Novo caso
             </ButtonLink>
-          )}
+          </Can>
         </div>
       </div>
     </header>

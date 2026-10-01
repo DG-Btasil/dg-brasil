@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { daysSince, daysUntil, now } from "@/lib/clock";
 import {
+  ACTIVE_CASE_STATUSES,
+  DECIDABLE_CASE_STATUSES,
   OPEN_REVIEW_STATUSES,
   PRIORITY_WEIGHT,
   PROCESS_STATUSES,
@@ -45,6 +47,11 @@ function useNameMaps() {
 /* ------------------------------------------------------------------ */
 
 export interface HomeKpis {
+  activeCases: number;
+  casesAwaitingAnalysis: number;
+  /** Casos aguardando decisão sem advogado responsável. */
+  casesWithoutLawyer: number;
+  urgentDeadlines: number;
   activeProcesses: number;
   analysesInProgress: number;
   analysesWaitingDocs: number;
@@ -62,10 +69,17 @@ export function useHomeKpis(): HomeKpis {
   const deadlines = useScopedStore((s) => s.deadlines);
   const reviews = useScopedStore((s) => s.reviews);
   const clients = useScopedStore((s) => s.clients);
+  const cases = useScopedStore((s) => s.legalCases);
   return useMemo(() => {
     const open = deadlines.filter((d) => d.status === "OPEN");
+    const awaiting = cases.filter((c) => DECIDABLE_CASE_STATUSES.includes(c.status));
     const openReviews = reviews.filter((r) => OPEN_REVIEW_STATUSES.includes(r.status));
     return {
+      activeCases: cases.filter((c) => ACTIVE_CASE_STATUSES.includes(c.status)).length,
+      casesAwaitingAnalysis: awaiting.length,
+      casesWithoutLawyer: awaiting.filter((c) => !c.assignedLawyerId).length,
+      // Urgente: vencido ou vencendo em até 3 dias.
+      urgentDeadlines: open.filter((d) => daysUntil(d.dueDate) <= 3).length,
       activeProcesses: processes.filter((p) => p.status !== "CLOSED").length,
       analysesInProgress: analyses.filter((a) => (IN_PROGRESS_ANALYSIS as readonly string[]).includes(a.status)).length,
       analysesWaitingDocs: analyses.filter((a) => a.status === "WAITING_DOCUMENTS").length,
@@ -79,7 +93,7 @@ export function useHomeKpis(): HomeKpis {
       clientsWaitingDocs: clients.filter((c) => c.status === "WAITING_DOCUMENTS").length,
       recentlyUpdatedProcesses: processes.filter((p) => p.lastMovementAt && daysSince(p.lastMovementAt) <= 7).length,
     };
-  }, [processes, analyses, deadlines, reviews, clients]);
+  }, [processes, analyses, deadlines, reviews, clients, cases]);
 }
 
 /* ------------------------------------------------------------------ */

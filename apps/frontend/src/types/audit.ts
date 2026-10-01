@@ -1,9 +1,7 @@
 import type { ActorRef, ID, ISODateTime, OfficeScoped } from "./common";
 
 export const AUDIT_ACTIONS = [
-  "OFFICE_CREATED",
   "OFFICE_UPDATED",
-  "ONBOARDING_COMPLETED",
   "USER_INVITED",
   "USER_ROLE_CHANGED",
   "CLIENT_CREATED",
@@ -51,11 +49,9 @@ export const AUDIT_ACTIONS = [
   "PARTNER_SHARE_CHANGED",
   "PARTNER_USER_INVITED",
   "PARTNER_USER_UPDATED",
-  "CLIENT_SUBMITTED",
   "CLIENT_DUPLICATE_DETECTED",
   "CLIENT_RELATIONSHIP_CREATED",
   "PARTNER_PROCESS_CREATED",
-  "SUBMISSION_STATUS_CHANGED",
   "DOCUMENT_VERSION_ADDED",
   "DOCUMENT_SHARED_WITH_PARTNER",
   "PARTNER_REQUEST_CREATED",
@@ -69,13 +65,23 @@ export const AUDIT_ACTIONS = [
   "REVIEW_VERSION_CREATED",
   "DOCUMENT_DRAFT_DOWNLOADED",
   "DOCUMENT_APPROVED_DOWNLOADED",
+  "CASE_CREATED",
+  "CASE_SUBMITTED",
+  "CASE_UPDATED",
+  "CASE_STATUS_CHANGED",
+  "CASE_ORIGIN_CHANGED",
+  "CASE_ACCEPTED",
+  "CASE_REJECTED",
+  "CASE_REJECTION_PUBLIC",
+  "CASE_REJECTION_INTERNAL_NOTE",
+  "CASE_LAWYER_ASSIGNED",
+  "PARTNERSHIP_SNAPSHOT_CREATED",
+  "REFERENCE_CREATED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
-  OFFICE_CREATED: "Escritório criado",
   OFFICE_UPDATED: "Escritório atualizado",
-  ONBOARDING_COMPLETED: "Implantação concluída",
   USER_INVITED: "Usuário convidado",
   USER_ROLE_CHANGED: "Papel alterado",
   CLIENT_CREATED: "Cliente criado",
@@ -123,11 +129,9 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   PARTNER_SHARE_CHANGED: "Divisão da parceria alterada",
   PARTNER_USER_INVITED: "Usuário parceiro convidado",
   PARTNER_USER_UPDATED: "Usuário parceiro alterado",
-  CLIENT_SUBMITTED: "Cliente enviado pelo parceiro",
   CLIENT_DUPLICATE_DETECTED: "Cliente já cadastrado identificado",
   CLIENT_RELATIONSHIP_CREATED: "Vínculo de cliente criado",
   PARTNER_PROCESS_CREATED: "Processo de parceiro criado",
-  SUBMISSION_STATUS_CHANGED: "Situação do caso alterada",
   DOCUMENT_VERSION_ADDED: "Nova versão de documento",
   DOCUMENT_SHARED_WITH_PARTNER: "Documento disponibilizado ao parceiro",
   PARTNER_REQUEST_CREATED: "Solicitação ao parceiro criada",
@@ -141,6 +145,18 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   REVIEW_VERSION_CREATED: "Nova versão do documento",
   DOCUMENT_DRAFT_DOWNLOADED: "Rascunho baixado",
   DOCUMENT_APPROVED_DOWNLOADED: "Versão aprovada baixada",
+  CASE_CREATED: "Caso criado",
+  CASE_SUBMITTED: "Caso enviado",
+  CASE_UPDATED: "Caso editado",
+  CASE_STATUS_CHANGED: "Situação do caso alterada",
+  CASE_ORIGIN_CHANGED: "Origem do caso alterada",
+  CASE_ACCEPTED: "Caso aceito",
+  CASE_REJECTED: "Caso rejeitado",
+  CASE_REJECTION_PUBLIC: "Motivo público da rejeição registrado",
+  CASE_REJECTION_INTERNAL_NOTE: "Nota interna da rejeição registrada",
+  CASE_LAWYER_ASSIGNED: "Advogado responsável definido",
+  PARTNERSHIP_SNAPSHOT_CREATED: "Acordo de parceria criado (snapshot)",
+  REFERENCE_CREATED: "Referência adicionada",
 };
 
 export interface AuditEvent extends OfficeScoped {

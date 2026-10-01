@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { PageContainer } from "@/components/layout/guards";
 import { AgentList } from "../agents/agent-list";
 import { HistoryView } from "../history/history-view";
+import { ReferenceTable } from "../references/reference-table";
 import { SkillTable } from "../skills/skill-table";
 import { ThesisTable } from "../theses/thesis-table";
 import { DG_SECTIONS, type DgSection } from "../../utils";
@@ -19,6 +20,7 @@ export function DgHome() {
       {section === "agentes" && <AgentList />}
       {section === "skills" && <SkillTable />}
       {section === "teses" && <ThesisTable />}
+      {section === "referencias" && <ReferenceTable />}
       {section === "historico" && <HistoryView />}
     </PageContainer>
   );
@@ -29,6 +31,15 @@ export function DgHistoryPage() {
     <PageContainer>
       <DgHeader active="historico" />
       <HistoryView />
+    </PageContainer>
+  );
+}
+
+export function DgReferencesPage() {
+  return (
+    <PageContainer>
+      <DgHeader active="referencias" />
+      <ReferenceTable />
     </PageContainer>
   );
 }

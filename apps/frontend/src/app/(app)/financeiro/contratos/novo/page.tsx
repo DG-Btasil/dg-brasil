@@ -9,7 +9,7 @@ export default async function NewAgreementPage({ searchParams }: PageProps<"/fin
   const params = await searchParams;
   return (
     <RequirePermission permission="finance.view">
-      <NewAgreementView clientId={first(params.cliente)} processId={first(params.processo)} />
+      <NewAgreementView clientId={first(params.cliente)} legalCaseId={first(params.caso)} />
     </RequirePermission>
   );
 }

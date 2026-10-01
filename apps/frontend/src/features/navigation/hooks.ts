@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { todayISO } from "@/lib/clock";
-import { OPEN_REVIEW_STATUSES } from "@/lib/constants/status";
+import { ACTIVE_CASE_STATUSES, DECIDABLE_CASE_STATUSES, IN_ANALYSIS_CASE_STATUSES, OPEN_REVIEW_STATUSES } from "@/lib/constants/status";
 import { agreementStatus } from "@/lib/domain/finance";
 import { useIsPartner } from "@/features/auth/hooks";
 import { useScopedStore } from "@/store/scope";
@@ -21,7 +21,8 @@ export function useNavCounts(): Partial<Record<NavKey, string>> {
   const agreements = useScopedStore((s) => s.agreements);
   const payments = useScopedStore((s) => s.payments);
   const partners = useScopedStore((s) => s.partnerOffices);
-  const submissions = useScopedStore((s) => s.partnerSubmissions);
+  const cases = useScopedStore((s) => s.legalCases);
+  const office = useScopedStore((s) => s.office);
   const requests = useScopedStore((s) => s.partnerRequests);
   const notifications = useScopedStore((s) => s.notifications);
   return useMemo(() => {
@@ -29,8 +30,10 @@ export function useNavCounts(): Partial<Record<NavKey, string>> {
     if (isPartner) {
       const open = requests.filter((r) => r.status === "OPEN").length;
       const unread = notifications.filter((n) => !n.read).length;
+      const inAnalysis = cases.filter((c) => IN_ANALYSIS_CASE_STATUSES.includes(c.status)).length;
       return {
         clients: `${clients.length} clientes`,
+        cases: inAnalysis ? `${inAnalysis} em análise` : `${cases.length} casos`,
         processes: `${activeProcesses} ativos`,
         pending: open ? `${open} em aberto` : "Nada pendente",
         notifications: unread ? `${unread} não lidas` : "Tudo em dia",
@@ -40,17 +43,19 @@ export function useNavCounts(): Partial<Record<NavKey, string>> {
     const activeAgents = agents.filter((a) => a.status === "ACTIVE").length;
     const today = todayISO();
     const overdue = agreements.filter((a) => agreementStatus(a, payments, today) === "OVERDUE").length;
-    const newCases = submissions.filter((s) => s.status === "SUBMITTED").length;
+    const newCases = cases.filter((c) => c.createdByOfficeId !== office.id && c.status === "SUBMITTED").length;
+    const awaiting = cases.filter((c) => DECIDABLE_CASE_STATUSES.includes(c.status)).length;
     const activePartners = partners.filter((p) => p.status === "ACTIVE").length;
     return {
       clients: `${clients.length} clientes`,
+      cases: awaiting ? `${awaiting} aguardando análise` : `${cases.filter((c) => ACTIVE_CASE_STATUSES.includes(c.status)).length} ativos`,
       processes: `${activeProcesses} ativos`,
       reviews: openReviews ? `${openReviews} pendentes` : "Nenhuma pendente",
       finance: overdue ? `${overdue} em atraso` : "Em dia",
       partners: newCases ? `${newCases} ${newCases === 1 ? "caso novo" : "casos novos"}` : `${activePartners} ativos`,
       dgbrasil: `${activeAgents} agentes ativos`,
     };
-  }, [isPartner, clients, processes, reviews, agents, agreements, payments, partners, submissions, requests, notifications]);
+  }, [isPartner, clients, processes, reviews, agents, agreements, payments, partners, cases, office.id, requests, notifications]);
 }
 
 /** true quando o store já leu o localStorage. */

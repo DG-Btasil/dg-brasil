@@ -7,8 +7,13 @@ import { createAnalysisSlice, createClientSlice } from "./slices/clients-analyse
 import { createImportSlice } from "./slices/data-import";
 import { createDgSlice, createFinanceSlice } from "./slices/finance-dg";
 import { createProcessSlice, createReviewSlice } from "./slices/processes-reviews";
+import { nowISO } from "@/lib/clock";
+import { syncCaseStatuses } from "@/lib/domain/legal-case";
+import { createCaseSlice } from "./slices/cases";
 import { createPartnerSlice } from "./slices/partners";
+import { createReferenceSlice } from "./slices/references";
 import { createOfficeSlice, createSessionSlice, initialSession } from "./slices/session-office";
+import type { SetState } from "./helpers";
 import type { AppState, AppStore } from "./types";
 
 /**
@@ -26,25 +31,44 @@ export const STORAGE_KEY = "dg-brasil:demo";
 // v2: status financeiro derivado, dados da Bárbara Cardoso Advocacia, Integração Judicial.
 // v3: escritório proprietário único + escritórios parceiros (cliente canônico, origem relacional, snapshot financeiro).
 // v4: origem obrigatória do cliente (originOfficeId), gênero padronizado, versões de revisão por agente.
-const STORAGE_VERSION = 4;
+// v5: Cliente → Caso → Processo; parceria nasce no aceite do caso; Referências; sem legado multi-escritório.
+const STORAGE_VERSION = 6;
 
 export const useAppStore = create<AppStore>()(
   persist(
-    (set, get) => ({
-      ...createSeedData(),
-      session: initialSession(),
-      preferences: {},
-      ...createSessionSlice(set, get),
-      ...createOfficeSlice(set, get),
-      ...createClientSlice(set, get),
-      ...createImportSlice(set, get),
-      ...createAnalysisSlice(set, get),
-      ...createProcessSlice(set, get),
-      ...createReviewSlice(set, get),
-      ...createFinanceSlice(set, get),
-      ...createDgSlice(set, get),
-      ...createPartnerSlice(set, get),
-    }),
+    (rawSet, get) => {
+      /**
+       * Antes da decisão (aceite/rejeição), o status do caso acompanha a
+       * análise jurídica dele. A sincronização fica num único lugar: qualquer
+       * ação que mude análises atualiza os casos na mesma operação.
+       */
+      const set = ((partial, replace) => {
+        const before = get().analyses;
+        (rawSet as (p: unknown, r?: boolean) => void)(partial, replace as boolean | undefined);
+        const after = get();
+        if (after.analyses !== before) {
+          const synced = syncCaseStatuses(after.legalCases, after.analyses, nowISO());
+          if (synced !== after.legalCases) rawSet({ legalCases: synced });
+        }
+      }) as SetState;
+      return {
+        ...createSeedData(),
+        session: initialSession(),
+        preferences: {},
+        ...createSessionSlice(set, get),
+        ...createOfficeSlice(set, get),
+        ...createClientSlice(set, get),
+        ...createImportSlice(set, get),
+        ...createAnalysisSlice(set, get),
+        ...createProcessSlice(set, get),
+        ...createReviewSlice(set, get),
+        ...createFinanceSlice(set, get),
+        ...createDgSlice(set, get),
+        ...createPartnerSlice(set, get),
+        ...createCaseSlice(set, get),
+        ...createReferenceSlice(set, get),
+      };
+    },
     {
       name: STORAGE_KEY,
       version: STORAGE_VERSION,
