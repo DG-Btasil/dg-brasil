@@ -6,107 +6,109 @@ agentes atuais ainda não têm?**
 
 ---
 
-## Nível 1 — Só um INSERT (minutos, sem deploy)
+## Nível 1 — Só cadastro (minutos, sem deploy)
 
-O agente usa ferramentas que já existem e propõe coisas que já existem.
-É o caso da grande maioria.
+O agente usa ferramentas que já existem e propõe tipos que já existem. É o caso
+da grande maioria. Pela Central DG Brasil, ou em SQL:
 
 ```sql
-insert into agente (slug, nome, descricao, modelo, politica_aprovacao,
-                    ferramentas, gatilho, prompt_sistema)
-values (
-  'aniversarios',
-  'Felicitações de aniversário',
-  'Monta a mensagem de aniversário dos clientes do dia.',
-  'claude-opus-5',
-  'humana',
-  array['buscar_contato'],        -- allowlist. `propor` entra sempre, por padrão
-  '{"cron":"0 8 * * *"}'::jsonb,
-  'Você prepara felicitações de aniversário para clientes do escritório.
-   Tom respeitoso, sem juridiquês e sem mencionar processo ou valor.
-   Proponha uma mensagem por cliente — nenhuma é enviada sem aprovação.'
-);
+with a as (
+  insert into agents (slug, name, description, status)
+  values ('conferencia-hiscon', 'Conferência do HISCON',
+          'Confere o extrato e pede o que faltar.', 'ACTIVE')
+  returning id
+), v as (
+  insert into agent_versions (agent_id, instructions, configuration)
+  select id,
+         'Você confere o extrato HISCON do caso. Se faltar documento, peça com REQUEST_DOCUMENT.',
+         '{"model":"claude-opus-5-5","tools":["ver_caso","baixar_documento"],"max_turns":30}'
+  from a
+  returning id, agent_id
+)
+update agents set current_version_id = v.id from v where agents.id = v.agent_id;
 ```
 
-Pronto. O worker que já está rodando atende o agente novo na próxima volta da
-fila, sem redeploy e sem migração. *(Há um teste em `db/verificar.mjs` que
-garante essa propriedade.)*
+O worker que já está rodando atende o agente novo na próxima execução, sem
+redeploy. Alterar instruções ou configuração = **nova versão** em
+`agent_versions` (as anteriores ficam no histórico).
 
-**Campos que merecem atenção:**
+**`configuration`** (validada pelo worker; se inválida, a execução falha com `INVALID_CONFIGURATION`):
 
 | Campo | O que decidir |
 |---|---|
-| `ferramentas` | Allowlist estrita. Vazio = todas liberadas. Prefira o mínimo: é a única contenção real do agente |
-| `politica_aprovacao` | `humana` salvo prova em contrário. `auto` só para o que é reversível |
-| `limite_auto` | Com `humana_se`: aprova sozinho abaixo desse valor, pede humano acima |
-| `gatilho` | `{"cron":"..."}`, `{"evento":"..."}` ou `{}` para disparo manual |
-| `ativo` | `false` desliga o agente sem apagar o histórico dele |
+| `model` | Padrão `claude-opus-5-5` |
+| `tools` | Allowlist das ferramentas de **leitura**: `buscar_cliente`, `ver_caso`, `ver_processo`, `baixar_documento`, `teses_do_agente`, `referencias_do_agente`. Vazia = todas. Prefira o mínimo. `propor` e `entregar_documento` entram sempre |
+| `max_turns` | Padrão 40 |
+| `max_budget_usd` | Teto por execução. Sem valor, vale `TETO_USD` do ambiente |
+| `effort` | `low` a `max`. Padrão `high` |
+
+Skills vinculadas (`agent_skill_bindings`) entram no system prompt. Teses e
+referências vinculadas ficam disponíveis pelas ferramentas `teses_do_agente` e
+`referencias_do_agente`.
+
+`status = 'INACTIVE'` desliga o agente sem apagar o histórico.
+
+### O que o agente pode propor
+
+| Tipo | Efeito depois da aprovação |
+|---|---|
+| `CREATE_DEADLINE` | Cria prazo no caso (origem `AGENT`) |
+| `REQUEST_DOCUMENT` | Cria pendência de documento; em caso de parceiro, também uma solicitação ao parceiro |
+| `UPDATE_CASE` | Título, resumo ou status de triagem. Nunca aceita, rejeita ou encerra caso |
+| `CREATE_PROCESS` | Cria processo em preparação no caso |
+| `UPDATE_SKILL` / `UPDATE_AGENT` | Cria versão nova e a torna corrente |
+| `OTHER` | Nenhum efeito automático: aprovado, vira providência da equipe |
+
+Minuta de peça não é proposta: o agente usa `entregar_documento`, que cria uma
+versão INTERNA do documento no caso, com revisão pendente.
 
 ---
 
-## Nível 2 — Agente com roteiro longo (uma hora, com deploy)
+## Nível 2 — Roteiro longo em arquivo (uma hora, com deploy)
 
-Quando as instruções não cabem num parágrafo — uma peça, um protocolo com
-etapas — o roteiro vira uma **skill** versionada, e `prompt_sistema` fica só com
-o contrato curto (papel, limites, política).
-
-```
-agentes-claude/.claude/skills/felicitacao-cliente/SKILL.md
-```
-
-O worker carrega isso do `cwd` via `settingSources: ['project']`. Funciona igual
-ao que já roda na sua máquina — as skills do escritório são copiadas para lá sem
-alteração.
-
-**Limitação de hoje:** esses arquivos viajam junto com o worker, então skill nova
-exige redeploy. Se isso incomodar, o conserto é pequeno — o worker puxar
-`agentes-claude/` de um bucket ou do Git na inicialização. Vale fazer quando
-começar a doer, não antes.
+Skills cadastradas no DG Brasil já cobrem a maioria dos roteiros. Se precisar de
+skill em arquivo (com anexos, modelos), ela vai em
+`agentes-claude/.claude/skills/<nome>/SKILL.md` e o worker a carrega via
+`settingSources: ['project']`. Arquivo novo exige redeploy do worker.
 
 ---
 
 ## Nível 3 — Agente que precisa de algo novo (é código, com revisão)
 
-Dois casos, e só dois:
-
 **a) Ele precisa LER algo que nenhuma ferramenta expõe.**
-Exemplo: um agente financeiro que precisa ver inadimplência.
-→ Nova ferramenta de leitura em [`apps/agentes/src/ferramentas.ts`](../apps/agentes/src/ferramentas.ts).
-Marque `annotations: { readOnlyHint: true }` e acrescente o nome em
-`ferramentasMcp()` no executor.
+→ Nova ferramenta de leitura em [`apps/agentes/src/ferramentas.ts`](../apps/agentes/src/ferramentas.ts),
+com `annotations: { readOnlyHint: true }`, respeitando o escopo do cliente da
+execução (`clienteDoCaso`), e o nome em `FERRAMENTAS_LEITURA`.
 
 **b) Ele precisa PRODUZIR um efeito que ainda não existe.**
-Exemplo: agendar audiência na agenda do escritório.
-→ Novo tipo em `TipoProposta` ([`tipos.ts`](../apps/agentes/src/tipos.ts)), no
-`z.enum` da ferramenta `propor`, e um aplicador em
+→ Novo tipo em `agent_proposals.proposal_type` (migration), o schema do payload
+em [`propostas.ts`](../apps/agentes/src/propostas.ts) e um aplicador em
 [`aplicar.ts`](../apps/agentes/src/aplicar.ts).
 
 O aplicador é a parte séria: é ele que transforma proposta aprovada em fato.
-Escreva-o transacional e faça-o **falhar alto** se não puder cumprir — como faz
-hoje o `enviar_mensagem`. Proposta que "não deu erro" e também não produziu
-efeito é o pior resultado possível: o escritório acha que a coisa aconteceu.
+Ele roda numa transação e, se não puder cumprir, **falha alto**: a proposta fica
+`FAILED` com o erro em `application_error`, visível na tela. Proposta que "não
+deu erro" e também não produziu efeito é o pior resultado possível.
+
+Nenhuma ferramenta pode escrever direto no que tem efeito. Toda escrita passa
+por revisão humana.
 
 ---
 
 ## Quanto custa ter muitos agentes
 
-Agente parado **não custa nada** — é uma linha numa tabela. O custo é por
-execução: tokens da Anthropic, com teto por execução em `TETO_USD`.
+Agente parado **não custa nada**: é uma linha numa tabela. O custo é por
+execução (tokens da Anthropic), com teto por execução.
 
-Quanto à capacidade: a fila usa `FOR UPDATE SKIP LOCKED`, então crescer é subir
-mais um worker. Não há nada no desenho que limite o número de agentes; o
-gargalo prático vai ser a fila de aprovação — **quanto a equipe consegue
-revisar por dia**. Vale lembrar disso antes de cadastrar o décimo agente: um
-agente que produz propostas que ninguém revisa não está ajudando.
+Crescer é subir mais um worker. O gargalo prático é a fila de Revisões:
+**quanto a equipe consegue revisar por dia**. Um agente que produz propostas que
+ninguém revisa não está ajudando.
 
 ---
 
 ## Ainda não existe: o disparador automático
 
-O campo `gatilho` é lido e guardado, mas **nada ainda o executa**. Hoje, uma
-execução só entra na fila por `insert` manual.
-
-Para os `{"cron": "..."}` do seed valerem de verdade, falta um despachante —
-um processo que lê os gatilhos e cria as execuções na hora certa. É trabalho
-pequeno (a tabela e a fila já existem) e está previsto para a fase 2, junto com
-o deploy do worker.
+Uma execução entra na fila quando o backend (ou um SQL manual) cria
+`agent_runs` e chama `private.enqueue_agent_run`. Agendamento por horário e por
+evento (ex.: "todo dia útil às 9h") ainda não existe: é um despachante pequeno,
+previsto para o deploy do worker.

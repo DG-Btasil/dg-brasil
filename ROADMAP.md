@@ -8,7 +8,7 @@ data marcada.
 
 ### Fase 0 — Fundação ✅ *(feito nesta sessão)*
 
-- Repositório, arquitetura e schema do banco (`db/001` a `db/004`).
+- Repositório, arquitetura e banco V1 (`supabase/migrations`, 19 migrations).
 - Motor de agentes: fila, executor com Claude Agent SDK, ferramentas, aplicador.
 
 **Falta você fazer:** criar o projeto no Supabase (região São Paulo), rodar os

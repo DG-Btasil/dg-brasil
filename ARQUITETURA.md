@@ -18,15 +18,15 @@ uma base, autenticação simples.
                             │ SQL + Storage
 ┌───────────────────────────▼──────────────────────────────┐
 │  BANCO (Postgres/Supabase, São Paulo)                    │
-│  Fonte da verdade do escritório. Também é a FILA:        │
-│  a tabela `execucao` é o que o motor consome.            │
+│  Fonte da verdade do escritório. A fila (pgmq)           │
+│  `agent_execution` leva só o id de `agent_runs`.         │
 └───────────────────────────▲──────────────────────────────┘
                             │ claim / update
 ┌───────────────────────────┴──────────────────────────────┐
 │  MOTOR DE AGENTES (worker Node, Claude Agent SDK)        │
-│  Processo longo, fora do serverless. Pega execução       │
-│  pendente, roda o agente com ferramentas restritas,      │
-│  grava PROPOSTAS — não fatos consumados.                 │
+│  Processo longo, fora do serverless. Lê a fila,          │
+│  roda o agente com ferramentas restritas, grava          │
+│  PROPOSTAS e MINUTAS em revisão — não fatos consumados.  │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -35,21 +35,19 @@ uma base, autenticação simples.
 Nenhum agente escreve direto no que é irreversível — petição protocolada,
 documento enviado ao cliente, prazo fechado, dinheiro lançado.
 
-O agente grava uma linha em `proposta`. Ela aparece na fila do painel com o
-resumo, o payload e o rastro dos passos que a produziram. Um humano aprova ou
-rejeita. Só a aprovação aplica o efeito.
+O agente grava uma linha em `agent_proposals`, com uma revisão pendente em
+`reviews`. Ela aparece em Revisões com o resumo e o payload. Um advogado aprova
+ou rejeita. Só a aprovação aplica o efeito, e o banco recusa aprovar proposta
+sem revisão humana aprovada. Minuta de peça segue o mesmo caminho como versão
+INTERNA de documento: a aprovação vale para aquela versão, não para a próxima.
 
 Isso não é excesso de zelo. É o desenho que já funciona no agente Lucas ("audita
 antes de gerar") e é o que torna defensável usar IA sobre dados de idosos
 vulneráveis: existe sempre um advogado responsável no registro.
 
-Três políticas, por agente, na coluna `agente.politica_aprovacao`:
-
-| Política | Quando usar | Exemplo |
-|---|---|---|
-| `auto` | Leitura, classificação, enriquecimento. Reversível. | Radar: marcar publicação como lida |
-| `humana` | Qualquer saída que vira peça, documento ou mensagem ao cliente | Petição inicial, procuração, resposta no WhatsApp |
-| `humana_se` | Auto abaixo de um limite declarado, humano acima | Lançar honorário até R$ 500 |
+Na V1 não há aprovação automática: toda proposta passa por revisão humana
+("IA executa. Humano decide."). Se um dia fizer sentido aprovar sozinho algo
+reversível, isso entra como regra explícita no banco, não como atalho no worker.
 
 ## Stack escolhida (você pediu que eu decidisse)
 
@@ -58,7 +56,7 @@ Três políticas, por agente, na coluna `agente.politica_aprovacao`:
 | Banco, arquivos, login | **Supabase Pro, região São Paulo (sa-east-1)** | Postgres de verdade (o domínio é relacional: caso→processo→prazo). RLS nativa dá permissão por papel sem código. Storage para PDFs com o mesmo login. Dado de cliente não sai do Brasil. |
 | Painel | **Next.js 16 na Vercel, região gru1** | Você já escreve Next.js — o `esteira-consignado` está em produção de fato. Zero infra para manter. |
 | Motor de agentes | **Worker Node no Fly.io, região gru** | Gerar uma petição leva minutos; função serverless morre no timeout. Worker é processo contínuo, com retry e log. Fly tem São Paulo. |
-| Fila | **A própria tabela `execucao`, com `FOR UPDATE SKIP LOCKED`** | Não introduz Redis nem SQS. Postgres aguenta muito mais do que este escritório vai gerar, e a fila fica auditável junto com o resto. |
+| Fila | **Supabase Queues (pgmq), fila `agent_execution`** | Fila dentro do próprio Postgres: sem Redis nem SQS. Mensagem lida fica invisível e reaparece se o worker morrer. O registro auditável continua em `agent_runs`. |
 
 **Custo estimado:** Supabase Pro US$25 + Vercel Pro US$20 + Fly ~US$10 ≈ **US$55/mês (~R$ 300)**,
 mais o consumo da API da Anthropic, que varia com o volume de peças.

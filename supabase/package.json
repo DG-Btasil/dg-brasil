@@ -1,0 +1,12 @@
+{
+  "name": "@dgbrasil/supabase",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verificar": "node tests/verificar.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.16"
+  }
+}
