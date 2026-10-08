@@ -184,6 +184,7 @@ export const CS = {
   robertoCartao: "cas_roberto_cartao",
   anaSuperendividamento: "cas_ana_superendividamento",
   panificadoraCapitalGiro: "cas_panificadora_capital_giro",
+  franciscoIndicacao: "cas_francisco_indicacao",
 } as const;
 
 /** Casos originados por escritórios parceiros. */

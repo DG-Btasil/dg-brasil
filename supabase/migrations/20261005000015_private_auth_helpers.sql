@@ -364,6 +364,90 @@ as $$
   end
 $$;
 
+-- ───────────────────────────── identidade de outro usuário ────────────────
+-- Usadas quando a operação valida um usuário que NÃO é necessariamente o da
+-- sessão: o backend (service role) agindo por um usuário que ele autenticou,
+-- ou a checagem do advogado responsável de um caso.
+
+-- Papel interno ATIVO de um usuário (membership ativa em OWNER ativo, perfil
+-- ativo). null se não for usuário interno ativo.
+create or replace function private.user_internal_role(p_user_id uuid)
+returns public.membership_role
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select m.role
+  from public.organization_memberships m
+  join public.organizations o on o.id = m.organization_id
+  join public.profiles p on p.id = m.user_id
+  where m.user_id = p_user_id
+    and m.status = 'ACTIVE'
+    and o.type = 'OWNER' and o.status = 'ACTIVE' and o.deleted_at is null
+    and p.active
+  limit 1
+$$;
+
+create or replace function private.is_active_internal_user(p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.user_internal_role(p_user_id) is not null
+$$;
+
+-- Organização ativa de um usuário (interno ou parceiro).
+create or replace function private.user_organization_id(p_user_id uuid)
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select m.organization_id
+  from public.organization_memberships m
+  where m.user_id = p_user_id and m.status = 'ACTIVE'
+  limit 1
+$$;
+
+-- Quem está agindo numa operação controlada (decidir revisão, pedir execução,
+-- trocar origem...).
+--   Usuário logado: é ele, sempre. Informar outro p_actor é recusado.
+--   Sem usuário (backend com service role): p_actor é obrigatório, precisa ser
+--   perfil ativo, e fica em dg.actor_user_id para a auditoria registrar
+--   actor_type USER com esse usuário.
+-- A autorização (papel, acesso ao caso) é checada por cada operação, contra
+-- este usuário — o service role não é atalho de autorização.
+create or replace function private.resolve_actor(p_actor uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is not null then
+    if p_actor is not null and p_actor <> v_uid then
+      raise exception 'Operação só em nome do próprio usuário' using errcode = '42501';
+    end if;
+    return v_uid;
+  end if;
+
+  if p_actor is null then
+    raise exception 'Operação sem usuário: o backend precisa informar quem está agindo' using errcode = '42501';
+  end if;
+  if not exists (select 1 from public.profiles p where p.id = p_actor and p.active) then
+    raise exception 'Usuário % não existe ou está inativo', p_actor using errcode = '42501';
+  end if;
+  perform set_config('dg.actor_user_id', p_actor::text, true);
+  return p_actor;
+end
+$$;
+
 -- ───────────────────────────── grants ─────────────────────────────────────
 
 do $$
@@ -389,3 +473,13 @@ begin
   end loop;
 end
 $$;
+
+-- resolve_actor e current_actor só rodam dentro de funções SECURITY DEFINER
+-- (operações controladas e auditoria): nenhum papel recebe EXECUTE direto.
+revoke all on function private.resolve_actor(uuid) from public, anon, authenticated, service_role;
+revoke all on function private.current_actor() from public, anon, authenticated, service_role;
+-- Papel/organização de OUTRO usuário: só para funções definer e triggers (um
+-- usuário não sonda o papel de UUIDs alheios).
+revoke all on function private.user_internal_role(uuid) from public, anon, authenticated;
+revoke all on function private.is_active_internal_user(uuid) from public, anon, authenticated;
+revoke all on function private.user_organization_id(uuid) from public, anon, authenticated;

@@ -5,6 +5,21 @@
 --
 -- Versões são append-only. current_version_id aponta para uma versão do PRÓPRIO
 -- item (FK composta), nunca de outro.
+--
+-- Propostas que mudam a configuração estrutural do DG Brasil (agente, skill,
+-- tese, referência) só são decididas por ADMIN: private.proposal_requires_admin.
+
+-- Tipos de proposta estruturais. Inclui tipos futuros (UPDATE_THESIS,
+-- UPDATE_REFERENCE e qualquer ADMIN_*), para que um tipo novo nasça protegido.
+create or replace function private.proposal_requires_admin(p_type text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select p_type in ('UPDATE_AGENT', 'UPDATE_SKILL', 'UPDATE_THESIS', 'UPDATE_REFERENCE')
+      or p_type like 'ADMIN\_%'
+$$;
 
 -- ───────────────────────────── agentes ────────────────────────────────────
 
@@ -153,6 +168,36 @@ create table public.agent_thesis_bindings (
 
 create index agent_thesis_bindings_thesis_idx on public.agent_thesis_bindings (legal_thesis_id);
 
+-- Skills que operacionalizam cada tese (N:N).
+create table public.thesis_skill_bindings (
+  legal_thesis_id uuid not null references public.legal_theses (id) on delete restrict,
+  skill_id        uuid not null references public.skills (id) on delete restrict,
+  enabled         boolean not null default true,
+  created_at      timestamptz not null default now(),
+  primary key (legal_thesis_id, skill_id)
+);
+
+create index thesis_skill_bindings_skill_idx on public.thesis_skill_bindings (skill_id);
+
+-- Template de análise: agente principal (005), skills e teses usadas.
+alter table public.analysis_templates
+  add constraint analysis_templates_primary_agent_fkey
+  foreign key (primary_agent_id) references public.agents (id) on delete restrict;
+
+create table public.analysis_template_skill_bindings (
+  analysis_template_id uuid not null references public.analysis_templates (id) on delete cascade,
+  skill_id             uuid not null references public.skills (id) on delete restrict,
+  created_at           timestamptz not null default now(),
+  primary key (analysis_template_id, skill_id)
+);
+
+create table public.analysis_template_thesis_bindings (
+  analysis_template_id uuid not null references public.analysis_templates (id) on delete cascade,
+  legal_thesis_id      uuid not null references public.legal_theses (id) on delete restrict,
+  created_at           timestamptz not null default now(),
+  primary key (analysis_template_id, legal_thesis_id)
+);
+
 -- ───────────────────────────── referências ────────────────────────────────
 
 create table public.reference_materials (
@@ -163,6 +208,9 @@ create table public.reference_materials (
   title              text not null check (btrim(title) <> ''),
   description        text,
   legal_area_id      uuid references public.legal_areas (id) on delete restrict,
+  -- Etiquetas livres de busca, normalizadas em minúsculas.
+  tags               text[] not null default '{}'
+                     check (cardinality(tags) <= 30 and array_to_string(tags, '|') = lower(array_to_string(tags, '|'))),
   status             text not null default 'ACTIVE' check (status in ('ACTIVE', 'DRAFT', 'ARCHIVED')),
   current_version_id uuid,
   created_by         uuid references public.profiles (id) on delete restrict,
@@ -190,9 +238,53 @@ create table public.reference_material_versions (
     check (storage_object_name is not null or content_text is not null)
 );
 
+create index reference_materials_tags_idx on public.reference_materials using gin (tags);
+
 create trigger reference_material_versions_assign_number
   before insert on public.reference_material_versions
   for each row execute function private.assign_version_number('reference_material_id');
+
+-- Caminho no bucket reference-materials, no mesmo padrão dos documentos:
+--   references/{reference_material_id}/{version_id}/{filename}
+create or replace function private.reference_material_object_name(
+  p_reference_material_id uuid, p_version_id uuid, p_filename text
+)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select format('references/%s/%s/%s',
+                p_reference_material_id, p_version_id, private.sanitize_filename(p_filename))
+$$;
+
+grant execute on function private.reference_material_object_name(uuid, uuid, text) to service_role;
+
+create or replace function private.reference_material_versions_validate()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_prefix text := format('references/%s/%s/', new.reference_material_id, new.id);
+  v_rest   text;
+begin
+  if new.storage_object_name is not null then
+    v_rest := substr(new.storage_object_name, length(v_prefix) + 1);
+    if left(new.storage_object_name, length(v_prefix)) <> v_prefix
+       or v_rest = '' or strpos(v_rest, '/') > 0 then
+      raise exception 'storage_object_name precisa seguir %{filename}', v_prefix using errcode = '23514';
+    end if;
+  end if;
+  new.created_by := coalesce(new.created_by, auth.uid());
+  return new;
+end
+$$;
+
+create trigger reference_material_versions_validate
+  before insert on public.reference_material_versions
+  for each row execute function private.reference_material_versions_validate();
 create trigger reference_material_versions_append_only
   before update or delete on public.reference_material_versions
   for each row execute function private.prevent_mutation();
@@ -228,7 +320,9 @@ create table public.thesis_reference_bindings (
 
 -- ───────────────────────────── execuções ──────────────────────────────────
 -- Registro persistente do domínio. A fila (pgmq, 018) só transporta o id.
--- Nunca armazenar chain-of-thought nem PII em metadata.
+-- Nasce por private.request_agent_run (018), nunca por INSERT do usuário.
+-- Nunca armazenar chain-of-thought nem PII em metadata: o pedido em texto do
+-- usuário fica em agent_run_inputs, com acesso restrito e prazo de retenção.
 
 create table public.agent_runs (
   id                       uuid primary key default gen_random_uuid(),
@@ -238,6 +332,14 @@ create table public.agent_runs (
   legal_process_id         uuid,
   status                   text not null default 'QUEUED' check (status in (
                              'QUEUED', 'RUNNING', 'WAITING_HUMAN', 'COMPLETED', 'FAILED', 'CANCELLED')),
+  operation                text not null default 'EXECUTE' check (operation ~ '^[A-Z][A-Z_]{1,31}$'),
+  correlation_id           uuid not null default gen_random_uuid(),
+  -- Reserva pelo worker (claim atômico) e batimento enquanto executa.
+  queue_msg_id             bigint,
+  claimed_by               text,
+  claimed_at               timestamptz,
+  heartbeat_at             timestamptz,
+  attempt                  integer not null default 0 check (attempt >= 0),
   provider                 text not null default 'ANTHROPIC',
   model                    text,
   requested_by             uuid references public.profiles (id) on delete restrict,
@@ -250,7 +352,10 @@ create table public.agent_runs (
   estimated_cost_currency  public.currency_code not null default 'USD',
   error_code               text,
   error_message            text,
-  metadata                 jsonb not null default '{}',
+  -- Só ids, contagens e nomes de ferramentas. Conteúdo livre vai para
+  -- agent_run_inputs; a chave "input" é recusada aqui de propósito.
+  metadata                 jsonb not null default '{}'
+                           check (jsonb_typeof(metadata) = 'object' and not (metadata ? 'input')),
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now(),
   -- A versão executada é deste agente.
@@ -261,6 +366,7 @@ create table public.agent_runs (
     foreign key (legal_process_id, legal_case_id)
     references public.legal_processes (id, legal_case_id) on delete restrict,
   constraint agent_runs_running_has_start check (status <> 'RUNNING' or started_at is not null),
+  constraint agent_runs_running_is_claimed check (status <> 'RUNNING' or claimed_by is not null),
   constraint agent_runs_finished_has_end check (
     status not in ('COMPLETED', 'FAILED') or completed_at is not null
   )
@@ -274,6 +380,80 @@ create trigger agent_runs_set_updated_at
   before update on public.agent_runs
   for each row execute function private.set_updated_at();
 
+-- Máquina de estados da execução. RUNNING → RUNNING é a retomada de uma
+-- reserva vencida (worker morto); RUNNING → QUEUED é nova tentativa.
+create or replace function private.agent_runs_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.status <> 'QUEUED' then
+      raise exception 'Execução nasce QUEUED' using errcode = '23514';
+    end if;
+    return new;
+  end if;
+
+  if new.agent_id is distinct from old.agent_id
+     or new.agent_version_id is distinct from old.agent_version_id
+     or new.legal_case_id is distinct from old.legal_case_id
+     or new.legal_process_id is distinct from old.legal_process_id
+     or new.requested_by is distinct from old.requested_by then
+    raise exception 'Identidade da execução (agente, versão, caso, solicitante) é imutável' using errcode = '23514';
+  end if;
+
+  if new.status is distinct from old.status and not (
+       (old.status = 'QUEUED'        and new.status in ('RUNNING', 'FAILED', 'CANCELLED'))
+    or (old.status = 'RUNNING'       and new.status in ('QUEUED', 'WAITING_HUMAN', 'COMPLETED', 'FAILED', 'CANCELLED'))
+    or (old.status = 'WAITING_HUMAN' and new.status in ('COMPLETED', 'FAILED', 'CANCELLED'))
+  ) then
+    raise exception 'Transição de execução inválida: % → %', old.status, new.status using errcode = '23514';
+  end if;
+  return new;
+end
+$$;
+
+create trigger agent_runs_guard
+  before insert or update on public.agent_runs
+  for each row execute function private.agent_runs_guard();
+
+-- Pedido em texto e parâmetros da execução. Pode conter dado pessoal (o
+-- advogado descreve o caso): por isso fica fora de agent_runs, com RLS
+-- própria e prazo de retenção (private.purge_expired_agent_run_inputs).
+create table public.agent_run_inputs (
+  agent_run_id uuid primary key references public.agent_runs (id) on delete cascade,
+  requested_by uuid references public.profiles (id) on delete restrict,
+  request_text text check (request_text is null or length(request_text) <= 20000),
+  parameters   jsonb not null default '{}' check (jsonb_typeof(parameters) = 'object'),
+  created_at   timestamptz not null default now(),
+  expires_at   timestamptz not null default now() + interval '180 days'
+);
+
+comment on table public.agent_run_inputs is
+  'Entrada livre da execução. Retenção limitada (expires_at); depois o texto é apagado e a execução continua no histórico.';
+
+-- Apaga o conteúdo vencido (mantém a linha e o vínculo). Rodar periodicamente.
+create or replace function private.purge_expired_agent_run_inputs()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  n integer;
+begin
+  update public.agent_run_inputs
+     set request_text = null, parameters = '{}'
+   where expires_at < now() and (request_text is not null or parameters <> '{}');
+  get diagnostics n = row_count;
+  return n;
+end
+$$;
+
+revoke all on function private.purge_expired_agent_run_inputs() from public, anon, authenticated;
+grant execute on function private.purge_expired_agent_run_inputs() to service_role;
+
 alter table public.legal_analyses
   add constraint legal_analyses_agent_run_fkey
   foreign key (agent_run_id) references public.agent_runs (id) on delete restrict;
@@ -285,10 +465,16 @@ create table public.agent_proposals (
   agent_run_id          uuid not null references public.agent_runs (id) on delete restrict,
   legal_case_id         uuid references public.legal_cases (id) on delete restrict,
   legal_process_id      uuid,
+  -- Só tipos com aplicador no worker (apps/agentes/src/aplicar.ts). Minuta de
+  -- documento NÃO é proposta: vai como versão INTERNAL de documento, revisada
+  -- como tal (ferramenta entregar_documento). Por isso não existe CREATE_DOCUMENT.
   proposal_type         text not null check (proposal_type in (
-                          'CREATE_DOCUMENT', 'CREATE_DEADLINE', 'REQUEST_DOCUMENT', 'UPDATE_CASE',
+                          'CREATE_DEADLINE', 'REQUEST_DOCUMENT', 'UPDATE_CASE',
                           'CREATE_PROCESS', 'UPDATE_SKILL', 'UPDATE_AGENT', 'OTHER')),
   payload               jsonb not null,
+  -- A mesma proposta, repetida na mesma execução (retry, agente que repete a
+  -- chamada), não vira duas: (agent_run_id, idempotency_key) é único.
+  idempotency_key       text not null check (idempotency_key ~ '^[A-Za-z0-9:_.-]{8,128}$'),
   -- FAILED: aprovada, mas a aplicação deu erro (visível em application_error).
   status                text not null default 'PENDING'
                         check (status in ('PENDING', 'APPROVED', 'REJECTED', 'APPLIED', 'FAILED')),
@@ -298,6 +484,10 @@ create table public.agent_proposals (
   updated_at            timestamptz not null default now(),
   decided_at            timestamptz,
   applied_at            timestamptz,
+  -- O que a aplicação produziu (rastreio e prova de efeito único).
+  applied_entity_type   text,
+  applied_entity_id     uuid,
+  constraint agent_proposals_idempotency_key unique (agent_run_id, idempotency_key),
   constraint agent_proposals_process_fkey
     foreign key (legal_process_id, legal_case_id)
     references public.legal_processes (id, legal_case_id) on delete restrict
@@ -365,6 +555,12 @@ begin
     end if;
   end if;
 
+  if (new.applied_entity_type is distinct from old.applied_entity_type
+      or new.applied_entity_id is distinct from old.applied_entity_id)
+     and not (old.status = 'APPROVED' and new.status = 'APPLIED') then
+    raise exception 'O efeito de uma proposta só se registra ao aplicá-la' using errcode = '23514';
+  end if;
+
   return new;
 end
 $$;
@@ -372,3 +568,7 @@ $$;
 create trigger agent_proposals_guard
   before insert or update on public.agent_proposals
   for each row execute function private.agent_proposals_guard();
+
+alter table public.document_version_verifications
+  add constraint document_version_verifications_agent_run_fkey
+  foreign key (agent_run_id) references public.agent_runs (id) on delete restrict;

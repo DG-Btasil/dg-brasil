@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 
 /**
@@ -49,7 +50,8 @@ export const PAYLOADS = {
     state: z.string().regex(/^[A-Z]{2}$/).optional(),
     legal_class: z.string().max(200).optional(),
     subject: z.string().max(500).optional(),
-    client_side: z.enum(['PLAINTIFF', 'DEFENDANT', 'INTERESTED', 'OTHER']).optional(),
+    /** Polo do CLIENTE no processo (não é o papel de cada parte). */
+    client_side: z.enum(['ACTIVE', 'PASSIVE', 'THIRD_PARTY']).optional(),
     adverse_party_summary: z.string().max(2000).optional(),
     case_value: z.number().nonnegative().optional(),
   }),
@@ -76,6 +78,22 @@ export const TIPOS_PROPOSTA = Object.keys(PAYLOADS) as [TipoProposta, ...TipoPro
 export const EXIGE_CASO: ReadonlySet<TipoProposta> = new Set([
   'CREATE_DEADLINE', 'REQUEST_DOCUMENT', 'UPDATE_CASE', 'CREATE_PROCESS',
 ])
+
+/**
+ * Chave de idempotência: mesma proposta (tipo + dados) na mesma execução é a
+ * mesma linha — o banco tem unique (agent_run_id, idempotency_key).
+ */
+export function chaveIdempotencia(tipo: TipoProposta, dados: Record<string, unknown>): string {
+  return `prop:${createHash('sha256').update(`${tipo}:${canonico(dados)}`).digest('hex').slice(0, 40)}`
+}
+
+function canonico(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonico).join(',')}]`
+  if (v && typeof v === 'object') {
+    return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonico((v as Record<string, unknown>)[k])}`).join(',')}}`
+  }
+  return JSON.stringify(v)
+}
 
 export function validarPayload<T extends TipoProposta>(tipo: T, payload: unknown): z.infer<(typeof PAYLOADS)[T]> {
   return PAYLOADS[tipo].parse(payload) as z.infer<(typeof PAYLOADS)[T]>

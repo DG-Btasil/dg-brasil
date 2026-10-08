@@ -2,7 +2,15 @@
 --
 -- Uma revisão tem exatamente UM alvo: versão de documento, análise ou proposta
 -- de agente. Decisões são append-only; o status da revisão é sempre o efeito
--- da última decisão (aplicado por trigger, na mesma transação).
+-- da última decisão.
+--
+-- GATE HUMANO ("IA executa. Humano decide."): o status de uma revisão NUNCA
+-- muda por UPDATE direto. A única porta é private.decide_review, que grava a
+-- decisão (review_decisions), muda a revisão, avança a proposta do agente e
+-- audita — tudo na mesma transação. Três barreiras independentes:
+--   1. grants: authenticated não grava status/decided_at nem insere decisão;
+--   2. trigger: revisão nasce PENDING e o status só muda dentro da decisão;
+--   3. trigger de proposta (012): APPROVED exige revisão APPROVED.
 
 create table public.legal_analyses (
   id                   uuid primary key default gen_random_uuid(),
@@ -12,9 +20,13 @@ create table public.legal_analyses (
                          'PENDING', 'WAITING_DOCUMENTS', 'QUEUED', 'RUNNING', 'WAITING_REVIEW',
                          'COMPLETED', 'FAILED', 'CANCELLED')),
   summary              text,
+  -- Valores dos campos do template (analysis_template_fields.key → valor).
+  field_values         jsonb not null default '{}' check (jsonb_typeof(field_values) = 'object'),
   -- Saída estruturada. Nunca chain-of-thought.
   result_data          jsonb not null default '{}',
   agent_run_id         uuid,  -- FK em 012_agents
+  interruption_reason  text,
+  started_by           uuid references public.profiles (id) on delete restrict,
   started_at           timestamptz,
   completed_at         timestamptz,
   created_at           timestamptz not null default now(),
@@ -40,8 +52,10 @@ create table public.reviews (
   agent_proposal_id    uuid,  -- FK em 012_agents
   status               text not null default 'PENDING' check (status in (
                          'PENDING', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED', 'REOPENED')),
+  -- URGENT é prioridade, nunca status.
   priority             text not null default 'NORMAL' check (priority in ('LOW', 'NORMAL', 'HIGH', 'URGENT')),
   assigned_reviewer_id uuid references public.profiles (id) on delete restrict,
+  due_at               timestamptz,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now(),
   decided_at           timestamptz,
@@ -119,6 +133,33 @@ create trigger reviews_validate_target
   before insert or update on public.reviews
   for each row execute function private.reviews_validate_target();
 
+-- Barreira 2 do gate: revisão nasce PENDING; status e decided_at só mudam
+-- dentro de review_decisions_apply (que marca a transação com o id da revisão).
+create or replace function private.reviews_guard_status()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.status <> 'PENDING' or new.decided_at is not null then
+      raise exception 'Revisão nasce PENDING, sem decisão' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  if (new.status is distinct from old.status or new.decided_at is distinct from old.decided_at)
+     and coalesce(current_setting('dg.review_decision_review_id', true), '') <> new.id::text then
+    raise exception 'Status de revisão só muda por decisão registrada (decide_review)' using errcode = '42501';
+  end if;
+  return new;
+end
+$$;
+
+create trigger reviews_guard_status
+  before insert or update on public.reviews
+  for each row execute function private.reviews_guard_status();
+
 -- ───────────────────────────── decisões (append-only) ─────────────────────
 
 create table public.review_decisions (
@@ -147,8 +188,9 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_status text;
+  v_review record;
   v_actor  uuid := auth.uid();
+  v_role   public.membership_role;
 begin
   if tg_op = 'INSERT' and tg_when = 'BEFORE' then
     new.decided_by := coalesce(new.decided_by, v_actor);
@@ -156,28 +198,49 @@ begin
       raise exception 'Decisão só pode ser registrada em nome do próprio usuário' using errcode = '42501';
     end if;
 
-    if not exists (
-      select 1
-      from public.organization_memberships m
-      join public.organizations o on o.id = m.organization_id
-      where m.user_id = new.decided_by and m.status = 'ACTIVE'
-        and m.role in ('ADMIN', 'LAWYER') and o.type = 'OWNER'
-    ) then
+    v_role := private.user_internal_role(new.decided_by);
+    if v_role is null or v_role not in ('ADMIN', 'LAWYER') then
       raise exception 'Só ADMIN ou LAWYER interno decide revisões' using errcode = '42501';
     end if;
 
-    select r.status into v_status from public.reviews r where r.id = new.review_id for update;
+    select r.status, r.agent_proposal_id, p.proposal_type into v_review
+    from public.reviews r
+    left join public.agent_proposals p on p.id = r.agent_proposal_id
+    where r.id = new.review_id
+    for update of r;
+
+    if not found then
+      raise exception 'Revisão % não existe', new.review_id using errcode = '23503';
+    end if;
+
+    -- Proposta que altera configuração estrutural do DG Brasil (agente, skill,
+    -- tese, referência): só ADMIN decide. LAWYER decide resultado jurídico.
+    if v_review.agent_proposal_id is not null
+       and private.proposal_requires_admin(v_review.proposal_type)
+       and v_role <> 'ADMIN' then
+      raise exception 'Somente ADMIN decide proposta % (configuração estrutural do DG Brasil)', v_review.proposal_type
+        using errcode = '42501';
+    end if;
 
     if new.decision in ('APPROVE', 'REJECT', 'REQUEST_CHANGES')
-       and v_status not in ('PENDING', 'REOPENED') then
-      raise exception 'Revisão em % não aceita %', v_status, new.decision using errcode = '23514';
+       and v_review.status not in ('PENDING', 'REOPENED') then
+      raise exception 'Revisão em % não aceita %', v_review.status, new.decision using errcode = '23514';
     end if;
-    if new.decision = 'REOPEN' and v_status not in ('APPROVED', 'REJECTED', 'CHANGES_REQUESTED') then
-      raise exception 'Só se reabre revisão decidida (atual: %)', v_status using errcode = '23514';
+    if new.decision = 'REOPEN' then
+      if v_review.status not in ('APPROVED', 'REJECTED', 'CHANGES_REQUESTED') then
+        raise exception 'Só se reabre revisão decidida (atual: %)', v_review.status using errcode = '23514';
+      end if;
+      -- Proposta decidida segue para aplicação ou descarte: não se desfaz um
+      -- efeito reabrindo a revisão. Para rever, o agente gera outra proposta.
+      if v_review.agent_proposal_id is not null then
+        raise exception 'Revisão de proposta de agente não se reabre: gere uma nova proposta'
+          using errcode = '23514';
+      end if;
     end if;
     return new;
   end if;
 
+  perform set_config('dg.review_decision_review_id', new.review_id::text, true);
   update public.reviews
      set status = case new.decision
                     when 'APPROVE'         then 'APPROVED'
@@ -187,6 +250,7 @@ begin
                   end,
          decided_at = case when new.decision = 'REOPEN' then null else new.created_at end
    where id = new.review_id;
+  perform set_config('dg.review_decision_review_id', '', true);
   return null;
 end
 $$;
@@ -198,6 +262,43 @@ create trigger review_decisions_validate
 create trigger review_decisions_apply_status
   after insert on public.review_decisions
   for each row execute function private.review_decisions_apply();
+
+-- A operação de decisão: decisão → status da revisão → proposta → auditoria,
+-- numa transação só. Usuário logado decide em nome próprio (auth.uid()); o
+-- backend com service role informa p_actor e o banco revalida o papel dele.
+create or replace function private.decide_review(
+  p_review_id uuid,
+  p_decision  text,
+  p_notes     text default null,
+  p_actor     uuid default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor    uuid := private.resolve_actor(p_actor);
+  v_decision uuid;
+  v_proposal uuid;
+begin
+  insert into public.review_decisions (review_id, decision, notes, decided_by)
+  values (p_review_id, p_decision, p_notes, v_actor)
+  returning id into v_decision;
+
+  -- Próxima etapa da proposta do agente (aplicar o efeito é do worker).
+  select agent_proposal_id into v_proposal from public.reviews where id = p_review_id;
+  if v_proposal is not null then
+    if p_decision = 'APPROVE' then
+      update public.agent_proposals set status = 'APPROVED' where id = v_proposal and status = 'PENDING';
+    elsif p_decision = 'REJECT' then
+      update public.agent_proposals set status = 'REJECTED' where id = v_proposal and status = 'PENDING';
+    end if;
+  end if;
+
+  return v_decision;
+end
+$$;
 
 -- ───────────────────────────── aprovação por versão ───────────────────────
 -- Situação derivada (não gravada) de cada versão. Uma versão nova nasce sem

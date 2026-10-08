@@ -5,6 +5,9 @@
  * O Claude é substituído por um "agente falso" que chama as ferramentas como o
  * modelo faria. Assim se testa tudo que é nosso — fila, ferramentas, gate de
  * revisão, aplicação — sem chamar a API.
+ *
+ * O worker roda com o papel dg_worker (sem bypass de RLS), como em produção:
+ * se ele precisar de um privilégio que não tem, o teste quebra.
  */
 import { PGlite } from '@electric-sql/pglite'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
@@ -24,10 +27,17 @@ let banco: Banco
 const armazenamento = armazenamentoEmMemoria()
 const ids: Record<string, string> = {}
 
+/** Banco do worker: toda consulta roda como dg_worker. */
 function bancoPglite(p: PGlite): Banco {
   return {
-    query: (sql, params) => p.query(sql, params) as never,
-    transacao: (fn) => p.transaction((tx) => fn({ query: (sql, params) => tx.query(sql, params) as never })),
+    query: (sql, params) => p.transaction(async (tx) => {
+      await tx.query('set local role dg_worker')
+      return tx.query(sql, params)
+    }) as never,
+    transacao: (fn) => p.transaction(async (tx) => {
+      await tx.query('set local role dg_worker')
+      return fn({ query: (sql, params) => tx.query(sql, params) as never })
+    }),
     fechar: () => p.close(),
   }
 }
@@ -68,11 +78,20 @@ async function chamar(ferramentas: Ferramenta[], nome: string, args: Record<stri
 
 const metricas = { tokensEntrada: 1000, tokensSaida: 200, custoUsd: 0.0123, modelo: 'claude-opus-5-5' }
 
-/** Cria uma execução e a põe na fila; devolve o id da execução. */
+/**
+ * Cria uma execução e a põe na fila, como o backend faria (request_agent_run em
+ * nome do LAWYER; sem caso, em nome da ADMIN). Versão diferente da corrente só
+ * existe em teste: aí a linha é criada direto.
+ */
 async function enfileirar(caso: string | null = ids.casoA!, agente = ids.agente!, versao = ids.versao!) {
+  if (versao === ids.versao) {
+    const r = await um<{ id: string }>(
+      `select public.request_agent_run($1, $2, null, 'analisar o caso', '{}', 'EXECUTE', $3) as id`,
+      [agente, caso, caso ? ids.lucas : ids.admin])
+    return r.id
+  }
   const r = await um<{ id: string }>(
-    `insert into agent_runs (agent_id, agent_version_id, legal_case_id, requested_by, metadata)
-     values ($1, $2, $3, $4, '{"input":{"pedido":"analisar"}}') returning id`,
+    `insert into agent_runs (agent_id, agent_version_id, legal_case_id, requested_by) values ($1, $2, $3, $4) returning id`,
     [agente, versao, caso, ids.lucas])
   await db.query(`select private.enqueue_agent_run($1)`, [r.id])
   return r.id
@@ -84,10 +103,12 @@ async function proximaMensagem() {
   return m
 }
 
-async function decidir(revisao: string, decisao: 'APPROVE' | 'REJECT', notas?: string) {
-  await db.query(`insert into review_decisions (review_id, decision, decided_by, notes) values ($1, $2, $3, $4)`,
-    [revisao, decisao, ids.lucas, notas ?? null])
+/** Decisão humana, pela operação controlada (backend agindo pelo usuário). */
+async function decidir(revisao: string, decisao: 'APPROVE' | 'REJECT', notas?: string, quem = ids.lucas) {
+  await db.query(`select public.decide_review($1, $2, $3, $4)`, [revisao, decisao, notas ?? null, quem])
 }
+
+const reaparecer = () => db.query(`update pgmq.q_agent_execution set vt = now()`)
 
 const CNJ = (() => {
   const n = '0800500', resto = '2026805' + '0001'
@@ -112,6 +133,10 @@ beforeAll(async () => {
     values ('lucas@exemplo.com', '{"full_name":"Lucas"}') returning id`)).id
   await db.query(`insert into organization_memberships (organization_id, user_id, role) values ($1, $2, 'LAWYER')`,
     [ids.owner, ids.lucas])
+  ids.admin = (await um(`insert into auth.users (email, raw_user_meta_data)
+    values ('barbara@exemplo.com', '{"full_name":"Bárbara"}') returning id`)).id
+  await db.query(`insert into organization_memberships (organization_id, user_id, role) values ($1, $2, 'ADMIN')`,
+    [ids.owner, ids.admin])
 
   async function cliente(cpf: string, nome: string) {
     const c = (await um(`insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', $1, $2) returning id`,
@@ -174,6 +199,7 @@ describe('execução completa', () => {
 
     const desfecho = await rodarAgente(async (ctx, ferramentas) => {
       ctxVisto = ctx
+      expect(ctx.entrada.pedido).toBe('analisar o caso')
       const caso = await chamar(ferramentas, 'ver_caso', { caso_id: ids.casoA })
       expect(caso.texto).toContain('Consignado BMG')
       expect(caso.texto).toContain('HISCON')
@@ -223,10 +249,12 @@ describe('execução completa', () => {
     expect(texto).not.toContain('João')
   })
 
-  it('a mensagem foi arquivada', async () => {
+  it('a mensagem foi arquivada e a execução registra a reserva', async () => {
     expect(await lerMensagem(banco, 600)).toBeNull()
-    const m = await linhas(`select archived_at from pgmq.messages where message->>'agent_run_id' = $1`, [runId])
+    const m = await linhas(`select archived_at from pgmq.a_agent_execution where message->>'agent_run_id' = $1`, [runId])
     expect(m[0]!.archived_at).not.toBeNull()
+    const r = await um(`select claimed_by, attempt from agent_runs where id = $1`, [runId])
+    expect(r).toMatchObject({ claimed_by: 'teste', attempt: 1 })
   })
 
   it('a proposta está PENDING com revisão PENDING; nada foi aplicado', async () => {
@@ -265,8 +293,19 @@ describe('execução completa', () => {
     expect(p.applied_at).not.toBeNull()
     expect((await um(`select status from agent_runs where id = $1`, [runId])).status).toBe('COMPLETED')
 
-    const ev = await linhas(`select action from audit_events where request_id = $1 order by created_at`, [runId])
-    expect(ev.map((e) => e.action)).toEqual(expect.arrayContaining(['AGENT_PROPOSAL_APPROVED', 'AGENT_PROPOSAL_APPLIED', 'AGENT_PROPOSAL_EFFECT']))
+    const ev = await linhas(`select action, actor_type, agent_run_id from audit_events where request_id = $1 order by created_at`, [runId])
+    expect(ev.map((e) => e.action)).toEqual(expect.arrayContaining(['AGENT_PROPOSAL_APPLIED', 'AGENT_PROPOSAL_EFFECT', 'DEADLINE_CREATED']))
+    expect(ev.every((e) => e.actor_type === 'AGENT' && e.agent_run_id === runId)).toBe(true)
+    // A aprovação é do humano: evento de revisão com o advogado como ator.
+    const humano = await um(`select actor_type, actor_user_id from audit_events where action = 'REVIEW_APPROVED' order by created_at desc limit 1`)
+    expect(humano).toMatchObject({ actor_type: 'USER', actor_user_id: ids.lucas })
+  })
+
+  it('reaplicar não duplica efeito', async () => {
+    expect(await aplicarDecididas(banco)).toBe(0)
+    expect(await linhas(`select 1 from deadlines`)).toHaveLength(1)
+    const p = await um(`select applied_entity_type, applied_entity_id from agent_proposals where agent_run_id = $1`, [runId])
+    expect(p.applied_entity_type).toBe('deadlines')
   })
 })
 
@@ -333,7 +372,9 @@ describe('o gate humano', () => {
     const rev = await um(`select r.id, r.legal_case_id from reviews r join agent_proposals p on p.id = r.agent_proposal_id
                           where p.agent_run_id = $1`, [runId])
     expect(rev.legal_case_id).toBeNull()  // revisão sem caso: alvo é proposta
-    await decidir(rev.id, 'APPROVE')
+    // Configuração estrutural: LAWYER não decide; ADMIN decide.
+    await expect(decidir(rev.id, 'APPROVE')).rejects.toThrow(/Somente ADMIN decide proposta UPDATE_AGENT/)
+    await decidir(rev.id, 'APPROVE', undefined, ids.admin)
     await aplicarDecididas(banco)
     const a = await um(`select v.version_number, v.configuration from agents a join agent_versions v on v.id = a.current_version_id
                         where a.slug = 'analise-bancaria'`)
@@ -397,6 +438,24 @@ describe('limites das ferramentas', () => {
     })
   })
 
+  it('execução do caso A não baixa documento do caso B', async () => {
+    const docB = (await um(`insert into documents (client_id, category, title) values ($1, 'OTHER', 'Doc da Maria') returning id`, [ids.maria])).id
+    await db.query(`insert into case_documents (legal_case_id, document_id) values ($1, $2)`, [ids.casoB, docB])
+    const verB = '22222222-2222-4222-8222-222222222222'
+    await db.query(`insert into document_versions (id, document_id, storage_object_name, source) values ($1, $2, $3, 'UPLOAD')`,
+      [verB, docB, `clients/${ids.maria}/documents/${docB}/${verB}/maria.pdf`])
+    await comFerramentas(ids.casoA!, async (f) => {
+      expect((await chamar(f, 'baixar_documento', { versao_id: verB })).texto).toMatch(/não encontrada/)
+      expect((await chamar(f, 'ver_processo', { processo_id: ids.processoA })).texto).toContain(CNJ)
+    })
+  })
+
+  it('o papel do worker não tem SELECT em dado de cliente (só pelas funções da execução)', async () => {
+    for (const t of ['clients', 'legal_cases', 'documents', 'document_versions', 'agent_runs', 'agent_run_inputs', 'reviews']) {
+      await expect(banco.query(`select 1 from public.${t} limit 1`)).rejects.toThrow(/permission denied/)
+    }
+  })
+
   it('entregar_documento recusa arquivo fora do diretório de trabalho', async () => {
     await comFerramentas(ids.casoA!, async (f) => {
       const r = await chamar(f, 'entregar_documento', { caminho: '../../etc/passwd.txt', titulo: 'Arquivo de fora', categoria: 'OTHER' })
@@ -417,9 +476,47 @@ describe('limites das ferramentas', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 
+describe('idempotência e reserva', () => {
+  it('a mesma proposta chamada duas vezes na execução vira uma só', async () => {
+    const runId = await enfileirar()
+    await rodarAgente(async (_ctx, f) => {
+      const args = { tipo: 'OTHER', resumo: 'Confirmar endereço do cliente', payload: { description: 'Ligar e confirmar o endereço atual' } }
+      expect((await chamar(f, 'propor', args)).texto).toMatch(/registrada/)
+      expect((await chamar(f, 'propor', args)).texto).toMatch(/já estava registrada/)
+    })
+    expect(await linhas(`select 1 from agent_proposals where agent_run_id = $1`, [runId])).toHaveLength(1)
+    expect(await linhas(`select 1 from reviews r join agent_proposals p on p.id = r.agent_proposal_id where p.agent_run_id = $1`, [runId])).toHaveLength(1)
+  })
+
+  it('execução reservada por outro worker vivo não roda em dobro nem é arquivada', async () => {
+    const runId = await enfileirar()
+    const msg = await proximaMensagem()
+    await db.query(`update agent_runs set status = 'RUNNING', claimed_by = 'outro-worker', started_at = now(), heartbeat_at = now() where id = $1`, [runId])
+    let rodou = false
+    expect(await processarMensagem(deps(async () => { rodou = true; return metricas }), msg)).toBe('reservada_por_outro')
+    expect(rodou).toBe(false)
+    expect(await linhas(`select 1 from pgmq.q_agent_execution where msg_id = $1`, [msg.msg_id])).toHaveLength(1)
+    expect((await um(`select claimed_by from agent_runs where id = $1`, [runId])).claimed_by).toBe('outro-worker')
+    await db.query(`update agent_runs set status = 'CANCELLED' where id = $1`, [runId])
+    await db.query(`select pgmq.archive('agent_execution', $1)`, [msg.msg_id])
+  })
+
+  it('execução longa: o batimento renova a invisibilidade e a mensagem não reaparece', async () => {
+    const runId = await enfileirar()
+    const msg = await proximaMensagem()
+    const desfecho = await processarMensagem(deps(async () => {
+      await new Promise((r) => setTimeout(r, 250))  // vários batimentos de 50 ms
+      const hb = await um(`select heartbeat_at > claimed_at as bateu from agent_runs where id = $1`, [runId])
+      expect(hb.bateu).toBe(true)
+      expect(await lerMensagem(banco, 1)).toBeNull()  // ninguém mais pega a mensagem
+      return metricas
+    }, { vtSegundos: 2, batimentoMs: 50 }), msg)
+    expect(desfecho).toBe('concluida')
+  })
+})
+
 describe('falhas e novas tentativas', () => {
   const quebrado: ExecutarAgente = async () => { throw new Error('API indisponível') }
-  const reaparecer = () => db.query(`update pgmq.messages set vt = now() where archived_at is null`)
 
   it('erro do agente devolve à fila com espera; esgotadas as tentativas, FAILED', async () => {
     const runId = await enfileirar()
@@ -453,9 +550,11 @@ describe('falhas e novas tentativas', () => {
     const runId = await enfileirar()
     // Simula o primeiro worker: marcou RUNNING, gerou uma proposta e morreu sem arquivar.
     await proximaMensagem()
-    await db.query(`update agent_runs set status = 'RUNNING', started_at = now() where id = $1`, [runId])
-    await db.query(`insert into agent_proposals (agent_run_id, legal_case_id, proposal_type, payload)
-      values ($1, $2, 'OTHER', '{"summary":"x","data":{"description":"proposta órfã de teste"}}')`, [runId, ids.casoA])
+    // Batimento parado há uma hora: o worker que tinha a reserva morreu.
+    await db.query(`update agent_runs set status = 'RUNNING', claimed_by = 'morto', started_at = now(),
+                    heartbeat_at = now() - interval '1 hour' where id = $1`, [runId])
+    await db.query(`insert into agent_proposals (agent_run_id, legal_case_id, proposal_type, payload, idempotency_key)
+      values ($1, $2, 'OTHER', '{"summary":"x","data":{"description":"proposta órfã de teste"}}', 'prop:orfa0001')`, [runId, ids.casoA])
     await reaparecer()
 
     let rodou = false

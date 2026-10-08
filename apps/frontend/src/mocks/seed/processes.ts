@@ -384,50 +384,50 @@ export function buildProcessEvents(): ProcessEvent[] {
   return [
     ev(P.helenaRevisional, 20, "Processo criado a partir de análise aprovada", "AGENT", "Origem: análise bancária aprovada por Dr. Cláudio."),
     ev(P.helenaRevisional, 17, "Petição inicial protocolada", "MANUAL", "Protocolo realizado pela equipe."),
-    ev(P.helenaRevisional, 16, "Distribuído por sorteio", "COURT"),
-    ev(P.helenaRevisional, 10, "Despacho — cite-se", "COURT", "Determinada a citação da parte ré.", true),
-    ev(P.helenaRevisional, 3, "Mandado de citação cumprido", "COURT", "Início do prazo para contestação.", true),
+    ev(P.helenaRevisional, 16, "Distribuído por sorteio", "JUDICIAL_INTEGRATION"),
+    ev(P.helenaRevisional, 10, "Despacho — cite-se", "JUDICIAL_INTEGRATION", "Determinada a citação da parte ré.", true),
+    ev(P.helenaRevisional, 3, "Mandado de citação cumprido", "JUDICIAL_INTEGRATION", "Início do prazo para contestação.", true),
 
     ev(P.helenaTarifas, 20, "Processo criado a partir de análise aprovada", "AGENT", "Ação autônoma recomendada pelo parecer."),
     ev(P.helenaTarifas, 4, "Minuta de petição inicial enviada para revisão", "AGENT", "Elaborada pelo Agente de Petições."),
 
-    ev(P.franciscoDeclaratoria, 70, "Distribuído", "COURT"),
-    ev(P.franciscoDeclaratoria, 40, "Audiência de conciliação — sem acordo", "COURT", undefined, true),
-    ev(P.franciscoDeclaratoria, 20, "Juntada de contestação", "INTEGRATION", "Contestação apresentada pela parte ré."),
-    ev(P.franciscoDeclaratoria, 12, "Intimação para réplica", "INTEGRATION", "Prazo identificado pelo Agente de Prazos.", true),
+    ev(P.franciscoDeclaratoria, 70, "Distribuído", "JUDICIAL_INTEGRATION"),
+    ev(P.franciscoDeclaratoria, 40, "Audiência de conciliação — sem acordo", "JUDICIAL_INTEGRATION", undefined, true),
+    ev(P.franciscoDeclaratoria, 20, "Juntada de contestação", "JUDICIAL_INTEGRATION", "Contestação apresentada pela parte ré."),
+    ev(P.franciscoDeclaratoria, 12, "Intimação para réplica", "JUDICIAL_INTEGRATION", "Prazo identificado pelo Agente de Prazos.", true),
 
-    ev(P.franciscoRepeticao, 220, "Distribuído", "COURT"),
-    ev(P.franciscoRepeticao, 60, "Decisão de saneamento", "COURT", "Fixados os pontos controvertidos.", true),
-    ev(P.franciscoRepeticao, 9, "Juntada de documentos pela parte ré", "INTEGRATION"),
+    ev(P.franciscoRepeticao, 220, "Distribuído", "JUDICIAL_INTEGRATION"),
+    ev(P.franciscoRepeticao, 60, "Decisão de saneamento", "JUDICIAL_INTEGRATION", "Fixados os pontos controvertidos.", true),
+    ev(P.franciscoRepeticao, 9, "Juntada de documentos pela parte ré", "JUDICIAL_INTEGRATION"),
 
-    ev(P.ferragensRevisional, 130, "Distribuído", "COURT"),
-    ev(P.ferragensRevisional, 60, "Perícia contábil deferida", "COURT", undefined, true),
+    ev(P.ferragensRevisional, 130, "Distribuído", "JUDICIAL_INTEGRATION"),
+    ev(P.ferragensRevisional, 60, "Perícia contábil deferida", "JUDICIAL_INTEGRATION", undefined, true),
     ev(P.ferragensRevisional, 6, "Minuta de manifestação devolvida com alterações", "AGENT"),
     ev(P.ferragensRevisional, 2, "Laudo pericial juntado — intimação das partes", "MANUAL", "Prazo para manifestação sobre o laudo.", true),
 
-    ev(P.ferragensExecucao, 400, "Distribuído", "COURT"),
-    ev(P.ferragensExecucao, 15, "Pesquisa de bens deferida", "COURT"),
+    ev(P.ferragensExecucao, 400, "Distribuído", "JUDICIAL_INTEGRATION"),
+    ev(P.ferragensExecucao, 15, "Pesquisa de bens deferida", "JUDICIAL_INTEGRATION"),
 
-    ev(P.transportesCobranca, 95, "Distribuído", "COURT"),
+    ev(P.transportesCobranca, 95, "Distribuído", "JUDICIAL_INTEGRATION"),
     ev(P.transportesCobranca, 70, "Contestação protocolada", "MANUAL"),
-    ev(P.transportesCobranca, 1, "Audiência de instrução designada", "INTEGRATION", "Audiência designada; apresentar rol de testemunhas.", true),
+    ev(P.transportesCobranca, 1, "Audiência de instrução designada", "JUDICIAL_INTEGRATION", "Audiência designada; apresentar rol de testemunhas.", true),
 
-    ev(P.transportesTrabalhista, 260, "Distribuído", "COURT"),
-    ev(P.transportesTrabalhista, 20, "Instrução encerrada", "INTEGRATION", undefined, true),
+    ev(P.transportesTrabalhista, 260, "Distribuído", "JUDICIAL_INTEGRATION"),
+    ev(P.transportesTrabalhista, 20, "Instrução encerrada", "JUDICIAL_INTEGRATION", undefined, true),
 
-    ev(P.pedroEncerrado, 90, "Acordo homologado", "COURT", undefined, true),
-    ev(P.pedroEncerrado, 45, "Arquivamento definitivo", "COURT"),
+    ev(P.pedroEncerrado, 90, "Acordo homologado", "JUDICIAL_INTEGRATION", undefined, true),
+    ev(P.pedroEncerrado, 45, "Arquivamento definitivo", "JUDICIAL_INTEGRATION"),
 
-    ev(P.luizaConsumidor, 50, "Distribuído", "COURT"),
-    ev(P.luizaConsumidor, 6, "Despacho — emenda à inicial", "COURT", "Juntar faturas do período.", true),
+    ev(P.luizaConsumidor, 50, "Distribuído", "JUDICIAL_INTEGRATION"),
+    ev(P.luizaConsumidor, 6, "Despacho — emenda à inicial", "JUDICIAL_INTEGRATION", "Juntar faturas do período.", true),
 
-    ev(P.joaoSuspenso, 60, "Suspensão do processo", "INTEGRATION", "Conteúdo fictício de demonstração."),
+    ev(P.joaoSuspenso, 60, "Suspensão do processo", "JUDICIAL_INTEGRATION", "Conteúdo fictício de demonstração."),
 
-    ev(P.clinicaTributario, 40, "Distribuído", "COURT"),
-    ev(P.clinicaTributario, 5, "Liminar indeferida", "COURT", undefined, true),
+    ev(P.clinicaTributario, 40, "Distribuído", "JUDICIAL_INTEGRATION"),
+    ev(P.clinicaTributario, 5, "Liminar indeferida", "JUDICIAL_INTEGRATION", undefined, true),
 
-    ev(P.marleneRecurso, 60, "Sentença parcialmente procedente", "INTEGRATION", undefined, true),
-    ev(P.marleneRecurso, 11, "Recurso inominado da parte ré recebido", "INTEGRATION"),
+    ev(P.marleneRecurso, 60, "Sentença parcialmente procedente", "JUDICIAL_INTEGRATION", undefined, true),
+    ev(P.marleneRecurso, 11, "Recurso inominado da parte ré recebido", "JUDICIAL_INTEGRATION"),
   ];
 }
 
@@ -454,7 +454,7 @@ export function buildDeadlines(): Deadline[] {
     status,
     notes,
     createdAt: daysFromNowISO(Math.min(inDays, 0) - 10),
-    completedAt: status === "DONE" ? daysFromNowISO(inDays - 1) : undefined,
+    completedAt: status === "COMPLETED" ? daysFromNowISO(inDays - 1) : undefined,
   });
   return [
     d("dl_01", P.franciscoDeclaratoria, C.francisco, "Réplica à contestação", "REPLY", 0, U.claudio, "OPEN", "Prazo proposto pelo Agente de Prazos."),
@@ -466,7 +466,7 @@ export function buildDeadlines(): Deadline[] {
     d("dl_07", P.luizaConsumidor, C.luiza, "Emenda à inicial — juntar faturas", "DOCUMENT_DELIVERY", 12, U.beatriz),
     d("dl_08", P.franciscoRepeticao, C.francisco, "Especificação de provas", "MANIFESTATION", 18, U.beatriz),
     d("dl_09", P.ferragensExecucao, C.ferragens, "Indicar bens à penhora", "MANIFESTATION", 25, U.beatriz),
-    d("dl_10", P.helenaRevisional, C.helena, "Recolhimento de custas iniciais", "INTERNAL", -18, U.renata, "DONE"),
-    d("dl_11", P.transportesTrabalhista, C.transportes, "Razões finais", "MANIFESTATION", -22, U.beatriz, "DONE"),
+    d("dl_10", P.helenaRevisional, C.helena, "Recolhimento de custas iniciais", "INTERNAL", -18, U.renata, "COMPLETED"),
+    d("dl_11", P.transportesTrabalhista, C.transportes, "Razões finais", "MANIFESTATION", -22, U.beatriz, "COMPLETED"),
   ];
 }

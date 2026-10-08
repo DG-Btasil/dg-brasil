@@ -10,8 +10,41 @@ where not exists (
   select 1 from public.organizations where type = 'OWNER' and deleted_at is null
 );
 
+insert into public.owner_office_settings (organization_id, principal_lawyer_name)
+select o.id, 'Bárbara Cardoso'
+from public.organizations o
+where o.type = 'OWNER' and o.deleted_at is null
+on conflict (organization_id) do nothing;
+
+-- Vocabulário canônico de categoria de documento: o MESMO do front-end
+-- (DocumentCategory). Não há segundo nome para o mesmo conceito.
+insert into public.document_categories (code, label, sort_order)
+values
+  ('IDENTIFICATION',       'Documento de identificação',     10),
+  ('ADDRESS_PROOF',        'Comprovante de residência',      20),
+  ('INCOME_PROOF',         'Comprovante de renda',           30),
+  ('BANK_STATEMENT',       'Extrato bancário',               40),
+  ('LOAN_CONTRACT',        'Contrato bancário',              50),
+  ('BENEFIT_STATEMENT',    'Extrato de benefício',           60),
+  ('POWER_OF_ATTORNEY',    'Procuração',                     70),
+  ('HARDSHIP_DECLARATION', 'Declaração de hipossuficiência', 80),
+  ('CORPORATE_DOCUMENTS',  'Documentos societários',         90),
+  ('PETITION',             'Peça processual',               100),
+  ('COURT_DECISION',       'Decisão judicial',              110),
+  ('OTHER',                'Outro',                         999)
+on conflict (code) do nothing;
+
+-- Áreas do front-end (LegalArea). Novas áreas são linhas, não código.
 insert into public.legal_areas (code, name, description)
-values ('BANKING', 'Direito Bancário', 'Contratos bancários, consignados, revisionais e fraudes.')
+values
+  ('BANKING',         'Direito Bancário',       'Contratos bancários, consignados, revisionais e fraudes.'),
+  ('CONSUMER',        'Direito do Consumidor',  null),
+  ('SOCIAL_SECURITY', 'Direito Previdenciário', null),
+  ('CIVIL',           'Direito Civil',          null),
+  ('LABOR',           'Direito do Trabalho',    null),
+  ('TAX',             'Direito Tributário',     null),
+  ('CORPORATE',       'Direito Empresarial',    null),
+  ('FAMILY',          'Direito de Família',     null)
 on conflict (code) do nothing;
 
 insert into public.analysis_templates (legal_area_id, name, description)
@@ -26,8 +59,8 @@ select t.id, r.category, r.label, r.required, r.sort_order
 from public.analysis_templates t
 join public.legal_areas a on a.id = t.legal_area_id and a.code = 'BANKING'
 cross join (values
-  ('IDENTITY_DOCUMENT', 'Documento de identidade com CPF', true,  10),
-  ('PROOF_OF_ADDRESS',  'Comprovante de residência',       true,  20),
+  ('IDENTIFICATION',    'Documento de identidade com CPF', true,  10),
+  ('ADDRESS_PROOF',     'Comprovante de residência',       true,  20),
   ('BENEFIT_STATEMENT', 'Extrato de empréstimos (HISCON)', true,  30),
   ('BANK_STATEMENT',    'Extrato bancário do período',     false, 40)
 ) as r(category, label, required, sort_order)

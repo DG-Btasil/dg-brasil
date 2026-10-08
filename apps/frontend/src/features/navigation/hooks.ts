@@ -43,7 +43,7 @@ export function useNavCounts(): Partial<Record<NavKey, string>> {
     const activeAgents = agents.filter((a) => a.status === "ACTIVE").length;
     const today = todayISO();
     const overdue = agreements.filter((a) => agreementStatus(a, payments, today) === "OVERDUE").length;
-    const newCases = cases.filter((c) => c.createdByOfficeId !== office.id && c.status === "SUBMITTED").length;
+    const newCases = cases.filter((c) => c.createdByOrganizationId !== office.id && c.status === "SUBMITTED").length;
     const awaiting = cases.filter((c) => DECIDABLE_CASE_STATUSES.includes(c.status)).length;
     const activePartners = partners.filter((p) => p.status === "ACTIVE").length;
     return {

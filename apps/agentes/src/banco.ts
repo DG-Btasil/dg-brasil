@@ -23,10 +23,10 @@ export async function um<T = Record<string, unknown>>(
 }
 
 /**
- * Conexão direta (DATABASE_URL, usuário postgres do Supabase). O worker não tem
- * sessão de usuário: auth.uid() é null, então a RLS não se aplica e os triggers
- * tratam a escrita como do backend. As regras de dados (CHECKs, FKs, triggers de
- * integridade e o gate de revisão humana) continuam valendo.
+ * Conexão direta com o papel dg_worker (DATABASE_URL com esse usuário — nunca
+ * postgres nem service role). dg_worker não ignora RLS e não lê tabela com dado
+ * de cliente: lê a configuração de IA e chama as funções private.worker_*, que
+ * exigem a reserva da execução e só devolvem o contexto dela.
  */
 export function bancoPostgres(connectionString: string): Banco {
   const pool = new pg.Pool({ connectionString, max: 4, idleTimeoutMillis: 30_000 })

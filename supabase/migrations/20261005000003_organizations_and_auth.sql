@@ -13,8 +13,19 @@ create table public.organizations (
   name        text not null check (btrim(name) <> ''),
   legal_name  text,
   cnpj        public.cnpj_digits,
+  trade_name  text,
   email       text check (email is null or email = lower(btrim(email))),
   phone       text,
+  website     text,
+  -- Endereço da sede (1:1). Endereço de cliente é outra coisa: client_addresses.
+  address_postal_code  text check (address_postal_code is null or address_postal_code ~ '^[0-9]{8}$'),
+  address_street       text,
+  address_number       text,
+  address_complement   text,
+  address_neighborhood text,
+  address_city         text,
+  address_state        public.uf_code,
+  address_country      char(2) not null default 'BR' check (address_country ~ '^[A-Z]{2}$'),
   status      text not null default 'ACTIVE'
               check (status in ('ACTIVE', 'INACTIVE', 'PENDING', 'SUSPENDED')),
   created_at  timestamptz not null default now(),
@@ -64,6 +75,12 @@ create table public.partner_office_settings (
   default_partner_percentage public.percentage not null,
   default_owner_percentage   public.percentage not null,
   partnership_active         boolean not null default true,
+  -- Advogado responsável pelo escritório parceiro (contato operacional).
+  responsible_name           text,
+  responsible_oab_number     text check (responsible_oab_number is null or responsible_oab_number ~ '^[0-9A-Z]{1,10}$'),
+  responsible_oab_state      public.uf_code,
+  -- Primeiro acesso do parceiro (aceite do primeiro convite).
+  activated_at               timestamptz,
   notes                      text,
   created_at                 timestamptz not null default now(),
   updated_at                 timestamptz not null default now(),
@@ -71,7 +88,9 @@ create table public.partner_office_settings (
     foreign key (organization_id, organization_type)
     references public.organizations (id, type) on delete restrict,
   constraint partner_office_settings_split_is_100
-    check (default_partner_percentage + default_owner_percentage = 100)
+    check (default_partner_percentage + default_owner_percentage = 100),
+  constraint partner_office_settings_oab_complete
+    check ((responsible_oab_number is null) = (responsible_oab_state is null))
 );
 
 comment on table public.partner_office_settings is
@@ -81,12 +100,39 @@ create trigger partner_office_settings_set_updated_at
   before update on public.partner_office_settings
   for each row execute function private.set_updated_at();
 
+-- ───────────────────────────── owner_office_settings ──────────────────────
+-- Dados institucionais que só existem para o escritório proprietário.
+
+create table public.owner_office_settings (
+  organization_id        uuid primary key,
+  organization_type      public.organization_type not null default 'OWNER'
+                         check (organization_type = 'OWNER'),
+  principal_lawyer_name  text,
+  principal_oab_number   text check (principal_oab_number is null or principal_oab_number ~ '^[0-9A-Z]{1,10}$'),
+  principal_oab_state    public.uf_code,
+  -- UFs onde o escritório atua e unidades (filiais). Listas curtas, consultadas inteiras.
+  states_of_practice     public.uf_code[] not null default '{}',
+  units                  text[] not null default '{}',
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now(),
+  constraint owner_office_settings_org_fkey
+    foreign key (organization_id, organization_type)
+    references public.organizations (id, type) on delete restrict,
+  constraint owner_office_settings_oab_complete
+    check ((principal_oab_number is null) = (principal_oab_state is null))
+);
+
+create trigger owner_office_settings_set_updated_at
+  before update on public.owner_office_settings
+  for each row execute function private.set_updated_at();
+
 -- ───────────────────────────── profiles ───────────────────────────────────
 
 create table public.profiles (
   id             uuid primary key references auth.users (id) on delete restrict,
   full_name      text not null check (btrim(full_name) <> ''),
   preferred_name text,
+  job_title      text,  -- cargo exibido na equipe (ex.: "Advogada sênior")
   phone          text,
   avatar_url     text,
   oab_number     text check (oab_number is null or oab_number ~ '^[0-9A-Z]{1,10}$'),
@@ -197,6 +243,7 @@ create table public.user_invitations (
   organization_id   uuid not null,
   organization_type public.organization_type not null,
   email             text not null check (email = lower(btrim(email)) and email like '%_@_%'),
+  full_name         text,
   role              public.membership_role not null,
   -- Somente o hash SHA-256 (hex) do token. O token em claro vai só no e-mail.
   token_hash        text not null unique check (token_hash ~ '^[0-9a-f]{64}$'),

@@ -56,8 +56,11 @@ referências vinculadas ficam disponíveis pelas ferramentas `teses_do_agente` e
 | `REQUEST_DOCUMENT` | Cria pendência de documento; em caso de parceiro, também uma solicitação ao parceiro |
 | `UPDATE_CASE` | Título, resumo ou status de triagem. Nunca aceita, rejeita ou encerra caso |
 | `CREATE_PROCESS` | Cria processo em preparação no caso |
-| `UPDATE_SKILL` / `UPDATE_AGENT` | Cria versão nova e a torna corrente |
+| `UPDATE_SKILL` / `UPDATE_AGENT` | Cria versão nova e a torna corrente. **Só ADMIN aprova** (configuração estrutural) |
 | `OTHER` | Nenhum efeito automático: aprovado, vira providência da equipe |
+
+Não existe `CREATE_DOCUMENT`: minuta é entregue com `entregar_documento`.
+A mesma proposta repetida na mesma execução não vira duas (`idempotency_key`).
 
 Minuta de peça não é proposta: o agente usa `entregar_documento`, que cria uma
 versão INTERNA do documento no caso, com revisão pendente.
@@ -77,13 +80,18 @@ skill em arquivo (com anexos, modelos), ela vai em
 
 **a) Ele precisa LER algo que nenhuma ferramenta expõe.**
 → Nova ferramenta de leitura em [`apps/agentes/src/ferramentas.ts`](../apps/agentes/src/ferramentas.ts),
-com `annotations: { readOnlyHint: true }`, respeitando o escopo do cliente da
-execução (`clienteDoCaso`), e o nome em `FERRAMENTAS_LEITURA`.
+com `annotations: { readOnlyHint: true }` e o nome em `FERRAMENTAS_LEITURA`. Se
+ela lê dado de cliente, a leitura é uma função `private.worker_*` nova (migration
+`020+`) que recebe a execução, confere a reserva e deriva o caso dela — o
+`dg_worker` não tem SELECT em tabela de domínio, de propósito.
 
 **b) Ele precisa PRODUZIR um efeito que ainda não existe.**
-→ Novo tipo em `agent_proposals.proposal_type` (migration), o schema do payload
-em [`propostas.ts`](../apps/agentes/src/propostas.ts) e um aplicador em
-[`aplicar.ts`](../apps/agentes/src/aplicar.ts).
+→ Novo tipo em `agent_proposals.proposal_type` (migration `020+`), o schema do
+payload em [`propostas.ts`](../apps/agentes/src/propostas.ts) e o ramo do
+aplicador em `private.apply_proposal_effect` (no banco, na mesma migration).
+Tipo sem aplicador não entra no CHECK.
+Se o efeito altera configuração do DG Brasil, confira que
+`private.proposal_requires_admin` o cobre.
 
 O aplicador é a parte séria: é ele que transforma proposta aprovada em fato.
 Ele roda numa transação e, se não puder cumprir, **falha alto**: a proposta fica
@@ -106,9 +114,15 @@ ninguém revisa não está ajudando.
 
 ---
 
+## Como uma execução começa
+
+Só por `public.request_agent_run` (ADMIN ou LAWYER; LAWYER só com caso). O banco
+revalida papel e acesso, cria `agent_runs` com `requested_by`, guarda o pedido em
+texto em `agent_run_inputs` (nunca em `metadata`) e enfileira. Ninguém insere em
+`agent_runs` direto.
+
 ## Ainda não existe: o disparador automático
 
-Uma execução entra na fila quando o backend (ou um SQL manual) cria
-`agent_runs` e chama `private.enqueue_agent_run`. Agendamento por horário e por
-evento (ex.: "todo dia útil às 9h") ainda não existe: é um despachante pequeno,
-previsto para o deploy do worker.
+Agendamento por horário e por evento (ex.: "todo dia útil às 9h") ainda não
+existe: é um despachante pequeno, previsto para o deploy do worker, que também
+chamará `request_agent_run` em nome de um usuário responsável.

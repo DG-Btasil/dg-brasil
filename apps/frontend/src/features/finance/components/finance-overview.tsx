@@ -38,7 +38,7 @@ export function FinanceOverview() {
   const rows = useMemo(
     () =>
       allRows.filter((r) => {
-        const caseOrigin = r.legalCase?.originOfficeId;
+        const caseOrigin = r.legalCase?.originOrganizationId;
         const isPartner = !!caseOrigin && caseOrigin !== office.id;
         if (origin === "INTERNAL" && isPartner) return false;
         if (origin === "PARTNER" && !isPartner) return false;

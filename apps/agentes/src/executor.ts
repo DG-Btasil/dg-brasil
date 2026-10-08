@@ -93,7 +93,7 @@ export function montarSystemPrompt(ctx: ContextoExecucao): string {
 }
 
 export function montarPrompt(ctx: ContextoExecucao): string {
-  const entrada = (ctx.run.metadata.input ?? {}) as Record<string, unknown>
+  const entrada = { pedido: ctx.entrada.pedido, parametros: ctx.entrada.parametros }
   return [
     `Execução ${ctx.run.id}, operação ${ctx.operacao}.`,
     ctx.run.legal_case_id ? `Caso: ${ctx.run.legal_case_id} (comece por ver_caso).` : 'Execução sem caso vinculado.',

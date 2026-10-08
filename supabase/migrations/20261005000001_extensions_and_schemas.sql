@@ -48,7 +48,7 @@ begin
   end if;
 
   if tg_op = 'DELETE' then
-    if current_user in ('anon', 'authenticated', 'service_role')
+    if current_user in ('anon', 'authenticated', 'service_role', 'dg_worker')
        or coalesce(current_setting('dg.allow_physical_delete', true), '') <> 'on' then
       raise exception '% é append-only: DELETE não é permitido', tg_table_name
         using errcode = '42501';

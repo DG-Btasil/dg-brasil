@@ -8,12 +8,14 @@ import { repositories } from "@/repositories";
 import { Callout } from "@/components/feedback/states";
 import { Button, IconButton } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
-import { Field, FormSection, Input, Select, Textarea } from "@/components/ui/form";
+import { Checkbox, Field, FormSection, Input, Select, Textarea } from "@/components/ui/form";
 import { Panel, PanelBody, PanelFooter } from "@/components/ui/panel";
 import { useClientOriginOptions, useClients, useDefaultClientOrigin } from "@/features/clients/hooks";
 import { toPickedFile, type PickedFile } from "@/features/clients/components/detail/documents/document-add-dialog";
+import { useOffice } from "@/features/offices/hooks";
 import { clientDisplayName } from "@/features/processes/utils";
 import { useCaseActions, useEligibleLawyers } from "../hooks";
+import { LINK_PARTNER_LABEL } from "../utils";
 
 const areaOptions = LEGAL_AREAS.map((a) => ({ value: a, label: LEGAL_AREA_LABEL[a] }));
 
@@ -22,7 +24,7 @@ interface Values {
   title: string;
   area: LegalArea | "";
   caseType: string;
-  originOfficeId: string;
+  originOrganizationId: string;
   opposingParty: string;
   assignedLawyerId: string;
   summary: string;
@@ -36,14 +38,15 @@ function validate(v: Values): Errors {
     title: v.title.trim() ? undefined : "Informe um título para o caso.",
     area: v.area ? undefined : "Selecione a área.",
     caseType: v.caseType.trim() ? undefined : "Informe o tipo do caso.",
-    originOfficeId: v.originOfficeId ? undefined : "Selecione a origem do caso.",
+    originOrganizationId: v.originOrganizationId ? undefined : "Selecione a origem do caso.",
     summary: v.summary.trim() ? undefined : "Descreva o caso em poucas linhas.",
   };
 }
 
 /**
  * Novo caso (equipe interna). A origem do CASO é independente da origem do
- * cliente: o mesmo cliente pode ter casos de origens diferentes.
+ * cliente: o mesmo cliente pode ter casos de origens diferentes. A origem
+ * parceira não dá acesso ao parceiro: o vínculo operacional é opt-in explícito.
  */
 export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
   const router = useRouter();
@@ -52,17 +55,19 @@ export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
   const originOptions = useClientOriginOptions();
   const defaultOrigin = useDefaultClientOrigin();
   const lawyers = useEligibleLawyers();
+  const office = useOffice();
   const fileRef = useRef<HTMLInputElement>(null);
   const [values, setValues] = useState<Values>({
     clientId: defaultClientId && clients.some((c) => c.id === defaultClientId) ? defaultClientId : "",
     title: "",
     area: "",
     caseType: "",
-    originOfficeId: defaultOrigin,
+    originOrganizationId: defaultOrigin,
     opposingParty: "",
     assignedLawyerId: "",
     summary: "",
   });
+  const [linkPartner, setLinkPartner] = useState(false);
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState<"draft" | "submit" | null>(null);
@@ -72,6 +77,7 @@ export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
     [clients],
   );
   const set = <K extends keyof Values>(key: K, value: Values[K]) => setValues((v) => ({ ...v, [key]: value }));
+  const partnerOrigin = !!values.originOrganizationId && values.originOrganizationId !== office.id;
 
   async function save(submit: boolean, event?: FormEvent) {
     event?.preventDefault();
@@ -84,11 +90,12 @@ export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
       title: values.title.trim(),
       area: values.area,
       caseType: values.caseType.trim(),
-      originOfficeId: values.originOfficeId,
+      originOrganizationId: values.originOrganizationId,
       opposingParty: values.opposingParty.trim() || undefined,
       assignedLawyerId: values.assignedLawyerId || null,
       summary: values.summary.trim(),
       submit,
+      linkPartner: partnerOrigin && linkPartner,
     });
     if (id) {
       for (const f of files) {
@@ -114,10 +121,21 @@ export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
                 <Field label="Cliente" requirement="required" error={errors.clientId}>
                   {(p) => <Select {...p} value={values.clientId} onChange={(e) => set("clientId", e.target.value)} options={clientOptions} placeholder="Selecione o cliente" />}
                 </Field>
-                <Field label="Origem do caso" requirement="required" error={errors.originOfficeId} hint="Independe da origem do cliente. Define parceria e financeiro do caso.">
-                  {(p) => <Select {...p} value={values.originOfficeId} onChange={(e) => set("originOfficeId", e.target.value)} options={originOptions} />}
+                <Field label="Origem do caso" requirement="required" error={errors.originOrganizationId} hint="Independe da origem do cliente. Define parceria e financeiro do caso.">
+                  {(p) => (
+                    <Select
+                      {...p}
+                      value={values.originOrganizationId}
+                      onChange={(e) => {
+                        set("originOrganizationId", e.target.value);
+                        setLinkPartner(false);
+                      }}
+                      options={originOptions}
+                    />
+                  )}
                 </Field>
               </div>
+              {partnerOrigin && <Checkbox label={LINK_PARTNER_LABEL} checked={linkPartner} onChange={(e) => setLinkPartner(e.target.checked)} />}
             </FormSection>
             <FormSection title="Dados do caso">
               <div className="grid grid-cols-2 gap-4">

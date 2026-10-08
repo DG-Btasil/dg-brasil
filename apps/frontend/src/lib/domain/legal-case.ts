@@ -16,9 +16,21 @@ import {
 } from "@/lib/constants/status";
 import type { ID, LegalAnalysis, LegalCase, User } from "@/types";
 
-/** Caso originado por parceiro? (origem diferente do escritório proprietário) */
-export function casePartnerId(legalCase: Pick<LegalCase, "originOfficeId">, ownerOfficeId: ID): ID | undefined {
-  return legalCase.originOfficeId !== ownerOfficeId ? legalCase.originOfficeId : undefined;
+/**
+ * Parceiro de ORIGEM do caso (atribuição comercial → parceria/divisão).
+ * Não decide visibilidade: o acesso do parceiro é `partnerOrganizationId`.
+ */
+export function casePartnerId(legalCase: Pick<LegalCase, "originOrganizationId">, ownerOfficeId: ID): ID | undefined {
+  return legalCase.originOrganizationId !== ownerOfficeId ? legalCase.originOrganizationId : undefined;
+}
+
+/**
+ * Parceiro a vincular OPERACIONALMENTE quando a equipe interna marca, de forma
+ * explícita, "também vincular este escritório parceiro ao caso". A origem, por
+ * si só, nunca concede acesso: sem o opt-in (ou com origem própria), null.
+ */
+export function explicitPartnerLink(originOrganizationId: ID, ownerOfficeId: ID, linkPartner: boolean | undefined): ID | null {
+  return linkPartner && originOrganizationId !== ownerOfficeId ? originOrganizationId : null;
 }
 
 export const isPreDecision = (status: LegalCaseStatus) => PRE_DECISION_CASE_STATUSES.includes(status);

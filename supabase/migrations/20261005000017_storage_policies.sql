@@ -28,11 +28,13 @@ values
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'text/plain', 'text/markdown'
   ]),
+  -- Importação V1: CSV e XLSX. (application/vnd.ms-excel é como navegadores no
+  -- Windows rotulam .csv quando o Excel está instalado; o formato aceito
+  -- continua sendo só CSV/XLSX — import_jobs.file_type.)
   ('imports', 'imports', false, 20971520, array[
     'text/csv',
     'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/json'
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   ])
 on conflict (id) do update
   set public             = false,
@@ -49,3 +51,35 @@ create policy dg_private_buckets_no_direct_access on storage.objects
   to anon, authenticated
   using (bucket_id not in ('legal-documents', 'reference-materials', 'imports'))
   with check (bucket_id not in ('legal-documents', 'reference-materials', 'imports'));
+
+-- ───────────────────────────── objetos órfãos ─────────────────────────────
+-- Upload concluído + insert da versão que falhou deixa um objeto sem linha no
+-- banco. Esta função só DETECTA (nada é apagado automaticamente): lista objetos
+-- dos buckets jurídicos sem versão correspondente, mais velhos que a margem
+-- (para não pegar upload em andamento). A limpeza é decisão humana/rotina
+-- revisada, pela API do Storage.
+create or replace function private.find_orphan_storage_objects(p_older_than interval default interval '24 hours')
+returns table (bucket_id text, object_name text, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select o.bucket_id, o.name, o.created_at
+  from storage.objects o
+  where o.created_at < now() - p_older_than
+    and (
+      (o.bucket_id = 'legal-documents'
+       and not exists (select 1 from public.document_versions v where v.storage_object_name = o.name))
+      or
+      (o.bucket_id = 'reference-materials'
+       and not exists (select 1 from public.reference_material_versions v where v.storage_object_name = o.name))
+      or
+      (o.bucket_id = 'imports'
+       and not exists (select 1 from public.import_jobs j where j.storage_object_name = o.name))
+    )
+  order by o.created_at
+$$;
+
+revoke all on function private.find_orphan_storage_objects(interval) from public, anon, authenticated;
+grant execute on function private.find_orphan_storage_objects(interval) to service_role;

@@ -6,15 +6,26 @@ import { um, type Banco } from './banco.js'
 import { criarFerramentas } from './ferramentas.js'
 import {
   ConfigAgente, MensagemFila,
-  type AgenteCarregado, type AgentRun, type ExecutarAgente, type Metricas, type Registro,
+  type AgenteCarregado, type AgentRun, type EntradaExecucao, type ExecutarAgente, type Metricas, type Registro,
 } from './tipos.js'
 
 /**
- * Consumo da fila agent_execution (pgmq).
+ * Consumo da fila agent_execution (pgmq), como dg_worker.
  *
- * agent_runs é o registro; a mensagem só carrega o id. O pgmq dá a garantia
- * que antes era feita à mão: mensagem lida fica invisível por VT segundos; se o
- * worker morrer, ela reaparece sozinha. read_ct conta as tentativas.
+ * O worker não lê tabela de domínio: tudo passa por funções private.worker_*,
+ * que exigem a reserva DESTA execução e derivam caso/cliente dela. Execução do
+ * caso A não tem caminho para dados do caso B.
+ *
+ *   pgmq.read        a mensagem fica invisível por VT segundos;
+ *   claim            private.claim_agent_run reserva a execução atomicamente
+ *                    (UPDATE ... WHERE status = 'QUEUED'): dois workers com a
+ *                    mesma execução, só um ganha. Reserva de worker morto
+ *                    (batimento parado) é retomada;
+ *   heartbeat        enquanto o agente roda, private.heartbeat_agent_run bate e
+ *                    estende o VT — execução longa não reaparece na fila nem
+ *                    roda em dobro. Se a reserva for perdida, o resultado não é
+ *                    gravado (o banco recusa: claimed_by não confere);
+ *   encerrar         private.worker_finish_run + pgmq.archive.
  */
 
 export const FILA = 'agent_execution'
@@ -25,8 +36,12 @@ export interface Dependencias {
   executar: ExecutarAgente
   worker: string
   maxTentativas: number
-  /** Segundos de invisibilidade da mensagem enquanto a execução roda. */
+  /** Segundos de invisibilidade da mensagem; o batimento a renova. */
   vtSegundos: number
+  /** Intervalo entre batimentos, em ms. Padrão: um terço do VT. */
+  batimentoMs?: number
+  /** Batimento parado há mais que isto = worker morto; a reserva pode ser retomada. */
+  reservaVencidaSegundos?: number
 }
 
 export interface MensagemLida {
@@ -36,7 +51,20 @@ export interface MensagemLida {
 }
 
 export type Desfecho =
-  | 'concluida' | 'aguardando_humano' | 'falhou' | 'reenfileirada' | 'ignorada'
+  | 'concluida' | 'aguardando_humano' | 'falhou' | 'reenfileirada' | 'ignorada' | 'reservada_por_outro'
+
+/** O que private.worker_run_context devolve. */
+interface ContextoBanco {
+  id: string
+  agent_id: string
+  agent_version_id: string
+  legal_case_id: string | null
+  legal_process_id: string | null
+  client_id: string | null
+  requested_by: string | null
+  previous_output: boolean
+  input: { request_text: string | null; parameters: Record<string, unknown> }
+}
 
 export async function lerMensagem(banco: Banco, vtSegundos: number): Promise<MensagemLida | null> {
   const m = await um<{ msg_id: string | number; read_ct: number; message: unknown }>(
@@ -53,7 +81,7 @@ const arquivar = (banco: Banco, msgId: string) =>
 const TERMINAIS = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'WAITING_HUMAN'])
 
 export async function processarMensagem(deps: Dependencias, msg: MensagemLida): Promise<Desfecho> {
-  const { banco } = deps
+  const { banco, worker } = deps
 
   const conteudo = MensagemFila.safeParse(msg.message)
   if (!conteudo.success) {
@@ -61,28 +89,34 @@ export async function processarMensagem(deps: Dependencias, msg: MensagemLida): 
     await arquivar(banco, msg.msg_id)
     return 'ignorada'
   }
+  const runId = conteudo.data.agent_run_id
 
-  const run = await um<AgentRun>(
-    banco,
-    `select id, agent_id, agent_version_id, legal_case_id, legal_process_id, status, requested_by, metadata
-     from public.agent_runs where id = $1::uuid`,
-    [conteudo.data.agent_run_id],
-  )
-  if (!run || TERMINAIS.has(run.status)) {
-    await arquivar(banco, msg.msg_id)
-    return 'ignorada'
+  // Reserva atômica. Sem reserva: execução inexistente ou terminada → arquiva;
+  // outro worker vivo com ela (o batimento dele mantém a mensagem invisível) →
+  // não arquiva, não executa.
+  const reserva = (await um<{ claimed: boolean; status: string | null }>(banco,
+    `select claimed, status from private.claim_agent_run($1::uuid, $2::text, $3::bigint, $4::int)`,
+    [runId, worker, msg.msg_id, deps.reservaVencidaSegundos ?? Math.max(60, deps.vtSegundos)]))!
+  if (!reserva.claimed) {
+    if (reserva.status === null || TERMINAIS.has(reserva.status)) {
+      await arquivar(banco, msg.msg_id)
+      return 'ignorada'
+    }
+    return 'reservada_por_outro'
+  }
+
+  const contexto = (await um<{ c: ContextoBanco }>(banco,
+    `select private.worker_run_context($1::uuid, $2::text) as c`, [runId, worker]))!.c
+  const run: AgentRun = {
+    id: contexto.id, agent_id: contexto.agent_id, agent_version_id: contexto.agent_version_id,
+    legal_case_id: contexto.legal_case_id, legal_process_id: contexto.legal_process_id,
+    requested_by: contexto.requested_by,
   }
 
   // Tentativa anterior que já deixou proposta ou minuta não é refeita: rodar de
   // novo duplicaria o que está em Revisões. Fica para um humano decidir.
-  const saidaAnterior = await um<{ n: string | number }>(
-    banco,
-    `select count(*) as n from public.agent_proposals where agent_run_id = $1::uuid`,
-    [run.id],
-  )
-  const docsAnteriores = Array.isArray(run.metadata?.documents) ? run.metadata.documents.length : 0
-  if (Number(saidaAnterior?.n ?? 0) > 0 || docsAnteriores > 0) {
-    await encerrar(banco, run.id, msg.msg_id, 'FAILED', {
+  if (contexto.previous_output) {
+    await encerrar(deps, run.id, msg.msg_id, 'FAILED', {
       error_code: 'PARTIAL_OUTPUT',
       error_message: 'Uma tentativa anterior foi interrompida depois de gerar propostas ou minutas. ' +
         'Confira em Revisões e dispare de novo se precisar.',
@@ -91,58 +125,57 @@ export async function processarMensagem(deps: Dependencias, msg: MensagemLida): 
   }
 
   if (msg.read_ct > deps.maxTentativas) {
-    await encerrar(banco, run.id, msg.msg_id, 'FAILED', {
+    await encerrar(deps, run.id, msg.msg_id, 'FAILED', {
       error_code: 'MAX_ATTEMPTS',
       error_message: `Excedeu ${deps.maxTentativas} tentativas.`,
     })
     return 'falhou'
   }
 
-  await banco.query(
-    `update public.agent_runs
-        set status = 'RUNNING', started_at = coalesce(started_at, now()),
-            error_code = null, error_message = null,
-            metadata = metadata || jsonb_build_object('worker', $2::text, 'attempt', $3::int)
-      where id = $1::uuid`,
-    [run.id, deps.worker, msg.read_ct],
-  )
-
   let agente: AgenteCarregado
   try {
     agente = await carregarAgente(banco, run)
   } catch (e) {
     // Agente inativo ou configuração inválida: outra tentativa não muda nada.
-    await encerrar(banco, run.id, msg.msg_id, 'FAILED', {
+    await encerrar(deps, run.id, msg.msg_id, 'FAILED', {
       error_code: (e as { codigo?: string }).codigo ?? 'AGENT_LOAD_ERROR',
       error_message: mensagemDe(e),
     })
     return 'falhou'
   }
 
-  const clienteDoCaso = run.legal_case_id
-    ? (await um<{ client_id: string }>(banco,
-        `select client_id from public.legal_cases where id = $1::uuid`, [run.legal_case_id]))?.client_id ?? null
-    : null
-
+  // Pedido em texto e parâmetros: vêm de agent_run_inputs, nunca de metadata.
+  const entrada: EntradaExecucao = { pedido: contexto.input.request_text, parametros: contexto.input.parameters }
   const registro: Registro = { ferramentas: {}, negadas: [], propostas: [], documentos: [] }
   const scratch = await mkdtemp(join(tmpdir(), `dgbrasil-${agente.slug}-`))
 
+  // Batimento enquanto o agente roda.
+  let reservaPerdida = false
+  const batimento = setInterval(() => {
+    banco.query(`select private.heartbeat_agent_run($1::uuid, $2::text, $3::bigint, $4::int) as ok`,
+      [run.id, worker, msg.msg_id, deps.vtSegundos])
+      .then((r) => { if (!(r.rows[0] as { ok?: boolean } | undefined)?.ok) reservaPerdida = true })
+      .catch(() => { /* rede instável: a próxima batida tenta de novo */ })
+  }, deps.batimentoMs ?? Math.max(5_000, (deps.vtSegundos * 1000) / 3))
+
   try {
     const ctx = {
-      banco, armazenamento: deps.armazenamento, run, agente, clienteDoCaso, scratch,
-      operacao: conteudo.data.operation, registro,
+      banco, armazenamento: deps.armazenamento, worker, run, agente,
+      clienteDoCaso: contexto.client_id, scratch, entrada, operacao: conteudo.data.operation, registro,
     }
     const metricas = await deps.executar(ctx, criarFerramentas(ctx))
+    if (reservaPerdida) return 'reservada_por_outro'
 
     const destino = registro.propostas.length > 0 ? 'WAITING_HUMAN' : 'COMPLETED'
-    await encerrar(banco, run.id, msg.msg_id, destino, {}, metricas, registro)
+    await encerrar(deps, run.id, msg.msg_id, destino, {}, metricas, registro)
     return destino === 'WAITING_HUMAN' ? 'aguardando_humano' : 'concluida'
   } catch (e) {
+    if (reservaPerdida) return 'reservada_por_outro'
     const metricas = (e as { metricas?: Metricas }).metricas
     const produziuSaida = registro.propostas.length > 0 || registro.documentos.length > 0
 
     if (msg.read_ct >= deps.maxTentativas || produziuSaida) {
-      await encerrar(banco, run.id, msg.msg_id, 'FAILED', {
+      await encerrar(deps, run.id, msg.msg_id, 'FAILED', {
         error_code: produziuSaida ? 'PARTIAL_OUTPUT' : 'AGENT_ERROR',
         error_message: mensagemDe(e),
       }, metricas, registro)
@@ -150,20 +183,18 @@ export async function processarMensagem(deps: Dependencias, msg: MensagemLida): 
     }
 
     // Volta para a fila com espera crescente; a mesma mensagem reaparece.
-    await banco.query(
-      `update public.agent_runs
-          set status = 'QUEUED', error_code = 'AGENT_ERROR', error_message = $2::text
-        where id = $1::uuid`,
-      [run.id, mensagemDe(e)],
-    )
+    await banco.query(`select private.worker_requeue_run($1::uuid, $2::text, $3::text)`,
+      [run.id, worker, mensagemDe(e)])
     await banco.query(`select pgmq.set_vt($1::text, $2::bigint, $3::int)`,
       [FILA, msg.msg_id, 30 * msg.read_ct])
     return 'reenfileirada'
   } finally {
+    clearInterval(batimento)
     await rm(scratch, { recursive: true, force: true })
   }
 }
 
+/** Configuração de IA (agente, versão, skills): leitura direta, sem dado de cliente. */
 async function carregarAgente(banco: Banco, run: AgentRun): Promise<AgenteCarregado> {
   const a = await um<{
     id: string; slug: string; name: string; status: string; deleted_at: string | null
@@ -202,8 +233,9 @@ async function carregarAgente(banco: Banco, run: AgentRun): Promise<AgenteCarreg
   }
 }
 
+/** Status final, só por quem tem a reserva; arquiva a mensagem. */
 async function encerrar(
-  banco: Banco,
+  deps: Dependencias,
   runId: string,
   msgId: string,
   status: 'COMPLETED' | 'WAITING_HUMAN' | 'FAILED',
@@ -217,25 +249,16 @@ async function encerrar(
     denied_tools: registro.negadas,
     proposals: registro.propostas,
   }
-  await banco.query(
-    `update public.agent_runs
-        set status = $2::text,
-            completed_at = case when $2::text in ('COMPLETED', 'FAILED') then now() else completed_at end,
-            error_code = $3::text,
-            error_message = $4::text,
-            model = coalesce($5::text, model),
-            input_tokens = coalesce($6::bigint, input_tokens),
-            output_tokens = coalesce($7::bigint, output_tokens),
-            estimated_cost = coalesce($8::numeric, estimated_cost),
-            metadata = metadata || coalesce($9::jsonb, '{}'::jsonb)
-      where id = $1::uuid`,
+  await deps.banco.query(
+    `select private.worker_finish_run($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::text,
+                                      $7::bigint, $8::bigint, $9::numeric, $10::jsonb)`,
     [
-      runId, status, erro.error_code ?? null, erro.error_message?.slice(0, 2000) ?? null,
+      runId, deps.worker, status, erro.error_code ?? null, erro.error_message?.slice(0, 2000) ?? null,
       metricas?.modelo ?? null, metricas?.tokensEntrada ?? null, metricas?.tokensSaida ?? null,
       metricas?.custoUsd ?? null, resumo ? JSON.stringify(resumo) : null,
     ],
   )
-  await arquivar(banco, msgId)
+  await arquivar(deps.banco, msgId)
 }
 
 function mensagemDe(e: unknown): string {

@@ -4,14 +4,16 @@ import { readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join, relative, resolve, isAbsolute } from 'node:path'
 import { z } from 'zod'
 import { um } from './banco.js'
-import { EXIGE_CASO, TIPOS_PROPOSTA, validarPayload, type PayloadGravado } from './propostas.js'
-import type { ContextoExecucao, Ferramenta } from './tipos.js'
+import { EXIGE_CASO, TIPOS_PROPOSTA, chaveIdempotencia, validarPayload, type PayloadGravado } from './propostas.js'
+import { ConfigAgente, type ContextoExecucao, type Ferramenta } from './tipos.js'
 
 /**
  * As ferramentas que o agente enxerga do sistema.
  *
  * Regra estrutural: muitas de LEITURA e duas de escrita, ambas presas a uma
  * revisão humana:
+ *
+ * Dado de cliente só chega por funções private.worker_* (escopadas à execução).
  *
  *   propor              grava agent_proposals + reviews (PENDING). O efeito só
  *                       acontece depois que um advogado aprova (aplicar.ts) — e
@@ -47,134 +49,65 @@ const json = (v: unknown) => texto(JSON.stringify(v, null, 2))
 const erro = (t: string) => ({ ...texto(t), isError: true })
 
 export function criarFerramentas(ctx: ContextoExecucao): Ferramenta[] {
-  const { banco, run, clienteDoCaso } = ctx
+  const { banco, run, worker, clienteDoCaso } = ctx
 
   // ── leitura ──────────────────────────────────────────────────────────────
+  // Dado de cliente só por funções private.worker_*: o banco confere a reserva
+  // desta execução e devolve só o que é do caso dela.
 
   const buscarCliente = tool(
     'buscar_cliente',
     'Busca cliente por CPF/CNPJ (só dígitos) ou por parte do nome. Retorna cadastro básico e casos. ' +
-      'Em execução ligada a um caso, só encontra o cliente desse caso.',
+      'Só encontra o cliente do caso desta execução.',
     { termo: z.string().min(3).describe('CPF, CNPJ ou parte do nome (mínimo 3 caracteres)') },
     async ({ termo }) => {
-      const digitos = termo.replace(/\D/g, '')
-      const { rows } = await banco.query(
-        `select c.id, c.kind, c.cpf, c.cnpj, c.status,
-                coalesce(i.full_name, co.legal_name) as nome,
-                i.birth_date, i.marital_status, i.profession,
-                coalesce((select json_agg(json_build_object('id', k.id, 'titulo', k.title, 'status', k.status))
-                          from public.legal_cases k where k.client_id = c.id and k.deleted_at is null), '[]') as casos
-         from public.clients c
-         left join public.individual_client_details i on i.client_id = c.id
-         left join public.company_client_details co on co.client_id = c.id
-         where c.deleted_at is null
-           and ($3::uuid is null or c.id = $3::uuid)
-           and ((length($1::text) >= 11 and (c.cpf = $1::text or c.cnpj = $1::text))
-                or coalesce(i.full_name, co.legal_name) ilike '%' || $2::text || '%')
-         order by nome
-         limit 10`,
-        [digitos, termo.replace(/[%_]/g, ''), clienteDoCaso],
-      )
-      return rows.length ? json(rows) : texto('Nenhum cliente encontrado.')
+      const r = await um<{ c: unknown[] }>(banco,
+        `select private.worker_find_client($1::uuid, $2::text, $3::text) as c`, [run.id, worker, termo])
+      return r?.c?.length ? json(r.c) : texto('Nenhum cliente encontrado.')
     },
     { annotations: { readOnlyHint: true } },
   )
 
   const verCaso = tool(
     'ver_caso',
-    'Abre um caso: cliente, processos, prazos abertos, documentos (com a situação de aprovação da última versão) ' +
-      'e pendências de documento.',
+    'Abre o caso desta execução: cliente, processos, prazos abertos, documentos (com a situação de aprovação ' +
+      'e de verificação da última versão) e pendências de documento.',
     { caso_id: z.string().uuid() },
     async ({ caso_id }) => {
-      const caso = await um(
-        banco,
-        `select k.id, k.title as titulo, k.summary as resumo, k.status, k.client_id,
-                a.code as area, coalesce(i.full_name, co.legal_name) as cliente,
-                coalesce((select json_agg(json_build_object(
-                    'id', p.id, 'cnj', p.cnj_number, 'status', p.status, 'tribunal', p.court))
-                  from public.legal_processes p
-                  where p.legal_case_id = k.id and p.deleted_at is null), '[]') as processos,
-                coalesce((select json_agg(json_build_object(
-                    'id', d.id, 'titulo', d.title, 'vence_em', d.due_at, 'processo_id', d.legal_process_id)
-                    order by d.due_at)
-                  from public.deadlines d
-                  where d.legal_case_id = k.id and d.status = 'OPEN'), '[]') as prazos_abertos,
-                coalesce((select json_agg(json_build_object(
-                    'id', doc.id, 'titulo', doc.title, 'categoria', doc.category,
-                    'visibilidade', doc.visibility,
-                    'ultima_versao_id', ult.document_version_id, 'versao', ult.version_number,
-                    'aprovacao', ult.approval_status))
-                  from public.case_documents cd
-                  join public.documents doc on doc.id = cd.document_id and doc.deleted_at is null
-                  left join lateral (
-                    select va.document_version_id, va.version_number, va.approval_status
-                    from public.document_version_approvals va
-                    where va.document_id = doc.id
-                    order by va.version_number desc limit 1
-                  ) ult on true
-                  where cd.legal_case_id = k.id), '[]') as documentos,
-                coalesce((select json_agg(json_build_object(
-                    'categoria', r.category, 'descricao', r.requirement_label,
-                    'obrigatorio', r.required, 'status', r.status))
-                  from public.case_document_requirements r
-                  where r.legal_case_id = k.id), '[]') as pendencias
-         from public.legal_cases k
-         join public.legal_areas a on a.id = k.legal_area_id
-         left join public.individual_client_details i on i.client_id = k.client_id
-         left join public.company_client_details co on co.client_id = k.client_id
-         where k.id = $1::uuid and k.deleted_at is null
-           and ($2::uuid is null or k.client_id = $2::uuid)`,
-        [caso_id, clienteDoCaso],
-      )
-      return caso ? json(caso) : texto('Caso não encontrado (ou fora do escopo desta execução).')
+      const r = await um<{ c: unknown }>(banco,
+        `select private.worker_get_case($1::uuid, $2::text, $3::uuid) as c`, [run.id, worker, caso_id])
+      return r?.c ? json(r.c) : texto('Caso não encontrado (ou fora do escopo desta execução).')
     },
     { annotations: { readOnlyHint: true } },
   )
 
   const verProcesso = tool(
     'ver_processo',
-    'Abre um processo: dados, partes e as últimas movimentações.',
+    'Abre um processo do caso desta execução: dados, partes e as últimas movimentações.',
     {
       processo_id: z.string().uuid(),
       movimentacoes: z.number().int().min(1).max(200).default(50),
     },
     async ({ processo_id, movimentacoes }) => {
-      const p = await um(
-        banco,
-        `select p.id, p.legal_case_id, p.cnj_number, p.status, p.court, p.court_unit, p.district,
-                p.state, p.legal_class, p.subject, p.client_side, p.case_value, p.distribution_date,
-                coalesce((select json_agg(json_build_object('tipo', pp.party_type, 'nome', pp.name))
-                          from public.process_parties pp where pp.legal_process_id = p.id), '[]') as partes,
-                coalesce((select json_agg(e order by e.occurred_at desc)
-                          from (select ev.event_type, ev.description, ev.occurred_at, ev.source
-                                from public.process_events ev
-                                where ev.legal_process_id = p.id
-                                order by ev.occurred_at desc limit $3::int) e), '[]') as movimentacoes
-         from public.legal_processes p
-         join public.legal_cases k on k.id = p.legal_case_id
-         where p.id = $1::uuid and p.deleted_at is null
-           and ($2::uuid is null or k.client_id = $2::uuid)`,
-        [processo_id, clienteDoCaso, movimentacoes],
-      )
-      return p ? json(p) : texto('Processo não encontrado (ou fora do escopo desta execução).')
+      const r = await um<{ p: unknown }>(banco,
+        `select private.worker_get_process($1::uuid, $2::text, $3::uuid, $4::int) as p`,
+        [run.id, worker, processo_id, movimentacoes])
+      return r?.p ? json(r.p) : texto('Processo não encontrado (ou fora do escopo desta execução).')
     },
     { annotations: { readOnlyHint: true } },
   )
 
   const baixarDocumento = tool(
     'baixar_documento',
-    'Baixa uma versão de documento para o diretório de trabalho e devolve o caminho local, ' +
+    'Baixa uma versão de documento do caso para o diretório de trabalho e devolve o caminho local, ' +
       'para você ler com Read. Use o ultima_versao_id que ver_caso devolve.',
     { versao_id: z.string().uuid() },
     async ({ versao_id }) => {
       const v = await um<{ storage_object_name: string; original_filename: string | null; file_size: string | null }>(
         banco,
-        `select v.storage_object_name, v.original_filename, v.file_size
-         from public.document_versions v
-         join public.documents d on d.id = v.document_id
-         where v.id = $1::uuid and d.deleted_at is null
-           and ($2::uuid is null or d.client_id = $2::uuid)`,
-        [versao_id, clienteDoCaso],
+        `select storage_object_name, original_filename, file_size
+         from private.worker_get_document_version($1::uuid, $2::text, $3::uuid)`,
+        [run.id, worker, versao_id],
       )
       if (!v) return texto('Versão não encontrada (ou fora do escopo desta execução).')
       if (Number(v.file_size ?? 0) > LIMITE_ARQUIVO) return erro('Arquivo grande demais para baixar.')
@@ -257,7 +190,8 @@ export function criarFerramentas(ctx: ContextoExecucao): Ferramenta[] {
       'Tipos: CREATE_DEADLINE {title, due_at ISO, priority?, legal_process_id?, description?};',
       'REQUEST_DOCUMENT {category, label, required?, message_to_partner?, due_at?};',
       'UPDATE_CASE {title?, summary?, status?: WAITING_DOCUMENTS|READY_FOR_ANALYSIS|ANALYZING|WAITING_REVIEW};',
-      'CREATE_PROCESS {cnj_number? (20 dígitos), court?, ...}; UPDATE_SKILL {skill_slug, instructions};',
+      'CREATE_PROCESS {cnj_number? (20 dígitos), court?, client_side?: ACTIVE|PASSIVE|THIRD_PARTY, ...};',
+      'UPDATE_SKILL {skill_slug, instructions};',
       'UPDATE_AGENT {agent_slug, instructions}; OTHER {description} para providência sem aplicação automática.',
       'Minuta de documento NÃO é proposta: use entregar_documento.',
     ].join(' '),
@@ -275,35 +209,30 @@ export function criarFerramentas(ctx: ContextoExecucao): Ferramenta[] {
       let dados: Record<string, unknown>
       try {
         dados = validarPayload(tipo, payload) as Record<string, unknown>
+        // Agente não propõe configuração que o worker não consegue rodar.
+        if (tipo === 'UPDATE_AGENT') ConfigAgente.parse(dados.configuration ?? {})
       } catch (e) {
         return erro(`Payload inválido para ${tipo}: ${e instanceof Error ? e.message : String(e)}`)
       }
 
-      const processoId = (dados.legal_process_id as string | undefined) ?? run.legal_process_id
-      if (processoId && run.legal_case_id) {
-        const ok = await um(banco,
-          `select 1 from public.legal_processes where id = $1::uuid and legal_case_id = $2::uuid`,
-          [processoId, run.legal_case_id])
-        if (!ok) return erro('legal_process_id não pertence ao caso desta execução.')
+      const gravado: PayloadGravado = { summary: resumo, data: dados }
+      const chave = chaveIdempotencia(tipo, dados)
+      let r: { proposal_id: string; created: boolean }
+      try {
+        // O banco confere a reserva, o caso e o processo, grava proposta e revisão
+        // PENDING, e não duplica a mesma proposta (idempotency_key).
+        r = (await um<{ proposal_id: string; created: boolean }>(banco,
+          `select proposal_id, created
+           from private.worker_create_proposal($1::uuid, $2::text, $3::text, $4::jsonb, $5::text, $6::text, $7::uuid)`,
+          [run.id, worker, tipo, JSON.stringify(gravado), chave, prioridade ?? 'NORMAL',
+           (dados.legal_process_id as string | undefined) ?? null]))!
+      } catch (e) {
+        return erro(`Proposta recusada: ${e instanceof Error ? e.message : String(e)}`)
       }
 
-      const gravado: PayloadGravado = { summary: resumo, data: dados }
-      const id = await banco.transacao(async (tx) => {
-        const p = await um<{ id: string }>(tx,
-          `insert into public.agent_proposals
-             (agent_run_id, legal_case_id, legal_process_id, proposal_type, payload, requires_human_review)
-           values ($1::uuid, $2::uuid, $3::uuid, $4::text, $5::jsonb, true)
-           returning id`,
-          [run.id, run.legal_case_id, run.legal_case_id ? processoId : null, tipo, JSON.stringify(gravado)])
-        await tx.query(
-          `insert into public.reviews (legal_case_id, agent_proposal_id, priority)
-           values ($1::uuid, $2::uuid, $3::text)`,
-          [run.legal_case_id, p!.id, prioridade ?? 'NORMAL'])
-        return p!.id
-      })
-
-      ctx.registro.propostas.push(id)
-      return texto(`Proposta ${id} registrada e enviada para Revisões. Ainda NÃO está aplicada.`)
+      if (!r.created) return texto(`Essa proposta já estava registrada (${r.proposal_id}). Nada foi duplicado.`)
+      ctx.registro.propostas.push(r.proposal_id)
+      return texto(`Proposta ${r.proposal_id} registrada e enviada para Revisões. Ainda NÃO está aplicada.`)
     },
   )
 
@@ -337,11 +266,9 @@ export function criarFerramentas(ctx: ContextoExecucao): Ferramenta[] {
       if (info.size > LIMITE_ARQUIVO) return erro('Arquivo maior que 50 MB.')
 
       if (documento_id) {
-        const doc = await um(banco,
-          `select 1 from public.case_documents cd join public.documents d on d.id = cd.document_id
-           where cd.document_id = $1::uuid and cd.legal_case_id = $2::uuid and d.deleted_at is null`,
-          [documento_id, run.legal_case_id])
-        if (!doc) return erro('documento_id não é documento deste caso.')
+        const doc = await um<{ c: { documentos?: { id: string }[] } | null }>(banco,
+          `select private.worker_get_case($1::uuid, $2::text, $3::uuid) as c`, [run.id, worker, run.legal_case_id])
+        if (!doc?.c?.documentos?.some((d) => d.id === documento_id)) return erro('documento_id não é documento deste caso.')
       }
 
       const bytes = new Uint8Array(await readFile(local))
@@ -353,37 +280,19 @@ export function criarFerramentas(ctx: ContextoExecucao): Ferramenta[] {
         [clienteDoCaso, documentoId, versaoId, basename(local)]))!.nome
 
       // Primeiro o arquivo, depois as linhas: versão no banco sempre tem objeto.
+      // (Se o insert falhar, o objeto fica órfão e aparece em find_orphan_storage_objects.)
       await ctx.armazenamento.enviar(BUCKET_DOCUMENTOS, objeto, bytes, mime)
 
-      const numero = await banco.transacao(async (tx) => {
-        if (!documento_id) {
-          await tx.query(
-            `insert into public.documents (id, client_id, category, title, description, visibility)
-             values ($1::uuid, $2::uuid, $3::text, $4::text, $5::text, 'INTERNAL')`,
-            [documentoId, clienteDoCaso, categoria, titulo, descricao ?? null])
-          await tx.query(
-            `insert into public.case_documents (legal_case_id, document_id, purpose)
-             values ($1::uuid, $2::uuid, 'AGENT_DRAFT')`,
-            [run.legal_case_id, documentoId])
-        }
-        const v = await um<{ version_number: number }>(tx,
-          `insert into public.document_versions
-             (id, document_id, storage_object_name, original_filename, mime_type, file_size, checksum_sha256, source)
-           values ($1::uuid, $2::uuid, $3::text, $4::text, $5::text, $6::bigint, $7::text, 'AGENT')
-           returning version_number`,
-          [versaoId, documentoId, objeto, basename(local), mime, info.size, checksum])
-        await tx.query(
-          `insert into public.reviews (legal_case_id, legal_process_id, document_version_id)
-           values ($1::uuid, $2::uuid, $3::uuid)`,
-          [run.legal_case_id, run.legal_process_id, versaoId])
-        await tx.query(
-          `update public.agent_runs
-              set metadata = jsonb_set(metadata, '{documents}',
-                    coalesce(metadata -> 'documents', '[]'::jsonb) || to_jsonb($2::text))
-            where id = $1::uuid`,
-          [run.id, versaoId])
-        return v!.version_number
-      })
+      let numero: number
+      try {
+        numero = (await um<{ n: number }>(banco,
+          `select private.worker_deliver_document($1::uuid, $2::text, $3::uuid, $4::boolean, $5::uuid, $6::text,
+                    $7::text, $8::text, $9::text, $10::text, $11::text, $12::bigint, $13::text) as n`,
+          [run.id, worker, documentoId, !documento_id, versaoId, categoria, titulo, descricao ?? null,
+           objeto, basename(local), mime, info.size, checksum]))!.n
+      } catch (e) {
+        return erro(`Minuta recusada: ${e instanceof Error ? e.message : String(e)}`)
+      }
 
       ctx.registro.documentos.push(versaoId)
       return texto(`Minuta entregue: documento ${documentoId}, versão ${numero}. Revisão pendente em Revisões.`)

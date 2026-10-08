@@ -67,67 +67,91 @@ alter table storage.objects enable row level security;
 grant all on storage.buckets, storage.objects to anon, authenticated, service_role;
 
 -- ───────────────────────────── pgmq (simulado) ────────────────────────────
+-- Mesma forma do pgmq real: cada fila tem pgmq.q_<nome> (mensagens) e
+-- pgmq.a_<nome> (arquivo); read/set_vt/archive são SECURITY INVOKER e operam
+-- nessas tabelas por SQL dinâmico. Assim os grants da 018 são testados como
+-- seriam no Supabase. (Simplificação: sem headers, sem partição.)
 
 create schema pgmq;
 
-create table pgmq.queues (
+create table pgmq.meta (
   queue_name text primary key,
   created_at timestamptz not null default now()
 );
 
-create table pgmq.messages (
-  msg_id      bigserial primary key,
-  queue_name  text not null references pgmq.queues (queue_name),
-  message     jsonb not null,
-  read_ct     integer not null default 0,
-  enqueued_at timestamptz not null default now(),
-  vt          timestamptz not null default now(),
-  archived_at timestamptz
-);
-
 create function pgmq.create(queue_name text) returns void
-language sql as $$ insert into pgmq.queues values (queue_name) on conflict do nothing $$;
-
-create function pgmq.list_queues() returns table (queue_name text, created_at timestamptz)
-language sql as $$ select queue_name, created_at from pgmq.queues $$;
-
-create function pgmq.send(queue_name text, msg jsonb, delay integer default 0) returns setof bigint
-language sql as $$
-  insert into pgmq.messages (queue_name, message, vt)
-  values (queue_name, msg, now() + make_interval(secs => delay))
-  returning msg_id
+language plpgsql as $$
+begin
+  execute format('create table if not exists pgmq.%I (
+    msg_id bigint generated always as identity primary key,
+    read_ct integer not null default 0,
+    enqueued_at timestamptz not null default now(),
+    vt timestamptz not null default now(),
+    message jsonb)', 'q_' || queue_name);
+  execute format('create table if not exists pgmq.%I (
+    msg_id bigint primary key,
+    read_ct integer not null default 0,
+    enqueued_at timestamptz not null default now(),
+    archived_at timestamptz not null default now(),
+    vt timestamptz not null,
+    message jsonb)', 'a_' || queue_name);
+  insert into pgmq.meta values (queue_name) on conflict do nothing;
+end
 $$;
 
+create function pgmq.list_queues() returns table (queue_name text, created_at timestamptz)
+language sql as $$ select queue_name, created_at from pgmq.meta $$;
+
+create function pgmq.send(queue_name text, msg jsonb, delay integer default 0) returns setof bigint
+language plpgsql as $$
+begin
+  return query execute format(
+    'insert into pgmq.%I (vt, message) values (now() + make_interval(secs => $1), $2) returning msg_id',
+    'q_' || queue_name) using delay, msg;
+end
+$$;
+
+create type pgmq.message_record as (
+  msg_id bigint, read_ct integer, enqueued_at timestamptz, vt timestamptz, message jsonb
+);
+
 create function pgmq.read(queue_name text, vt integer, qty integer)
-returns table (msg_id bigint, read_ct integer, enqueued_at timestamptz, vt timestamptz, message jsonb)
-language sql as $$
-  update pgmq.messages m
-     set read_ct = m.read_ct + 1, vt = now() + make_interval(secs => read.vt)
-   where m.msg_id in (
-     select x.msg_id from pgmq.messages x
-     where x.queue_name = read.queue_name and x.archived_at is null and x.vt <= now()
-     order by x.msg_id limit qty
-   )
-  returning m.msg_id, m.read_ct, m.enqueued_at, m.vt, m.message
+returns setof pgmq.message_record
+language plpgsql as $$
+begin
+  return query execute format(
+    'with c as (select q.msg_id from pgmq.%1$I q where q.vt <= now() order by q.msg_id limit $2 for update skip locked)
+     update pgmq.%1$I m set read_ct = m.read_ct + 1, vt = now() + make_interval(secs => $1)
+     from c where m.msg_id = c.msg_id
+     returning m.msg_id, m.read_ct, m.enqueued_at, m.vt, m.message', 'q_' || queue_name) using vt, qty;
+end
+$$;
+
+create function pgmq.set_vt(queue_name text, msg_id bigint, vt integer)
+returns setof pgmq.message_record
+language plpgsql as $$
+begin
+  return query execute format(
+    'update pgmq.%I m set vt = now() + make_interval(secs => $1) where m.msg_id = $2
+     returning m.msg_id, m.read_ct, m.enqueued_at, m.vt, m.message', 'q_' || queue_name) using vt, msg_id;
+end
 $$;
 
 create function pgmq.archive(queue_name text, msg_id bigint) returns boolean
-language sql as $$
-  update pgmq.messages m set archived_at = now()
-  where m.queue_name = archive.queue_name and m.msg_id = archive.msg_id
-  returning true
+language plpgsql as $$
+declare
+  n integer;
+begin
+  execute format(
+    'with d as (delete from pgmq.%1$I where msg_id = $1 returning msg_id, read_ct, enqueued_at, vt, message)
+     insert into pgmq.%2$I (msg_id, read_ct, enqueued_at, vt, message) select * from d',
+    'q_' || queue_name, 'a_' || queue_name) using msg_id;
+  get diagnostics n = row_count;
+  return n > 0;
+end
 $$;
 
 -- Como numa instalação nova de extensão: aberto por padrão, a 018 fecha.
 grant usage on schema pgmq to public;
 grant all on all tables in schema pgmq to public;
-grant all on all sequences in schema pgmq to public;
-
-create function pgmq.set_vt(queue_name text, msg_id bigint, vt_offset integer)
-returns table (msg_id bigint, read_ct integer, enqueued_at timestamptz, vt timestamptz, message jsonb)
-language sql as $$
-  update pgmq.messages m set vt = now() + make_interval(secs => vt_offset)
-  where m.queue_name = set_vt.queue_name and m.msg_id = set_vt.msg_id
-  returning m.msg_id, m.read_ct, m.enqueued_at, m.vt, m.message
-$$;
-grant execute on function pgmq.set_vt(text, bigint, integer) to public;
+alter default privileges in schema pgmq grant all on tables to public;

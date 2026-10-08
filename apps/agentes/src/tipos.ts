@@ -33,9 +33,7 @@ export interface AgentRun {
   agent_version_id: string
   legal_case_id: string | null
   legal_process_id: string | null
-  status: string
   requested_by: string | null
-  metadata: Record<string, unknown>
 }
 
 export interface AgenteCarregado {
@@ -47,6 +45,12 @@ export interface AgenteCarregado {
   config: ConfigAgente
   /** Skills vinculadas e ativas, na versão corrente. */
   skills: { slug: string; instructions: string }[]
+}
+
+/** Pedido em texto e parâmetros da execução (agent_run_inputs). Nunca vai para metadata. */
+export interface EntradaExecucao {
+  pedido: string | null
+  parametros: Record<string, unknown>
 }
 
 /** O que a execução fez, sem conteúdo: vai para agent_runs.metadata. */
@@ -67,10 +71,13 @@ export interface Metricas {
 export interface ContextoExecucao {
   banco: Banco
   armazenamento: Armazenamento
+  /** Id deste worker: dono da reserva, exigido pelas funções private.worker_*. */
+  worker: string
   run: AgentRun
   agente: AgenteCarregado
   /** Cliente do caso da execução. Quando há caso, as leituras ficam restritas a ele. */
   clienteDoCaso: string | null
+  entrada: EntradaExecucao
   scratch: string
   operacao: string
   registro: Registro

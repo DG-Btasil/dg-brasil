@@ -44,7 +44,7 @@ export function buildAgents(): Agent[] {
       skillIds: [S.conferenciaDocumental, S.comunicacaoCliente],
       thesisIds: [],
       permissions: ["Ler documentos do cliente", "Classificar documentos", "Sugerir mensagem ao cliente"],
-      autonomy: "AUTO_LOW_RISK",
+      autonomy: "REVIEW_REQUIRED",
       rules: [
         "Classificação e checklist podem ser atualizados sem revisão.",
         "Qualquer mensagem ao cliente exige aprovação humana.",

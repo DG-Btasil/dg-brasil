@@ -88,6 +88,7 @@ create index partner_request_messages_request_idx
 create or replace function private.partner_request_messages_fill_author()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -125,3 +126,34 @@ create table public.notifications (
 
 create index notifications_user_read_created_idx
   on public.notifications (user_id, read_at, created_at desc);
+
+-- ───────────────────────────── preferências do usuário ────────────────────
+-- Preferências NÃO são perfil: ficam aqui, uma linha por usuário. O envio real
+-- (e-mail, resumo) é do backend; isto só guarda a escolha.
+
+create table public.user_preferences (
+  user_id           uuid primary key references public.profiles (id) on delete cascade,
+  digest            text not null default 'NONE' check (digest in ('NONE', 'DAILY', 'WEEKLY')),
+  tour_completed_at timestamptz,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+
+create trigger user_preferences_set_updated_at
+  before update on public.user_preferences
+  for each row execute function private.set_updated_at();
+
+-- Por tipo de notificação: canal in-app e e-mail. Sem linha = padrão do sistema.
+create table public.user_notification_preferences (
+  user_id           uuid not null references public.profiles (id) on delete cascade,
+  notification_type text not null check (notification_type ~ '^[A-Z][A-Z0-9_]{1,63}$'),
+  in_app            boolean not null default true,
+  email             boolean not null default false,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  primary key (user_id, notification_type)
+);
+
+create trigger user_notification_preferences_set_updated_at
+  before update on public.user_notification_preferences
+  for each row execute function private.set_updated_at();

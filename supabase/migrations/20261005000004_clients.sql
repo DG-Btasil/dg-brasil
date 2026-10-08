@@ -13,6 +13,8 @@ create table public.clients (
   origin_organization_id uuid not null references public.organizations (id) on delete restrict,
   status                 text not null default 'ACTIVE'
                          check (status in ('ACTIVE', 'INACTIVE', 'ARCHIVED')),
+  -- Usuário interno responsável pelo atendimento do cliente.
+  responsible_user_id    uuid references public.profiles (id) on delete restrict,
   created_by             uuid references public.profiles (id) on delete restrict,
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now(),
@@ -60,6 +62,19 @@ begin
     end if;
   end if;
 
+  -- Responsável: usuário interno ativo (qualquer papel interno).
+  if new.responsible_user_id is not null
+     and (tg_op = 'INSERT' or new.responsible_user_id is distinct from old.responsible_user_id)
+     and not private.is_active_internal_user(new.responsible_user_id) then
+    raise exception 'O responsável pelo cliente precisa ser usuário interno ativo' using errcode = '23514';
+  end if;
+
+  -- Excluir (soft delete) ou restaurar cliente é decisão de ADMIN.
+  if tg_op = 'UPDATE' and new.deleted_at is distinct from old.deleted_at
+     and auth.uid() is not null and not private.is_admin() then
+    raise exception 'Somente ADMIN interno exclui ou restaura cliente' using errcode = '42501';
+  end if;
+
   if tg_op = 'INSERT' or new.origin_organization_id is distinct from old.origin_organization_id then
     select o.type, o.status, o.deleted_at into v_origin
     from public.organizations o where o.id = new.origin_organization_id;
@@ -87,6 +102,32 @@ create trigger clients_guard
   before insert or update on public.clients
   for each row execute function private.clients_guard();
 
+-- ───────────────────────────── dados internos do cliente ──────────────────
+-- Observações, resumo jurídico e inativação ficam fora de `clients`: o parceiro
+-- lê a linha do cliente (RLS é por linha) e não pode ler estes campos.
+
+create table public.client_internal_details (
+  client_id           uuid primary key references public.clients (id) on delete cascade,
+  notes               text,
+  legal_summary       text,
+  inactivation_reason text check (inactivation_reason in (
+                        'SERVICE_ENDED', 'CLIENT_GAVE_UP', 'CONTRACT_ENDED', 'DUPLICATE', 'OTHER')),
+  inactivation_note   text,
+  inactivated_at      timestamptz,
+  inactivated_by      uuid references public.profiles (id) on delete restrict,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  constraint client_internal_details_inactivation_consistent
+    check (inactivation_reason is null or inactivated_at is not null)
+);
+
+comment on table public.client_internal_details is
+  'Observações internas, resumo jurídico e inativação. Nunca visível a parceiros.';
+
+create trigger client_internal_details_set_updated_at
+  before update on public.client_internal_details
+  for each row execute function private.set_updated_at();
+
 -- ───────────────────────────── pessoa física ──────────────────────────────
 
 create table public.individual_client_details (
@@ -98,19 +139,23 @@ create table public.individual_client_details (
   birth_date     date check (birth_date is null or birth_date > date '1900-01-01'),
   gender         text check (gender in ('MALE', 'FEMALE', 'OTHER')),  -- null = não informado
   nationality    text,
-  naturality     text,
+  birthplace     text,  -- naturalidade
   marital_status text check (marital_status in ('SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED', 'SEPARATED')),
   stable_union   boolean,
   profession     text,
-  rg             text,
-  rg_issuer      text,
-  rg_state       public.uf_code,
+  -- Documento de identidade principal (o CPF já está em clients).
+  identity_document_type   text check (identity_document_type in ('RG', 'CNH', 'PASSPORT', 'RNM', 'OTHER')),
+  identity_document_number text,
+  identity_document_issuer text,
+  identity_document_state  public.uf_code,
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
   -- Detalhe puramente dependente: acompanha a exclusão física (excepcional) do Client.
   constraint individual_client_details_client_fkey
     foreign key (client_id, client_kind)
-    references public.clients (id, kind) on delete cascade
+    references public.clients (id, kind) on delete cascade,
+  constraint individual_client_details_identity_complete
+    check ((identity_document_type is null) = (identity_document_number is null))
 );
 
 create trigger individual_client_details_set_updated_at
@@ -129,6 +174,9 @@ create table public.company_client_details (
   opening_date        date,
   legal_nature        text,
   main_cnae           text check (main_cnae is null or main_cnae ~ '^[0-9]{7}$'),
+  secondary_cnaes     text[] not null default '{}'
+                      check (cardinality(secondary_cnaes) = 0
+                             or array_to_string(secondary_cnaes, ',') ~ '^[0-9]{7}(,[0-9]{7})*$'),
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   constraint company_client_details_client_fkey
@@ -166,12 +214,35 @@ create trigger company_representatives_set_updated_at
   before update on public.company_representatives
   for each row execute function private.set_updated_at();
 
+-- Quadro societário (sócios da PJ). Não confundir com escritórios parceiros.
+create table public.company_shareholders (
+  id               uuid primary key default gen_random_uuid(),
+  client_id        uuid not null,
+  client_kind      public.client_kind not null default 'COMPANY'
+                   check (client_kind = 'COMPANY'),
+  name             text not null check (btrim(name) <> ''),
+  document_number  text check (document_number is null or document_number ~ '^[0-9]{11}$|^[0-9]{14}$'),
+  qualification    text,
+  share_percentage public.percentage,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  constraint company_shareholders_client_fkey
+    foreign key (client_id, client_kind)
+    references public.clients (id, kind) on delete cascade
+);
+
+create index company_shareholders_client_idx on public.company_shareholders (client_id);
+
+create trigger company_shareholders_set_updated_at
+  before update on public.company_shareholders
+  for each row execute function private.set_updated_at();
+
 -- ───────────────────────────── contatos ───────────────────────────────────
 
 create table public.client_contacts (
   id          uuid primary key default gen_random_uuid(),
   client_id   uuid not null references public.clients (id) on delete cascade,
-  type        text not null check (type in ('EMAIL', 'PHONE', 'WHATSAPP', 'OTHER')),
+  type        text not null check (type in ('EMAIL', 'PHONE', 'WHATSAPP', 'WEBSITE', 'OTHER')),
   value       text not null check (btrim(value) <> ''),
   is_primary  boolean not null default false,
   verified_at timestamptz,

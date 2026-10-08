@@ -1,6 +1,6 @@
 import { nowISO } from "@/lib/clock";
 import { LEGAL_CASE_STATUS_LABEL } from "@/lib/constants/status";
-import { casePartnerId, isAccepted, isDecidable, isEligibleLawyer } from "@/lib/domain/legal-case";
+import { casePartnerId, explicitPartnerLink, isAccepted, isDecidable, isEligibleLawyer } from "@/lib/domain/legal-case";
 import { snapshotAgreement } from "@/lib/domain/partnership";
 import { createId } from "@/lib/ids";
 import { can } from "@/lib/permissions";
@@ -18,9 +18,9 @@ function caseOf(state: AppState, id: ID): LegalCase {
   return legalCase;
 }
 
-/** Notificação ao parceiro de origem do caso (nunca com dados internos). */
+/** Notificação ao parceiro com acesso operacional ao caso (nunca com dados internos). */
 function partnerNotice(state: AppState, legalCase: LegalCase, input: Pick<Notification, "type" | "severity" | "title" | "description">): Notification[] {
-  const partnerId = casePartnerId(legalCase, state.office.id) ?? (legalCase.createdByOfficeId !== state.office.id ? legalCase.createdByOfficeId : undefined);
+  const partnerId = legalCase.partnerOrganizationId;
   if (!partnerId) return [];
   return [
     {
@@ -38,9 +38,9 @@ function partnerNotice(state: AppState, legalCase: LegalCase, input: Pick<Notifi
   ];
 }
 
-/** Escritório parceiro relacionado ao caso (origem ou quem enviou), para a linha do tempo do parceiro. */
-function partnerRef(state: AppState, legalCase: LegalCase, summary?: string) {
-  const partnerId = casePartnerId(legalCase, state.office.id) ?? (legalCase.createdByOfficeId !== state.office.id ? legalCase.createdByOfficeId : undefined);
+/** Parceiro com acesso operacional ao caso, para a linha do tempo do parceiro. */
+function partnerRef(legalCase: LegalCase, summary?: string) {
+  const partnerId = legalCase.partnerOrganizationId;
   return partnerId ? { partnerOfficeId: partnerId, summary } : undefined;
 }
 
@@ -52,7 +52,7 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
       if (!can(viewer.role, "cases.edit")) throw new Error("Sem permissão para cadastrar casos.");
       if (!s.clients.some((c) => c.id === input.clientId)) throw new Error("Selecione um cliente existente.");
       // Origem do caso validada pela regra central (a mesma das origens de cliente).
-      if (!isAllowedClientOrigin(originContextOf(s), input.originOfficeId)) throw new Error("Origem do caso inválida.");
+      if (!isAllowedClientOrigin(originContextOf(s), input.originOrganizationId)) throw new Error("Origem do caso inválida.");
       const at = nowISO();
       const id = createId("cas");
       const legalCase: LegalCase = {
@@ -62,8 +62,11 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
         title: input.title,
         area: input.area,
         caseType: input.caseType,
-        originOfficeId: input.originOfficeId,
-        createdByOfficeId: s.office.id,
+        originOrganizationId: input.originOrganizationId,
+        createdByOrganizationId: s.office.id,
+        // Caso interno por padrão. A origem parceira NÃO concede acesso operacional:
+        // o parceiro só opera o caso com o vínculo explícito (linkPartner).
+        partnerOrganizationId: explicitPartnerLink(input.originOrganizationId, s.office.id, input.linkPartner),
         createdBy: viewer.userId,
         assignedLawyerId: input.assignedLawyerId ?? null,
         summary: input.summary,
@@ -75,14 +78,14 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
         updatedAt: at,
       };
       const client = s.clients.find((c) => c.id === input.clientId);
-      const partnerId = casePartnerId(legalCase, s.office.id);
+      const partnerId = legalCase.partnerOrganizationId;
       set({
         legalCases: [legalCase, ...s.legalCases],
-        // Caso de origem parceiro: o parceiro passa a enxergar o cliente deste caso.
+        // Caso operado por parceiro: o parceiro passa a enxergar o cliente deste caso.
         clientRelationships: partnerId ? withPartnerRelationship(s, input.clientId, partnerId, viewer.userId, at) : s.clientRelationships,
         auditEvents: [
           ...(input.submit ? [auditEvent(s, "CASE_SUBMITTED", "legalCase", id, `Caso “${legalCase.title}” enviado para análise.`)] : []),
-          auditEvent(s, "CASE_CREATED", "legalCase", id, `Caso “${legalCase.title}” criado para ${clientName(client)} (origem: ${officeNameOf(s, input.originOfficeId)}).`),
+          auditEvent(s, "CASE_CREATED", "legalCase", id, `Caso “${legalCase.title}” criado para ${clientName(client)} (origem: ${officeNameOf(s, input.originOrganizationId)}${partnerId ? `; parceiro vinculado: ${officeNameOf(s, partnerId)}` : ""}).`),
           ...s.auditEvents,
         ],
       });
@@ -105,25 +108,25 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
         const at = nowISO();
         return {
           legalCases: updateById(s.legalCases, id, (c) => ({ ...c, status: "SUBMITTED" as const, submittedAt: at, updatedAt: at })),
-          auditEvents: [auditEvent(s, "CASE_SUBMITTED", "legalCase", id, `Caso “${legalCase.title}” enviado para análise.`, undefined, undefined, partnerRef(s, legalCase)), ...s.auditEvents],
+          auditEvents: [auditEvent(s, "CASE_SUBMITTED", "legalCase", id, `Caso “${legalCase.title}” enviado para análise.`, undefined, undefined, partnerRef(legalCase)), ...s.auditEvents],
         };
       }),
 
-    changeCaseOrigin: (id, originOfficeId) => {
+    changeCaseOrigin: (id, originOrganizationId, linkPartner) => {
       const s = get();
       const legalCase = caseOf(s, id);
-      if (legalCase.originOfficeId === originOfficeId) return;
+      if (legalCase.originOrganizationId === originOrganizationId) return;
       const viewer = viewerOf(s);
       if (!viewer) throw new Error("Sessão inválida.");
       const accepted = isAccepted(legalCase.status);
       if (accepted) {
         // Depois do aceite, só Administrador interno (afeta parceria e financeiro).
         if (viewer.audience !== "OWNER" || !can(viewer.role, "cases.origin.override")) throw new Error("Somente um Administrador pode alterar a origem de um caso aceito.");
-        if (originOfficeId !== s.office.id && !s.partnerOffices.some((p) => p.id === originOfficeId)) throw new Error("Origem do caso inválida.");
+        if (originOrganizationId !== s.office.id && !s.partnerOffices.some((p) => p.id === originOrganizationId)) throw new Error("Origem do caso inválida.");
       } else {
         if (legalCase.status === "REJECTED") throw new Error("Caso rejeitado não tem a origem alterada.");
-        if (!isAllowedClientOrigin(originContextOf(s), originOfficeId)) throw new Error("Origem do caso inválida.");
-        if (viewer.audience === "PARTNER" && legalCase.createdByOfficeId !== viewer.partnerOfficeId) throw new Error("Caso não encontrado.");
+        if (!isAllowedClientOrigin(originContextOf(s), originOrganizationId)) throw new Error("Origem do caso inválida.");
+        if (viewer.audience === "PARTNER" && legalCase.partnerOrganizationId !== viewer.partnerOfficeId) throw new Error("Caso não encontrado.");
       }
       const at = nowISO();
       // Caso aceito: o acordo de parceria acompanha a nova origem (o anterior é encerrado, não apagado).
@@ -131,7 +134,7 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
       const extraAudit = [];
       if (accepted) {
         partnershipAgreements = partnershipAgreements.map((a) => (a.legalCaseId === id && !a.cancelledAt ? { ...a, cancelledAt: at, updatedAt: at } : a));
-        const newPartner = s.partnerOffices.find((p) => p.id === originOfficeId);
+        const newPartner = s.partnerOffices.find((p) => p.id === originOrganizationId);
         if (newPartner) {
           const snapshot = snapshotAgreement(newPartner, id, createId("ppa"), at);
           partnershipAgreements = [snapshot, ...partnershipAgreements];
@@ -142,17 +145,22 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
           );
         }
       }
-      const newPartnerId = originOfficeId !== s.office.id ? originOfficeId : undefined;
+      // A origem (comercial) nunca altera o acesso operacional. Só a equipe interna, com
+      // opt-in explícito (linkPartner), vincula o parceiro de origem a um caso interno.
+      const newPartnerId =
+        !legalCase.partnerOrganizationId && viewer.audience === "OWNER" ? (explicitPartnerLink(originOrganizationId, s.office.id, linkPartner) ?? undefined) : undefined;
+      const partnerOrganizationId = newPartnerId ?? legalCase.partnerOrganizationId;
       set({
-        legalCases: updateById(s.legalCases, id, (c) => ({ ...c, originOfficeId, updatedAt: at })),
+        legalCases: updateById(s.legalCases, id, (c) => ({ ...c, originOrganizationId, partnerOrganizationId, updatedAt: at })),
         clientRelationships: newPartnerId ? withPartnerRelationship(s, legalCase.clientId, newPartnerId, viewer.userId, at) : s.clientRelationships,
         partnershipAgreements,
         auditEvents: [
           ...extraAudit,
           auditEvent(s, "CASE_ORIGIN_CHANGED", "legalCase", id, `Origem do caso “${legalCase.title}” alterada${accepted ? " após o aceite" : ""}.`, undefined, [
-            { label: "Antes", value: officeNameOf(s, legalCase.originOfficeId) },
-            { label: "Depois", value: officeNameOf(s, originOfficeId) },
+            { label: "Antes", value: officeNameOf(s, legalCase.originOrganizationId) },
+            { label: "Depois", value: officeNameOf(s, originOrganizationId) },
             ...(accepted ? [{ label: "Atenção", value: "Alteração após o aceite: parceria e financeiro revistos." }] : []),
+            ...(newPartnerId ? [{ label: "Acesso operacional", value: `${officeNameOf(s, newPartnerId)} vinculado ao caso (ação explícita).` }] : []),
           ]),
           ...s.auditEvents,
         ],
@@ -219,7 +227,7 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
           ...(legalCase.assignedLawyerId !== lawyer.id
             ? [auditEvent(s, "CASE_LAWYER_ASSIGNED", "legalCase", id, `Advogado responsável do caso “${legalCase.title}”: ${lawyer.name}.`)]
             : []),
-          auditEvent(s, "CASE_ACCEPTED", "legalCase", id, `Caso “${legalCase.title}” aceito. Responsável: ${lawyer.name}.`, undefined, undefined, partnerRef(s, legalCase, `Caso de ${clientName(client)} aceito.`)),
+          auditEvent(s, "CASE_ACCEPTED", "legalCase", id, `Caso “${legalCase.title}” aceito. Responsável: ${lawyer.name}.`, undefined, undefined, partnerRef(legalCase, `Caso de ${clientName(client)} aceito.`)),
           ...s.auditEvents,
         ],
       });
@@ -236,7 +244,7 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
       const note = internalNote?.trim() || undefined;
       const at = nowISO();
       const client = s.clients.find((c) => c.id === legalCase.clientId);
-      const ref = partnerRef(s, legalCase);
+      const ref = partnerRef(legalCase);
       set({
         legalCases: updateById(s.legalCases, id, (c) => ({
           ...c,
@@ -285,7 +293,7 @@ export function createCaseSlice(set: SetState, get: GetState): CaseActions {
               ? [...partnerNotice(s, legalCase, { type: "CASE_UPDATE", severity: "info", title: "Caso concluído", description: `${clientName(client)} · ${legalCase.title}.` }), ...s.notifications]
               : s.notifications,
           auditEvents: [
-            auditEvent(s, "CASE_STATUS_CHANGED", "legalCase", id, `Caso “${legalCase.title}”: ${LEGAL_CASE_STATUS_LABEL[legalCase.status]} → ${LEGAL_CASE_STATUS_LABEL[status]}.`, undefined, undefined, partnerRef(s, legalCase, status === "CLOSED" ? `Caso de ${clientName(client)} concluído.` : undefined)),
+            auditEvent(s, "CASE_STATUS_CHANGED", "legalCase", id, `Caso “${legalCase.title}”: ${LEGAL_CASE_STATUS_LABEL[legalCase.status]} → ${LEGAL_CASE_STATUS_LABEL[status]}.`, undefined, undefined, partnerRef(legalCase, status === "CLOSED" ? `Caso de ${clientName(client)} concluído.` : undefined)),
             ...s.auditEvents,
           ],
         };

@@ -29,8 +29,8 @@ export function DeadlinesTab({ deadlines, onAdd }: { deadlines: Deadline[]; onAd
 
   const { open, done } = useMemo(
     () => ({
-      open: deadlines.filter((d) => d.status !== "DONE").sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-      done: deadlines.filter((d) => d.status === "DONE").sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "")),
+      open: deadlines.filter((d) => d.status !== "COMPLETED").sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+      done: deadlines.filter((d) => d.status === "COMPLETED").sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "")),
     }),
     [deadlines],
   );

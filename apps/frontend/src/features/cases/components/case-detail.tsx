@@ -103,7 +103,7 @@ export function CaseDetail({ id }: { id: string }) {
 }
 
 function OriginDialog({ legalCase, onOpenChange }: { legalCase: LegalCase; onOpenChange: (o: boolean) => void }) {
-  const allowed = useClientOriginOptions(legalCase.originOfficeId);
+  const allowed = useClientOriginOptions(legalCase.originOrganizationId);
   return <ChangeOriginDialog legalCase={legalCase} options={allowed} open onOpenChange={onOpenChange} />;
 }
 
@@ -261,8 +261,8 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: LegalCase; onDialog:
                 { label: "Área", value: LEGAL_AREA_LABEL[legalCase.area] },
                 { label: "Tipo", value: legalCase.caseType },
                 { label: "Parte contrária", value: legalCase.opposingParty ?? "—" },
-                { label: "Origem do caso", value: officeName(legalCase.originOfficeId) },
-                { label: "Criado por", value: `${createdBy?.name ?? "—"} · ${officeName(legalCase.createdByOfficeId)}` },
+                { label: "Origem do caso", value: officeName(legalCase.originOrganizationId) },
+                { label: "Criado por", value: `${createdBy?.name ?? "—"} · ${officeName(legalCase.createdByOrganizationId)}` },
                 { label: "Criado em", value: formatDateTime(legalCase.createdAt) },
                 { label: "Enviado para análise", value: legalCase.submittedAt ? formatDateTime(legalCase.submittedAt) : "—" },
                 { label: "Aceito", value: legalCase.acceptedAt ? `${formatDateTime(legalCase.acceptedAt)}${acceptedBy ? ` · ${acceptedBy.name}` : ""}` : "—" },
@@ -300,7 +300,7 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: LegalCase; onDialog:
 function CaseDocumentsTab({ legalCase, onAdd }: { legalCase: LegalCase; onAdd: () => void }) {
   const documents = useCaseDocuments(legalCase.id);
   const partnerId = useCasePartnerId(legalCase);
-  const fromPartner = !!partnerId || legalCase.createdByOfficeId !== legalCase.officeId;
+  const fromPartner = !!partnerId || !!legalCase.partnerOrganizationId;
   return (
     <div className="space-y-5">
       <Panel>

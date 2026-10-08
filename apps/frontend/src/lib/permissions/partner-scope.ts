@@ -24,11 +24,19 @@ import type {
 } from "@/types";
 
 /**
- * Caso visível ao parceiro: originado por ele OU enviado por ele (mesmo que
- * tenha escolhido a Bárbara como origem). A origem do CLIENTE não conta.
+ * Caso visível ao parceiro: SOMENTE pelo acesso operacional
+ * (`partnerOrganizationId`). A origem comercial do caso
+ * (`originOrganizationId`) e a origem do CLIENTE nunca dão acesso.
+ *
+ * Exemplo: o parceiro Almeida cria um caso e escolhe a Bárbara (proprietária)
+ * como origem → partnerOrganizationId = Almeida, originOrganizationId =
+ * Bárbara. O Almeida continua vendo o caso, e não há divisão de parceria
+ * (a origem é a proprietária). Já um caso criado pela equipe interna com
+ * origem Almeida nasce interno (partnerOrganizationId = null): o Almeida só o
+ * vê se a equipe vincular o parceiro explicitamente.
  */
-export function partnerCanSeeCase(legalCase: Pick<LegalCase, "originOfficeId" | "createdByOfficeId">, partnerOfficeId: ID): boolean {
-  return legalCase.originOfficeId === partnerOfficeId || legalCase.createdByOfficeId === partnerOfficeId;
+export function partnerCanSeeCase(legalCase: Pick<LegalCase, "partnerOrganizationId">, partnerOfficeId: ID): boolean {
+  return legalCase.partnerOrganizationId === partnerOfficeId;
 }
 
 /** Processo visível ao parceiro: o do CASO dele (processo sempre pertence a um caso). */
@@ -58,7 +66,7 @@ export function partnerCanSeeDocument(doc: ClientDocument, partnerOfficeId: ID, 
 }
 
 /** Movimentações públicas do processo. Notas internas e registros de agentes ficam de fora. */
-const PARTNER_EVENT_SOURCES: readonly ProcessEventSource[] = ["COURT", "INTEGRATION", "SYSTEM"];
+const PARTNER_EVENT_SOURCES: readonly ProcessEventSource[] = ["JUDICIAL_INTEGRATION", "IMPORT", "SYSTEM"];
 export function partnerCanSeeProcessEvent(event: ProcessEvent, visibleProcessIds: ReadonlySet<ID>): boolean {
   return visibleProcessIds.has(event.processId) && PARTNER_EVENT_SOURCES.includes(event.source);
 }

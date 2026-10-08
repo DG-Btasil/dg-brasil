@@ -6,6 +6,7 @@
 create table public.legal_processes (
   id                    uuid primary key default gen_random_uuid(),
   legal_case_id         uuid not null references public.legal_cases (id) on delete restrict,
+  title                 text,
   cnj_number            public.cnj_digits,
   technical_origin      text not null default 'MANUAL'
                         check (technical_origin in ('MANUAL', 'AGENT', 'INTEGRATION', 'IMPORT')),
@@ -15,13 +16,19 @@ create table public.legal_processes (
   state                 public.uf_code,
   legal_class           text,
   subject               text,
-  client_side           text check (client_side in ('PLAINTIFF', 'DEFENDANT', 'INTERESTED', 'OTHER')),
+  -- Polo do CLIENTE atendido pelo escritório. Não é o papel de cada parte
+  -- (process_parties.party_type usa PLAINTIFF/DEFENDANT/...): conceitos distintos.
+  client_side           text check (client_side in ('ACTIVE', 'PASSIVE', 'THIRD_PARTY')),
   adverse_party_summary text,
   case_value            public.money_amount,  -- dado jurídico: nunca é dividido
   currency              public.currency_code not null default 'BRL',
   status                text not null default 'PREPARING' check (status in (
                           'PRE_FILING', 'PREPARING', 'FILED', 'ACTIVE', 'WAITING_CLIENT',
                           'WAITING_DEADLINE', 'SUSPENDED', 'CLOSED', 'ARCHIVED')),
+  phase                 text check (phase in (
+                          'PRELIMINARY', 'PLEADINGS', 'EVIDENCE', 'JUDGMENT', 'APPEAL', 'ENFORCEMENT', 'ARCHIVED')),
+  -- Usuário interno responsável pelo acompanhamento.
+  responsible_user_id   uuid references public.profiles (id) on delete restrict,
   distribution_date     date,
   operational_due_at    timestamptz,
   created_by            uuid references public.profiles (id) on delete restrict,
@@ -49,6 +56,7 @@ create trigger legal_processes_set_updated_at
 create or replace function private.legal_processes_guard()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -57,6 +65,17 @@ begin
   elsif new.legal_case_id is distinct from old.legal_case_id then
     raise exception 'Processo não muda de caso' using errcode = '23514';
   end if;
+
+  if new.responsible_user_id is not null
+     and (tg_op = 'INSERT' or new.responsible_user_id is distinct from old.responsible_user_id)
+     and not private.is_active_internal_user(new.responsible_user_id) then
+    raise exception 'O responsável pelo processo precisa ser usuário interno ativo' using errcode = '23514';
+  end if;
+
+  if tg_op = 'UPDATE' and new.deleted_at is distinct from old.deleted_at
+     and auth.uid() is not null and not private.is_admin() then
+    raise exception 'Somente ADMIN interno exclui ou restaura processo' using errcode = '42501';
+  end if;
   return new;
 end
 $$;
@@ -64,6 +83,22 @@ $$;
 create trigger legal_processes_guard
   before insert or update on public.legal_processes
   for each row execute function private.legal_processes_guard();
+
+-- Resumo e notas internas do processo: fora da linha que o parceiro lê.
+create table public.legal_process_internal_details (
+  legal_process_id uuid primary key references public.legal_processes (id) on delete cascade,
+  summary          text,
+  notes            text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+comment on table public.legal_process_internal_details is
+  'Resumo e notas internas do processo. Nunca visível a parceiros.';
+
+create trigger legal_process_internal_details_set_updated_at
+  before update on public.legal_process_internal_details
+  for each row execute function private.set_updated_at();
 
 -- ───────────────────────────── partes ─────────────────────────────────────
 
@@ -123,9 +158,13 @@ create table public.process_events (
   external_provider text,
   external_id       text,
   event_type        text not null check (btrim(event_type) <> ''),
+  title             text,
   description       text not null,
   occurred_at       timestamptz not null,
-  source            text not null check (source in ('MANUAL', 'JUDICIAL_INTEGRATION', 'IMPORT', 'AGENT')),
+  -- MANUAL: nota da equipe. JUDICIAL_INTEGRATION: tribunal/diário. IMPORT:
+  -- planilha. AGENT: registro de agente. SYSTEM: fato gerado pelo sistema.
+  source            text not null check (source in ('MANUAL', 'JUDICIAL_INTEGRATION', 'IMPORT', 'AGENT', 'SYSTEM')),
+  important         boolean not null default false,
   raw_data          jsonb,
   created_at        timestamptz not null default now()
 );
@@ -144,10 +183,15 @@ create table public.deadlines (
   legal_case_id       uuid not null references public.legal_cases (id) on delete restrict,
   legal_process_id    uuid,
   title               text not null check (btrim(title) <> ''),
+  deadline_type       text not null default 'INTERNAL' check (deadline_type in (
+                        'MANIFESTATION', 'REPLY', 'APPEAL', 'HEARING', 'DOCUMENT_DELIVERY', 'FILING', 'INTERNAL')),
   description         text,
   due_at              timestamptz not null,
   priority            text not null default 'NORMAL' check (priority in ('LOW', 'NORMAL', 'HIGH', 'URGENT')),
-  status              text not null default 'OPEN' check (status in ('OPEN', 'COMPLETED', 'CANCELLED', 'OVERDUE')),
+  -- Vocabulário canônico. MISSED = perda do prazo constatada por humano.
+  -- "Atrasado" (OVERDUE) NÃO é status gravado: é OPEN com due_at no passado
+  -- (view deadline_status).
+  status              text not null default 'OPEN' check (status in ('OPEN', 'COMPLETED', 'CANCELLED', 'MISSED')),
   responsible_user_id uuid references public.profiles (id) on delete restrict,
   source              text not null default 'MANUAL' check (source in ('MANUAL', 'AGENT', 'JUDICIAL_INTEGRATION')),
   created_at          timestamptz not null default now(),
@@ -167,6 +211,42 @@ create index deadlines_responsible_idx on public.deadlines (responsible_user_id)
 create trigger deadlines_set_updated_at
   before update on public.deadlines
   for each row execute function private.set_updated_at();
+
+create or replace function private.deadlines_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status = 'COMPLETED' then
+    new.completed_at := coalesce(new.completed_at, now());
+  end if;
+  if new.responsible_user_id is not null
+     and (tg_op = 'INSERT' or new.responsible_user_id is distinct from old.responsible_user_id)
+     and not private.is_active_internal_user(new.responsible_user_id) then
+    raise exception 'O responsável pelo prazo precisa ser usuário interno ativo' using errcode = '23514';
+  end if;
+  return new;
+end
+$$;
+
+create trigger deadlines_guard
+  before insert or update on public.deadlines
+  for each row execute function private.deadlines_guard();
+
+-- Situação efetiva do prazo: OVERDUE é derivado (OPEN vencido), no fuso do escritório.
+create view public.deadline_status
+with (security_invoker = true)
+as
+select
+  d.id as deadline_id,
+  d.legal_case_id,
+  d.legal_process_id,
+  d.status,
+  case when d.status = 'OPEN' and d.due_at < now() then 'OVERDUE' else d.status end as effective_status,
+  (d.due_at at time zone 'America/Sao_Paulo')::date as due_date_local
+from public.deadlines d;
 
 -- ───────────────────────────── referências externas ───────────────────────
 

@@ -15,14 +15,17 @@ const WORKER = `${process.env.FLY_MACHINE_ID ?? 'local'}-${randomUUID().slice(0,
 const OCIOSO_MS = 5_000
 
 const deps: Dependencias = {
+  // Conexão com o papel dg_worker (nunca postgres nem service role): ver supabase/README.md.
   banco: bancoPostgres(obrigatorio('DATABASE_URL')),
   armazenamento: armazenamentoSupabase(obrigatorio('SUPABASE_URL'), obrigatorio('SUPABASE_SERVICE_ROLE_KEY')),
   executar: executarComClaude,
   worker: WORKER,
   maxTentativas: Number(process.env.MAX_TENTATIVAS ?? '3'),
-  // Maior que a execução mais longa esperada: se o worker morrer, a mensagem
-  // reaparece depois disso e outro worker assume.
-  vtSegundos: Number(process.env.FILA_VT_SEGUNDOS ?? '1800'),
+  // Invisibilidade da mensagem. O batimento a renova enquanto o agente roda;
+  // se o worker morrer, ela reaparece depois disso e outro worker assume.
+  vtSegundos: Number(process.env.FILA_VT_SEGUNDOS ?? '300'),
+  // Batimento parado há mais que isto = worker morto: a reserva pode ser retomada.
+  reservaVencidaSegundos: Number(process.env.RESERVA_VENCIDA_SEGUNDOS ?? '600'),
 }
 
 let parando = false
@@ -49,7 +52,7 @@ async function laço() {
       }
 
       // Propostas decididas em Revisões só produzem efeito aqui.
-      const decididas = await aplicarDecididas(deps.banco)
+      const decididas = await aplicarDecididas(deps.banco, WORKER)
       if (decididas > 0) {
         trabalhou = true
         console.log(`[${WORKER}] ${decididas} proposta(s) decidida(s) processada(s)`)

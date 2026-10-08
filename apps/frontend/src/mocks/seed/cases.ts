@@ -12,6 +12,14 @@ import { AN, C, CS, OFFICE_ID, P, PC, PCS, PO, PP, PU, U } from "../ids";
  * Exemplo central "origem do cliente ≠ origem do caso": Helena é cliente
  * de origem Bárbara; o caso CS.helenaBancaria é próprio, e o caso
  * PCS.helenaCartao foi originado pela Ferreira & Lima (com parceria).
+ *
+ * Origem (comercial) × acesso operacional do parceiro — sempre independentes:
+ * (a) CS.franciscoIndicacao: origem Almeida, criado pela equipe interna, SEM
+ *     vínculo operacional → o Almeida não vê o caso (só há divisão de parceria).
+ * (b) PCS.merceariaCapitalGiro: criado pelo Almeida, origem Bárbara → o Almeida
+ *     opera e vê o caso, sem divisão de parceria.
+ * (c) PCS.sandraRevisional (e demais PCS): criado pelo Almeida, origem Almeida
+ *     → acesso operacional e parceria.
  */
 
 const minutesAgoISO = (m: number) => new Date(now().getTime() - m * 60_000).toISOString();
@@ -25,7 +33,10 @@ interface CaseSeed {
   status: LegalCaseStatus;
   summary: string;
   origin?: string;
+  /** Escritório que criou o caso (padrão: proprietário). Parceiro criador → acesso operacional. */
   createdByOffice?: string;
+  /** Vínculo operacional explícito (sobrepõe o derivado do criador). A origem nunca o define. */
+  partnerOffice?: string | null;
   createdBy?: string;
   lawyer?: string | null;
   analysisId?: string;
@@ -47,6 +58,7 @@ function legalCase(c: CaseSeed): LegalCase {
   const createdAt = c.createdAt ?? daysFromNowISO(-c.createdDaysAgo, 10);
   const day = (d?: number) => (d === undefined ? undefined : daysFromNowISO(-d, 11));
   const origin = c.origin ?? OFFICE_ID;
+  const createdByOrganization = c.createdByOffice ?? OFFICE_ID;
   return {
     id: c.id,
     officeId: OFFICE_ID,
@@ -54,8 +66,11 @@ function legalCase(c: CaseSeed): LegalCase {
     title: c.title,
     area: c.area,
     caseType: c.caseType,
-    originOfficeId: origin,
-    createdByOfficeId: c.createdByOffice ?? origin,
+    originOrganizationId: origin,
+    createdByOrganizationId: createdByOrganization,
+    // Acesso operacional: vínculo explícito; senão, o parceiro que criou o caso; senão, interno.
+    // A origem comercial nunca concede acesso.
+    partnerOrganizationId: c.partnerOffice !== undefined ? c.partnerOffice : createdByOrganization !== OFFICE_ID ? createdByOrganization : null,
     createdBy: c.createdBy ?? U.barbara,
     assignedLawyerId: c.lawyer === undefined ? U.claudio : c.lawyer,
     summary: c.summary,
@@ -314,6 +329,21 @@ export function buildLegalCases(): LegalCase[] {
       acceptedDaysAgo: 3,
     }),
 
+    // (a) Origem parceira SEM acesso operacional: indicação do Almeida, operada só pela equipe.
+    legalCase({
+      id: CS.franciscoIndicacao,
+      clientId: C.francisco,
+      title: "Cartão consignado (indicação Almeida) — Francisco",
+      area: "BANKING",
+      caseType: "Cartão de crédito consignado contratado como empréstimo",
+      status: "SUBMITTED",
+      summary: "Indicação comercial da Almeida Advocacia. O parceiro não opera este caso nem o vê no portal; se aceito, gera divisão de parceria.",
+      origin: PO.almeida,
+      lawyer: null,
+      createdDaysAgo: 3,
+      submittedDaysAgo: 3,
+    }),
+
     /* ------------------------- parceiros ------------------------- */
     legalCase({
       id: PCS.sandraRevisional,
@@ -324,6 +354,7 @@ export function buildLegalCases(): LegalCase[] {
       status: "IN_PROGRESS",
       summary: "Contrato consignado com taxa muito acima da média. Cliente já possui processo distribuído.",
       origin: PO.almeida,
+      createdByOffice: PO.almeida,
       createdBy: PU.marcos,
       createdDaysAgo: 38,
       submittedDaysAgo: 38,
@@ -339,6 +370,7 @@ export function buildLegalCases(): LegalCase[] {
       status: "REJECTED",
       summary: "Cobrança de tarifa de cadastro em contrato antigo.",
       origin: PO.almeida,
+      createdByOffice: PO.almeida,
       createdBy: PU.marcos,
       lawyer: null,
       createdDaysAgo: 16,
@@ -356,6 +388,7 @@ export function buildLegalCases(): LegalCase[] {
       status: "SUBMITTED",
       summary: "Aposentado relata descontos mensais de consignado que não reconhece. Nunca assinou contrato com o banco.",
       origin: PO.almeida,
+      createdByOffice: PO.almeida,
       createdBy: PU.carla,
       lawyer: null,
       opposingParty: "Crediplus Financeira S.A. (fictícia)",
@@ -371,7 +404,9 @@ export function buildLegalCases(): LegalCase[] {
       caseType: "Revisional de contrato bancário",
       status: "WAITING_DOCUMENTS",
       summary: "Contrato de capital de giro renegociado três vezes. Suspeita de capitalização indevida.",
-      origin: PO.almeida,
+      // (b) O Almeida opera o caso, mas atribuiu a origem à Bárbara: sem divisão de parceria.
+      origin: OFFICE_ID,
+      createdByOffice: PO.almeida,
       createdBy: PU.marcos,
       lawyer: U.beatriz,
       createdDaysAgo: 12,
@@ -386,6 +421,7 @@ export function buildLegalCases(): LegalCase[] {
       status: "IN_PROGRESS",
       summary: "Negativação por dívida já quitada.",
       origin: PO.ferreiraLima,
+      createdByOffice: PO.ferreiraLima,
       createdBy: PU.patricia,
       lawyer: U.beatriz,
       createdDaysAgo: 25,
@@ -402,6 +438,7 @@ export function buildLegalCases(): LegalCase[] {
       status: "IN_PROGRESS",
       summary: "Cliente contratou cartão acreditando ser empréstimo.",
       origin: PO.ferreiraLima,
+      createdByOffice: PO.ferreiraLima,
       createdBy: PU.patricia,
       createdDaysAgo: 8,
       submittedDaysAgo: 8,

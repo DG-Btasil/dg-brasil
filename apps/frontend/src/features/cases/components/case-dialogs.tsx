@@ -11,6 +11,7 @@ import { usePartnerOffices } from "@/features/partners/hooks";
 import { useOffice } from "@/features/offices/hooks";
 import type { LegalCase } from "@/types";
 import { useCaseActions, useCasePartnerId, useEligibleLawyers } from "../hooks";
+import { LINK_PARTNER_LABEL } from "../utils";
 
 interface DialogBase {
   legalCase: LegalCase;
@@ -90,7 +91,7 @@ export function AcceptCaseDialog({ legalCase, open, onOpenChange }: DialogBase) 
 export function RejectCaseDialog({ legalCase, open, onOpenChange }: DialogBase) {
   const actions = useCaseActions();
   const partnerId = useCasePartnerId(legalCase);
-  const fromPartner = !!partnerId || legalCase.createdByOfficeId !== legalCase.officeId;
+  const fromPartner = !!partnerId || !!legalCase.partnerOrganizationId;
   const [publicReason, setPublicReason] = useState("");
   const [internalNote, setInternalNote] = useState("");
   const [error, setError] = useState<string>();
@@ -157,14 +158,18 @@ export const ACCEPTED_ORIGIN_WARNING = "Alterar a origem de um caso aceito pode 
 export function ChangeOriginDialog({ legalCase, open, onOpenChange, options }: DialogBase & { options: { value: string; label: string }[] }) {
   const actions = useCaseActions();
   const accepted = isAccepted(legalCase.status);
-  const [originOfficeId, setOriginOfficeId] = useState(legalCase.originOfficeId);
+  const [originOrganizationId, setOriginOrganizationId] = useState(legalCase.originOrganizationId);
+  const office = useOffice();
   const [confirmed, setConfirmed] = useState(false);
+  const [linkPartner, setLinkPartner] = useState(false);
   const [saving, setSaving] = useState(false);
-  const unchanged = originOfficeId === legalCase.originOfficeId;
+  const unchanged = originOrganizationId === legalCase.originOrganizationId;
+  // A origem não concede acesso: vincular o parceiro a um caso interno é opt-in explícito.
+  const canLinkPartner = !unchanged && !legalCase.partnerOrganizationId && originOrganizationId !== office.id;
 
   async function confirm() {
     setSaving(true);
-    const ok = await actions.changeOrigin(legalCase.id, originOfficeId);
+    const ok = await actions.changeOrigin(legalCase.id, originOrganizationId, canLinkPartner && linkPartner);
     setSaving(false);
     if (ok !== null) onOpenChange(false);
   }
@@ -188,8 +193,19 @@ export function ChangeOriginDialog({ legalCase, open, onOpenChange, options }: D
     >
       <div className="space-y-4">
         <Field label="Origem do caso" requirement="required">
-          {(p) => <Select {...p} value={originOfficeId} onChange={(e) => setOriginOfficeId(e.target.value)} options={options} />}
+          {(p) => (
+            <Select
+              {...p}
+              value={originOrganizationId}
+              onChange={(e) => {
+                setOriginOrganizationId(e.target.value);
+                setLinkPartner(false);
+              }}
+              options={options}
+            />
+          )}
         </Field>
+        {canLinkPartner && <Checkbox label={LINK_PARTNER_LABEL} checked={linkPartner} onChange={(e) => setLinkPartner(e.target.checked)} />}
         {accepted && (
           <>
             <Callout tone="warning" title="Caso já aceito">

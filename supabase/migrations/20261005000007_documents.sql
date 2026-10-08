@@ -5,12 +5,14 @@
 -- case_documents     = vínculo N:N com casos (o mesmo arquivo serve a vários).
 --
 -- Aprovação pertence à VERSÃO (reviews.document_version_id): v4 nunca herda
--- a aprovação de v3.
+-- a aprovação de v3. A verificação do ARQUIVO também pertence à versão
+-- (document_version_verifications, append-only): versão nova nasce UNVERIFIED.
 
 create table public.documents (
   id          uuid primary key default gen_random_uuid(),
   client_id   uuid not null references public.clients (id) on delete restrict,
-  category    public.document_category not null,
+  category    public.document_category not null
+              references public.document_categories (code) on delete restrict,
   title       text not null check (btrim(title) <> ''),
   description text,
   visibility  public.document_visibility not null default 'INTERNAL',
@@ -33,6 +35,7 @@ create trigger documents_set_updated_at
 create or replace function private.documents_fill_created_by()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -47,10 +50,6 @@ $$;
 create trigger documents_fill_created_by
   before insert or update on public.documents
   for each row execute function private.documents_fill_created_by();
-
-alter table public.case_document_requirements
-  add constraint case_document_requirements_document_fkey
-  foreign key (satisfied_by_document_id) references public.documents (id) on delete restrict;
 
 -- ───────────────────────────── caminho no Storage ─────────────────────────
 -- clients/{client_id}/documents/{document_id}/{version_id}/{filename}
@@ -185,3 +184,127 @@ $$;
 create trigger case_documents_same_client
   before insert or update on public.case_documents
   for each row execute function private.case_documents_same_client();
+
+-- ───────────────────────────── verificação do arquivo ─────────────────────
+-- Conferência de UMA versão (legibilidade, autenticidade, dados conferem).
+-- Append-only: verificar de novo = nova linha. Sem linha nenhuma, a versão está
+-- UNVERIFIED — por isso a versão nova nunca herda a verificação da anterior.
+-- Tentativa inconclusiva não vira estado: simplesmente não se registra nada e a
+-- versão continua UNVERIFIED (ou se registra FAILED com a observação).
+
+create table public.document_version_verifications (
+  id                  uuid primary key default gen_random_uuid(),
+  -- Ordem total dos registros (created_at empata dentro da mesma transação).
+  sequence            bigint generated always as identity unique,
+  document_version_id uuid not null references public.document_versions (id) on delete restrict,
+  status              text not null check (status in ('VERIFIED', 'FAILED')),
+  verification_source text not null check (verification_source in ('MANUAL', 'AGENT', 'SYSTEM')),
+  verified_by         uuid references public.profiles (id) on delete restrict,
+  agent_run_id        uuid,  -- FK em 012_agents
+  notes               text,
+  created_at          timestamptz not null default now(),
+  constraint document_version_verifications_manual_has_user
+    check (verification_source <> 'MANUAL' or verified_by is not null),
+  constraint document_version_verifications_agent_has_run
+    check (verification_source <> 'AGENT' or agent_run_id is not null)
+);
+
+create index document_version_verifications_version_idx
+  on public.document_version_verifications (document_version_id, sequence desc);
+
+create or replace function private.document_version_verifications_fill()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is not null then
+    new.verified_by := coalesce(new.verified_by, auth.uid());
+    if new.verified_by <> auth.uid() then
+      raise exception 'Verificação só em nome do próprio usuário' using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end
+$$;
+
+create trigger document_version_verifications_fill
+  before insert on public.document_version_verifications
+  for each row execute function private.document_version_verifications_fill();
+
+create trigger document_version_verifications_append_only
+  before update or delete on public.document_version_verifications
+  for each row execute function private.prevent_mutation();
+
+-- Situação atual da verificação, por versão (derivada, nunca gravada).
+create view public.document_version_verification_status
+with (security_invoker = true)
+as
+select
+  v.id as document_version_id,
+  v.document_id,
+  v.version_number,
+  coalesce(last.status, 'UNVERIFIED') as verification_status,
+  last.created_at as verified_at,
+  last.id as verification_id
+from public.document_versions v
+left join lateral (
+  select dv.id, dv.status, dv.created_at
+  from public.document_version_verifications dv
+  where dv.document_version_id = v.id
+  order by dv.sequence desc
+  limit 1
+) last on true;
+
+comment on view public.document_version_verification_status is
+  'Verificação atual de cada versão: UNVERIFIED (sem registro), VERIFIED ou FAILED (último registro).';
+
+-- ───────────────────────────── pendência satisfeita por versão ────────────
+
+alter table public.case_document_requirements
+  add constraint case_document_requirements_version_fkey
+  foreign key (satisfied_by_document_version_id) references public.document_versions (id) on delete restrict;
+
+create index case_document_requirements_version_idx
+  on public.case_document_requirements (satisfied_by_document_version_id);
+
+-- A versão que satisfaz a pendência é de um documento do MESMO cliente do caso
+-- e vinculado a ESTE caso. Uma versão de outro cliente nunca satisfaz.
+create or replace function private.case_document_requirements_validate()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.satisfied_by_document_version_id is not null
+     and (tg_op = 'INSERT'
+          or new.satisfied_by_document_version_id is distinct from old.satisfied_by_document_version_id) then
+    if not exists (
+      select 1
+      from public.document_versions v
+      join public.documents d on d.id = v.document_id and d.deleted_at is null
+      join public.legal_cases c on c.id = new.legal_case_id and c.client_id = d.client_id
+      join public.case_documents cd on cd.document_id = d.id and cd.legal_case_id = c.id
+      where v.id = new.satisfied_by_document_version_id
+    ) then
+      raise exception 'A versão precisa ser de documento do mesmo cliente e vinculado a este caso'
+        using errcode = '23514';
+    end if;
+    new.satisfied_at := coalesce(new.satisfied_at, now());
+  end if;
+
+  if tg_op = 'UPDATE' and new.legal_case_id is distinct from old.legal_case_id then
+    raise exception 'Pendência não muda de caso' using errcode = '23514';
+  end if;
+  if new.status = 'REQUESTED' then
+    new.requested_at := coalesce(new.requested_at, now());
+  end if;
+  return new;
+end
+$$;
+
+create trigger case_document_requirements_validate
+  before insert or update on public.case_document_requirements
+  for each row execute function private.case_document_requirements_validate();
