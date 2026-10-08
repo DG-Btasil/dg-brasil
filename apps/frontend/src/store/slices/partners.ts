@@ -42,16 +42,16 @@ function isRelated(state: AppState, clientId: ID, partnerOfficeId: ID): boolean 
   );
 }
 
-/** Caso acessível ao parceiro da sessão (origem dele ou enviado por ele). */
+/** Caso acessível ao parceiro da sessão (acesso operacional: partnerOrganizationId). */
 function partnerCase(state: AppState, legalCaseId: ID | undefined, partnerOfficeId: ID): LegalCase | undefined {
   const legalCase = legalCaseId ? state.legalCases.find((c) => c.id === legalCaseId) : undefined;
   return legalCase && partnerCanSeeCase(legalCase, partnerOfficeId) ? legalCase : undefined;
 }
 
-/** Parceiro de origem do caso (ausente = caso próprio). */
+/** Parceiro com acesso operacional ao caso (ausente = caso interno). */
 function casePartnerOf(state: AppState, legalCaseId: ID | undefined): ID | undefined {
   const legalCase = legalCaseId ? state.legalCases.find((c) => c.id === legalCaseId) : undefined;
-  return legalCase && legalCase.originOfficeId !== state.office.id ? legalCase.originOfficeId : undefined;
+  return legalCase?.partnerOrganizationId ?? undefined;
 }
 
 /** Responsável interno padrão para casos recebidos de parceiros (primeiro administrador ativo). */
@@ -574,7 +574,7 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
 
       // 3. Caso jurídico (SUBMITTED). Origem: próprio parceiro ou Bárbara (validado na sessão).
       //    Processo e acordo de parceria NÃO nascem aqui: o acordo nasce no aceite.
-      if (!isAllowedClientOrigin(originContextOf(s), input.caseInfo.originOfficeId)) throw new Error("Origem do caso inválida.");
+      if (!isAllowedClientOrigin(originContextOf(s), input.caseInfo.originOrganizationId)) throw new Error("Origem do caso inválida.");
       const legalCaseId = createId("cas");
       const legalCase: LegalCase = {
         id: legalCaseId,
@@ -583,8 +583,10 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
         title: input.caseInfo.title,
         area: input.caseInfo.area,
         caseType: input.caseInfo.caseType,
-        originOfficeId: input.caseInfo.originOfficeId,
-        createdByOfficeId: pid,
+        originOrganizationId: input.caseInfo.originOrganizationId,
+        createdByOrganizationId: pid,
+        // Caso criado pelo parceiro: ele mantém o acesso operacional mesmo se a origem for a Bárbara.
+        partnerOrganizationId: pid,
         createdBy: actor.id,
         assignedLawyerId: null,
         summary: input.caseInfo.summary,
@@ -624,7 +626,7 @@ export function createPartnerSlice(set: SetState, get: GetState): PartnerActions
             ...partnerRef,
             summary: `Caso de ${name} enviado com ${documents.length} documento(s).`,
           }),
-          auditEvent(s, "CASE_CREATED", "legalCase", legalCaseId, `Caso “${legalCase.title}” criado (origem: ${officeNameOf(s, legalCase.originOfficeId)}).`, actor, undefined, partnerRef),
+          auditEvent(s, "CASE_CREATED", "legalCase", legalCaseId, `Caso “${legalCase.title}” criado (origem: ${officeNameOf(s, legalCase.originOrganizationId)}).`, actor, undefined, partnerRef),
           ...(documents.length
             ? [
                 auditEvent(s, "DOCUMENT_ADDED", "document", documents[0]!.id, `${documents.length} documento(s) enviados pela ${partner.name}: ${documents.map((d) => DOCUMENT_CATEGORY_LABEL[d.category]).join(", ")}.`, actor, undefined, {

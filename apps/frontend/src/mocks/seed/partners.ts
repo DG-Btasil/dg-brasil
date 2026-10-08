@@ -437,13 +437,13 @@ export function buildPartnerProcessEvents(): ProcessEvent[] {
   };
   return [
     ev(PP.sandraRevisional, daysFromNowISO(-37, 10), "Processo cadastrado (caso da Almeida Advocacia)", "SYSTEM"),
-    ev(PP.sandraRevisional, daysFromNowISO(-30, 14), "Distribuído por sorteio", "COURT"),
-    ev(PP.sandraRevisional, daysFromNowISO(-12, 11), "Juntada de contestação", "COURT", "Contestação apresentada pela parte ré."),
+    ev(PP.sandraRevisional, daysFromNowISO(-30, 14), "Distribuído por sorteio", "JUDICIAL_INTEGRATION"),
+    ev(PP.sandraRevisional, daysFromNowISO(-12, 11), "Juntada de contestação", "JUDICIAL_INTEGRATION", "Contestação apresentada pela parte ré."),
     ev(PP.sandraRevisional, daysFromNowISO(-9, 10), "Nota interna: estratégia de réplica", "AGENT", "Sugestões preliminares do agente (uso interno)."),
-    ev(PP.sandraRevisional, daysFromNowISO(-1, 16), "Intimação para réplica", "COURT", "Prazo de 15 dias para manifestação.", true),
+    ev(PP.sandraRevisional, daysFromNowISO(-1, 16), "Intimação para réplica", "JUDICIAL_INTEGRATION", "Prazo de 15 dias para manifestação.", true),
     ev(PP.ritaIndenizatoria, daysFromNowISO(-24, 11), "Processo cadastrado (caso da Ferreira & Lima)", "SYSTEM"),
-    ev(PP.ritaIndenizatoria, daysFromNowISO(-20, 9), "Distribuído", "INTEGRATION"),
-    ev(PP.ritaIndenizatoria, daysFromNowISO(-6, 11), "Audiência de instrução designada", "COURT", undefined, true),
+    ev(PP.ritaIndenizatoria, daysFromNowISO(-20, 9), "Distribuído", "JUDICIAL_INTEGRATION"),
+    ev(PP.ritaIndenizatoria, daysFromNowISO(-6, 11), "Audiência de instrução designada", "JUDICIAL_INTEGRATION", undefined, true),
     ev(PP.helenaCartao, daysFromNowISO(-8, 15), "Processo cadastrado (caso da Ferreira & Lima)", "SYSTEM"),
   ];
 }

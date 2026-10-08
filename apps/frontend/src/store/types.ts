@@ -216,7 +216,7 @@ export interface PartnerCaseInput {
     opposingParty?: string;
     summary: string;
     /** Origem do caso: o próprio parceiro (padrão) ou Bárbara Cardoso Advocacia. */
-    originOfficeId: ID;
+    originOrganizationId: ID;
   };
   notes?: string;
 }
@@ -272,13 +272,18 @@ export interface NewLegalCaseInput {
   title: string;
   area: LegalArea;
   caseType: string;
-  originOfficeId: ID;
+  originOrganizationId: ID;
   summary: string;
   opposingParty?: string;
   assignedLawyerId?: ID | null;
   notes?: string;
   /** true = enviar para análise já na criação; false = rascunho. */
   submit: boolean;
+  /**
+   * Opt-in explícito: também vincular o parceiro de ORIGEM ao caso (acesso
+   * operacional). Sem ele, o caso nasce interno (partnerOrganizationId = null).
+   */
+  linkPartner?: boolean;
 }
 
 export type LegalCasePatch = Partial<Pick<LegalCase, "title" | "area" | "caseType" | "summary" | "opposingParty" | "notes">>;
@@ -482,8 +487,11 @@ export interface CaseActions {
   updateCase: (id: ID, patch: LegalCasePatch) => void;
   /** Rascunho → Enviado. */
   submitCase: (id: ID) => void;
-  /** Antes do aceite: conforme as origens permitidas. Depois do aceite: somente Administrador interno. */
-  changeCaseOrigin: (id: ID, originOfficeId: ID) => void;
+  /**
+   * Antes do aceite: conforme as origens permitidas. Depois do aceite: somente Administrador interno.
+   * Nunca altera o acesso operacional, exceto com `linkPartner` (opt-in interno, caso sem parceiro).
+   */
+  changeCaseOrigin: (id: ID, originOrganizationId: ID, linkPartner?: boolean) => void;
   assignCaseLawyer: (id: ID, lawyerId: ID) => void;
   /** Exige advogado responsável; cria o acordo de parceria (snapshot) se a origem for parceiro. */
   acceptCase: (id: ID, lawyerId?: ID) => void;

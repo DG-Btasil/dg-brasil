@@ -222,13 +222,14 @@ export const CLIENT_POLE_LABEL: Record<ClientPole, string> = {
   THIRD_PARTY: "Terceiro interessado",
 };
 
-export const PROCESS_EVENT_SOURCES = ["COURT", "INTEGRATION", "AGENT", "MANUAL", "SYSTEM"] as const;
+/** Origem da movimentação (vocabulário canônico do banco de dados). */
+export const PROCESS_EVENT_SOURCES = ["MANUAL", "JUDICIAL_INTEGRATION", "IMPORT", "AGENT", "SYSTEM"] as const;
 export type ProcessEventSource = (typeof PROCESS_EVENT_SOURCES)[number];
 export const PROCESS_EVENT_SOURCE_LABEL: Record<ProcessEventSource, string> = {
-  COURT: "Tribunal",
-  INTEGRATION: "Integração",
-  AGENT: "DG Brasil",
   MANUAL: "Equipe",
+  JUDICIAL_INTEGRATION: "Integração Judicial",
+  IMPORT: "Importação",
+  AGENT: "DG Brasil",
   SYSTEM: "Sistema",
 };
 
@@ -256,16 +257,22 @@ export const DEADLINE_TYPE_LABEL: Record<DeadlineType, string> = {
   INTERNAL: "Prazo interno",
 };
 
-export const DEADLINE_STATUSES = ["OPEN", "DONE", "MISSED"] as const;
+/**
+ * Status do prazo (vocabulário canônico do banco de dados).
+ * "Vencido" NÃO é status: é derivado da data na UI (ver DeadlineUrgency).
+ */
+export const DEADLINE_STATUSES = ["OPEN", "COMPLETED", "CANCELLED", "MISSED"] as const;
 export type DeadlineStatus = (typeof DEADLINE_STATUSES)[number];
 export const DEADLINE_STATUS_LABEL: Record<DeadlineStatus, string> = {
   OPEN: "Em aberto",
-  DONE: "Cumprido",
+  COMPLETED: "Cumprido",
+  CANCELLED: "Cancelado",
   MISSED: "Perdido",
 };
 export const DEADLINE_STATUS_TONE: Record<DeadlineStatus, Tone> = {
   OPEN: "info",
-  DONE: "success",
+  COMPLETED: "success",
+  CANCELLED: "neutral",
   MISSED: "danger",
 };
 
@@ -380,18 +387,19 @@ export const AGENT_STATUS_TONE: Record<AgentStatus, Tone> = {
   DRAFT: "neutral",
 };
 
-export const AGENT_AUTONOMY_LEVELS = ["SUGGEST_ONLY", "REVIEW_REQUIRED", "AUTO_LOW_RISK"] as const;
+/**
+ * Autonomia do agente. "IA executa. Humano decide.": no V1 não existe
+ * aprovação automática — todo material passa por revisão humana.
+ */
+export const AGENT_AUTONOMY_LEVELS = ["SUGGEST_ONLY", "REVIEW_REQUIRED"] as const;
 export type AgentAutonomy = (typeof AGENT_AUTONOMY_LEVELS)[number];
 export const AGENT_AUTONOMY_LABEL: Record<AgentAutonomy, string> = {
   SUGGEST_ONLY: "Apenas sugere",
   REVIEW_REQUIRED: "Executa com revisão humana",
-  AUTO_LOW_RISK: "Autônomo em tarefas internas de baixo risco",
 };
 export const AGENT_AUTONOMY_DESCRIPTION: Record<AgentAutonomy, string> = {
   SUGGEST_ONLY: "O agente apresenta recomendações; nenhuma tarefa é executada sem pedido explícito.",
   REVIEW_REQUIRED: "O agente produz o material e o envia para Revisões. Nada segue sem aprovação.",
-  AUTO_LOW_RISK:
-    "Tarefas internas e reversíveis (classificar, organizar) seguem direto. Ações externas continuam exigindo aprovação.",
 };
 
 export const AGENT_TASK_STATUSES = ["COMPLETED", "RUNNING", "WAITING_REVIEW", "BLOCKED", "FAILED"] as const;
@@ -580,14 +588,16 @@ export const PAYMENT_STATUS_TONE: Record<PaymentStatus, Tone> = {
 /* Integrações                                                         */
 /* ------------------------------------------------------------------ */
 
-export const INTEGRATION_KINDS = ["AI_PROVIDER", "LEGAL_PROCESS", "STORAGE", "EMAIL", "WHATSAPP"] as const;
+/** Tipo de integração (vocabulário canônico do banco de dados). */
+export const INTEGRATION_KINDS = ["AI_PROVIDER", "JUDICIAL", "STORAGE", "EMAIL", "WHATSAPP", "OTHER"] as const;
 export type IntegrationKind = (typeof INTEGRATION_KINDS)[number];
 export const INTEGRATION_KIND_LABEL: Record<IntegrationKind, string> = {
   AI_PROVIDER: "Conexão Claude",
-  LEGAL_PROCESS: "Provedor de acompanhamento processual",
+  JUDICIAL: "Provedor de acompanhamento processual",
   STORAGE: "Armazenamento de documentos",
   EMAIL: "E-mail",
   WHATSAPP: "WhatsApp",
+  OTHER: "Outra integração",
 };
 
 export const INTEGRATION_STATUSES = ["CONNECTED", "DISCONNECTED", "ERROR", "PENDING"] as const;

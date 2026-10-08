@@ -1,0 +1,15 @@
+{
+  "name": "@dgbrasil/supabase",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "verificar": "node tests/verificar.mjs",
+    "validar:real": "node --env-file=.env.real tests/real/validar-real.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.16",
+    "@supabase/supabase-js": "^2.117.3",
+    "pg": "^8.23.1"
+  }
+}

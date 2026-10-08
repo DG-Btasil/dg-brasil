@@ -10,8 +10,8 @@ import type { ID, ISODateTime, OfficeScoped, Timestamps } from "./common";
  * - Um cliente pode ter nenhum, um ou vários casos.
  * - Um caso pode existir sem processo judicial (em análise, preparação ou
  *   resolvido sem ação) e pode ter vários processos.
- * - A ORIGEM do caso (`originOfficeId`) é independente da origem histórica
- *   do cliente e é ela que determina a parceria e a divisão financeira.
+ * - A ORIGEM do caso (`originOrganizationId`) é independente da origem
+ *   histórica do cliente e é ela que determina a parceria e a divisão financeira.
  * - O acordo financeiro e o acordo de parceria pertencem ao CASO; um contrato
  *   pode abranger vários processos.
  */
@@ -21,14 +21,27 @@ export interface LegalCase extends OfficeScoped, Timestamps {
   area: LegalArea;
   /** Tipo da demanda, ex.: "Revisional de contrato bancário". */
   caseType: string;
-  /**
-   * Origem do caso: escritório proprietário ou um escritório parceiro.
-   * Parceiro só pode atribuir o próprio escritório ou o proprietário.
-   * Depois do aceite, só um Administrador interno altera (auditado).
+  /*
+   * Três conceitos de organização, intencionalmente separados:
+   * - createdByOrganizationId: quem operou o sistema na criação (auditoria).
+   * - partnerOrganizationId: acesso operacional/visibilidade do parceiro.
+   * - originOrganizationId: atribuição comercial (divisão da parceria).
    */
-  originOfficeId: ID;
-  /** Escritório do usuário que criou o caso (quem enviou). Não muda a origem. */
-  createdByOfficeId: ID;
+  /**
+   * Origem do caso (atribuição comercial): escritório proprietário ou um
+   * escritório parceiro. Parceiro só pode atribuir o próprio escritório ou o
+   * proprietário. Depois do aceite, só um Administrador interno altera (auditado).
+   */
+  originOrganizationId: ID;
+  /** Escritório do usuário que criou o caso (auditoria). Não muda a origem nem o acesso. */
+  createdByOrganizationId: ID;
+  /**
+   * Escritório parceiro com acesso OPERACIONAL ao caso (nulo = caso interno).
+   * É o único campo que decide a visibilidade do caso para um parceiro.
+   * Independe da origem: criado pelo parceiro → esse parceiro; criado pela equipe
+   * interna → null, salvo vínculo explícito. Alterar a origem nunca o altera.
+   */
+  partnerOrganizationId: ID | null;
   createdBy: ID;
   /** Advogado responsável. Pode ser nulo antes do aceite; obrigatório para aceitar. */
   assignedLawyerId: ID | null;

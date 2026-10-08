@@ -14,8 +14,8 @@ import { EmptyState } from "@/components/feedback/states";
 import { useProcessEvents } from "../../hooks";
 
 const SOURCE_TONE: Record<ProcessEventSource, Tone> = {
-  COURT: "navy",
-  INTEGRATION: "info",
+  JUDICIAL_INTEGRATION: "navy",
+  IMPORT: "info",
   AGENT: "gold",
   MANUAL: "neutral",
   SYSTEM: "neutral",

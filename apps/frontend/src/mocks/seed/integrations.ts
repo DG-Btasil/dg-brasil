@@ -22,7 +22,7 @@ export function buildIntegrations(): Integration[] {
     {
       ...o,
       id: "int_processual",
-      kind: "LEGAL_PROCESS",
+      kind: "JUDICIAL",
       name: "Integração Judicial",
       status: "CONNECTED",
       lastSyncAt: daysFromNowISO(0, 6, 0),

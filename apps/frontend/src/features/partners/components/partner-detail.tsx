@@ -408,10 +408,10 @@ function ClientsTab({ partnerId }: { partnerId: string }) {
 
 function CasesTab({ partnerId }: { partnerId: string }) {
   const all = useCaseRows();
-  const rows = useMemo(() => all.filter((r) => r.legalCase.originOfficeId === partnerId || r.legalCase.createdByOfficeId === partnerId), [all, partnerId]);
+  const rows = useMemo(() => all.filter((r) => r.legalCase.originOrganizationId === partnerId || r.legalCase.partnerOrganizationId === partnerId), [all, partnerId]);
   return (
     <Panel>
-      <PanelHeader title="Casos do parceiro" description="Casos com origem neste parceiro ou enviados por ele." />
+      <PanelHeader title="Casos do parceiro" description="Casos com origem neste parceiro ou operados por ele." />
       {rows.length === 0 ? <EmptyState compact title="Nenhum caso deste parceiro." /> : <CaseTable rows={rows} />}
     </Panel>
   );

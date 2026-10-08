@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Cpu, FolderArchive, Mail, MessageSquare, Radar, type LucideIcon } from "lucide-react";
+import { Cpu, FolderArchive, Mail, MessageSquare, Plug, Radar, type LucideIcon } from "lucide-react";
 import { StatusBadge } from "@/components/ui/badge";
 import { DefinitionGrid, Panel, PanelFooter } from "@/components/ui/panel";
 import { Callout } from "@/components/feedback/states";
@@ -9,10 +9,11 @@ import type { Integration } from "@/types";
 
 const KIND_ICON: Record<IntegrationKind, LucideIcon> = {
   AI_PROVIDER: Cpu,
-  LEGAL_PROCESS: Radar,
+  JUDICIAL: Radar,
   STORAGE: FolderArchive,
   EMAIL: Mail,
   WHATSAPP: MessageSquare,
+  OTHER: Plug,
 };
 
 /** Cartão de integração: status, última sincronização, detalhes e ações. */

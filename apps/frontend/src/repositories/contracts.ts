@@ -259,7 +259,7 @@ export interface CaseRepository {
   create(input: NewLegalCaseInput): Promise<ID>;
   update(id: ID, patch: LegalCasePatch): Promise<void>;
   submit(id: ID): Promise<void>;
-  changeOrigin(id: ID, originOfficeId: ID): Promise<void>;
+  changeOrigin(id: ID, originOrganizationId: ID, linkPartner?: boolean): Promise<void>;
   assignLawyer(id: ID, lawyerId: ID): Promise<void>;
   accept(id: ID, lawyerId?: ID): Promise<void>;
   reject(id: ID, input: CaseRejectionInput): Promise<void>;

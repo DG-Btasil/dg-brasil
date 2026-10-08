@@ -1,0 +1,24 @@
+name: Banco de dados
+
+on:
+  pull_request:
+    paths: ["supabase/**", ".github/workflows/database.yml"]
+  push:
+    branches: [main, master]
+    paths: ["supabase/**", ".github/workflows/database.yml"]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supabase
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: supabase/package-lock.json
+      - run: npm ci
+      - run: npm run verificar

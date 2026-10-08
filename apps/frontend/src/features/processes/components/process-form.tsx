@@ -111,7 +111,7 @@ export function ProcessForm({
     <form noValidate onSubmit={handleSubmit((values) => onSubmit(toInput(values)))}>
       <Panel className="px-7">
         <FormSection title="Caso e identificação" description="Todo processo pertence a um caso. O cliente e a origem são os do caso. O número CNJ pode ficar em branco em pré-ajuizamento.">
-          <Field label="Caso relacionado" requirement="required" error={errors.legalCaseId?.message} hint={selectedCase ? `Origem do caso: ${officeName(selectedCase.originOfficeId)}` : undefined}>
+          <Field label="Caso relacionado" requirement="required" error={errors.legalCaseId?.message} hint={selectedCase ? `Origem do caso: ${officeName(selectedCase.originOrganizationId)}` : undefined}>
             {(a) => <Select {...a} {...register("legalCaseId")} options={caseOptions} placeholder="Selecione o caso" />}
           </Field>
           <Field label="Número CNJ" requirement="optional" hint="Formato 0000000-00.0000.0.00.0000" error={errors.cnj?.message}>

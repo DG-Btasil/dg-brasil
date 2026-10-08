@@ -126,7 +126,7 @@ export function useCaseRows(): LegalCaseRow[] {
       return {
         legalCase,
         clientName: clientDisplayName(clientMap.get(legalCase.clientId)),
-        originName: officeName(legalCase.originOfficeId),
+        originName: officeName(legalCase.originOrganizationId),
         partnerName: partnerId ? officeName(partnerId) : undefined,
         lawyerName: legalCase.assignedLawyerId ? userMap.get(legalCase.assignedLawyerId)?.name : undefined,
         processCount: processCount.get(legalCase.id) ?? 0,
@@ -164,8 +164,8 @@ export function useCaseActions() {
       run(() => repositories.cases.create(input), { title: input.submit ? "Caso criado e enviado para análise" : "Rascunho do caso salvo" }, "Não foi possível criar o caso."),
     update: (id: ID, patch: LegalCasePatch) => run(() => repositories.cases.update(id, patch), { title: "Caso atualizado" }, "Não foi possível salvar o caso."),
     submit: (id: ID) => run(() => repositories.cases.submit(id), { title: "Caso enviado para análise" }, "Não foi possível enviar o caso."),
-    changeOrigin: (id: ID, originOfficeId: ID) =>
-      run(() => repositories.cases.changeOrigin(id, originOfficeId), { title: "Origem do caso alterada", description: "A alteração ficou registrada na auditoria." }, "Não foi possível alterar a origem."),
+    changeOrigin: (id: ID, originOrganizationId: ID, linkPartner?: boolean) =>
+      run(() => repositories.cases.changeOrigin(id, originOrganizationId, linkPartner), { title: "Origem do caso alterada", description: "A alteração ficou registrada na auditoria." }, "Não foi possível alterar a origem."),
     assignLawyer: (id: ID, lawyerId: ID) => run(() => repositories.cases.assignLawyer(id, lawyerId), { title: "Advogado responsável definido" }, "Não foi possível definir o responsável."),
     accept: (id: ID, lawyerId?: ID) =>
       run(() => repositories.cases.accept(id, lawyerId), { title: "Caso aceito", description: "Acordo de parceria criado quando a origem é parceiro." }, "Não foi possível aceitar o caso."),

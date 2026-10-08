@@ -1,5 +1,37 @@
 # Handoff para o backend
 
+## Atualização — Database V1 consolidado (Etapa 3.2)
+
+O banco (Postgres) é a fonte da verdade; o front foi alinhado ao vocabulário dele.
+
+- **Visibilidade de caso para parceiro: somente por `partnerOrganizationId`**
+  (`partner_organization_id`). O `LegalCase` separa três conceitos:
+  `createdByOrganizationId` (quem operou o sistema na criação — auditoria),
+  `partnerOrganizationId` (acesso operacional; nulo = caso interno) e
+  `originOrganizationId` (atribuição comercial — divisão da parceria). A origem nunca dá
+  acesso. Ex.: o parceiro Almeida cria um caso com origem Bárbara → o Almeida continua
+  vendo o caso e não há divisão de parceria. Regra em `partnerCanSeeCase()`
+  (`src/lib/permissions/partner-scope.ts`).
+- **Origem nunca implica acesso operacional.** Definir ou alterar `originOrganizationId`
+  não define nem altera `partnerOrganizationId`, nem cria relação cliente↔parceiro. Caso
+  criado pela equipe interna nasce interno (`null`), mesmo com origem parceira; vincular o
+  parceiro é ação explícita (opt-in `linkPartner` em `cases.create`/`cases.changeOrigin`,
+  só para caso sem parceiro operacional). Caso criado pelo parceiro no portal mantém
+  `partnerOrganizationId` = esse parceiro.
+- **ADVBOX está fora do escopo por completo.** Importação apenas genérica por planilha
+  (CSV/XLSX), sem identificadores específicos de fornecedor.
+- **Mapeamentos de vocabulário front ↔ banco** (valores que ainda diferem de propósito:
+  decisão/status/prioridade de revisão, severidade de notificação, tipo de solicitação,
+  status de parceiro, agente, usuário, análise, cliente, processo, pagamento e verificação)
+  ficam em `src/repositories/api/db-mappings.ts`. Já canônicos no front: prazo
+  `OPEN | COMPLETED | CANCELLED | MISSED`, origem de movimentação
+  `MANUAL | JUDICIAL_INTEGRATION | IMPORT | AGENT | SYSTEM`, integração
+  `AI_PROVIDER | JUDICIAL | STORAGE | EMAIL | WHATSAPP | OTHER`. Sem `AUTO_LOW_RISK`: no V1
+  não há aprovação automática ("IA executa. Humano decide.").
+- **O contrato do banco está documentado em `supabase/README.md`** (na raiz do repositório).
+
+---
+
 O que o protótipo simula no navegador e precisa ser substituído por backend real.
 **Nada disto está implementado nesta etapa.**
 
@@ -83,8 +115,8 @@ decisão de revisão e versionamento de Skills.
 - Worker em processo contínuo (não serverless) consumindo uma fila de execuções.
 - O agente **propõe** e grava o resultado como `Review`. Só a decisão humana aplica
   efeitos, e apenas o backend transforma uma aprovação em ação.
-- Nível de autonomia por agente (`AgentAutonomy`): mesmo em `AUTO_LOW_RISK`, ações externas
-  continuam exigindo confirmação.
+- Nível de autonomia por agente (`AgentAutonomy`): `SUGGEST_ONLY | REVIEW_REQUIRED`. Não há
+  aprovação automática no V1: todo material passa por revisão humana.
 - Registrar para cada execução: agente, versão, Skills e tese usadas, documentos
   consultados, custo e tokens. Guardar e exibir resumo, evidências e ações propostas,
   **nunca** o raciocínio interno do modelo.
@@ -577,8 +609,9 @@ Rótulos em `src/lib/constants/legal.ts`.
 ```
 Client (canônico)
  └─ LegalCase (legal_case)         -- a demanda; existe antes (ou sem) processo
-     ├─ origin_office_id            -- Bárbara ou parceiro (independe da origem do cliente)
-     ├─ created_by_office_id, created_by
+     ├─ origin_organization_id      -- Bárbara ou parceiro (atribuição comercial; independe da origem do cliente)
+     ├─ partner_organization_id NULL -- parceiro com acesso operacional (único critério de visibilidade)
+     ├─ created_by_organization_id, created_by  -- auditoria
      ├─ assigned_lawyer_id NULL     -- obrigatório para aceitar
      ├─ status, submitted_at, accepted_at, accepted_by, rejected_at, closed_at, archived_at
      ├─ rejection_reason_public     -- visível ao parceiro
@@ -630,8 +663,8 @@ ACCEPTED | REJECTED → IN_PROGRESS → CLOSED → ARCHIVED`.
     processos dele. A estimativa de êxito usa a soma do valor da causa dos processos do caso.
 12. Revisões têm `legal_case_id` (+ `process_id` opcional). Filtro por parceiro = revisão →
     caso → origem.
-13. Parceiro vê: casos com origem nele ou criados por ele; documentos `PARTNER_VISIBLE` ou
-    enviados por ele; processos dos seus casos; financeiro só com `PARTNER_ADMIN`.
+13. Parceiro vê: casos com `partner_organization_id` = ele (nunca pela origem); documentos
+    `PARTNER_VISIBLE` ou enviados por ele; processos dos seus casos; financeiro só com `PARTNER_ADMIN`.
 14. Cadastro de CPF/CNPJ duplicado: "Cliente já cadastrado no sistema." + "Criar novo caso
     para este cliente", sem revelar dados (13.5).
 15. Importação (XLSX/CSV) cria um caso próprio por processo importado.

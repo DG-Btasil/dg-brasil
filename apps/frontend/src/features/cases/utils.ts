@@ -41,10 +41,16 @@ export function filterCaseRows(rows: LegalCaseRow[], f: CaseFilters): LegalCaseR
     if (f.area && c.area !== f.area) return false;
     if (f.origin === "INTERNAL" && r.partnerName) return false;
     if (f.origin === "PARTNER" && !r.partnerName) return false;
-    if (f.partnerOfficeId && c.originOfficeId !== f.partnerOfficeId) return false;
+    if (f.partnerOfficeId && c.originOrganizationId !== f.partnerOfficeId) return false;
     if (f.lawyerId && c.assignedLawyerId !== f.lawyerId) return false;
     if (f.clientId && c.clientId !== f.clientId) return false;
     if (f.period && daysSince(c.createdAt) > Number(f.period)) return false;
     return true;
   });
 }
+
+/**
+ * Opt-in explícito (equipe interna) ao escolher uma origem parceira: a origem
+ * comercial nunca concede acesso; vincular o parceiro ao caso é ação separada.
+ */
+export const LINK_PARTNER_LABEL = "Também vincular este escritório parceiro ao caso (acesso operacional do parceiro)";

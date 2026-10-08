@@ -32,7 +32,12 @@ export const STORAGE_KEY = "dg-brasil:demo";
 // v3: escritório proprietário único + escritórios parceiros (cliente canônico, origem relacional, snapshot financeiro).
 // v4: origem obrigatória do cliente (originOfficeId), gênero padronizado, versões de revisão por agente.
 // v5: Cliente → Caso → Processo; parceria nasce no aceite do caso; Referências; sem legado multi-escritório.
-const STORAGE_VERSION = 6;
+// v7: Database V1 — caso com originOrganizationId/createdByOrganizationId/partnerOrganizationId
+//     (visibilidade do parceiro só por partnerOrganizationId); vocabulário canônico do banco
+//     (prazo COMPLETED/CANCELLED, origem de movimentação JUDICIAL_INTEGRATION/IMPORT,
+//     integração JUDICIAL/OTHER); sem autonomia AUTO_LOW_RISK.
+// v8: origem do caso nunca concede acesso operacional; vínculo do parceiro só por opt-in explícito.
+const STORAGE_VERSION = 8;
 
 export const useAppStore = create<AppStore>()(
   persist(

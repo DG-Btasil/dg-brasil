@@ -81,7 +81,7 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
         legalCases: updateById(s.legalCases, legalCase.id, (c) => (c.status === "ACCEPTED" ? { ...c, status: "IN_PROGRESS" as const, updatedAt: at } : c)),
         auditEvents: [
           auditEvent(s, "PROCESS_CREATED", "process", id, `Processo “${input.title}” cadastrado no caso “${legalCase.title}”.`, undefined, undefined,
-            legalCase.originOfficeId !== s.office.id ? { partnerOfficeId: legalCase.originOfficeId, summary: `Processo cadastrado: ${input.title}.` } : undefined),
+            legalCase.partnerOrganizationId ? { partnerOfficeId: legalCase.partnerOrganizationId, summary: `Processo cadastrado: ${input.title}.` } : undefined),
           ...s.auditEvents,
         ],
       });
@@ -116,7 +116,7 @@ export function createProcessSlice(set: SetState, get: GetState): ProcessActions
       set((s) => {
         const deadline = s.deadlines.find((d) => d.id === id);
         return {
-          deadlines: updateById(s.deadlines, id, (d) => ({ ...d, status: "DONE", completedAt: nowISO() })),
+          deadlines: updateById(s.deadlines, id, (d) => ({ ...d, status: "COMPLETED", completedAt: nowISO() })),
           notifications: s.notifications.map((n) =>
             n.type === "DEADLINE" && n.processId === deadline?.processId ? { ...n, read: true } : n,
           ),
@@ -241,7 +241,7 @@ function applyApproval(state: AppState, review: Review): Partial<AppState> {
       // Caso de parceiro: guarda uma cópia congelada da versão aprovada como documento
       // INTERNAL. Ela só chega ao parceiro quando a equipe a disponibilizar.
       const approvedCopy =
-        legalCase && legalCase.originOfficeId !== state.office.id && review.clientId
+        legalCase && legalCase.partnerOrganizationId && review.clientId
           ? [
               {
                 id: createId("doc"),

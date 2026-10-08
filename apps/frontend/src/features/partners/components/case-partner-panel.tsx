@@ -26,8 +26,8 @@ import { PartnerRequestList } from "./request-list";
  * com visibilidade. Documentos internos nunca chegam ao parceiro.
  */
 export function CasePartnerPanel({ legalCase, documents }: { legalCase: LegalCase; documents: ClientDocument[] }) {
-  const office = useOffice();
-  const partner = usePartnerOffice(casePartnerId(legalCase, office.id) ?? (legalCase.createdByOfficeId !== office.id ? legalCase.createdByOfficeId : undefined));
+  // Solicitações e documentos vão ao parceiro com acesso operacional ao caso.
+  const partner = usePartnerOffice(legalCase.partnerOrganizationId ?? undefined);
   const requests = usePartnerRequests({ legalCaseId: legalCase.id });
   const clientMap = useClientMap();
   const processMap = useProcessMap();

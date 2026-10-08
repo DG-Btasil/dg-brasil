@@ -184,7 +184,7 @@ function Overview({ legalCase }: { legalCase: LegalCase }) {
               { label: "Área", value: LEGAL_AREA_LABEL[legalCase.area] },
               { label: "Tipo", value: legalCase.caseType },
               { label: "Parte contrária", value: legalCase.opposingParty },
-              { label: "Origem do caso", value: officeName(legalCase.originOfficeId) },
+              { label: "Origem do caso", value: officeName(legalCase.originOrganizationId) },
               { label: "Enviado em", value: legalCase.submittedAt ? formatDateTime(legalCase.submittedAt) : undefined },
               { label: "Aceito em", value: legalCase.acceptedAt ? formatDateTime(legalCase.acceptedAt) : undefined },
               { label: "Relato", value: legalCase.summary, wide: true },

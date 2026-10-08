@@ -25,7 +25,7 @@ export function IntegrationsList() {
       )}
       <div className="grid grid-cols-2 gap-4">
         {/* A integração processual tem área própria (Integração Judicial), com uma fonte por provedor. */}
-        {integrations.filter((i) => i.kind !== "LEGAL_PROCESS").map((i) => (
+        {integrations.filter((i) => i.kind !== "JUDICIAL").map((i) => (
           <IntegrationItem key={i.id} integration={i} canManage={canManage} canSeeAi={canSeeAi} />
         ))}
       </div>

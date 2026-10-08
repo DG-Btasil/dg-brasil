@@ -1,17 +1,37 @@
 import { randomUUID } from 'node:crypto'
-import { pool } from './db.js'
-import { executar } from './executor.js'
-import { aplicarAprovadas } from './aplicar.js'
-import { concluir, falhar, liberarExpiradas, proximaExecucao } from './fila.js'
+import { armazenamentoSupabase } from './armazenamento.js'
+import { aplicarDecididas } from './aplicar.js'
+import { bancoPostgres } from './banco.js'
+import { executarComClaude } from './executor.js'
+import { lerMensagem, processarMensagem, type Dependencias } from './fila.js'
+
+function obrigatorio(nome: string): string {
+  const v = process.env[nome]
+  if (!v) throw new Error(`variável de ambiente ausente: ${nome}`)
+  return v
+}
 
 const WORKER = `${process.env.FLY_MACHINE_ID ?? 'local'}-${randomUUID().slice(0, 8)}`
 const OCIOSO_MS = 5_000
+
+const deps: Dependencias = {
+  // Conexão com o papel dg_worker (nunca postgres nem service role): ver supabase/README.md.
+  banco: bancoPostgres(obrigatorio('DATABASE_URL')),
+  armazenamento: armazenamentoSupabase(obrigatorio('SUPABASE_URL'), obrigatorio('SUPABASE_SERVICE_ROLE_KEY')),
+  executar: executarComClaude,
+  worker: WORKER,
+  maxTentativas: Number(process.env.MAX_TENTATIVAS ?? '3'),
+  // Invisibilidade da mensagem. O batimento a renova enquanto o agente roda;
+  // se o worker morrer, ela reaparece depois disso e outro worker assume.
+  vtSegundos: Number(process.env.FILA_VT_SEGUNDOS ?? '300'),
+  // Batimento parado há mais que isto = worker morto: a reserva pode ser retomada.
+  reservaVencidaSegundos: Number(process.env.RESERVA_VENCIDA_SEGUNDOS ?? '600'),
+}
 
 let parando = false
 for (const sinal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sinal, () => {
     // Não mata execução no meio: para de pegar trabalho novo e termina o atual.
-    // A reserva no banco cobre o caso de o processo morrer de verdade.
     console.log(`[${WORKER}] ${sinal} recebido, encerrando após a execução atual`)
     parando = true
   })
@@ -22,47 +42,31 @@ async function laço() {
 
   while (!parando) {
     let trabalhou = false
-
     try {
-      const item = await proximaExecucao(WORKER)
-      if (item) {
+      const msg = await lerMensagem(deps.banco, deps.vtSegundos)
+      if (msg) {
         trabalhou = true
-        const { execucao, agente } = item
-        console.log(`[${WORKER}] execução ${execucao.id} → agente ${agente.slug}`)
-
-        try {
-          const metricas = await executar(execucao, agente)
-          const estado = await concluir(execucao.id, metricas)
-          console.log(
-            `[${WORKER}] ${execucao.id} ${estado}` +
-              ` · US$ ${metricas.custoUsd.toFixed(4)}`,
-          )
-        } catch (erro) {
-          const destino = await falhar(execucao, erro)
-          console.error(`[${WORKER}] ${execucao.id} ${destino}:`, erro)
-        }
+        const desfecho = await processarMensagem(deps, msg)
+        // Só ids no log: nada de conteúdo, CPF ou prompt.
+        console.log(`[${WORKER}] mensagem ${msg.msg_id} (tentativa ${msg.read_ct}): ${desfecho}`)
       }
 
-      // Propostas que um humano aprovou no painel só produzem efeito aqui.
-      const aplicadas = await aplicarAprovadas()
-      if (aplicadas > 0) {
+      // Propostas decididas em Revisões só produzem efeito aqui.
+      const decididas = await aplicarDecididas(deps.banco, WORKER)
+      if (decididas > 0) {
         trabalhou = true
-        console.log(`[${WORKER}] ${aplicadas} proposta(s) aplicada(s)`)
+        console.log(`[${WORKER}] ${decididas} proposta(s) decidida(s) processada(s)`)
       }
 
-      if (!trabalhou) {
-        const liberadas = await liberarExpiradas()
-        if (liberadas) console.warn(`[${WORKER}] ${liberadas} execução(ões) devolvidas à fila`)
-        await dormir(OCIOSO_MS)
-      }
+      if (!trabalhou) await dormir(OCIOSO_MS)
     } catch (erro) {
       // Banco fora do ar, rede caiu: espera e tenta de novo. Não derruba o worker.
-      console.error(`[${WORKER}] erro no laço:`, erro)
+      console.error(`[${WORKER}] erro no laço:`, erro instanceof Error ? erro.message : erro)
       await dormir(OCIOSO_MS * 3)
     }
   }
 
-  await pool.end()
+  await deps.banco.fechar()
   console.log(`[${WORKER}] encerrado`)
 }
 

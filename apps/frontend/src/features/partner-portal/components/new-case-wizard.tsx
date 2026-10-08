@@ -199,7 +199,7 @@ export function NewCaseWizard({ initialClientId, mode = "client" }: { initialCli
         caseType: v.caseType.trim(),
         opposingParty: blank(v.opposingParty),
         summary: v.summary.trim(),
-        originOfficeId: v.caseOriginOfficeId,
+        originOrganizationId: v.caseOriginOfficeId,
       },
       notes: blank(v.notes),
     };

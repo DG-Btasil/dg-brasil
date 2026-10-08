@@ -75,11 +75,11 @@ export function usePartnerRequests(filter?: { partnerOfficeId?: ID; processId?: 
   );
 }
 
-/** Casos originados por um parceiro (ou enviados por ele). */
+/** Casos originados por um parceiro (ou com acesso operacional dele). */
 export function usePartnerCases(partnerOfficeId: ID | undefined): LegalCase[] {
   const cases = useScopedStore((s) => s.legalCases);
   return useMemo(
-    () => cases.filter((c) => !!partnerOfficeId && (c.originOfficeId === partnerOfficeId || c.createdByOfficeId === partnerOfficeId)),
+    () => cases.filter((c) => !!partnerOfficeId && (c.originOrganizationId === partnerOfficeId || c.partnerOrganizationId === partnerOfficeId)),
     [cases, partnerOfficeId],
   );
 }
@@ -116,7 +116,7 @@ export function usePartnerProcesses(partnerOfficeId: ID | undefined): Process[] 
   const processes = useScopedStore((s) => s.processes);
   const cases = usePartnerCases(partnerOfficeId);
   return useMemo(() => {
-    const ids = new Set(cases.filter((c) => c.originOfficeId === partnerOfficeId).map((c) => c.id));
+    const ids = new Set(cases.filter((c) => c.originOrganizationId === partnerOfficeId).map((c) => c.id));
     return processes.filter((p) => ids.has(p.legalCaseId));
   }, [processes, cases, partnerOfficeId]);
 }
@@ -148,7 +148,7 @@ export function usePartnerRows(): PartnerRow[] {
   const events = useScopedStore((s) => s.auditEvents);
   return useMemo(
     () => {
-      const partnerCaseIds = (pid: ID) => new Set(cases.filter((c) => c.originOfficeId === pid).map((c) => c.id));
+      const partnerCaseIds = (pid: ID) => new Set(cases.filter((c) => c.originOrganizationId === pid).map((c) => c.id));
       return partners.map((partner) => {
         const last = events.filter((e) => e.partnerOfficeId === partner.id).reduce<string | undefined>((max, e) => (!max || e.at > max ? e.at : max), undefined);
         return {
@@ -156,7 +156,7 @@ export function usePartnerRows(): PartnerRow[] {
           clients: relationships.filter((r) => r.officeType === "PARTNER" && r.partnerOfficeId === partner.id && r.status === "ACTIVE").length,
           activeProcesses: processes.filter((p) => partnerCaseIds(partner.id).has(p.legalCaseId) && p.status !== "CLOSED").length,
           openRequests: requests.filter((r) => r.partnerOfficeId === partner.id && r.status === "OPEN").length,
-          newCases: cases.filter((c) => c.originOfficeId === partner.id && c.status === "SUBMITTED").length,
+          newCases: cases.filter((c) => c.originOrganizationId === partner.id && c.status === "SUBMITTED").length,
           lastActivityAt: last,
         };
       });
@@ -181,7 +181,7 @@ export function useNewPartnerCases(limit = 5): { rows: NewPartnerCaseRow[]; tota
   const partners = usePartnerMap();
   return useMemo(() => {
     const pending = cases
-      .filter((c) => c.createdByOfficeId !== office.id && (c.status === "SUBMITTED" || c.status === "WAITING_DOCUMENTS" || c.status === "READY_FOR_ANALYSIS"))
+      .filter((c) => c.createdByOrganizationId !== office.id && (c.status === "SUBMITTED" || c.status === "WAITING_DOCUMENTS" || c.status === "READY_FOR_ANALYSIS"))
       .sort((a, b) => (b.submittedAt ?? b.createdAt).localeCompare(a.submittedAt ?? a.createdAt));
     const clientMap = new Map(clients.map((c) => [c.id, c]));
     return {
@@ -189,7 +189,7 @@ export function useNewPartnerCases(limit = 5): { rows: NewPartnerCaseRow[]; tota
       rows: pending.slice(0, limit).map((legalCase) => ({
         legalCase,
         clientName: clientDisplayName(clientMap.get(legalCase.clientId)),
-        partnerName: partners.get(legalCase.createdByOfficeId)?.name ?? "Parceiro",
+        partnerName: partners.get(legalCase.createdByOrganizationId)?.name ?? "Parceiro",
         documents: documents.filter((d) => d.legalCaseId === legalCase.id).length,
       })),
     };

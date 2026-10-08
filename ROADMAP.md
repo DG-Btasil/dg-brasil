@@ -1,98 +1,82 @@
-# Roadmap — da ADVBOX ao DG Brasil
+# Roadmap — DG Brasil
 
-Seis fases. Cada uma entrega algo que a equipe usa de verdade; nenhuma depende
-de a seguinte existir. A ADVBOX só é desligada na fase 6, por decisão sua, com
-data marcada.
+Etapas em ordem. Cada uma entrega algo verificável e nenhuma depende de a
+seguinte existir. Nenhuma etapa começa sem autorização da anterior.
 
 ---
 
-### Fase 0 — Fundação ✅ *(feito nesta sessão)*
+### Etapa 0–2 — Fundação e front-end V1 ✅
 
-- Repositório, arquitetura e schema do banco (`db/001` a `db/004`).
+- Repositório, arquitetura, front-end V1 navegável (dados fictícios):
+  escritório proprietário, portal do parceiro, Client → LegalCase → LegalProcess,
+  Revisões, DG Brasil.
 - Motor de agentes: fila, executor com Claude Agent SDK, ferramentas, aplicador.
 
-**Falta você fazer:** criar o projeto no Supabase (região São Paulo), rodar os
-quatro arquivos SQL em ordem e preencher o `.env`.
+### Etapa 3.1–3.2 — Banco V1 auditado e consolidado ✅
+
+- 19 migrations (`supabase/migrations`), 248 verificações em Postgres real (PGlite).
+- Gate humano fechado no banco, máquina de estados do caso, histórico de
+  parceria, ledger financeiro, verificação de documento por versão, pedido de
+  execução controlado, `dg_worker` sem bypass de RLS, reserva e batimento na
+  fila, idempotência de propostas, auditoria por ator, acesso LGPD, importação
+  genérica CSV/XLSX.
+- Worker migrado (29 testes como `dg_worker`); contratos do front alinhados.
 
 ---
 
-### Fase 1 — Espelho e painel de leitura
+### Etapa 3.3 — Validação em Supabase real (desenvolvimento)
 
-Importar da ADVBOX contatos, processos, prazos e movimentações para o DG Brasil,
-e mostrar isso num painel. Nada é escrito de volta na ADVBOX.
+Projeto Supabase de desenvolvimento em São Paulo, `db push`, e conferência do
+que o PGlite não cobre: Auth (trigger em `auth.users`, JWT real nas RPCs),
+Storage (políticas, signed URLs, buckets privados), pgmq real (grants do
+`dg_worker` nas tabelas da fila), login do `dg_worker` direto e pelo pooler.
 
-- Script de importação usando o conector ADVBOX que você já tem (as colunas
-  `advbox_id` no schema existem para isso: reimportar não duplica).
-- Sincronização diária, para o espelho não envelhecer.
-- Painel Next.js: busca de contato, ficha do cliente, lista de casos, agenda de
-  prazos, login por papel.
-
-**Você ganha:** uma segunda fonte para conferir prazo, e a equipe já começa a
-usar a interface nova sem risco nenhum.
+**Você ganha:** a certeza de que o banco funciona onde vai rodar, antes de
+qualquer dado real.
 
 ---
 
-### Fase 2 — Primeiro agente na nuvem: Lucas
+### Etapa 4 — Auth e backend
 
-O agente mais isolado do conjunto — só lê pasta e gera dois documentos. É o
-teste de fumaça do motor inteiro.
+- Login com Supabase Auth, convites (token de uso único com expiração), aceite
+  dos termos, MFA.
+- Next.js server-side chamando as RPCs (`decide_review`, `request_agent_run`,
+  `change_case_origin`...) com o JWT do usuário; service role só onde o contrato
+  manda.
+- Upload/download por signed URL, com registro de acesso a dado pessoal.
 
-- Deploy do worker no Fly.io.
-- Armazenamento de documentos no Supabase Storage (substituindo o Drive, ou
-  sincronizando com ele — decisão sua na hora).
-- **Fila de aprovação no painel**: a tela mais importante do sistema.
+### Etapa 5 — Front-end conectado
 
-**Você ganha:** o Lucas roda sozinho às 9h, todo dia útil, sem seu computador
-ligado.
+`repositories/api` no lugar dos mocks, usando os mapeamentos de
+`src/repositories/api/db-mappings.ts`. A equipe começa a usar com dados reais.
 
----
+### Etapa 6 — Primeiro agente na nuvem
 
-### Fase 3 — Esteira e peças
+- Deploy do worker no Fly.io (região gru), conectado como `dg_worker`.
+- Primeiro agente em produção, com a fila de Revisões como tela central.
+- Despachante de gatilhos (horário/evento) chamando `request_agent_run`.
 
-- `packages/dominio` recebe o motor de classificação do `esteira-consignado`,
-  com os 41 testes.
-- Importação do HISCON pelo painel; o agente `esteira` confere e propõe.
-- Agente `peca` gera minuta de inicial e réplica, sempre para revisão.
+### Etapa 7 — Importação
 
-**Você ganha:** o caminho extrato → blocos → minuta, com um humano em cada
-curva.
+Parser CSV/XLSX no backend sobre o schema já pronto: colunas → mapeamento →
+validação → dry-run → conflitos → confirmação → processamento → relatório.
 
----
+### Etapa 8 — Integrações judiciais e prazos
 
-### Fase 4 — WhatsApp e triagem
+Monitoramento por OAB (DJEN/DataJud), movimentações com deduplicação, agente que
+propõe prazos — sempre para revisão humana.
 
-- Ponte com o ChatJuridico (ou direto com a API do WhatsApp).
-- Agente `triagem` classifica lead e propõe encaminhamento.
-- `aplicar.ts` ganha o aplicador de `enviar_mensagem` — hoje ele falha de
-  propósito, para não fingir que enviou.
+### Etapa 9 — Domínio consignado
 
----
-
-### Fase 5 — Radar e prazos
-
-- Captura DJEN pelo conector de publicações.
-- Agente `radar` propõe prazos com contagem em dias úteis.
-- **Duplo registro:** por um período, prazo aberto no DG Brasil também é conferido
-  contra a ADVBOX. É essa fase que dá segurança para a fase 6.
-
----
-
-### Fase 6 — Financeiro e desligamento
-
-- Lançamentos, honorários, relatórios.
-- Migração final e conferência: contagem de clientes, processos e prazos
-  abertos nos dois sistemas, item a item.
-- **Você decide a data.** A recomendação é manter a ADVBOX ativa por mais um
-  ciclo completo de prazos depois que os números baterem.
+Benefício INSS, extrato HISCON, contratos e a esteira de classificação
+(`packages/dominio`), como migrations `020+`, depois de especificados.
 
 ---
 
 ## Onde o risco realmente mora
 
-Não é no código — é na fase 6. Enquanto os dois sistemas convivem, um prazo
-perdido no DG Brasil ainda aparece na ADVBOX. Depois do desligamento, não aparece
-em lugar nenhum.
-
-Por isso a fase 5 tem duplo registro e a fase 6 exige conferência item a item
-antes da data. Se em algum momento a conferência não bater, a resposta certa é
-adiar o desligamento, não explicar a diferença.
+Não é no código — é no **prazo**. Enquanto prazos ainda forem controlados também
+fora do DG Brasil, cada prazo aberto aqui deve ser conferido em dupla. Só quando
+a conferência bater item a item por um ciclo completo o DG Brasil vira a fonte
+única. Se a conferência não bater, a resposta certa é adiar, não explicar a
+diferença.
