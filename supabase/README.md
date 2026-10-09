@@ -343,7 +343,10 @@ schema para trás com as tabelas de fila (`q_*`/`a_*`, que não pertencem à
 extensão), então a 018 pulava o `create extension` e o banco não se
 reconstruía só pelo repositório. A guarda passou a verificar a *extensão*; um
 schema `pgmq` órfão nunca é apagado: é renomeado para `pgmq_orfao_<data>` e a
-extensão nasce limpa. Não há correção possível em `020+`, porque todo reset
+extensão nasce limpa. As tabelas `q_*`/`a_*` do órfão ganham o prefixo
+`orfao_`, porque o `pgmq.create` procura a tabela da fila só pelo nome em
+`pg_class` (sem schema) e falhava com *more than one row returned by a
+subquery* ao achar `q_agent_execution` no órfão. Não há correção possível em `020+`, porque todo reset
 passa pela 018 antes. Único ambiente afetado: o projeto de desenvolvimento, que
 foi resetado em seguida.
 

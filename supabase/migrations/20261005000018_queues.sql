@@ -22,7 +22,13 @@
 -- Schema órfão nunca é apagado: é renomeado para pgmq_orfao_<data> (dados
 -- preservados para inspeção) e a extensão nasce limpa. No PGlite dos testes o
 -- pgmq não está disponível e o shim faz o papel dele.
+-- As tabelas de fila do schema órfão também ganham o prefixo orfao_: o pgmq
+-- procura a tabela da fila por nome em pg_class sem olhar o schema
+-- (pgmq._belongs_to_pgmq), e um q_agent_execution sobrando no órfão fazia o
+-- pgmq.create abaixo falhar com "more than one row returned by a subquery".
 do $$
+declare
+  orfao record;
 begin
   if not exists (select 1 from pg_extension where extname = 'pgmq')
      and exists (select 1 from pg_available_extensions where name = 'pgmq') then
@@ -32,6 +38,18 @@ begin
     end if;
     create extension pgmq;
   end if;
+
+  for orfao in
+    select n.nspname, c.relname
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname like 'pgmq\_orfao\_%'
+       and c.relkind in ('r', 'p')
+       and c.relname ~ '^[qa]_'
+  loop
+    execute format('alter table %I.%I rename to %I',
+                   orfao.nspname, orfao.relname, left('orfao_' || orfao.relname, 63));
+  end loop;
 end
 $$;
 
