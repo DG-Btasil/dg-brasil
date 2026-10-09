@@ -337,6 +337,14 @@ Recusa rodar sem `DG_ENV=development` e só cria dados fictícios.
 **Baseline: 001–019, aplicadas no Supabase real de desenvolvimento em
 2026-10-08.** Desde então nada nelas muda: correção é `020+`.
 
+**Exceção ao baseline (2026-10-09, aprovada):** a guarda do pgmq na `018`
+verificava o *schema* `pgmq`; o `supabase db reset` remove a extensão e deixa o
+schema vazio, então a 018 pulava o `create extension` e o banco não se
+reconstruía só pelo repositório. A guarda passou a verificar a *extensão* (e
+remove schema órfão vazio). Não há correção possível em `020+`, porque todo reset
+passa pela 018 antes. Único ambiente afetado: o projeto de desenvolvimento, que
+foi resetado em seguida.
+
 | Migration pós-baseline | Motivo |
 |---|---|
 | `20261009000020_fix_partnership_snapshot_trigger` | Achado na validação real: o aceite pelo caminho normal (PostgREST, só `status`) não criava o snapshot de parceria, porque o trigger era `UPDATE OF accepted_at` e `accepted_at` é preenchido por outro trigger. Teste de regressão em `verificar.mjs` (marcado `[020]`) |

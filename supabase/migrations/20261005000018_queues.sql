@@ -14,10 +14,21 @@
 -- Nome da fila com underscore (agent_execution): pgmq cria tabelas q_<nome> e
 -- a_<nome>, e hífen em nome de tabela é fonte de erro.
 
+-- A guarda olha a EXTENSÃO, não o schema. `supabase db reset` remove a
+-- extensão e deixa o schema pgmq vazio para trás; checar o schema fazia esta
+-- migration pular o create extension e quebrar (achado na validação real,
+-- Etapa 3.3 — exceção documentada ao baseline, ver supabase/README.md).
+-- Schema órfão é removido só se estiver VAZIO (drop sem cascade falha se houver
+-- qualquer objeto dentro). No PGlite dos testes o pgmq não está disponível e o
+-- shim faz o papel dele.
 do $$
 begin
-  if not exists (select 1 from pg_namespace where nspname = 'pgmq') then
-    create extension if not exists pgmq;
+  if not exists (select 1 from pg_extension where extname = 'pgmq')
+     and exists (select 1 from pg_available_extensions where name = 'pgmq') then
+    if exists (select 1 from pg_namespace where nspname = 'pgmq') then
+      drop schema pgmq;
+    end if;
+    create extension pgmq;
   end if;
 end
 $$;
