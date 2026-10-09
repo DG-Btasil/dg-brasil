@@ -498,7 +498,7 @@ describe('idempotência e reserva', () => {
     expect(await linhas(`select 1 from pgmq.q_agent_execution where msg_id = $1`, [msg.msg_id])).toHaveLength(1)
     expect((await um(`select claimed_by from agent_runs where id = $1`, [runId])).claimed_by).toBe('outro-worker')
     await db.query(`update agent_runs set status = 'CANCELLED' where id = $1`, [runId])
-    await db.query(`select pgmq.archive('agent_execution', $1)`, [msg.msg_id])
+    await db.query(`select pgmq.archive('agent_execution', $1::bigint)`, [msg.msg_id])
   })
 
   it('execução longa: o batimento renova a invisibilidade e a mensagem não reaparece', async () => {
