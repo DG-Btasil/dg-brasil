@@ -341,6 +341,15 @@ await deve('LAWYER aceita caso de origem parceiro → nasce snapshot 50/50', () 
   igual([a?.partner_organization_id, a?.p, a?.o], [ids.almeida, '50.00', '50.00'], 'snapshot')
 }))
 
+await deve('aceite só com status (sem accepted_at no UPDATE, como o PostgREST faz) cria o snapshot [020]', async () => {
+  const c = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, partner_organization_id,
+      origin_organization_id, created_by_organization_id) values ($1, $2, 'Aceite pelo caminho normal', 'SUBMITTED', $3, $3, $3) returning id`,
+    [ids.joao, ids.banking, ids.almeida])).id
+  await como(ids.lucas, (tx) => tx.query(`update legal_cases set status = 'ACCEPTED', assigned_lawyer_id = $2 where id = $1`, [c, ids.lucas]))
+  const a = await um(db, `select partner_percentage::text p from case_partnership_agreements where legal_case_id = $1 and cancelled_at is null`, [c])
+  igual(a?.p, '50.00', 'snapshot no aceite sem accepted_at explícito')
+})
+
 await deve('aceite de caso com origem Bárbara não cria divisão de parceiro', () => como(ids.lucas, async (tx) => {
   await tx.query(`update legal_cases set status = 'ACCEPTED', accepted_at = now(), assigned_lawyer_id = $2 where id = $1`, [ids.casoB, ids.lucas])
 }).then(async () => {
@@ -405,7 +414,7 @@ await deve('alterar porcentagem padrão não altera Case antigo', async () => {
   const a = await um(db, `select partner_percentage::text p from case_partnership_agreements where legal_case_id = $1`, [ids.casoA])
   igual(a.p, '50.00', 'caso A continua 50/50')
   const ev = await um(db, `select metadata from audit_events where action = 'PARTNER_SHARE_CHANGED'`)
-  igual(ev?.metadata?.preserved_agreements, 2, 'acordos preservados no evento')
+  igual(ev?.metadata?.preserved_agreements, 3, 'acordos preservados no evento')
 
   // Caso novo aceito depois usa 60/40.
   const novo = await um(db, `insert into legal_cases (client_id, legal_area_id, title, partner_organization_id,
@@ -1112,7 +1121,7 @@ await deve('worker grava proposta e revisão PENDING; a mesma proposta não entr
   igual([a.created, b.created, a.proposal_id === b.proposal_id], [true, false, true], 'idempotência')
   ids.proposta = a.proposal_id
   igual((await um(tx, `select private.worker_finish_run($1, 'worker-a', 'WAITING_HUMAN', null, null, 'claude-opus-5-5', 1200, 300, 0.012, '{"proposals":1}') v`, [ids.run])).v, true, 'fim')
-  await tx.query(`select pgmq.archive('agent_execution', $1)`, [ids.msg])
+  await tx.query(`select pgmq.archive('agent_execution', $1::bigint)`, [ids.msg])
 }))
 
 await deve('uma proposta só, com uma revisão pendente', async () => {

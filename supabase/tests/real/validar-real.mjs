@@ -71,8 +71,20 @@ const adminDb = new pg.Client({ connectionString: DB_URL, ssl: { rejectUnauthori
 await adminDb.connect()
 const sql = async (q, p) => (await adminDb.query(q, p)).rows
 const um = async (q, p) => (await sql(q, p))[0]
-const service = createClient(URL_, SERVICE, { auth: { persistSession: false, autoRefreshToken: false } })
-const novoCliente = () => createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false } })
+// Falha de rede (conexão caiu antes de a requisição chegar) é repetida até 3
+// vezes; erro devolvido pela API nunca é repetido.
+async function fetchComRetry(url, init) {
+  for (let tentativa = 1; ; tentativa++) {
+    try { return await fetch(url, init) }
+    catch (e) {
+      if (tentativa >= 3 || !(e instanceof TypeError)) throw e
+      await new Promise((ok) => setTimeout(ok, 500 * tentativa))
+    }
+  }
+}
+const opcoes = { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: fetchComRetry } }
+const service = createClient(URL_, SERVICE, opcoes)
+const novoCliente = () => createClient(URL_, ANON, opcoes)
 
 secao('1. Pré-flight')
 console.log(`  projeto: ${mascara(ref)}  host: ${new URL(URL_).hostname.replace(ref, mascara(ref))}`)
@@ -398,7 +410,7 @@ await deve('perda de batimento: reserva retomada; quem perdeu não grava o resul
   igual(fim.rows[0].v, false, 'quem perdeu')
   const fim2 = await (outro === 'w1' ? w1 : w2).query(`select private.worker_finish_run($1, $2, 'WAITING_HUMAN') v`, [ids.run, outro])
   igual(fim2.rows[0].v, true, 'novo dono')
-  await w1.query(`select pgmq.archive('agent_execution', $1)`, [msg.msg_id])
+  await w1.query(`select pgmq.archive('agent_execution'::text, $1::bigint)`, [msg.msg_id])
   const ev = await um(`select actor_type, agent_run_id from audit_events where action = 'AGENT_RUN_WAITING_HUMAN' and entity_id = $1`, [ids.run])
   igual([ev?.actor_type, ev?.agent_run_id], ['AGENT', ids.run], 'auditoria AGENT')
 })

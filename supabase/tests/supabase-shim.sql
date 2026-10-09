@@ -151,6 +151,22 @@ begin
 end
 $$;
 
+-- pgmq 1.5 também tem archive(text, bigint[]): chamada sem tipo
+-- (pgmq.archive('fila', $1)) é ambígua no Supabase real. A sobrecarga aqui faz
+-- o teste local pegar isso também.
+create function pgmq.archive(queue_name text, msg_ids bigint[]) returns setof bigint
+language plpgsql as $$
+declare
+  m bigint;
+begin
+  foreach m in array msg_ids loop
+    if pgmq.archive(queue_name, m) then
+      return next m;
+    end if;
+  end loop;
+end
+$$;
+
 -- Como numa instalação nova de extensão: aberto por padrão, a 018 fecha.
 grant usage on schema pgmq to public;
 grant all on all tables in schema pgmq to public;

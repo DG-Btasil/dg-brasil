@@ -17,7 +17,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As 19 migrations, na ordem da seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 248 verificações, com a RLS testada por papel |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 259 verificações, com a RLS testada por papel |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 
@@ -334,6 +334,14 @@ grants do `dg_worker`), login do `dg_worker` pelo método de produção, trigger
 isolamento de parceiros com sessões reais e claim concorrente de dois workers.
 Recusa rodar sem `DG_ENV=development` e só cria dados fictícios.
 
-**Baseline:** as migrations 001–019 viram baseline no primeiro `db push` num
-projeto real que passe nesta validação. A partir daí, nada nelas muda: correção
-é `020+`.
+**Baseline: 001–019, aplicadas no Supabase real de desenvolvimento em
+2026-10-08.** Desde então nada nelas muda: correção é `020+`.
+
+| Migration pós-baseline | Motivo |
+|---|---|
+| `20261009000020_fix_partnership_snapshot_trigger` | Achado na validação real: o aceite pelo caminho normal (PostgREST, só `status`) não criava o snapshot de parceria, porque o trigger era `UPDATE OF accepted_at` e `accepted_at` é preenchido por outro trigger. Teste de regressão em `verificar.mjs` (marcado `[020]`) |
+
+Diferenças reais encontradas e cobertas: pgmq 1.5.1 tem `archive(text, bigint)`
+e `archive(text, bigint[])` — chamada sem tipo é ambígua (o worker sempre tipa;
+o shim agora tem a sobrecarga); o timezone do servidor é UTC (OVERDUE usa
+`America/Sao_Paulo` explicitamente).
