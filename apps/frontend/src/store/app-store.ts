@@ -37,7 +37,8 @@ export const STORAGE_KEY = "dg-brasil:demo";
 //     (prazo COMPLETED/CANCELLED, origem de movimentação JUDICIAL_INTEGRATION/IMPORT,
 //     integração JUDICIAL/OTHER); sem autonomia AUTO_LOW_RISK.
 // v8: origem do caso nunca concede acesso operacional; vínculo do parceiro só por opt-in explícito.
-const STORAGE_VERSION = 8;
+// v9: identidade real (Supabase Auth): a sessão NÃO é mais persistida no navegador.
+const STORAGE_VERSION = 9;
 
 export const useAppStore = create<AppStore>()(
   persist(
@@ -83,7 +84,8 @@ export const useAppStore = create<AppStore>()(
       partialize: (state): AppState => {
         const data: Partial<AppStore> = {};
         for (const [key, value] of Object.entries(state)) {
-          if (typeof value !== "function") (data as Record<string, unknown>)[key] = value;
+          // A sessão nunca vai para o localStorage: vem do servidor a cada carga.
+          if (typeof value !== "function" && key !== "session") (data as Record<string, unknown>)[key] = value;
         }
         return data as AppState;
       },

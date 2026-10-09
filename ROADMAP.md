@@ -38,8 +38,10 @@ qualquer dado real.
 
 ### Etapa 4 — Auth e backend
 
-- Login com Supabase Auth, convites (token de uso único com expiração), aceite
-  dos termos, MFA.
+- **4.1 ✅ (código pronto; validar no Supabase DEV)** — Login com Supabase Auth,
+  convites (token de uso único com expiração), aceite dos termos, MFA TOTP
+  obrigatório, sessão e autorização no servidor, gestão de equipe. Ver
+  [docs/auth.md](docs/auth.md).
 - Next.js server-side chamando as RPCs (`decide_review`, `request_agent_run`,
   `change_case_origin`...) com o JWT do usuário; service role só onde o contrato
   manda.

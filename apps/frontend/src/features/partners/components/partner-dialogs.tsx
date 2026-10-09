@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { FormProvider, useForm, useWatch } from "react-hook-form";
+import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { PARTNER_REQUEST_TYPE_LABEL, PARTNER_REQUEST_TYPES } from "@/lib/constants/status";
 import { formatCurrency } from "@/lib/formatting";
-import { PARTNER_ROLES, ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/permissions";
 import { parseCurrencyInput, zCurrencyOptional } from "@/lib/validation";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
@@ -16,10 +15,8 @@ import type { ID, PartnerOffice, PartnershipAgreementView } from "@/types";
 import { usePartnerActions } from "../hooks";
 import {
   parsePercent,
-  partnerInviteSchema,
   partnerRequestSchema,
   shareSchema,
-  type PartnerInviteValues,
   type PartnerRequestValues,
   type ShareFormValues,
 } from "../schemas";
@@ -63,58 +60,6 @@ export function ChangeShareDialog({ partner, open, onOpenChange }: { partner: Pa
           </Callout>
         </form>
       </FormProvider>
-    </Dialog>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-const ROLE_OPTIONS = PARTNER_ROLES.map((r) => ({ value: r, label: ROLE_LABEL[r] }));
-
-/** Convite de usuário para um escritório parceiro (proprietário ou Partner Admin). */
-export function InvitePartnerUserDialog({ partnerOfficeId, open, onOpenChange }: { partnerOfficeId: ID; open: boolean; onOpenChange: (o: boolean) => void }) {
-  const actions = usePartnerActions();
-  const form = useForm<PartnerInviteValues>({ resolver: zodResolver(partnerInviteSchema), defaultValues: { name: "", email: "", role: "PARTNER_USER" } });
-  const role = useWatch({ control: form.control, name: "role" });
-  const onSubmit = form.handleSubmit(async (v) => {
-    const token = await actions.inviteUser(partnerOfficeId, v);
-    if (token) {
-      form.reset();
-      onOpenChange(false);
-    }
-  });
-  const {
-    register,
-    formState: { errors },
-  } = form;
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Convidar usuário"
-      description="O convite é simulado: nenhum e-mail é enviado neste protótipo."
-      footer={
-        <>
-          <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={onSubmit} loading={form.formState.isSubmitting}>
-            Enviar convite
-          </Button>
-        </>
-      }
-    >
-      <form onSubmit={onSubmit} noValidate className="space-y-4">
-        <Field label="Nome" requirement="required" error={errors.name?.message}>
-          {(p) => <Input {...p} {...register("name")} />}
-        </Field>
-        <Field label="E-mail" requirement="required" error={errors.email?.message}>
-          {(p) => <Input {...p} type="email" {...register("email")} />}
-        </Field>
-        <Field label="Papel" requirement="required" hint={ROLE_DESCRIPTION[role]}>
-          {(p) => <Select {...p} options={ROLE_OPTIONS} {...register("role")} />}
-        </Field>
-      </form>
     </Dialog>
   );
 }

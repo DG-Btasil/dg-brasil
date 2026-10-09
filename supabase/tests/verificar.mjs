@@ -49,7 +49,7 @@ function igual(real, esperado, rotulo) {
 function como(uid, fn) {
   return db.transaction(async (tx) => {
     await tx.query(`select set_config('request.jwt.claims', $1, true)`,
-      [JSON.stringify({ sub: uid, role: 'authenticated' })])
+      [JSON.stringify({ sub: uid, role: 'authenticated', aal: 'aal2' })])
     await tx.query('set local role authenticated')
     return fn(tx)
   })
@@ -1688,6 +1688,197 @@ await deve('bucket de importação aceita só CSV/XLSX', async () => {
   const r = await um(db, `select allowed_mime_types m from storage.buckets where id = 'imports'`)
   if (r.m.some((x) => x.includes('json'))) throw new Error(`MIME: ${r.m}`)
 })
+
+// ═════════════════════════════ Auth (022) ════════════════════════════════
+
+// Sessão só com senha (aal1): o que o Supabase emite antes do MFA.
+function comoAal1(uid, fn) {
+  return db.transaction(async (tx) => {
+    await tx.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: uid, role: 'authenticated', aal: 'aal1' })])
+    await tx.query('set local role authenticated')
+    return fn(tx)
+  })
+}
+const sha256hex = async (t) => (await import('node:crypto')).createHash('sha256').update(t).digest('hex')
+async function usuarioAuth(email, nome = 'Teste') {
+  return (await um(db, `insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id`,
+    [email, JSON.stringify({ full_name: nome })])).id
+}
+const convidar = (uid, email, role, org = null, token = randomUUID()) => como(uid, async (tx) => {
+  const r = await um(tx, `select public.create_invitation($1, 'Convidado Teste', $2, $3, $4) r`, [email, role, org, await sha256hex(token)])
+  return { ...r.r, token }
+})
+const aceitar = (uid, token) => comoAal1(uid, async (tx) =>
+  (await um(tx, `select public.accept_invitation($1) r`, [await sha256hex(token)])).r)
+
+secao('Auth: MFA obrigatório no banco [022]')
+await deve('sessão aal1 (só senha) não lê nenhum dado de domínio', () => comoAal1(ids.barbara, async (tx) => {
+  for (const t of ['clients', 'legal_cases', 'documents', 'reviews', 'payments', 'audit_events', 'notifications'])
+    igual((await linhas(tx, `select 1 from ${t}`)).length, 0, t)
+}))
+await deveFalhar('sessão aal1 não decide revisão nem pede execução', () => comoAal1(ids.lucas, (tx) =>
+  tx.query(`select public.request_agent_run($1, $2)`, [randomUUID(), ids.casoA])), /duas etapas/)
+await deveFalhar('sessão aal1 não lê execuções de agente', () => comoAal1(ids.barbara, (tx) =>
+  tx.query(`select * from public.get_agent_run_summaries()`)), /duas etapas/)
+await deve('contexto de sessão funciona antes do MFA e só traz o próprio usuário', () => comoAal1(ids.lucas, async (tx) => {
+  const c = (await um(tx, `select public.get_my_session_context() c`)).c
+  igual([c.user_id, c.profile.active, c.membership.role, c.membership.status, c.membership.organization.type, c.aal],
+    [ids.lucas, true, 'LAWYER', 'ACTIVE', 'OWNER', 'aal1'], 'contexto')
+}))
+await deve('sem sessão, contexto é nulo', () => db.transaction(async (tx) => {
+  await tx.query('set local role authenticated')
+  igual((await um(tx, `select public.get_my_session_context() c`)).c, null, 'contexto')
+}))
+await deve('termos aceitos antes do MFA (o próprio usuário) e auditados', async () => {
+  await comoAal1(ids.ana, (tx) => tx.query(`insert into user_legal_acceptances (user_id, document_type, document_version)
+                                             values ($1, 'TERMS_OF_USE', '0.1-teste')`, [ids.ana]))
+  const ev = await um(db, `select actor_user_id, metadata from audit_events where action = 'LEGAL_TERMS_ACCEPTED' and entity_id = $1`, [ids.ana])
+  igual([ev?.actor_user_id, ev?.metadata?.document_version], [ids.ana, '0.1-teste'], 'auditoria')
+})
+await deveFalhar('ninguém aceita termos em nome de outro', () => comoAal1(ids.ana, (tx) =>
+  tx.query(`insert into user_legal_acceptances (user_id, document_type, document_version) values ($1, 'TERMS_OF_USE', 'x')`, [ids.lucas])),
+  /row-level security/)
+
+secao('Auth: convites [022]')
+await deve('ADMIN convida LAWYER (vai para o OWNER) e PARTNER_USER da Almeida; auditado com o autor', async () => {
+  const a = await convidar(ids.barbara, 'novo.lawyer@dgbrasil.test', 'LAWYER')
+  igual([a.organization_id, a.existing_auth_user], [ids.owner, false], 'interno')
+  ids.convLawyer = a
+  const b = await convidar(ids.barbara, 'novo.parceiro@dgbrasil.test', 'PARTNER_USER', ids.almeida)
+  igual(b.organization_id, ids.almeida, 'parceiro')
+  const ev = await um(db, `select actor_user_id from audit_events where action = 'USER_INVITED' and entity_id = $1`, [a.invitation_id])
+  igual(ev?.actor_user_id, ids.barbara, 'auditoria')
+})
+await deveFalhar('ADMIN não põe papel interno em escritório parceiro', () =>
+  convidar(ids.barbara, 'x1@dgbrasil.test', 'LAWYER', ids.almeida), /escritório proprietário/)
+await deveFalhar('ADMIN não põe papel de parceiro no OWNER', () =>
+  convidar(ids.barbara, 'x2@dgbrasil.test', 'PARTNER_USER', ids.owner), /parceiro inválido/)
+await deveFalhar('PARTNER_ADMIN A não convida para o parceiro B (IDOR)', () =>
+  convidar(ids.almeidaAdm, 'x3@dgbrasil.test', 'PARTNER_USER', ids.ferreira), /próprio escritório/)
+await deveFalhar('PARTNER_ADMIN não convida papel interno', () =>
+  convidar(ids.almeidaAdm, 'x4@dgbrasil.test', 'LAWYER'), /só convida usuários do parceiro/)
+await deve('PARTNER_ADMIN convida PARTNER_ADMIN e PARTNER_USER do próprio escritório (organização vem da sessão)', async () => {
+  igual((await convidar(ids.almeidaAdm, 'x5@dgbrasil.test', 'PARTNER_USER')).organization_id, ids.almeida, 'usuário')
+  igual((await convidar(ids.almeidaAdm, 'x6@dgbrasil.test', 'PARTNER_ADMIN')).organization_id, ids.almeida, 'admin')
+})
+for (const [quem, uid] of [['LAWYER', 'lucas'], ['ASSISTANT', 'ana'], ['PARTNER_USER', 'almeidaUsr']])
+  await deveFalhar(`${quem} não convida`, () => convidar(ids[uid], `y-${uid}@dgbrasil.test`, 'PARTNER_USER'), /Sem permissão/)
+await deveFalhar('e-mail que já tem acesso não é convidado de novo', async () => {
+  const email = (await um(db, `select email from auth.users where id = $1`, [ids.lucas])).email
+  await convidar(ids.barbara, email, 'ASSISTANT')
+}, /EMAIL_ALREADY_HAS_ACCESS/)
+await deve('reemitir revoga o convite pendente anterior (um pendente por e-mail e escritório)', async () => {
+  await convidar(ids.barbara, 'novo.lawyer@dgbrasil.test', 'LAWYER')
+  const r = await linhas(db, `select revoked_at is null pendente from user_invitations where email = 'novo.lawyer@dgbrasil.test' order by created_at`)
+  igual(r.map((x) => x.pendente), [false, true], 'pendentes')
+})
+await deve('PARTNER_ADMIN A não vê nem revoga convite do parceiro B', async () => {
+  const b = await convidar(ids.ferreiraAdm, 'z1@dgbrasil.test', 'PARTNER_USER')
+  await como(ids.almeidaAdm, async (tx) => igual((await linhas(tx, `select 1 from user_invitations where id = $1`, [b.invitation_id])).length, 0, 'visível'))
+  await como(ids.almeidaAdm, (tx) => tx.query(`select public.revoke_invitation($1)`, [b.invitation_id])).then(
+    () => { throw new Error('revogou convite de outro parceiro') }, (e) => { if (!/não encontrado/.test(e.message)) throw e })
+})
+
+secao('Auth: aceite do convite (atômico, idempotente) [022]')
+await deve('convidado aceita (antes do MFA): vínculo ACTIVE criado uma vez; repetir não duplica', async () => {
+  const t = randomUUID()
+  await convidar(ids.barbara, 'aceita@dgbrasil.test', 'ASSISTANT', null, t)
+  ids.aceita = await usuarioAuth('aceita@dgbrasil.test', 'Aceita Teste')
+  igual((await aceitar(ids.aceita, t)).status, 'ACCEPTED', 'primeiro aceite')
+  igual((await aceitar(ids.aceita, t)).status, 'ALREADY_ACCEPTED', 'segundo aceite')
+  const m = await linhas(db, `select role, status from organization_memberships where user_id = $1`, [ids.aceita])
+  igual(m.map((x) => [x.role, x.status]), [['ASSISTANT', 'ACTIVE']], 'um vínculo')
+})
+await deve('outro e-mail com o mesmo link não aceita (INVALID)', async () => {
+  const t = randomUUID()
+  await convidar(ids.barbara, 'alvo@dgbrasil.test', 'ASSISTANT', null, t)
+  const intruso = await usuarioAuth('intruso2@dgbrasil.test')
+  igual((await aceitar(intruso, t)).status, 'INVALID', 'intruso')
+  igual((await um(db, `select count(*)::int n from organization_memberships where user_id = $1`, [intruso])).n, 0, 'sem vínculo')
+})
+await deve('convite revogado e convite expirado não completam o acesso', async () => {
+  const t1 = randomUUID(), t2 = randomUUID()
+  const r = await convidar(ids.barbara, 'revogado@dgbrasil.test', 'ASSISTANT', null, t1)
+  await como(ids.barbara, (tx) => tx.query(`select public.revoke_invitation($1)`, [r.invitation_id]))
+  igual((await aceitar(await usuarioAuth('revogado@dgbrasil.test'), t1)).status, 'REVOKED', 'revogado')
+  const e = await convidar(ids.barbara, 'expirado@dgbrasil.test', 'ASSISTANT', null, t2)
+  await db.query(`update user_invitations set created_at = now() - interval '10 days', expires_at = now() - interval '1 day' where id = $1`, [e.invitation_id])
+  igual((await aceitar(await usuarioAuth('expirado@dgbrasil.test'), t2)).status, 'EXPIRED', 'expirado')
+})
+await deve('primeiro PARTNER_ADMIN ativa o escritório parceiro pendente', async () => {
+  const p = (await um(db, `insert into organizations (type, name, status) values ('PARTNER', 'Parceiro Pendente', 'PENDING') returning id`)).id
+  await db.query(`insert into partner_office_settings (organization_id, default_partner_percentage, default_owner_percentage) values ($1, 50, 50)`, [p])
+  const t = randomUUID()
+  await convidar(ids.barbara, 'pa.pendente@dgbrasil.test', 'PARTNER_ADMIN', p, t)
+  igual((await aceitar(await usuarioAuth('pa.pendente@dgbrasil.test'), t)).status, 'ACCEPTED', 'aceite')
+  const o = await um(db, `select o.status, s.activated_at is not null a from organizations o join partner_office_settings s on s.organization_id = o.id where o.id = $1`, [p])
+  igual([o.status, o.a], ['ACTIVE', true], 'escritório ativado')
+})
+
+secao('Auth: papel, vínculo e perfil [022]')
+await deve('ADMIN muda LAWYER → ASSISTANT e o efeito é imediato (sem novo login)', async () => {
+  ids.lawyer2 = await usuario('Lawyer2', ids.owner, 'LAWYER')
+  await como(ids.lawyer2, async (tx) => { if ((await linhas(tx, `select 1 from reviews`)).length === 0) throw new Error('LAWYER sem revisões') })
+  const m = (await um(db, `select id from organization_memberships where user_id = $1`, [ids.lawyer2])).id
+  await como(ids.barbara, (tx) => tx.query(`select public.set_membership_role($1, 'ASSISTANT')`, [m]))
+  await como(ids.lawyer2, async (tx) => igual((await linhas(tx, `select 1 from reviews`)).length, 0, 'revisões depois da troca'))
+  const ev = await um(db, `select actor_user_id from audit_events where action = 'ROLE_CHANGED' and entity_id = $1`, [m])
+  igual(ev?.actor_user_id, ids.barbara, 'auditoria')
+  ids.lawyer2Membership = m
+})
+await deveFalhar('PARTNER_ADMIN A não muda papel de usuário do parceiro B (IDOR)', async () => {
+  const m = (await um(db, `select id from organization_memberships where user_id = $1`, [ids.ferreiraAdm])).id
+  await como(ids.almeidaAdm, (tx) => tx.query(`select public.set_membership_role($1, 'PARTNER_USER')`, [m]))
+}, /não encontrado/)
+await deveFalhar('PARTNER_ADMIN A não suspende usuário do parceiro B (IDOR)', async () => {
+  const m = (await um(db, `select id from organization_memberships where user_id = $1`, [ids.ferreiraAdm])).id
+  await como(ids.almeidaAdm, (tx) => tx.query(`select public.set_membership_status($1, 'SUSPENDED')`, [m]))
+}, /não encontrado/)
+await deveFalhar('PARTNER_ADMIN não promove usuário a papel interno', async () => {
+  const m = (await um(db, `select id from organization_memberships where user_id = $1`, [ids.almeidaUsr])).id
+  await como(ids.almeidaAdm, (tx) => tx.query(`select public.set_membership_role($1, 'LAWYER')`, [m]))
+}, /Papel não permitido|role_matches_org/)
+await deveFalhar('ninguém altera o próprio acesso', async () => {
+  const m = (await um(db, `select id from organization_memberships where user_id = $1`, [ids.barbara])).id
+  await como(ids.barbara, (tx) => tx.query(`select public.set_membership_status($1, 'SUSPENDED')`, [m]))
+}, /próprio acesso/)
+await deveFalhar('o último ADMIN ativo não sai (proteção também no banco)', () =>
+  db.query(`select private.assert_not_last_admin($1)`, [ids.barbara]), /último administrador/)
+await deve('ADMIN inativa o perfil: a sessão existente perde acesso na próxima consulta', async () => {
+  await como(ids.barbara, (tx) => tx.query(`select public.set_profile_active($1, false)`, [ids.lawyer2]))
+  await como(ids.lawyer2, async (tx) => igual((await linhas(tx, `select 1 from clients`)).length, 0, 'clientes'))
+  await como(ids.barbara, (tx) => tx.query(`select public.set_profile_active($1, true)`, [ids.lawyer2]))
+})
+await deveFalhar('LAWYER não inativa ninguém', () => como(ids.lucas, (tx) =>
+  tx.query(`select public.set_profile_active($1, false)`, [ids.lawyer2])), /Somente ADMIN/)
+await deve('equipe: ADMIN vê a interna com e-mail; PARTNER_ADMIN só a própria', async () => {
+  await como(ids.barbara, async (tx) => {
+    const r = await linhas(tx, `select email, role from public.get_team_members()`)
+    if (!r.some((x) => x.role === 'LAWYER' && x.email)) throw new Error('equipe interna sem e-mail')
+  })
+  await como(ids.almeidaAdm, async (tx) => {
+    const r = await linhas(tx, `select organization_id from public.get_team_members()`)
+    if (r.length === 0 || r.some((x) => x.organization_id !== ids.almeida)) throw new Error('fora do escritório')
+  })
+})
+await deveFalhar('PARTNER_ADMIN A não lista a equipe do parceiro B', () => como(ids.almeidaAdm, (tx) =>
+  tx.query(`select * from public.get_team_members($1)`, [ids.ferreira])), /Sem permissão/)
+await deveFalhar('LAWYER não lista equipe', () => como(ids.lucas, (tx) => tx.query(`select * from public.get_team_members()`)), /Sem permissão/)
+
+secao('Auth: escritório OWNER e eventos administrativos [022]')
+await deveFalhar('nem ADMIN suspende o escritório proprietário', () => como(ids.barbara, (tx) =>
+  tx.query(`update organizations set status = 'SUSPENDED' where id = $1`, [ids.owner])), /proprietário não pode/)
+await deveFalhar('organização não troca de tipo', () =>
+  db.query(`update organizations set type = 'OWNER' where id = $1`, [ids.almeida]), /tipo da organização/)
+await deveFalhar('usuário logado não grava evento de Auth', () => como(ids.barbara, (tx) =>
+  tx.query(`select public.record_auth_event('MFA_RESET_COMPLETED', $1)`, [ids.lucas])), /permission denied/)
+await deve('backend registra reset de MFA em nome do ADMIN (ator preservado)', async () => {
+  await comoServico((tx) => tx.query(`select public.record_auth_event('MFA_RESET_COMPLETED', $1, '{"factors":1}', $2)`, [ids.lucas, ids.barbara]))
+  const ev = await um(db, `select actor_type, actor_user_id from audit_events where action = 'MFA_RESET_COMPLETED' and entity_id = $1`, [ids.lucas])
+  igual([ev?.actor_type, ev?.actor_user_id], ['USER', ids.barbara], 'auditoria')
+})
+await deveFalhar('evento de Auth em nome de quem não é ADMIN é recusado', () => comoServico((tx) =>
+  tx.query(`select public.record_auth_event('MFA_RESET_COMPLETED', $1, '{}', $2)`, [ids.ana, ids.lucas])), /Somente ADMIN/)
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
 

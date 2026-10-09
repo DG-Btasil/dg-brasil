@@ -1,4 +1,4 @@
-import { RequirePermission } from "@/components/layout/guards";
+import { RequirePermission } from "@/components/layout/server-guards";
 import { NewAgreementView } from "@/features/finance/components/new-agreement-view";
 
 function first(value: string | string[] | undefined): string | undefined {

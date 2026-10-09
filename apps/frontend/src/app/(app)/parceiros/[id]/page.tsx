@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { PageContainer, RequirePermission } from "@/components/layout/guards";
+import { PageContainer } from "@/components/layout/guards";
+import { RequirePermission } from "@/components/layout/server-guards";
 import { SkeletonRows } from "@/components/feedback/states";
 import { PartnerDetail } from "@/features/partners/components/partner-detail";
 

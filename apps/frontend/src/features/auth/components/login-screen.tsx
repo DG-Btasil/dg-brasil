@@ -1,59 +1,57 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Briefcase, Handshake, ShieldCheck, UserRound, UsersRound } from "lucide-react";
-import { HydrationGate } from "@/components/layout/guards";
+import Link from "next/link";
+import { useState, type FormEvent } from "react";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
-import { HOSTS, useHostAudience } from "@/lib/hosts";
-import { audienceOf, isPartnerRole, ROLE_LABEL, type Role } from "@/lib/permissions";
-import { msg, zEmail, zRequired } from "@/lib/validation";
-import { useDemoAccounts, useSessionActions } from "@/features/auth/hooks";
-import { AuthLayout, AuthLoading } from "./auth-layout";
+import { loginErrorMessage } from "@/lib/auth/errors";
+import { AUTH_ROUTES, safeNextPath } from "@/lib/auth/redirects";
+import { HOSTS } from "@/lib/hosts";
+import { useHostAudience } from "@/lib/use-host-audience";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { AuthLayout } from "./auth-layout";
+import { hardNavigate } from "./navigation";
 
-const schema = z.object({
-  email: zEmail(),
-  password: zRequired(msg.required),
-});
-type LoginValues = z.infer<typeof schema>;
+const NOTICES: Record<string, { tone: "success" | "info"; text: string }> = {
+  saiu: { tone: "info", text: "Você saiu da sua conta." },
+  "senha-alterada": { tone: "success", text: "Senha alterada. Entre com a nova senha." },
+};
 
-const DEMO_ROLES: { role: Role; icon: typeof ShieldCheck }[] = [
-  { role: "ADMIN", icon: ShieldCheck },
-  { role: "LAWYER", icon: Briefcase },
-  { role: "ASSISTANT", icon: UserRound },
-  { role: "PARTNER_ADMIN", icon: Handshake },
-  { role: "PARTNER_USER", icon: UsersRound },
-];
-
-function LoginForm() {
-  const router = useRouter();
-  const { login, simulateRole } = useSessionActions();
-  const allDemoUsers = useDemoAccounts();
-  // Mesmo app nos dois domínios: o host só filtra os atalhos e ajusta os textos.
+/**
+ * Login real (Supabase Auth, e-mail + senha). Acontece no navegador para o
+ * Auth ver o IP de quem tenta (limite de tentativas). Depois do login, quem
+ * decide o próximo passo (MFA, termos, bloqueio) é o servidor, em "/".
+ * Não há cadastro público: acesso só por convite.
+ */
+export function LoginScreen({ next, notice }: { next?: string; notice?: string }) {
   const hostAudience = useHostAudience();
-  const demoRoles = DEMO_ROLES.filter(({ role }) => !hostAudience || audienceOf(role) === hostAudience);
-  const demoUsers = allDemoUsers.filter((u) => !hostAudience || audienceOf(u.role) === hostAudience);
-  const [notFound, setNotFound] = useState(false);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginValues>({ resolver: zodResolver(schema), defaultValues: { email: "", password: "" } });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const info = notice ? NOTICES[notice] : undefined;
 
-  const onSubmit = handleSubmit(({ email }) => {
-    const ok = login(email);
-    setNotFound(!ok);
-    if (ok) router.push("/");
-  });
-
-  function enterAs(role: Role) {
-    simulateRole(role);
-    router.push("/home");
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    if (!email.trim() || !password) {
+      setError("Informe e-mail e senha.");
+      return;
+    }
+    setSubmitting(true);
+    const { error: authError } = await getSupabaseBrowserClient().auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+    if (authError) {
+      setSubmitting(false);
+      setPassword("");
+      setError(loginErrorMessage(authError));
+      return;
+    }
+    const safe = safeNextPath(next, "");
+    hardNavigate(safe ? `/?next=${encodeURIComponent(safe)}` : "/");
   }
 
   return (
@@ -62,65 +60,39 @@ function LoginForm() {
       description={hostAudience === "PARTNER" ? "Acesse os casos do seu escritório com a Bárbara Cardoso Advocacia." : "Acesse o ambiente do seu escritório."}
     >
       <form onSubmit={onSubmit} noValidate className="space-y-4">
-        {notFound && (
-          <Callout tone="danger" title="Não encontramos um usuário ativo com este e-mail.">
-            Confira o endereço ou use um dos e-mails de demonstração abaixo.
-          </Callout>
-        )}
-        <Field label="E-mail" requirement="required" error={errors.email?.message}>
-          {(p) => <Input {...p} type="email" autoComplete="email" placeholder="nome@escritorio.com.br" {...register("email")} />}
+        {info && !error && <Callout tone={info.tone} title={info.text} />}
+        {error && <Callout tone="danger" title={error} />}
+        <Field label="E-mail" requirement="required">
+          {(p) => (
+            <Input
+              {...p}
+              type="email"
+              autoComplete="username"
+              placeholder="nome@escritorio.com.br"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          )}
         </Field>
-        <Field
-          label="Senha"
-          requirement="required"
-          error={errors.password?.message}
-          hint="Protótipo: a senha não é verificada. Qualquer valor é aceito."
-        >
-          {(p) => <Input {...p} type="password" autoComplete="current-password" {...register("password")} />}
+        <Field label="Senha" requirement="required">
+          {(p) => (
+            <Input {...p} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          )}
         </Field>
-        <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
+        <Button type="submit" size="lg" className="w-full" loading={submitting}>
           Entrar
         </Button>
+        <p className="text-center text-[13px]">
+          <Link href={AUTH_ROUTES.forgotPassword} className="text-navy-700 underline-offset-4 hover:underline">
+            Esqueci minha senha
+          </Link>
+        </p>
       </form>
 
-      <section aria-labelledby="demo-access-title" className="mt-8 border-t border-line pt-6">
-        <h2 id="demo-access-title" className="eyebrow">
-          Acesso de demonstração
-        </h2>
-        <div className="mt-3 grid gap-2">
-          {demoRoles.map(({ role, icon: Icon }) => (
-            <Button key={role} variant="secondary" className="justify-start" icon={<Icon className="size-4 text-navy-600" aria-hidden />} onClick={() => enterAs(role)}>
-              Entrar como {ROLE_LABEL[role]}
-              {isPartnerRole(role) && <span className="text-muted">· Almeida Advocacia</span>}
-            </Button>
-          ))}
-        </div>
-        {demoUsers.length > 0 && (
-          <div className="mt-4 rounded-md border border-line bg-surface-muted px-4 py-3">
-            <p className="text-[12px] font-medium text-foreground">E-mails de demonstração</p>
-            <ul className="mt-1.5 space-y-1">
-              {demoUsers.map((u) => (
-                <li key={u.id} className="flex justify-between gap-3 text-[12px]">
-                  <span className="font-mono text-navy-700">{u.email}</span>
-                  <span className="text-muted">{ROLE_LABEL[u.role]}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      <p className="mt-8 text-[13px] text-muted">
-        Acesso somente por convite. Equipe interna: {HOSTS.OWNER}. Escritórios parceiros: {HOSTS.PARTNER}.
+      <p className="mt-8 border-t border-line pt-6 text-[13px] text-muted">
+        Acesso somente por convite, com verificação em duas etapas. Equipe interna: {HOSTS.OWNER}. Escritórios parceiros:{" "}
+        {HOSTS.PARTNER}.
       </p>
     </AuthLayout>
-  );
-}
-
-export function LoginScreen() {
-  return (
-    <HydrationGate fallback={<AuthLoading />}>
-      <LoginForm />
-    </HydrationGate>
   );
 }

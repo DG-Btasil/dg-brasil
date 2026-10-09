@@ -1,24 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
+import { param } from "@/lib/auth/params";
+import { destinationFor } from "@/lib/auth/redirects";
+import { getCurrentSession } from "@/server/auth/session";
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { useIsAuthenticated } from "@/features/auth/hooks";
-import { HydrationGate, ShellSkeleton } from "@/components/layout/guards";
-
-function RootRedirect() {
-  const router = useRouter();
-  const isAuthenticated = useIsAuthenticated();
-  useEffect(() => {
-    router.replace(isAuthenticated ? "/home" : "/login");
-  }, [isAuthenticated, router]);
-  return <ShellSkeleton />;
-}
-
-/** "/" redireciona conforme a sessão mockada. */
-export default function RootPage() {
-  return (
-    <HydrationGate>
-      <RootRedirect />
-    </HydrationGate>
-  );
+/** "/" decide o próximo passo NO SERVIDOR: login, MFA, termos, bloqueio ou o app. */
+export default async function RootPage({ searchParams }: PageProps<"/">) {
+  const next = param((await searchParams).next);
+  redirect(destinationFor(await getCurrentSession(), next));
 }

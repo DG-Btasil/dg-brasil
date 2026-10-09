@@ -1,13 +1,22 @@
 import type { Metadata } from "next";
-import { AudienceSwitch, PageContainer } from "@/components/layout/guards";
+import { Callout } from "@/components/feedback/states";
+import { PageContainer } from "@/components/layout/guards";
+import { AudienceSwitch } from "@/components/layout/server-guards";
 import { HomeDashboard } from "@/features/home/components/home-dashboard";
 import { PortalHome } from "@/features/partner-portal/components/portal-home";
 
 export const metadata: Metadata = { title: "Home" };
 
-export default function HomePage() {
+export default async function HomePage({ searchParams }: PageProps<"/home">) {
+  // Os guards de servidor (require*) mandam para cá quando o papel não permite a área.
+  const denied = (await searchParams).negado === "1";
   return (
     <PageContainer>
+      {denied && (
+        <Callout tone="warning" title="Acesso restrito" className="mb-5">
+          Seu perfil não tem permissão para a área que você tentou abrir.
+        </Callout>
+      )}
       <AudienceSwitch owner={<HomeDashboard />} partner={<PortalHome />} />
     </PageContainer>
   );

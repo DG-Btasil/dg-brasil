@@ -61,8 +61,10 @@ npm install
 npm run dev     # http://localhost:3000
 ```
 
-Protótipo navegável com dados fictícios. Detalhes em
-[apps/frontend/README.md](apps/frontend/README.md).
+Login real (Supabase Auth de **desenvolvimento**, `apps/frontend/.env.local` a partir de
+`.env.example`) com MFA obrigatório; módulos jurídicos ainda com dados fictícios.
+Detalhes em [apps/frontend/README.md](apps/frontend/README.md) e
+[docs/auth.md](docs/auth.md) (primeiro ADMIN, configuração do Auth).
 
 ### 3. Worker
 
@@ -131,8 +133,8 @@ conversa, não commit.
 | Worker (fila pgmq, ferramentas, aplicador) | 31 testes como `dg_worker` (PGlite) e claim/heartbeat/escopo validados no pgmq real. **Claude ainda não conectado** (Claude simulado nos testes) |
 | Domínio consignado (HISCON, benefício, esteira), WhatsApp, leads | Fora do banco V1; entram como migrations `020+` quando especificados |
 | Disparador dos gatilhos (`cron`, `evento`) | **Não existe.** Execução entra na fila por `request_agent_run` |
-| Front-end (`apps/frontend`) | Protótipo navegável com dados fictícios, contratos alinhados ao banco. Ainda não conectado |
-| Login (Supabase Auth) no front | **Não existe** (o banco já está preparado: profiles, memberships, convites) |
+| Front-end (`apps/frontend`) | Identidade real; módulos jurídicos ainda com dados fictícios (mocks recortados pelo papel real) até a Etapa 4.3 |
+| Auth (Etapa 4.1) | Supabase Auth: convite, senha (12+), **MFA TOTP obrigatório** (RLS exige `aal2`, migration 022), termos versionados (texto **provisório**), recuperação, gestão de equipe, redefinição de MFA pelo ADMIN. Ver [docs/auth.md](docs/auth.md) |
 | Importação | Genérica, CSV/XLSX; schema pronto, parser no backend não começado |
 | `packages/dominio` | Não começado |
 

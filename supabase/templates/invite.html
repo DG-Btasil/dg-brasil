@@ -1,0 +1,18 @@
+<!-- DG Brasil — convite. O link usa token_hash (validado no servidor em /auth/confirm).
+     {{ .RedirectTo }} já traz "?fluxo=convite&ref=..." e PRECISA estar nas Redirect URLs do Auth. -->
+<div style="font-family: Arial, Helvetica, sans-serif; color: #14213d; max-width: 520px; margin: 0 auto; padding: 24px;">
+  <p style="font-size: 18px; font-weight: bold; letter-spacing: 2px; margin: 0 0 24px;">DG BRASIL</p>
+  <p>Olá,</p>
+  <p>Você foi convidado(a) para acessar o DG Brasil, o sistema da Bárbara Cardoso Advocacia.</p>
+  <p>
+    <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=invite"
+       style="display: inline-block; background: #14213d; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none;">
+      Aceitar convite
+    </a>
+  </p>
+  <p style="font-size: 13px; color: #555;">
+    No primeiro acesso você vai definir sua senha, aceitar os termos de uso e cadastrar a verificação em duas etapas
+    (aplicativo autenticador). O link vale por tempo limitado e só pode ser usado uma vez.
+  </p>
+  <p style="font-size: 13px; color: #555;">Se você não esperava este convite, ignore este e-mail.</p>
+</div>

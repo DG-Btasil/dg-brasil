@@ -1,17 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { InvitePartnerUserDialog } from "@/features/partners/components/partner-dialogs";
-import { PartnerUsersPanel } from "@/features/partners/components/partner-detail";
-import type { ID } from "@/types";
+import { TeamManager } from "@/features/team/team-manager";
 
-/** Gestão dos usuários do próprio escritório (Partner Admin). As ações validam o escritório da sessão. */
-export function UsersPanel({ partnerOfficeId }: { partnerOfficeId: ID }) {
-  const [inviting, setInviting] = useState(false);
+/**
+ * Usuários do próprio escritório (administrador do parceiro). Gestão REAL:
+ * o servidor sempre usa o escritório da sessão, nunca um id vindo da tela.
+ */
+export function UsersPanel() {
   return (
-    <>
-      <PartnerUsersPanel partnerId={partnerOfficeId} onInvite={() => setInviting(true)} />
-      {inviting && <InvitePartnerUserDialog partnerOfficeId={partnerOfficeId} open onOpenChange={(o) => !o && setInviting(false)} />}
-    </>
+    <TeamManager
+      title="Usuários do escritório"
+      description="Convide e gerencie quem acessa o portal pelo seu escritório. Mudanças valem na hora e ficam registradas."
+    />
   );
 }

@@ -42,7 +42,7 @@ necessário, `schemas.ts` (Zod) e `utils.ts`.
 
 | Feature | Rotas | Observação |
 |---|---|---|
-| `auth` | `/login`, `/convite/[token]` | sessão simulada; login ajusta textos pelo domínio (`lib/hosts.ts`); convite em etapas (senha → documentos legais → 2FA placeholder) |
+| `auth` | `/login`, `/recuperar-senha`, `/nova-senha`, `/primeiro-acesso`, `/termos`, `/seguranca/mfa`, `/seguranca/verificar`, `/acesso`, `/auth/confirm` | Supabase Auth real (ver `docs/auth.md`); sessão validada no servidor (`src/server/auth/session.ts`); MFA TOTP obrigatório |
 | `home` | `/home` | KPIs: casos ativos, casos aguardando análise, processos ativos, revisões pendentes, prazos urgentes |
 | `clients` | `/clientes/**` | cadastro PF/PJ, documentos, abas Casos e Processos |
 | `cases`, `analyses` | `/casos/**` | lista com filtros, novo caso, detalhe (Visão geral, Documentos, Análise, Revisões, Processos, Financeiro, Atividade), aceite/rejeição/origem; análise em `/casos/[id]/analise/nova` |
@@ -88,11 +88,12 @@ nem implantação de tenant: o escritório proprietário é único.
   `useScopedStore`. `useAppStore` fica para sessão, preferências e ações.
 - Ações do portal (`store/slices/partners.ts`) obtêm o `partnerOfficeId` da sessão
   (`requirePartnerViewer`) — nunca de parâmetro de tela.
-- Rotas: `AudienceSwitch` escolhe a tela; `RequirePermission` bloqueia áreas internas
-  (`/dg-brasil`, `/parceiros`, `/revisoes`, `/configuracoes`); recurso fora do escopo por
-  URL mostra "não encontrado".
-- Simulação: o seletor de perfil permite escolher papel interno ou papel de parceiro + o
-  escritório parceiro simulado.
+- Rotas: `AudienceSwitch` e `RequirePermission` **de servidor**
+  (`components/layout/server-guards.tsx`, papel vindo de `requireAppSession`) escolhem a
+  tela e bloqueiam áreas internas; o conteúdo negado nem é enviado ao navegador. As
+  versões cliente (`guards.tsx`) ficam só para trechos dentro de componentes cliente.
+- Ponte com os mocks: a sessão real é associada à persona mock do mesmo papel
+  (`demoPersonaId`, `DemoPersonaGate` em `app-shell.tsx`), sem persistir no navegador.
 
 ## 4. Estado
 
@@ -100,7 +101,7 @@ Dois stores Zustand:
 
 | Store | Conteúdo | Persistência |
 |---|---|---|
-| `store/app-store.ts` | Dados do escritório (clientes, processos, revisões…) + sessão simulada | `localStorage` (`dg-brasil:demo`), só dados fictícios |
+| `store/app-store.ts` | Dados do escritório (clientes, processos, revisões…) + persona mock da sessão | `localStorage` (`dg-brasil:demo`), só dados fictícios; a sessão **não** é persistida (v9) |
 | `store/ui-store.ts` | Toasts e tour guiado | memória |
 
 - As ações ficam em `store/slices/*`, agrupadas por domínio. Elas concentram as regras

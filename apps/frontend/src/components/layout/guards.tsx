@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ShieldAlert } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
-import { useIsAuthenticated, useIsPartner, usePermission } from "@/features/auth/hooks";
+import { useIsPartner, usePermission } from "@/features/auth/hooks";
 import { useHydrated, useRehydrateOnMount } from "@/store/hydration";
 import { Skeleton } from "@/components/feedback/states";
 import { buttonClasses } from "@/components/ui/button";
@@ -37,25 +36,10 @@ export function HydrationGate({ children, fallback = <ShellSkeleton /> }: { chil
 }
 
 /**
- * Guard da área autenticada (simulado). Sem sessão → /login.
- * Não há implantação de escritório: o escritório proprietário é único.
- */
-export function AuthGuard({ children }: { children: ReactNode }) {
-  const router = useRouter();
-  const isAuthenticated = useIsAuthenticated();
-
-  useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
-  }, [isAuthenticated, router]);
-
-  if (!isAuthenticated) return <ShellSkeleton />;
-  return <>{children}</>;
-}
-
-/**
- * Autorização de rota/trecho. Sem permissão, o conteúdo protegido NÃO é
- * renderizado (não é escondido por CSS). No backend, a mesma regra valerá
- * no servidor.
+ * Versão CLIENTE, para trechos dentro de componentes cliente. Sem permissão,
+ * o conteúdo NÃO é renderizado (não é escondido por CSS). Páginas usam a
+ * versão de servidor (./server-guards.tsx); a autorização real é do servidor
+ * e da RLS.
  */
 export function RequirePermission({ permission, children, fallback }: { permission: Permission; children: ReactNode; fallback?: ReactNode }) {
   const allowed = usePermission(permission);

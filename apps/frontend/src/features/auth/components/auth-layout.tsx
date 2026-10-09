@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import { Wordmark } from "@/components/layout/wordmark";
 
+/** Rodapé: acesso real; módulos jurídicos ainda com dados fictícios até a Etapa 4.3. */
+const FOOTNOTE = "Acesso restrito por convite. Dados jurídicos de demonstração (fictícios).";
+
 const FACTS = [
   "Clientes, documentos, processos e prazos em um único ambiente.",
   "Agentes executam tarefas; toda decisão jurídica passa por revisão humana.",
@@ -25,7 +28,7 @@ export function AuthLayout({ title, description, children }: { title: string; de
             ))}
           </ul>
         </div>
-        <p className="text-[12px] text-white/50">Ambiente de demonstração — dados fictícios.</p>
+        <p className="text-[12px] text-white/50">{FOOTNOTE}</p>
       </aside>
 
       <main className="flex flex-col px-6 py-10 sm:px-12">
@@ -37,13 +40,13 @@ export function AuthLayout({ title, description, children }: { title: string; de
           {description && <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted">{description}</p>}
           <div className="mt-8">{children}</div>
         </div>
-        <p className="mt-10 text-center text-[11.5px] text-subtle lg:hidden">Ambiente de demonstração — dados fictícios.</p>
+        <p className="mt-10 text-center text-[11.5px] text-subtle lg:hidden">{FOOTNOTE}</p>
       </main>
     </div>
   );
 }
 
-/** Fallback enquanto o estado local é carregado. */
+/** Fallback enquanto a tela carrega. */
 export function AuthLoading() {
   return (
     <AuthLayout title="Carregando…">

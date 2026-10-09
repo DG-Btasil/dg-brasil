@@ -34,6 +34,14 @@ Supabase Auth.
 └──────────────────────────────────────────────────────────┘
 ```
 
+## Identidade e acesso (Etapa 4.1)
+
+Supabase Auth (convite, senha, MFA TOTP obrigatório). O proxy do Next só renova a
+sessão; quem decide é o servidor (`getCurrentSession` lê papel, vínculo, escritório e
+termos do banco a cada requisição) e, por baixo, a RLS — que desde a migration 022
+exige sessão `aal2`. O navegador nunca é fonte de papel. Detalhes em
+[docs/auth.md](docs/auth.md).
+
 ## A decisão que define o sistema: agente propõe, humano confirma
 
 Nenhum agente escreve direto no que é irreversível — petição protocolada,

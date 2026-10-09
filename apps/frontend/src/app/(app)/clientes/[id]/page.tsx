@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { AudienceSwitch, PageContainer, RequirePermission } from "@/components/layout/guards";
+import { PageContainer } from "@/components/layout/guards";
+import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
 import { SkeletonRows } from "@/components/feedback/states";
 import { ClientDetail } from "@/features/clients/components/detail/client-detail";
 import { PortalClientDetail } from "@/features/partner-portal/components/portal-clients";

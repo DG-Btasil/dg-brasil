@@ -1,4 +1,4 @@
-import { RequirePermission } from "@/components/layout/guards";
+import { RequirePermission } from "@/components/layout/server-guards";
 import { SettingsPage } from "@/features/settings/components/settings-page";
 
 export default function ConfiguracoesPage() {

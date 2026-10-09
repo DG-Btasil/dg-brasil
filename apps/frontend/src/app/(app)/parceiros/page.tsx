@@ -1,4 +1,4 @@
-import { RequirePermission } from "@/components/layout/guards";
+import { RequirePermission } from "@/components/layout/server-guards";
 import { PartnerList } from "@/features/partners/components/partner-list";
 
 export default function PartnersPage() {

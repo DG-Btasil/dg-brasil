@@ -1,4 +1,4 @@
-import { RequirePermission } from "@/components/layout/guards";
+import { RequirePermission } from "@/components/layout/server-guards";
 import { PortalPending } from "@/features/partner-portal/components/portal-pending";
 
 export default function PendingPage() {

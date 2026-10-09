@@ -102,6 +102,7 @@ export const OWNER_PERMISSIONS = [
   "settings.security.view",
   "settings.notifications.edit",
   "audit.view",
+  // Ferramentas da demonstração (mocks): só ADMIN, até a 4.3 trocar os mocks.
   "demo.tools",
 ] as const;
 
@@ -133,7 +134,6 @@ const PARTNER_BASE: readonly Permission[] = [
   "partnerPortal.processes.create",
   "partnerPortal.documents.submit",
   "partnerPortal.requests.respond",
-  "demo.tools",
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
@@ -157,7 +157,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "settings.view",
     "settings.integrations.view",
     "settings.notifications.edit",
-    "demo.tools",
   ],
   ASSISTANT: [
     "home.view",
@@ -169,7 +168,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "processes.view",
     "processes.caseValue.view",
     "partnerRequests.manage",
-    "demo.tools",
   ],
   PARTNER_ADMIN: [...PARTNER_BASE, "partnerPortal.finance.view", "partnerPortal.users.manage"],
   PARTNER_USER: PARTNER_BASE,

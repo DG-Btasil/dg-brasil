@@ -1,4 +1,5 @@
-import { AudienceSwitch, PageContainer, RequirePermission } from "@/components/layout/guards";
+import { PageContainer } from "@/components/layout/guards";
+import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
 import { ClientCreate } from "@/features/clients/components/form/client-create";
 import { NewCaseWizard } from "@/features/partner-portal/components/new-case-wizard";
 

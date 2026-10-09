@@ -22,7 +22,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import pg from 'pg'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { readdir } from 'node:fs/promises'
 
 // ═════════════════════════════ guarda ════════════════════════════════════
@@ -186,16 +186,84 @@ await deveOuPara('vínculos: ADMIN (bootstrap ou direto), internos e parceiros A
   }
 })
 
-secao('7. Sessões e JWT reais')
+// TOTP (RFC 6238, SHA-1, 30 s, 6 dígitos) para os usuários fictícios. O
+// segredo só existe em memória durante a rodada.
+function base32(s) {
+  const alfabeto = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  let bits = 0, valor = 0
+  const out = []
+  for (const c of s.replace(/=+$/, '').toUpperCase()) {
+    valor = (valor << 5) | alfabeto.indexOf(c); bits += 5
+    if (bits >= 8) { out.push((valor >>> (bits - 8)) & 255); bits -= 8 }
+  }
+  return Buffer.from(out)
+}
+function totp(segredo, agora = Date.now()) {
+  const contador = Buffer.alloc(8)
+  contador.writeBigUInt64BE(BigInt(Math.floor(agora / 30000)))
+  const h = createHmac('sha1', base32(segredo)).update(contador).digest()
+  const o = h[h.length - 1] & 15
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0')
+}
+// Login completo como a aplicação faz: senha (aal1) → TOTP (aal2).
+async function entrarComMfa(cliente, email, pass) {
+  await r(cliente.auth.signInWithPassword({ email, password: pass }))
+  const fator = await r(cliente.auth.mfa.enroll({ factorType: 'totp', friendlyName: `dg-${RODADA}-${randomUUID().slice(0, 6)}` }))
+  await r(cliente.auth.mfa.challengeAndVerify({ factorId: fator.id, code: totp(fator.totp.secret) }))
+  const aal = await r(cliente.auth.mfa.getAuthenticatorAssuranceLevel())
+  if (aal.currentLevel !== 'aal2') throw new Error(`aal ${aal.currentLevel}`)
+}
+
+secao('7. Sessões e JWT reais (senha + MFA/TOTP)')
 const C = {}
+await deve('sessão só com senha (aal1) não lê dado de domínio pela API [022]', async () => {
+  const c = novoCliente()
+  await r(c.auth.signInWithPassword({ email: U.LAWYER.email, password: U.LAWYER.pass }))
+  igual((await r(c.from('organizations').select('id'))).length, 0, 'organizações em aal1')
+  const ctx = await r(c.rpc('get_my_session_context'))
+  igual([ctx.user_id, ctx.aal, ctx.membership.role], [U.LAWYER.id, 'aal1', 'LAWYER'], 'contexto antes do MFA')
+  const { error } = await c.rpc('get_agent_run_summaries', {})
+  if (!error || !/duas etapas/.test(error.message)) throw new Error(`RPC em aal1: ${error?.message ?? 'aceita'}`)
+})
 for (const p of papeis) {
-  await deve(`login real de ${p}`, async () => {
+  await deve(`login real de ${p} com MFA (aal2)`, async () => {
     C[p] = novoCliente()
-    const s = await r(C[p].auth.signInWithPassword({ email: U[p].email, password: U[p].pass }))
-    if (!s.session?.access_token) throw new Error('sem JWT')
+    await entrarComMfa(C[p], U[p].email, U[p].pass)
   })
 }
 const anon = novoCliente()
+
+secao('4.1. Convite, aceite e papel no Supabase real [022]')
+const sha256 = (t) => createHash('sha256').update(t).digest('hex')
+await deve('ADMIN convida; link real do Auth; convidado aceita (idempotente) e define senha', async () => {
+  const email = `${RODADA}.convidado@dgbrasil.test`, token = randomUUID()
+  const conv = await r(C.ADMIN.rpc('create_invitation', { p_email: email, p_full_name: 'Convidado Teste', p_role: 'ASSISTANT', p_organization_id: null, p_token_hash: sha256(token) }))
+  igual([conv.organization_id, conv.existing_auth_user], [ids.owner, false], 'convite')
+  const link = await r(service.auth.admin.generateLink({ type: 'invite', email }))
+  const c = novoCliente()
+  await r(c.auth.verifyOtp({ type: 'invite', token_hash: link.properties.hashed_token }))
+  const a1 = await r(c.rpc('accept_invitation', { p_token_hash: sha256(token) }))
+  const a2 = await r(c.rpc('accept_invitation', { p_token_hash: sha256(token) }))
+  igual([a1.status, a2.status], ['ACCEPTED', 'ALREADY_ACCEPTED'], 'aceites')
+  await r(c.auth.updateUser({ password: senha() + 'Aa1!' }))
+  const n = await um(`select count(*)::int n from organization_memberships m join auth.users u on u.id = m.user_id where lower(u.email) = $1`, [email])
+  igual(n.n, 1, 'um vínculo')
+})
+await deveFalhar('PARTNER_ADMIN A não convida para o parceiro B (IDOR, API real)', () =>
+  r(C.PARTNER_ADMIN_A.rpc('create_invitation', { p_email: `${RODADA}.x@dgbrasil.test`, p_full_name: 'X', p_role: 'PARTNER_USER', p_organization_id: ids.pB, p_token_hash: sha256(randomUUID()) })),
+  /próprio escritório/)
+await deve('equipe com e-mail e situação de MFA (leitura de auth.users/auth.mfa_factors no Supabase real)', async () => {
+  const t = await r(C.ADMIN.rpc('get_team_members', {}))
+  const lawyer = t.find((x) => x.user_id === U.LAWYER.id)
+  igual([lawyer?.email, lawyer?.mfa_enabled], [U.LAWYER.email, true], 'LAWYER na equipe')
+})
+await deve('troca de papel tem efeito imediato na sessão já aberta (LAWYER_2 → ASSISTANT → LAWYER)', async () => {
+  const m = (await um(`select id from organization_memberships where user_id = $1`, [U.LAWYER_2.id])).id
+  await r(C.ADMIN.rpc('set_membership_role', { p_membership_id: m, p_role: 'ASSISTANT' }))
+  const { error } = await C.LAWYER_2.rpc('get_agent_run_summaries', {})
+  if (!error || !/só a ADMIN e LAWYER/.test(error.message)) throw new Error(`sem efeito: ${error?.message ?? 'aceito'}`)
+  await r(C.ADMIN.rpc('set_membership_role', { p_membership_id: m, p_role: 'LAWYER' }))
+})
 
 // ═════════════════════════════ cenário fictício ══════════════════════════
 

@@ -4,17 +4,35 @@ import { useCallback, useMemo } from "react";
 import { audienceOf, can, type Audience, type Permission } from "@/lib/permissions";
 import { useAppStore } from "@/store/app-store";
 import { useScopedStore } from "@/store/scope";
-import type { ID, Invitation, PartnerOffice, Role, User } from "@/types";
+import type { ID, PartnerOffice, Role, User } from "@/types";
+import { useClientSession } from "./session-context";
 
-/** Usuário logado (simulado). */
+/**
+ * Usuário logado. Identidade (nome, e-mail, papel) vem da sessão REAL
+ * validada no servidor; o `id` ainda é o da persona mock do mesmo papel,
+ * para os módulos jurídicos de demonstração (até a Etapa 4.3).
+ */
 export function useCurrentUser(): User | undefined {
+  const session = useClientSession();
   const users = useScopedStore((s) => s.users);
   const currentUserId = useAppStore((s) => s.session.currentUserId);
-  return users.find((u) => u.id === currentUserId);
+  return useMemo(() => {
+    const persona = users.find((u) => u.id === currentUserId);
+    if (!persona || !session) return undefined;
+    return {
+      ...persona,
+      name: session.fullName,
+      displayName: session.displayName,
+      email: session.email,
+      role: session.role,
+      title: session.jobTitle ?? persona.title,
+    };
+  }, [users, currentUserId, session]);
 }
 
+/** Papel REAL (servidor). Nunca o da persona nem de algo salvo no navegador. */
 export function useRole(): Role | undefined {
-  return useCurrentUser()?.role;
+  return useClientSession()?.role;
 }
 
 /**
@@ -31,7 +49,7 @@ export function useIsPartner(): boolean {
   return useAudience() === "PARTNER";
 }
 
-/** Escritório parceiro da sessão (currentPartnerOfficeId). Ausente para a equipe interna. */
+/** Escritório parceiro (mock) da sessão, para o recorte dos dados de demonstração. */
 export function useCurrentPartnerOfficeId(): ID | undefined {
   const user = useCurrentUser();
   return audienceOf(user?.role) === "PARTNER" ? user?.partnerOfficeId : undefined;
@@ -44,6 +62,7 @@ export function useCurrentPartnerOffice(): PartnerOffice | undefined {
   return useMemo(() => (id ? offices.find((o) => o.id === id) : undefined), [offices, id]);
 }
 
+/** Só decide o que RENDERIZAR. A autorização de verdade é do servidor e da RLS. */
 export function usePermission(permission: Permission): boolean {
   return can(useRole(), permission);
 }
@@ -54,63 +73,9 @@ export function useCan(): (permission: Permission) => boolean {
   return useCallback((permission: Permission) => can(role, permission), [role]);
 }
 
-export function useIsAuthenticated(): boolean {
-  return useAppStore((s) => s.session.isAuthenticated);
-}
-
-/** Ações de sessão e ferramentas de demonstração. */
+/** Ferramentas da demonstração (dados mock). Login/logout são do Supabase Auth. */
 export function useSessionActions() {
-  const login = useAppStore((s) => s.login);
-  const logout = useAppStore((s) => s.logout);
-  const simulateRole = useAppStore((s) => s.simulateRole);
   const resetDemo = useAppStore((s) => s.resetDemo);
   const completeTour = useAppStore((s) => s.completeTour);
-  return { login, logout, simulateRole, resetDemo, completeTour };
-}
-
-/* ------------------------------------------------------------------ */
-/* Telas públicas (antes do login)                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * Contas de demonstração exibidas na tela de login. Ferramenta do
- * protótipo: lê a base sem recorte, pois ainda não há sessão.
- */
-export function useDemoAccounts(): User[] {
-  const users = useAppStore((s) => s.users);
-  const partners = useAppStore((s) => s.partnerOffices);
-  return useMemo(() => {
-    const active = new Set(partners.filter((p) => p.status === "ACTIVE").map((p) => p.id));
-    return users.filter((u) => u.status === "ACTIVE" && (!u.partnerOfficeId || active.has(u.partnerOfficeId)));
-  }, [users, partners]);
-}
-
-export type InvitationLookup =
-  | { state: "valid"; invitation: Invitation; officeName: string; inviterName: string; partnerOfficeName?: string }
-  | { state: "used"; invitation: Invitation }
-  | { state: "invalid" };
-
-/**
- * Localiza um convite pelo token. Equivale a um endpoint público que
- * responde só pelo token (não depende de sessão), por isso lê sem recorte.
- */
-export function useInvitationLookup(token: string): InvitationLookup {
-  const invitations = useAppStore((s) => s.invitations);
-  const users = useAppStore((s) => s.users);
-  const office = useAppStore((s) => s.office);
-  const partners = useAppStore((s) => s.partnerOffices);
-  return useMemo(() => {
-    const invitation = invitations.find((i) => i.token === token);
-    if (!invitation) return { state: "invalid" };
-    if (invitation.acceptedAt) return { state: "used", invitation };
-    const inviter = users.find((u) => u.id === invitation.invitedBy);
-    const partner = invitation.partnerOfficeId ? partners.find((p) => p.id === invitation.partnerOfficeId) : undefined;
-    return {
-      state: "valid",
-      invitation,
-      officeName: office.name,
-      inviterName: inviter?.name ?? "A administração do escritório",
-      partnerOfficeName: partner?.name,
-    };
-  }, [invitations, users, office.name, partners, token]);
+  return { resetDemo, completeTour };
 }

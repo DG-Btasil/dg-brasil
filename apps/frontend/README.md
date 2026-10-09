@@ -4,10 +4,11 @@ SaaS jurídico em que **agentes de IA executam e o escritório decide**. Agentes
 documentos, preparam minutas e acompanham processos; toda decisão relevante e toda
 ação externa passam por **revisão humana**.
 
-Esta pasta é a **fundação do front-end**: navegável, funcional e com dados fictícios.
-Não há backend, banco, autenticação real, integração processual nem chamada à Claude
-nesta etapa. A arquitetura foi desenhada para trocar os mocks por API sem reescrever
-a interface.
+Esta pasta é o front-end. **Identidade é real** (Supabase Auth: convite, senha, MFA
+obrigatório, termos, papéis lidos do banco a cada requisição — ver
+[docs/auth.md](../../docs/auth.md)). Os **módulos jurídicos ainda usam dados fictícios**
+(mocks no navegador), recortados pelo papel real, até a Etapa 4.3. Não há integração
+processual nem chamada à Claude a partir do front.
 
 > **IA executa. Humano decide.**
 
@@ -17,17 +18,22 @@ Requer Node.js 20.9+ (desenvolvido com Node 24).
 
 ```bash
 cd apps/frontend
+cp .env.example .env.local   # Supabase de DESENVOLVIMENTO (URL, anon, service role)
 npm install
 npm run dev          # http://localhost:3000
 ```
+
+Sem `.env.local` as páginas autenticadas não sobem. O primeiro ADMIN (fictício) e a
+configuração do Supabase Auth estão em [docs/auth.md](../../docs/auth.md).
 
 | Script | O que faz |
 |---|---|
 | `npm run dev` | Servidor de desenvolvimento (Turbopack) |
 | `npm run lint` | ESLint (flat config do Next 16) |
 | `npm run typecheck` | Gera os tipos de rota (`next typegen`) e roda `tsc --noEmit` |
+| `npm test` | Testes unitários (vitest): permissões, sessão, redirects, senha |
 | `npm run build` | Build de produção |
-| `npm run check` | lint + typecheck + build |
+| `npm run check` | lint + typecheck + test + build |
 
 ## Stack
 
@@ -35,13 +41,14 @@ Next.js 16 (App Router, Turbopack) · React 19 · TypeScript estrito · Tailwind
 Zustand (estado + `localStorage` só para os mocks) · React Hook Form + Zod · Radix UI
 (Dialog, Tooltip) com identidade visual própria · Recharts · Lucide.
 
-## Usuários e papéis de demonstração
+## Papéis e dados de demonstração
 
-A sessão é simulada. No menu do avatar, **Simular perfil** troca o papel na hora e a
-interface reflete as permissões. **Restaurar dados de demonstração** volta ao estado
-inicial.
+Login, papel e escritório são **reais** (não há mais "Simular perfil"). Para os módulos
+que ainda são mock, a sessão real é associada à persona fictícia **do mesmo papel**
+(tabela abaixo), só para recortar os dados de demonstração; quem decide permissão é o
+papel real. O ADMIN tem **Restaurar dados de demonstração** no menu do avatar.
 
-| Papel | Usuário fictício | Acessa |
+| Papel | Persona mock | Acessa |
 |---|---|---|
 | Administrador | Bárbara Cardoso — `barbara@barbaracardoso.exemplo` | Tudo, inclusive Financeiro, DG Brasil (Referências) e alteração de origem de caso aceito |
 | Advogado | Cláudio — `claudio@barbaracardoso.exemplo` | Home, Clientes, Casos (aceite/rejeição), Processos, Revisões |
@@ -49,18 +56,18 @@ inicial.
 | Administrador do parceiro | Almeida Advocacia | Portal: Início, Clientes, Casos, Processos, Pendências, Financeiro |
 | Usuário do parceiro | Almeida Advocacia | Portal sem valores de parceria |
 
-Na tela de login, a senha não é verificada (protótipo). O convite de demonstração
-fica em `/convite/demo-convite`.
+Um usuário de parceiro real é associado ao escritório mock de mesmo nome, ou ao
+Almeida Advocacia.
 
 ## Roteiro sugerido para avaliar
 
-1. Entrar como **Administrador** → Home (casos ativos, aguardando análise, novos casos de parceiros)
+1. Entrar como **Administrador** (conta real fictícia do Supabase DEV) → Home (casos ativos, aguardando análise, novos casos de parceiros)
 2. Casos → **Novo caso** (cliente, área, tipo, origem, documentos) → *Enviar para análise*
 3. No caso: *Iniciar análise* → *Simular conclusão do agente* → revisão em Revisões
 4. *Aceitar* → modal "Definir advogado responsável" → caso aceito (origem parceiro cria o acordo de parceria)
 5. Aba Processos → *Cadastrar processo* (um caso pode ter vários processos)
 6. Caso de parceiro → *Rejeitar* com "Comunicação ao parceiro" e "Nota interna"
-7. Entrar como **Administrador do parceiro** → Casos → ver "Não aceito" com o motivo público; *Novo caso* → *Confirmar e enviar para Bárbara Cardoso Advocacia*
+7. Entrar com uma conta **Administrador do parceiro** → Casos → ver "Não aceito" com o motivo público; *Novo caso* → *Confirmar e enviar para Bárbara Cardoso Advocacia*
 8. DG Brasil → Referências → *Adicionar referência*
 
 ## Estrutura
@@ -112,8 +119,8 @@ assíncronos. Hoje a implementação é `repositories/mock`; o backend entra imp
 
 ## Limitações do protótipo
 
-- Sessão, permissões e isolamento por escritório são simulados no navegador. Esconder
-  interface **não** é autorização: o RBAC precisa existir no servidor.
+- Identidade e acesso são reais (servidor + RLS). Os **dados** jurídicos ainda são mock
+  no navegador: o isolamento por escritório desses dados é simulado até a Etapa 4.3.
 - Upload de documentos registra só metadados; nenhum arquivo é enviado.
 - Os agentes não rodam: a conclusão de uma análise é disparada explicitamente por um
   botão de demonstração, sem timers fingindo processamento.

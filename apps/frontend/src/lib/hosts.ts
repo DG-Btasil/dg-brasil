@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import type { Audience } from "@/lib/permissions";
 
 /**
@@ -20,15 +19,4 @@ export function audienceForHost(hostname: string | undefined): Audience | undefi
   if (host === HOSTS.PARTNER || host.startsWith("portal.")) return "PARTNER";
   if (host === HOSTS.OWNER || host.startsWith("app.")) return "OWNER";
   return undefined;
-}
-
-const noop = () => () => {};
-
-/** Público do host atual (cliente). No servidor: undefined. */
-export function useHostAudience(): Audience | undefined {
-  return useSyncExternalStore(
-    noop,
-    () => audienceForHost(window.location.hostname),
-    () => undefined,
-  );
 }

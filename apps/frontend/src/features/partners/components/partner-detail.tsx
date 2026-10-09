@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Handshake, MailPlus, MessageSquarePlus, Pencil, Percent, SearchX } from "lucide-react";
+import { Handshake, MessageSquarePlus, Pencil, Percent, SearchX } from "lucide-react";
 import {
   CLIENT_KIND_SHORT,
   CLIENT_STATUS_LABEL,
@@ -17,7 +17,7 @@ import {
   type PartnerOfficeStatus,
 } from "@/lib/constants/status";
 import { formatCurrency, formatDate, formatEventTime, formatPhone } from "@/lib/formatting";
-import { PARTNER_ROLES, ROLE_LABEL, type PartnerRole } from "@/lib/permissions";
+import { ROLE_LABEL } from "@/lib/permissions";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import { Can, PageContainer } from "@/components/layout/guards";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -27,8 +27,8 @@ import { Select } from "@/components/ui/form";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
-import { EmptyState } from "@/components/feedback/states";
-import { useCan, useCurrentUser } from "@/features/auth/hooks";
+import { Callout, EmptyState } from "@/components/feedback/states";
+import { useCan } from "@/features/auth/hooks";
 import { useClientMap } from "@/features/processes/hooks";
 import { clientDisplayName } from "@/features/processes/utils";
 import { maskClientDocument } from "@/features/clients/utils";
@@ -48,7 +48,7 @@ import {
 import { useCaseMap, useCaseRows } from "@/features/cases/hooks";
 import { CaseTable } from "@/features/cases/components/case-table";
 import { PartnershipAgreementsTable } from "./agreements-table";
-import { ChangeShareDialog, InvitePartnerUserDialog, NewPartnerRequestDialog } from "./partner-dialogs";
+import { ChangeShareDialog, NewPartnerRequestDialog } from "./partner-dialogs";
 import { PartnerEditDrawer } from "./partner-form";
 import { PartnerRequestList } from "./request-list";
 
@@ -56,7 +56,6 @@ const TAB_KEYS = ["visao-geral", "usuarios", "clientes", "casos", "processos", "
 type TabKey = (typeof TAB_KEYS)[number];
 
 const STATUS_OPTIONS = PARTNER_OFFICE_STATUSES.map((s) => ({ value: s, label: PARTNER_OFFICE_STATUS_LABEL[s] }));
-const ROLE_OPTIONS = PARTNER_ROLES.map((r) => ({ value: r, label: ROLE_LABEL[r] }));
 
 /** Detalhe do escritório parceiro (ambiente interno). */
 export function PartnerDetail({ id }: { id: string }) {
@@ -138,7 +137,7 @@ export function PartnerDetail({ id }: { id: string }) {
         {active === "visao-geral" && (
           <OverviewTab partnerId={id} openRequests={openRequests.length} onShare={() => setDialog("share")} clientCount={clients.length} processCount={processes.length} />
         )}
-        {active === "usuarios" && <PartnerUsersPanel partnerId={id} onInvite={() => setDialog("invite")} />}
+        {active === "usuarios" && <PartnerUsersPanel partnerId={id} />}
         {active === "clientes" && <ClientsTab partnerId={id} />}
         {active === "casos" && <CasesTab partnerId={id} />}
         {active === "processos" && <ProcessesTab partnerId={id} />}
@@ -148,7 +147,6 @@ export function PartnerDetail({ id }: { id: string }) {
 
       {dialog === "edit" && <PartnerEditDrawer partner={partner} open onOpenChange={(o) => !o && setDialog(null)} />}
       {dialog === "share" && <ChangeShareDialog partner={partner} open onOpenChange={(o) => !o && setDialog(null)} />}
-      {dialog === "invite" && <InvitePartnerUserDialog partnerOfficeId={id} open onOpenChange={(o) => !o && setDialog(null)} />}
       {dialog === "request" && (
         <NewPartnerRequestDialog
           partnerOfficeId={id}
@@ -280,26 +278,21 @@ function OverviewTab({
 
 /* ------------------------------------------------------------------ */
 
-/** Usuários de um escritório parceiro (interno e "Minha Conta" do Partner Admin). */
-export function PartnerUsersPanel({ partnerId, onInvite }: { partnerId: string; onInvite: () => void }) {
+/**
+ * Usuários (DEMONSTRAÇÃO) de um escritório parceiro mock. Somente leitura:
+ * convites, papéis e bloqueios REAIS ficam em Configurações → Equipe
+ * (ADMIN, escolhendo o escritório) e em Minha Conta (administrador do parceiro).
+ */
+export function PartnerUsersPanel({ partnerId }: { partnerId: string }) {
   const users = usePartnerUsers(partnerId);
-  const actions = usePartnerActions();
-  const can = useCan();
-  const me = useCurrentUser();
-  const manage = can("partners.manage") || can("partnerPortal.users.manage");
   return (
     <Panel>
-      <PanelHeader
-        title="Usuários do parceiro"
-        description="Administrador do parceiro vê a participação financeira; usuário do parceiro não."
-        actions={
-          manage && (
-            <Button size="sm" icon={<MailPlus className="size-3.5" aria-hidden />} onClick={onInvite}>
-              Convidar
-            </Button>
-          )
-        }
-      />
+      <PanelHeader title="Usuários do parceiro" description="Administrador do parceiro vê a participação financeira; usuário do parceiro não." />
+      <div className="px-5 pt-4">
+        <Callout tone="info" title="Lista de demonstração.">
+          Os usuários reais dos escritórios parceiros são convidados e gerenciados em Configurações → Equipe, escolhendo o escritório.
+        </Callout>
+      </div>
       {users.length === 0 ? (
         <EmptyState compact title="Nenhum usuário." />
       ) : (
@@ -310,52 +303,27 @@ export function PartnerUsersPanel({ partnerId, onInvite }: { partnerId: string; 
               <Th>Papel</Th>
               <Th>Situação</Th>
               <Th>Último acesso</Th>
-              <Th>
-                <span className="sr-only">Ações</span>
-              </Th>
             </tr>
           </THead>
           <TBody>
-            {users.map((u) => {
-              const self = u.id === me?.id;
-              return (
-                <Tr key={u.id}>
-                  <Td>
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={u.name} size="sm" tone="neutral" />
-                      <div>
-                        <div className="font-medium text-foreground">{u.name}</div>
-                        <div className="text-[12px] text-muted">{u.email}</div>
-                      </div>
+            {users.map((u) => (
+              <Tr key={u.id}>
+                <Td>
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={u.name} size="sm" tone="neutral" />
+                    <div>
+                      <div className="font-medium text-foreground">{u.name}</div>
+                      <div className="text-[12px] text-muted">{u.email}</div>
                     </div>
-                  </Td>
-                  <Td className="w-[240px]">
-                    {manage && !self ? (
-                      <Select
-                        aria-label={`Papel de ${u.name}`}
-                        value={u.role}
-                        options={ROLE_OPTIONS}
-                        onChange={(e) => void actions.changeUserRole(u.id, e.target.value as PartnerRole)}
-                        className="h-8 text-[12.5px]"
-                      />
-                    ) : (
-                      <span className="text-[12.5px]">{ROLE_LABEL[u.role]}</span>
-                    )}
-                  </Td>
-                  <Td>
-                    <StatusBadge status={u.status} labels={USER_STATUS_LABEL} tones={USER_STATUS_TONE} />
-                  </Td>
-                  <Td className="text-[12px] text-muted">{u.lastAccessAt ? formatEventTime(u.lastAccessAt) : "—"}</Td>
-                  <Td className="text-right">
-                    {manage && !self && u.status !== "INVITED" && (
-                      <Button size="sm" variant={u.status === "DISABLED" ? "secondary" : "ghost"} onClick={() => void actions.setUserStatus(u.id, u.status === "DISABLED" ? "ACTIVE" : "DISABLED")}>
-                        {u.status === "DISABLED" ? "Reativar" : "Inativar"}
-                      </Button>
-                    )}
-                  </Td>
-                </Tr>
-              );
-            })}
+                  </div>
+                </Td>
+                <Td className="text-[12.5px]">{ROLE_LABEL[u.role]}</Td>
+                <Td>
+                  <StatusBadge status={u.status} labels={USER_STATUS_LABEL} tones={USER_STATUS_TONE} />
+                </Td>
+                <Td className="text-[12px] text-muted">{u.lastAccessAt ? formatEventTime(u.lastAccessAt) : "—"}</Td>
+              </Tr>
+            ))}
           </TBody>
         </Table>
       )}

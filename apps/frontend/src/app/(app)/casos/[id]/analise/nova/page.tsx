@@ -1,4 +1,5 @@
-import { PageContainer, RequirePermission } from "@/components/layout/guards";
+import { PageContainer } from "@/components/layout/guards";
+import { RequirePermission } from "@/components/layout/server-guards";
 import { AnalysisWizard } from "@/features/analyses/components/wizard/analysis-wizard";
 
 export default async function NewCaseAnalysisPage({ params }: PageProps<"/casos/[id]/analise/nova">) {

@@ -365,10 +365,8 @@ export interface SkillChangeProposal {
 /* ------------------------------------------------------------------ */
 
 export interface SessionActions {
-  login: (email: string) => boolean;
-  logout: () => void;
-  /** Simula um papel. Para papéis de parceiro, `partnerOfficeId` escolhe o escritório. */
-  simulateRole: (role: Role, partnerOfficeId?: ID) => void;
+  /** Associa a sessão real (Supabase) à persona mock do mesmo papel. Ver demoPersonaId. */
+  bindDemoPersona: (userId: ID) => void;
   completeTour: (userId: ID) => void;
   resetDemo: () => void;
 }

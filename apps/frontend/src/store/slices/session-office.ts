@@ -4,9 +4,15 @@ import { isPartnerRole, ROLE_LABEL } from "@/lib/permissions";
 import { createId } from "@/lib/ids";
 import type { Role } from "@/types";
 import { auditEvent, currentUser, updateById, type GetState, type SetState } from "../helpers";
-import type { OfficeActions, SessionActions } from "../types";
+import type { AppState, OfficeActions, SessionActions } from "../types";
 
-/** Usuário de demonstração assumido em cada papel ao "simular perfil". */
+/**
+ * PONTE TEMPORÁRIA (até a Etapa 4.3): a identidade e o papel vêm do Supabase
+ * Auth, validados no servidor. Os módulos jurídicos ainda leem dados mock;
+ * para recortá-los, a sessão real é associada a uma "persona" de demonstração
+ * DO MESMO PAPEL. A persona nunca decide permissão (quem decide é o papel
+ * real) e não é persistida no navegador.
+ */
 export const DEMO_USER_BY_ROLE: Record<Role, string> = {
   ADMIN: MOCK_USER_IDS.barbara,
   LAWYER: MOCK_USER_IDS.claudio,
@@ -15,41 +21,28 @@ export const DEMO_USER_BY_ROLE: Record<Role, string> = {
   PARTNER_USER: MOCK_PARTNER_USER_IDS.carla,
 };
 
-/** Escritório parceiro padrão da simulação (Almeida Advocacia). */
+/** Escritório parceiro mock usado quando o nome real não tem correspondente. */
 export const DEMO_PARTNER_OFFICE_ID = MOCK_PARTNER_OFFICE_IDS.almeida;
 
+/** Sem sessão até o AuthProvider associar a persona do papel real. */
 export function initialSession() {
-  return { isAuthenticated: true, currentUserId: DEMO_USER_BY_ROLE.ADMIN };
+  return { isAuthenticated: false, currentUserId: "" };
+}
+
+/** Persona mock para o papel real (parceiro: escritório mock de mesmo nome, se houver). */
+export function demoPersonaId(state: Pick<AppState, "users" | "partnerOffices">, role: Role, organizationName?: string): string {
+  if (!isPartnerRole(role)) return DEMO_USER_BY_ROLE[role];
+  const name = organizationName?.trim().toLowerCase();
+  const officeId = state.partnerOffices.find((p) => p.name.trim().toLowerCase() === name)?.id ?? DEMO_PARTNER_OFFICE_ID;
+  const match =
+    state.users.find((u) => u.partnerOfficeId === officeId && u.role === role && u.status === "ACTIVE") ??
+    state.users.find((u) => u.partnerOfficeId === officeId && u.role === role);
+  return match?.id ?? DEMO_USER_BY_ROLE[role];
 }
 
 export function createSessionSlice(set: SetState, get: GetState): SessionActions {
   return {
-    login: (email) => {
-      const s = get();
-      const user = s.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.status === "ACTIVE");
-      if (!user) return false;
-      // Usuário de parceiro só entra com a parceria ativa.
-      if (user.partnerOfficeId && s.partnerOffices.find((p) => p.id === user.partnerOfficeId)?.status !== "ACTIVE") return false;
-      set({
-        session: { isAuthenticated: true, currentUserId: user.id },
-        users: updateById(get().users, user.id, (u) => ({ ...u, lastAccessAt: nowISO() })),
-      });
-      return true;
-    },
-    logout: () => set((s) => ({ session: { ...s.session, isAuthenticated: false } })),
-    simulateRole: (role, partnerOfficeId) =>
-      set((s) => {
-        let userId = DEMO_USER_BY_ROLE[role];
-        if (isPartnerRole(role)) {
-          // O escritório simulado define o escopo (currentPartnerOfficeId = partnerOfficeId do usuário).
-          const officeId = partnerOfficeId ?? DEMO_PARTNER_OFFICE_ID;
-          const match =
-            s.users.find((u) => u.partnerOfficeId === officeId && u.role === role && u.status === "ACTIVE") ??
-            s.users.find((u) => u.partnerOfficeId === officeId && u.role === role);
-          if (match) userId = match.id;
-        }
-        return { session: { ...s.session, isAuthenticated: true, currentUserId: userId } };
-      }),
+    bindDemoPersona: (userId) => set({ session: { isAuthenticated: true, currentUserId: userId } }),
     completeTour: (userId) =>
       set((s) => ({ users: updateById(s.users, userId, (u) => ({ ...u, hasCompletedTour: true })) })),
     resetDemo: () => {
@@ -114,7 +107,6 @@ export function createOfficeSlice(set: SetState, get: GetState): OfficeActions {
               p.status === "PENDING_INVITE" ? { ...p, status: "ACTIVE" as const, activatedAt: nowISO(), updatedAt: nowISO() } : p,
             )
           : s.partnerOffices,
-        session: { isAuthenticated: true, currentUserId: user.id },
       });
       return true;
     },

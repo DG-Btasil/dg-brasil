@@ -1,0 +1,17 @@
+<!-- DG Brasil — recuperação de senha (e convite para quem já tem conta no Auth).
+     O link usa token_hash; {{ .RedirectTo }} já traz "?fluxo=..." e PRECISA estar nas Redirect URLs. -->
+<div style="font-family: Arial, Helvetica, sans-serif; color: #14213d; max-width: 520px; margin: 0 auto; padding: 24px;">
+  <p style="font-size: 18px; font-weight: bold; letter-spacing: 2px; margin: 0 0 24px;">DG BRASIL</p>
+  <p>Olá,</p>
+  <p>Recebemos um pedido de acesso para esta conta do DG Brasil.</p>
+  <p>
+    <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery"
+       style="display: inline-block; background: #14213d; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none;">
+      Continuar
+    </a>
+  </p>
+  <p style="font-size: 13px; color: #555;">
+    O link vale por tempo limitado e só pode ser usado uma vez. Se você não fez este pedido, ignore este e-mail —
+    sua senha continua a mesma.
+  </p>
+</div>

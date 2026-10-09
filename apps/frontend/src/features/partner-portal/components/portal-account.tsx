@@ -135,7 +135,7 @@ export function PortalAccount() {
         <Can permission="partnerPortal.users.manage">
           {office && (
             <div className="col-span-12">
-              <UsersPanel partnerOfficeId={office.id} />
+              <UsersPanel />
             </div>
           )}
         </Can>

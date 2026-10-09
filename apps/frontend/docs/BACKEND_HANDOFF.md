@@ -52,13 +52,24 @@ Integrações externas ── Human-in-the-loop (Revisões)
 Python só entra como serviço auxiliar se surgir necessidade concreta (OCR especializado,
 ML, pipelines científicos ou análise pesada de dados), não porque o sistema usa IA.
 
-## 1. Autenticação
+## 1. Autenticação — FEITO na Etapa 4.1
 
-- Hoje: `session` no store; login só confere o e-mail; "Simular perfil" troca de usuário.
-- Backend: autenticação real (e-mail/senha com hash forte e/ou SSO), sessão com cookie
-  `HttpOnly`/`Secure`, expiração, revogação (a tela de sessões em Configurações já espera
-  isso), 2FA e convites com token de uso único e prazo de validade.
-- Remover as ferramentas de demonstração (`NEXT_PUBLIC_DEMO_MODE=false`) fora do protótipo.
+Supabase Auth real: convite (sem cadastro público), senha forte, **MFA TOTP obrigatório
+para os 5 papéis** (o banco exige `aal2` na RLS — migration 022), termos versionados,
+recuperação de senha, gestão de equipe e redefinição de MFA pelo ADMIN. Referência:
+[docs/auth.md](../../../docs/auth.md).
+
+Para o backend dos módulos (4.2/4.3):
+
+- Server Component/Route Handler: `await requirePermission("...")` (ou outro `require*`).
+- Server Action: `const session = await authorizeAction("...")` e trate
+  `AuthorizationError`. Nunca aceite papel, `organizationId` ou `userId` de quem age vindo
+  do navegador.
+- Banco: `createSupabaseServerClient()` (JWT do usuário → RLS). Service role
+  (`createSupabaseAdminClient`) só onde o contrato exige, com `p_actor` explícito.
+- Ainda pendente: tela de sessões ativas/revogação em Configurações (hoje mock),
+  SMTP próprio, textos jurídicos definitivos dos termos.
+- `NEXT_PUBLIC_DEMO_MODE=false` desliga as ferramentas de demonstração (só ADMIN).
 
 ## 2. Escritório proprietário único (não é multi-tenant)
 

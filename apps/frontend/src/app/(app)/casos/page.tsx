@@ -1,4 +1,4 @@
-import { AudienceSwitch, RequirePermission } from "@/components/layout/guards";
+import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
 import { CaseList } from "@/features/cases/components/case-list";
 import { PortalCaseList } from "@/features/partner-portal/components/portal-cases";
 

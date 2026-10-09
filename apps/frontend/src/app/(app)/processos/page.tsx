@@ -1,4 +1,4 @@
-import { AudienceSwitch, RequirePermission } from "@/components/layout/guards";
+import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
 import { ProcessList } from "@/features/processes/components/process-list";
 import { PortalProcessList } from "@/features/partner-portal/components/portal-processes";
 

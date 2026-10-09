@@ -1,4 +1,4 @@
-import { RequirePermission } from "@/components/layout/guards";
+import { RequirePermission } from "@/components/layout/server-guards";
 import { ReviewDetail } from "@/features/reviews/components/review-detail";
 
 export default async function ReviewDetailPage({ params }: PageProps<"/revisoes/[id]">) {
