@@ -23,6 +23,7 @@
 import { createClient } from '@supabase/supabase-js'
 import pg from 'pg'
 import { randomBytes, randomUUID } from 'node:crypto'
+import { readdir } from 'node:fs/promises'
 
 // ═════════════════════════════ guarda ════════════════════════════════════
 
@@ -96,9 +97,12 @@ await deveOuPara('banco sem dados que não sejam de teste (ambiente de desenvolv
   if (n.reais > 0) throw new Error(`há ${n.reais} clientes fora do padrão de teste: confira se o projeto é mesmo de desenvolvimento`)
   if (n.todos > 0) console.log(`    ${n.todos} clientes fictícios de rodadas anteriores (ok)`)
 })
-await deve('migrations 001–019 registradas', async () => {
-  const m = await sql(`select version from supabase_migrations.schema_migrations order by version`)
-  igual(m.length, 19, 'quantidade')
+await deve('todas as migrations do repositório aplicadas, e nenhuma a mais', async () => {
+  const noRepo = (await readdir(new URL('../../migrations/', import.meta.url)))
+    .filter((f) => f.endsWith('.sql')).map((f) => f.split('_')[0]).sort()
+  const noBanco = (await sql(`select version from supabase_migrations.schema_migrations order by version`)).map((x) => x.version)
+  igual(noBanco, noRepo, 'versões aplicadas × repositório')
+  console.log(`    ${noBanco.length} migrations (baseline 001–019 + ${noBanco.length - 19} pós-baseline)`)
 })
 
 secao('4. Extensões e catálogo real')
