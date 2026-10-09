@@ -127,8 +127,8 @@ conversa, não commit.
 
 | Componente | Situação |
 |---|---|
-| Banco V1 (`supabase/`) | **Pronto para validação em Supabase real.** 19 migrations consolidadas (Etapa 3.2), 248 verificações passando em Postgres 17 (PGlite). Auth, Storage e pgmq reais ainda não exercitados |
-| Worker (fila pgmq, ferramentas, aplicador) | 29 testes passando como `dg_worker` contra as migrations reais (PGlite), com o Claude simulado. **Não executado contra a API nem contra um Supabase real** |
+| Banco V1 (`supabase/`) | **Validado em Supabase real de desenvolvimento (Etapa 3.3, 2026-10-09).** Baseline 001–019 + 020–021; 261 verificações locais e 110 reais (Auth, JWT/PostgREST, Storage, pgmq, `dg_worker`) passando, inclusive depois de `db reset` — o banco se reconstrói só pelo repositório |
+| Worker (fila pgmq, ferramentas, aplicador) | 31 testes como `dg_worker` (PGlite) e claim/heartbeat/escopo validados no pgmq real. **Claude ainda não conectado** (Claude simulado nos testes) |
 | Domínio consignado (HISCON, benefício, esteira), WhatsApp, leads | Fora do banco V1; entram como migrations `020+` quando especificados |
 | Disparador dos gatilhos (`cron`, `evento`) | **Não existe.** Execução entra na fila por `request_agent_run` |
 | Front-end (`apps/frontend`) | Protótipo navegável com dados fictícios, contratos alinhados ao banco. Ainda não conectado |

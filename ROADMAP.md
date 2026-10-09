@@ -24,7 +24,7 @@ seguinte existir. Nenhuma etapa começa sem autorização da anterior.
 
 ---
 
-### Etapa 3.3 — Validação em Supabase real (desenvolvimento)
+### Etapa 3.3 — Validação em Supabase real (desenvolvimento) ✅
 
 Projeto Supabase de desenvolvimento em São Paulo, `db push`, e conferência do
 que o PGlite não cobre: Auth (trigger em `auth.users`, JWT real nas RPCs),
