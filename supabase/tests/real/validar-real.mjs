@@ -134,6 +134,13 @@ await deve('dg_worker: sem superuser, sem BYPASSRLS, com login', async () => {
   const w = await um(`select rolsuper, rolbypassrls, rolcanlogin from pg_roles where rolname = 'dg_worker'`)
   igual([w.rolsuper, w.rolbypassrls, w.rolcanlogin], [false, false, true], 'atributos')
 })
+await deve('public.rls_auto_enable() (função da plataforma) fechada para anon/authenticated [021]', async () => {
+  const f = await sql(`select has_function_privilege('anon', p.oid, 'execute') a, has_function_privilege('authenticated', p.oid, 'execute') u
+                       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                       where n.nspname = 'public' and p.proname = 'rls_auto_enable'`)
+  for (const x of f) if (x.a || x.u) throw new Error('ainda executável pela API')
+  console.log(`    ${f.length ? 'função presente, sem EXECUTE para a API' : 'função ausente neste projeto'}`)
+})
 await deve('nenhuma coluna de fornecedor (ADVBOX etc.)', async () => {
   igual((await um(`select count(*)::int n from information_schema.columns where table_schema = 'public' and column_name ilike '%advbox%'`)).n, 0, 'colunas')
 })

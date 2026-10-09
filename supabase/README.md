@@ -17,7 +17,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As 19 migrations, na ordem da seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 259 verificações, com a RLS testada por papel |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 261 verificações, com a RLS testada por papel |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 
@@ -340,6 +340,19 @@ Recusa rodar sem `DG_ENV=development` e só cria dados fictícios.
 | Migration pós-baseline | Motivo |
 |---|---|
 | `20261009000020_fix_partnership_snapshot_trigger` | Achado na validação real: o aceite pelo caminho normal (PostgREST, só `status`) não criava o snapshot de parceria, porque o trigger era `UPDATE OF accepted_at` e `accepted_at` é preenchido por outro trigger. Teste de regressão em `verificar.mjs` (marcado `[020]`) |
+| `20261009000021_revoke_platform_rls_auto_enable` | Security Advisor: `public.rls_auto_enable()` (criada pela plataforma com "RLS automática") era SECURITY DEFINER executável por anon/authenticated via RPC. Revoga EXECUTE se existir. Teste marcado `[021]` |
+
+### Supabase Advisors (2026-10-09)
+
+| Aviso | Classificação | Destino |
+|---|---|---|
+| 0028/0029 — `public.rls_auto_enable()` SECURITY DEFINER executável por anon/authenticated | **TRUE ISSUE** (baixo risco; objeto da plataforma, fora do repo) | Corrigido na 021 |
+| Auth — proteção contra senha vazada desligada | **DEFERRED** | Configuração de Auth da Etapa 4 (junto com política de senha e MFA); recurso do plano Pro |
+| 0006 — múltiplas políticas permissivas (`documents`, `document_versions`, `legal_cases` INSERT/UPDATE, `legal_processes`, `partner_requests`) | **EXPECTED** | Uma política por papel, de propósito: cada regra fica legível e testável isoladamente. Custo irrelevante no volume atual; fundir em uma política com `OR` só se medição em produção mostrar impacto |
+
+Nenhuma das funções SECURITY DEFINER do DG Brasil aparece nos lints 0028/0029:
+as RPCs públicas são `security invoker` e delegam a `private.*`, que não fica
+exposto pela API.
 
 Diferenças reais encontradas e cobertas: pgmq 1.5.1 tem `archive(text, bigint)`
 e `archive(text, bigint[])` — chamada sem tipo é ambígua (o worker sempre tipa;

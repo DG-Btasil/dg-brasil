@@ -1657,6 +1657,16 @@ await deve('LAWYER não vê importações', () => como(ids.lucas, async (tx) => 
     igual((await linhas(tx, `select 1 from ${t}`)).length, 0, t)
 }))
 
+secao('Função da plataforma fechada para a API [021]')
+await deve('anon e authenticated não executam public.rls_auto_enable()', async () => {
+  for (const papel of ['anon', 'authenticated']) {
+    await db.transaction(async (tx) => {
+      await tx.query(`set local role ${papel}`)
+      await tx.query(`select public.rls_auto_enable()`)
+    }).then(() => { throw new Error(`${papel} executou`) }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  }
+})
+
 secao('Storage: caminho de referência e órfãos')
 await deveFalhar('referência com caminho fora do padrão é rejeitada', async () => {
   const r = (await um(db, `insert into reference_materials (type, title) values ('OTHER', 'Modelo') returning id`)).id

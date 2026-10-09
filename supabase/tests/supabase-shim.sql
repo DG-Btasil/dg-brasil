@@ -17,6 +17,12 @@ alter default privileges in schema public grant all on tables to anon, authentic
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 
+-- Função que o Supabase cria no projeto com "RLS automática" ligada (event
+-- trigger). Nasce SECURITY DEFINER e executável pela API, como no projeto real;
+-- a migration 021 a fecha.
+create function public.rls_auto_enable() returns void
+language plpgsql security definer as $$ begin null; end $$;
+
 -- ───────────────────────────── auth ───────────────────────────────────────
 
 create schema auth;
