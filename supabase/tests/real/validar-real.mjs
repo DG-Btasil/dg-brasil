@@ -48,6 +48,13 @@ const ok = (m) => { total++; console.log(`  \x1b[32m✓\x1b[0m ${m}`) }
 const erro = (m, e) => { total++; falhas++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); if (e) console.log(`    ${String(e.message ?? e).split('\n')[0]}`) }
 const secao = (t) => console.log(`\n${t}`)
 async function deve(m, fn) { try { await fn(); ok(m) } catch (e) { erro(m, e) } }
+async function deveOuPara(m, fn) {
+  try { await fn(); ok(m) } catch (e) {
+    erro(m, e)
+    console.log('\n  Interrompido: o cenário de teste não foi montado; nada adiante seria confiável.\n')
+    process.exit(1)
+  }
+}
 async function deveFalhar(m, fn, padrao) {
   try { await fn(); erro(`${m} — foi aceito`) }
   catch (e) { if (padrao && !padrao.test(String(e.message ?? e))) erro(`${m} — motivo errado`, e); else ok(m) }
@@ -69,9 +76,13 @@ const novoCliente = () => createClient(URL_, ANON, { auth: { persistSession: fal
 
 secao('1. Pré-flight')
 console.log(`  projeto: ${mascara(ref)}  host: ${new URL(URL_).hostname.replace(ref, mascara(ref))}`)
-await deve('banco sem dados de cliente antes do cenário (ambiente limpo)', async () => {
-  const n = await um(`select (select count(*) from public.clients)::int c, (select count(*) from public.legal_cases)::int k`)
-  if (n.c + n.k > 0 && !process.env.PERMITIR_DADOS_DE_TESTE) throw new Error(`há ${n.c} clientes e ${n.k} casos: confira se o projeto é mesmo de desenvolvimento`)
+// Rodadas anteriores deixam só dados fictícios (CPF 999…). Qualquer outro
+// cliente indica que o projeto não é o ambiente limpo de desenvolvimento.
+await deveOuPara('banco sem dados que não sejam de teste (ambiente de desenvolvimento)', async () => {
+  const n = await um(`select count(*) filter (where coalesce(cpf, '') not like '999%')::int reais,
+                             count(*)::int todos from public.clients`)
+  if (n.reais > 0) throw new Error(`há ${n.reais} clientes fora do padrão de teste: confira se o projeto é mesmo de desenvolvimento`)
+  if (n.todos > 0) console.log(`    ${n.todos} clientes fictícios de rodadas anteriores (ok)`)
 })
 await deve('migrations 001–019 registradas', async () => {
   const m = await sql(`select version from supabase_migrations.schema_migrations order by version`)
@@ -139,7 +150,7 @@ const ids = {}
 ids.owner = (await um(`select id from organizations where type = 'OWNER'`)).id
 ids.banking = (await um(`select id from legal_areas where code = 'BANKING'`)).id
 const temAdmin = (await um(`select count(*)::int n from organization_memberships where role = 'ADMIN' and status = 'ACTIVE'`)).n > 0
-await deve('vínculos: ADMIN (bootstrap ou direto), internos e parceiros A/B', async () => {
+await deveOuPara('vínculos: ADMIN (bootstrap ou direto), internos e parceiros A/B', async () => {
   if (!temAdmin) await sql(`select private.bootstrap_owner_admin($1)`, [U.ADMIN.id])
   else await sql(`insert into organization_memberships (organization_id, user_id, role) values ($1, $2, 'ADMIN')`, [ids.owner, U.ADMIN.id])
   for (const p of ['LAWYER', 'ASSISTANT', 'LAWYER_2'])
@@ -173,10 +184,12 @@ async function cliente(n, nome, origem) {
 }
 const caso = async (cli, titulo, partner, origin, status = 'SUBMITTED') =>
   (await um(`insert into legal_cases (client_id, legal_area_id, title, status, partner_organization_id, origin_organization_id, created_by_organization_id)
-             values ($1, $2, $3, $4, $5, $6, coalesce($5, $6)) returning id`, [cli, ids.banking, titulo, status, partner, origin])).id
+             values ($1::uuid, $2::uuid, $3::text, $4::text, $5::uuid, $6::uuid, coalesce($5::uuid, $6::uuid)) returning id`,
+            [cli, ids.banking, titulo, status, partner, origin])).id
 const cnj = (seq) => { const n = String(seq).padStart(7, '0'), resto = '2026805' + '0001'; return n + String(98n - (BigInt(n + resto + '00') % 97n)).padStart(2, '0') + resto }
 
-await deve('cenário: clientes, casos, processos e documentos de A e de B', async () => {
+// Sem cenário, todo o resto falharia em cascata: falha aqui encerra a rodada.
+await deveOuPara('cenário: clientes, casos, processos e documentos de A e de B', async () => {
   const n0 = Number(Date.now() % 1e6)
   ids.cliA = await cliente(n0 + 1, 'Cliente Teste A', ids.pA)
   ids.cliB = await cliente(n0 + 2, 'Cliente Teste B', ids.pB)
