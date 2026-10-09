@@ -15,18 +15,20 @@
 -- a_<nome>, e hífen em nome de tabela é fonte de erro.
 
 -- A guarda olha a EXTENSÃO, não o schema. `supabase db reset` remove a
--- extensão e deixa o schema pgmq vazio para trás; checar o schema fazia esta
--- migration pular o create extension e quebrar (achado na validação real,
--- Etapa 3.3 — exceção documentada ao baseline, ver supabase/README.md).
--- Schema órfão é removido só se estiver VAZIO (drop sem cascade falha se houver
--- qualquer objeto dentro). No PGlite dos testes o pgmq não está disponível e o
--- shim faz o papel dele.
+-- extensão pgmq mas deixa o schema pgmq para trás, com as tabelas de fila
+-- (q_*/a_*), que não pertencem à extensão. Checar o schema fazia esta migration
+-- pular o create extension e quebrar (achado na validação real, Etapa 3.3 —
+-- exceção documentada ao baseline, ver supabase/README.md).
+-- Schema órfão nunca é apagado: é renomeado para pgmq_orfao_<data> (dados
+-- preservados para inspeção) e a extensão nasce limpa. No PGlite dos testes o
+-- pgmq não está disponível e o shim faz o papel dele.
 do $$
 begin
   if not exists (select 1 from pg_extension where extname = 'pgmq')
      and exists (select 1 from pg_available_extensions where name = 'pgmq') then
     if exists (select 1 from pg_namespace where nspname = 'pgmq') then
-      drop schema pgmq;
+      execute format('alter schema pgmq rename to %I',
+                     'pgmq_orfao_' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISS'));
     end if;
     create extension pgmq;
   end if;

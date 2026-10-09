@@ -339,9 +339,11 @@ Recusa rodar sem `DG_ENV=development` e só cria dados fictícios.
 
 **Exceção ao baseline (2026-10-09, aprovada):** a guarda do pgmq na `018`
 verificava o *schema* `pgmq`; o `supabase db reset` remove a extensão e deixa o
-schema vazio, então a 018 pulava o `create extension` e o banco não se
-reconstruía só pelo repositório. A guarda passou a verificar a *extensão* (e
-remove schema órfão vazio). Não há correção possível em `020+`, porque todo reset
+schema para trás com as tabelas de fila (`q_*`/`a_*`, que não pertencem à
+extensão), então a 018 pulava o `create extension` e o banco não se
+reconstruía só pelo repositório. A guarda passou a verificar a *extensão*; um
+schema `pgmq` órfão nunca é apagado: é renomeado para `pgmq_orfao_<data>` e a
+extensão nasce limpa. Não há correção possível em `020+`, porque todo reset
 passa pela 018 antes. Único ambiente afetado: o projeto de desenvolvimento, que
 foi resetado em seguida.
 
