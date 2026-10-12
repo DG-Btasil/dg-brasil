@@ -134,7 +134,7 @@ conversa, não commit.
 | Domínio consignado (HISCON, benefício, esteira), WhatsApp, leads | Fora do banco V1; entram como migrations `020+` quando especificados |
 | Disparador dos gatilhos (`cron`, `evento`) | **Não existe.** Execução entra na fila por `request_agent_run` |
 | Front-end (`apps/frontend`) | Identidade real; módulos jurídicos ainda com dados fictícios (mocks recortados pelo papel real) até a Etapa 4.3 |
-| Auth (Etapa 4.1) | Supabase Auth: convite, senha (12+), **MFA TOTP obrigatório** (RLS exige `aal2`, migration 022), termos versionados (texto **provisório**), recuperação, gestão de equipe, redefinição de MFA pelo ADMIN. Ver [docs/auth.md](docs/auth.md) |
+| Auth (Etapa 4.1) | Supabase Auth: convite, senha (8+), **MFA TOTP obrigatório** (RLS exige `aal2`, migration 022), termos versionados (texto **provisório**), recuperação, gestão de equipe, redefinição de MFA pelo ADMIN. Ver [docs/auth.md](docs/auth.md) |
 | Importação | Genérica, CSV/XLSX; schema pronto, parser no backend não começado |
 | `packages/dominio` | Não começado |
 

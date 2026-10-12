@@ -62,7 +62,7 @@ Nenhuma senha fica no código. Depois do `db push`:
 Só funciona enquanto não existir ADMIN ativo. Depois disso, papéis e convites
 são geridos pelo backend. No primeiro login a pessoa aceita os termos e cadastra o
 MFA (obrigatório: sem `aal2` a RLS não devolve nada). Configuração do Auth (sem
-cadastro público, senha 12+, TOTP, Redirect URLs, templates de e-mail em
+cadastro público, senha 8+, TOTP, Redirect URLs, templates de e-mail em
 `templates/`): [docs/auth.md](../docs/auth.md).
 
 ### Papel do worker (`dg_worker`)

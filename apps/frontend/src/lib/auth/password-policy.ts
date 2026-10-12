@@ -6,9 +6,25 @@
  * e password_requirements; proteção contra senha vazada no painel). O Auth é a
  * barreira final — esta função só evita ida e volta e explica o motivo.
  */
-export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MIN_LENGTH = 8;
 
+/** Comparadas em minúsculas (ex.: "Senha123" cai em "senha123"). */
 const OBVIAS = new Set([
+  "senha123",
+  "senha1234",
+  "senha12345",
+  "password1",
+  "password123",
+  "qwerty12",
+  "qwerty123",
+  "abc12345",
+  "abcd1234",
+  "mudar123",
+  "admin123",
+  "brasil123",
+  "dgbrasil1",
+  "dgbrasil123",
+  "barbara123",
   "123456789012",
   "senha1234567",
   "senhasenha12",

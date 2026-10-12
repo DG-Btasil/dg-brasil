@@ -10,7 +10,7 @@ Etapa 4.3.
 - Só os 5 papéis: `ADMIN`, `LAWYER`, `ASSISTANT` (escritório proprietário) e
   `PARTNER_ADMIN`, `PARTNER_USER` (escritórios parceiros).
 - **Sem cadastro público.** Conta só por convite. Não há "criar escritório".
-- E-mail + senha (mínimo 12, maiúsculas, minúsculas e números) + **MFA TOTP
+- E-mail + senha (mínimo 8, maiúsculas, minúsculas e números) + **MFA TOTP
   obrigatório para todos**. Sem OAuth, passkey, SSO, magic link como login principal.
 - Papel, vínculo e escritório são lidos **do banco a cada requisição**. Mudou o
   papel, suspendeu, inativou: vale na próxima requisição, sem esperar o token.
@@ -114,7 +114,7 @@ painel (ou `npx supabase config push`, que sobrescreve o painel com o arquivo):
 
 1. **Authentication → Sign In / Providers**: *Allow new users to sign up* **desligado**;
    e-mail habilitado; *Secure password change* ligado.
-2. **Authentication → Policies (Password)**: mínimo **12**, *lowercase, uppercase,
+2. **Authentication → Policies (Password)**: mínimo **8**, *lowercase, uppercase,
    digits*. *Leaked password protection* (HaveIBeenPwned) quando o plano permitir.
 3. **Authentication → Multi-Factor**: **TOTP habilitado** (enroll + verify).
 4. **Authentication → URL Configuration**: Site URL `http://localhost:3000` (DEV);

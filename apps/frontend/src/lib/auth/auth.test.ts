@@ -154,7 +154,11 @@ describe("superfície (interno x portal)", () => {
 
 describe("política de senha", () => {
   it("recusa curtas, sem variedade, óbvias e com nome/e-mail", () => {
-    expect(passwordProblem("Curta1")).toMatch(/12/);
+    expect(passwordProblem("Curta1")).toMatch(/8/);
+    expect(passwordProblem("Curta12")).toMatch(/8/);
+    expect(passwordProblem("Tribu7aX")).toBeNull();
+    expect(passwordProblem("Senha123")).toMatch(/fácil/);
+    expect(passwordProblem("Admin123")).toMatch(/fácil/);
     expect(passwordProblem("somenteminusculas1")).toMatch(/maiúsculas/);
     expect(passwordProblem("DgBrasil2026")).toMatch(/fácil/);
     expect(passwordProblem("Tribunal2026x")).toBeNull();
