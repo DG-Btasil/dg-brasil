@@ -12,7 +12,9 @@ retorno das operações.
 | A | Diretório (usuário/escritório) | ✅ real | `server/directory.ts`: integrantes ativos, escritório proprietário, parceiros visíveis |
 | A | Clientes (equipe interna) | ✅ real | lista, busca, filtros, detalhe, cadastro, edição, representantes/sócios de PJ (028), inativar/reativar/excluir |
 | A | Clientes no Portal do Parceiro | ⏳ Fase D | o portal ainda lê o mock |
-| B | Casos, Processos, Prazos, Movimentações | ⏳ | |
+| B | Casos (equipe interna) | ✅ real | lista, filtros, ficha, cadastro idempotente, editar, enviar, aceitar, rejeitar, andamento, encerrar, arquivar, origem, advogado |
+| B | Processos, Prazos, Movimentações (equipe interna) | ✅ real | lista, filtros, ficha, partes (leitura), cadastro idempotente, edição, exclusão; prazos (criar, editar, cumprir, cancelar); andamentos |
+| B | Casos e Processos no Portal do Parceiro | ⏳ Fase D | o portal ainda lê o mock |
 | C | Documentos, Pendências documentais | ⏳ | |
 | D | Solicitações, Portal do Parceiro | ⏳ | |
 | E | Revisões, Análises | ⏳ | Análise só depois de tornar atômico o início (análise + execução) |
@@ -109,6 +111,83 @@ migrado não tem mais escrita no mock.
   Financeiro e o Portal (ainda mock) os referenciam; saem quando esses
   domínios migrarem.
 
+## Fase B — Casos, Processos, Prazos e Movimentações
+
+**Pré-requisito cumprido:** determinismo do `request_hash` (027) comprovado
+antes de ligar as telas de criação (testes `[027] determinismo`, commit
+e3bf3ba).
+
+**Idempotência na UI** — `useIdempotencyKey` (`lib/hooks/use-idempotency-key.ts`):
+uma chave por INTENÇÃO de envio. Clique duplo, retry ou nova tentativa com
+os MESMOS dados reutilizam a chave (o banco devolve o mesmo recurso,
+`deduplicated: true`, tratado como sucesso); se o usuário muda os dados, é
+outra intenção e a chave é nova (impressão digital do envio com chaves
+ordenadas). Depois do sucesso a chave é descartada. Nunca global nem
+persistida. A tela navega para o id devolvido pelo servidor.
+
+**Casos**
+- Lista: busca por título ou parte contrária; filtros de situação, área,
+  responsável, cliente (seletor com busca no servidor), origem (com
+  `partners.view`) e período de criação; ordem e paginação no servidor;
+  número de processos por caso (uma consulta por página).
+- Ficha: visão geral real (cliente, origem, responsável, autoria, datas,
+  rejeição, notas). Ações no backend: enviar (`cases.edit`); aceitar,
+  rejeitar, marcar em andamento, encerrar, arquivar (`cases.decide` — o
+  Front V1 mostrava algumas para `cases.edit`, o servidor sempre exigiu
+  `cases.decide`); editar dados, origem (após o aceite: ADMIN, com MOTIVO —
+  campo novo, o banco exige) e advogado responsável (Advogado ou ADMIN com
+  OAB). Nada muda na tela antes da resposta do banco.
+- Origem × acesso: `originOrganizationId` (comercial) e
+  `partnerOrganizationId` (acesso) continuam separados; vincular o parceiro
+  é opt-in explícito.
+- Tipo do caso: o Front V1 tinha texto livre; o banco usa o catálogo
+  `case_types` (vazio por enquanto) — o campo virou seleção opcional por
+  área, com o catálogo lido do servidor.
+- Cadastro: a seção de anexos saiu (upload real é da Fase C); o resumo
+  continua obrigatório na tela.
+- Abas Documentos, Análise, Revisões, Financeiro e Atividade mostram
+  "Seção em integração" (fases C, E, F, H). **Iniciar análise** foi
+  retirado do cabeçalho até a Fase E (início ainda não atômico).
+
+**Processos**
+- Lista: busca por CNJ ou título; filtros de cliente, responsável, tribunal,
+  status, fase, origem do cadastro e origem do caso (com `partners.view`);
+  o servidor devolve cliente, caso e PRÓXIMO PRAZO em aberto (uma consulta
+  por página; parceiro não recebe prazo).
+- Saíram da lista até a Fase H (dados derivados da carteira inteira): a
+  faixa de contadores e o filtro "Prazo" (vencidos/próximos 5 dias).
+- Ficha: visão geral (com as partes cadastradas, documento mascarado),
+  movimentações (página do servidor + "carregar mais", origem de cada uma;
+  a equipe registra só nota MANUAL — movimentação oficial vem da
+  integração), prazos (situação do banco: "Vencido" é derivado na view,
+  nunca gravado; criar, editar, cumprir, cancelar). Documentos, Revisões e
+  Financeiro: "Seção em integração".
+- Cadastro: o caso é escolhido com busca no servidor (casos que aceitam
+  processo); a área saiu do formulário (é a do caso); prazo inicial
+  obrigatório como no Front V1. Edição: rota nova `/processos/[id]/editar`
+  (o Front V1 dizia "edição em uma próxima etapa"); vazio limpa.
+- Exclusão (ADMIN, `processes.delete`): lógica e auditada; volta para o
+  caso. O fluxo de "vínculo pendente / trocar cliente" do mock saiu: no
+  modelo real o processo pertence ao caso e o cliente é o do caso.
+
+**Cliente (Fase A, completado):** as abas Casos e Processos da ficha do
+cliente agora leem o servidor; Documentos e Atividade mostram "Seção em
+integração"; o botão "Adicionar documento" saiu até a Fase C.
+
+**Mock removido:** escritas de caso e processo (slice `cases`, ações de
+processo do slice `processes-reviews`, repositórios mock `cases` e
+`processes`, contratos), hooks de escrita e de leitura sem uso, componentes
+substituídos (filtros/tabela/abas antigas de processo). Continuam, só para
+leitura, os dados de caso/processo do seed que o Portal do Parceiro, o
+Financeiro, as Revisões e a Home (ainda mock) usam. Sem mudança no formato
+persistido do store (sem bump de versão).
+
+**Backend (só TypeScript, sem migration):** filtros novos de caso (área,
+origem, período; busca também por parte contrária, com escape do filtro
+`or`) e de processo (fase, tribunal, origem do cadastro, origem do caso);
+leitura do catálogo; nome do cliente na ficha do caso; caso/cliente/próximo
+prazo na lista de processos; diretório com OAB.
+
 ## Testes
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
@@ -116,6 +195,13 @@ migrado não tem mais escrita no mock.
   falha de rede, bloco societário: só id do banco vai ao servidor, payload do
   banco, dois principais recusados).
 - Banco (PGlite): `supabase/tests/verificar.mjs`, seção `[028]`.
+- Fase B, unitários: `src/features/processes/phase-b-ui.test.ts` (URL das
+  listas, impressão digital da idempotência, formulário de processo →
+  schemas reais, embed do caso, data local do prazo, escape do filtro).
+- Fase B, integração: `tests/integration/frontend-cases-processes.int.test.ts`
+  (caso idempotente, filtros e contagem, catálogo, isolamento, processo
+  idempotente com próximo prazo, edição que limpa, ciclo do prazo,
+  andamento MANUAL invisível ao parceiro, ASSISTANT sem cadastro).
 - Integração (Supabase DEV): `tests/integration/frontend-clients.int.test.ts`
   (formulário → service real, PATCH que apaga, LAWYER sem correção de CPF,
   URL da lista → listagem, diretório por papel) e
@@ -166,3 +252,40 @@ Marque cada item com os cinco papéis indicados.
 - [ ] `/clientes` continua mostrando o portal (ainda em demonstração até a
       Fase D); `/clientes/<id de cliente interno>` não mostra dados internos.
 - [ ] `/clientes/<id>/editar` → acesso negado.
+
+## QA manual — Fase B (Supabase DEV, dados fictícios)
+
+**ADMIN / LAWYER**
+
+- [ ] `/casos`: lista do banco; filtros (situação, área, responsável, cliente,
+      origem, período), ordem e páginas; recarregar mantém os filtros.
+- [ ] Novo caso: buscar cliente pelo nome; "Salvar rascunho" e "Enviar para
+      análise" abrem a ficha do caso criado. Clique duplo rápido → um caso só.
+- [ ] Ficha do caso: editar dados (área/tipo), definir advogado, aceitar
+      (sem advogado → aviso no campo), rejeitar (motivo obrigatório), marcar
+      em andamento, encerrar, arquivar. A situação só muda depois da resposta.
+- [ ] ADMIN altera a origem de caso aceito: pede motivo + confirmação.
+      LAWYER não vê "Alterar origem" em caso aceito.
+- [ ] Aba Processos do caso lista os processos; "Cadastrar processo" já vem
+      com o caso escolhido.
+- [ ] `/processos`: lista com cliente, caso e próximo prazo; filtros; busca
+      por CNJ (os dígitos NÃO aparecem na URL).
+- [ ] Cadastrar processo (CNJ válido e sem CNJ): abre a ficha; prazo inicial
+      aparece em Prazos. CNJ com dígito errado → erro no campo.
+- [ ] Editar processo: apagar a vara e o valor da causa apaga de fato.
+- [ ] Registrar andamento (nota da equipe, origem "Equipe").
+- [ ] Prazos: adicionar, editar, cumprir, cancelar; prazo vencido aparece
+      como "Vencido".
+- [ ] ADMIN exclui processo → volta para o caso; LAWYER não vê "Excluir".
+- [ ] `/casos/<uuid de outro escritório ou inexistente>` e
+      `/processos/<idem>` → "não encontrado".
+
+**ASSISTANT**
+
+- [ ] Vê casos e processos; cria caso (rascunho/envio); não vê Aceitar/
+      Rejeitar/Encerrar/Arquivar; não cadastra processo nem prazo.
+
+**PARTNER_ADMIN / PARTNER_USER**
+
+- [ ] Casos e Processos continuam no portal de demonstração até a Fase D;
+      rotas internas de outro escritório não mostram dados.

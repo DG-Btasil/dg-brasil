@@ -2,82 +2,76 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CalendarPlus, FileSearch, Link2, NotebookPen, ShieldAlert } from "lucide-react";
-import { OPEN_REVIEW_STATUSES, PROCESS_PHASE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
-import { daysUntil } from "@/lib/clock";
+import { CalendarPlus, NotebookPen } from "lucide-react";
+import { PROCESS_PHASE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
+import { deadlineUrgency } from "@/lib/formatting";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
-import { Can, PageContainer, RequirePermission } from "@/components/layout/guards";
+import type { ActionResult } from "@/lib/actions/result";
+import { Can, PageContainer } from "@/components/layout/guards";
+import { PendingIntegration } from "@/components/feedback/pending-integration";
 import { StatusBadge } from "@/components/ui/badge";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
-import { Panel } from "@/components/ui/panel";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
-import { Callout, EmptyState } from "@/components/feedback/states";
+import type { Page } from "@/server/core/pagination";
+import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
+import type { ProcessEventDTO, ProcessInternalDTO, ProcessPartyDTO } from "@/server/domain/processes/dto";
 import { useCan } from "@/features/auth/hooks";
-import { useUser } from "@/features/offices/hooks";
-import { CaseFinancePanel } from "@/features/finance/components/case-finance-panel";
-import { useLegalCase } from "@/features/cases/hooks";
-import { CaseOriginTag } from "@/features/partners/components/case-partner-panel";
-import { useClientById, useProcess, useProcessDeadlines, useProcessReviews } from "../hooks";
-import { hasPendingClientLink, processClientLabel } from "../utils";
+import { CaseOriginLabel } from "@/features/cases/components/case-detail";
+import { useDirectoryUser } from "@/features/directory/directory-context";
 import { AddDeadlineDialog } from "./add-deadline-dialog";
 import { AddEventDialog } from "./add-event-dialog";
 import { CnjText } from "./cnj-text";
-import { DeleteProcessDialog, LinkClientDialog, ProcessActionsMenu } from "./process-danger-actions";
+import { DeleteProcessDialog, ProcessActionsMenu } from "./process-danger-actions";
 import { ProcessOriginBadge } from "./process-origin-badge";
 import { DeadlinesTab } from "./tabs/deadlines-tab";
-import { DocumentsTab } from "./tabs/documents-tab";
 import { EventsTab } from "./tabs/events-tab";
 import { OverviewTab } from "./tabs/overview-tab";
-import { ReviewsTab } from "./tabs/reviews-tab";
 
 const TAB_KEYS = ["visao-geral", "movimentacoes", "documentos", "prazos", "revisoes", "financeiro"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
+type DialogState = { kind: "event" } | { kind: "deadline"; deadline?: DeadlineDTO } | { kind: "delete" } | null;
 
-export function ProcessDetail({ id }: { id: string }) {
-  const process = useProcess(id);
-  const client = useClientById(process?.clientId);
-  const responsible = useUser(process?.responsibleUserId);
-  const deadlines = useProcessDeadlines(id);
-  const reviews = useProcessReviews(id);
+/**
+ * Página do processo (equipe interna), com dados do servidor: ficha,
+ * partes, movimentações e prazos. Documentos, revisões e financeiro entram
+ * nas próximas fases. Precisa estar dentro de <Suspense> (useUrlTab).
+ */
+export function ProcessDetail({
+  process,
+  parties,
+  events,
+  deadlines,
+}: {
+  process: ProcessInternalDTO;
+  parties: ActionResult<Page<ProcessPartyDTO>>;
+  events: ActionResult<Page<ProcessEventDTO>>;
+  deadlines: ActionResult<Page<DeadlineDTO>>;
+}) {
+  const responsible = useDirectoryUser(process.responsibleUserId);
   const can = useCan();
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
-  const [dialog, setDialog] = useState<"event" | "deadline" | "delete" | "link" | null>(null);
+  const [dialog, setDialog] = useState<DialogState>(null);
 
-  const openDeadlines = deadlines.filter((d) => d.status === "OPEN");
-  const urgent = openDeadlines.some((d) => daysUntil(d.dueDate) <= 1);
-  const pendingReviews = reviews.filter((r) => OPEN_REVIEW_STATUSES.includes(r.status)).length;
-  const legalCase = useLegalCase(process?.legalCaseId);
+  const openDeadlines = useMemo(() => (deadlines.ok ? deadlines.data.items.filter((d) => d.status === "OPEN") : []), [deadlines]);
+  const urgent = openDeadlines.some((d) => d.effectiveStatus === "OVERDUE" || ["TODAY", "TOMORROW"].includes(deadlineUrgency(d.dueDateLocal)));
+  const lastMovementAt = events.ok ? events.data.items[0]?.occurredAt : undefined;
 
   const tabs = useMemo(() => {
     const items: TabItem<TabKey>[] = [
       { key: "visao-geral", label: "Visão geral" },
-      { key: "movimentacoes", label: "Movimentações" },
+      { key: "movimentacoes", label: "Movimentações", count: events.ok ? events.data.total : undefined },
       { key: "documentos", label: "Documentos" },
       { key: "prazos", label: "Prazos", count: openDeadlines.length, attention: urgent },
     ];
-    if (can("reviews.view")) items.push({ key: "revisoes", label: "Revisões", count: reviews.length, attention: pendingReviews > 0 });
+    if (can("reviews.view")) items.push({ key: "revisoes", label: "Revisões" });
     if (can("finance.view")) items.push({ key: "financeiro", label: "Financeiro" });
     return items;
-  }, [can, openDeadlines.length, urgent, reviews.length, pendingReviews]);
-
-  if (!process) {
-    return (
-      <PageContainer>
-        <Panel className="mt-6">
-          <EmptyState
-            icon={FileSearch}
-            title="Processo não encontrado."
-            description="O processo pode ter sido removido ou o endereço está incorreto."
-            action={<ButtonLink href="/processos" variant="secondary">Voltar para Processos</ButtonLink>}
-          />
-        </Panel>
-      </PageContainer>
-    );
-  }
+  }, [can, events, openDeadlines.length, urgent]);
 
   // Aba sem permissão na URL cai na visão geral.
   const active: TabKey = tabs.some((t) => t.key === tab) ? tab : "visao-geral";
+  const close = () => setDialog(null);
 
   return (
     <PageContainer>
@@ -87,28 +81,23 @@ export function ProcessDetail({ id }: { id: string }) {
         title={process.title}
         meta={
           <>
-            {hasPendingClientLink(process) ? (
-              <span className="inline-flex items-center gap-1 font-medium text-warning">
-                <ShieldAlert className="size-3.5" aria-hidden />
-                {processClientLabel(process, client)}
-              </span>
-            ) : (
+            {process.clientName ? (
               <Link href={`/clientes/${process.clientId}`} className="font-medium text-navy hover:underline underline-offset-2">
-                {processClientLabel(process, client)}
+                {process.clientName}
               </Link>
+            ) : (
+              <span className="text-muted">Cliente não disponível</span>
             )}
             <StatusBadge status={process.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
-            <span>Fase {PROCESS_PHASE_LABEL[process.phase].toLowerCase()}</span>
+            {process.phase && <span>Fase {PROCESS_PHASE_LABEL[process.phase].toLowerCase()}</span>}
             <span>Responsável: {responsible?.name ?? "—"}</span>
-            {legalCase && (
-              <span>
-                Caso:{" "}
-                <Link href={`/casos/${legalCase.id}`} className="font-medium text-navy hover:underline underline-offset-2">
-                  {legalCase.title}
-                </Link>
-              </span>
-            )}
-            {legalCase && <CaseOriginTag legalCase={legalCase} />}
+            <span>
+              Caso:{" "}
+              <Link href={`/casos/${process.legalCaseId}`} className="font-medium text-navy hover:underline underline-offset-2">
+                {process.caseTitle || "Abrir caso"}
+              </Link>
+            </span>
+            {process.caseOriginOrganizationId && <CaseOriginLabel originOrganizationId={process.caseOriginOrganizationId} />}
             <span className="inline-flex items-center gap-1.5">
               Cadastro: <ProcessOriginBadge origin={process.origin} />
             </span>
@@ -116,67 +105,41 @@ export function ProcessDetail({ id }: { id: string }) {
         }
         actions={
           <Can permission="processes.edit">
-            <Button variant="secondary" icon={<NotebookPen className="size-4" aria-hidden />} onClick={() => setDialog("event")}>
+            <Button variant="secondary" icon={<NotebookPen className="size-4" aria-hidden />} onClick={() => setDialog({ kind: "event" })}>
               Registrar andamento
             </Button>
-            <Button icon={<CalendarPlus className="size-4" aria-hidden />} onClick={() => setDialog("deadline")}>
+            <Button icon={<CalendarPlus className="size-4" aria-hidden />} onClick={() => setDialog({ kind: "deadline" })}>
               Adicionar prazo
             </Button>
-            <ProcessActionsMenu onDelete={() => setDialog("delete")} onLinkClient={() => setDialog("link")} />
+            <ProcessActionsMenu processId={process.id} onDelete={() => setDialog({ kind: "delete" })} />
           </Can>
         }
       />
 
-      {hasPendingClientLink(process) && (
-        <Callout
-          tone="warning"
-          className="mb-5"
-          title="Cliente associado removido — revisão necessária"
-          action={
-            <Can permission="processes.edit">
-              <Button size="sm" icon={<Link2 className="size-3.5" aria-hidden />} onClick={() => setDialog("link")}>
-                Vincular cliente
-              </Button>
-            </Can>
-          }
-        >
-          {process.removedClientName ? `O cliente ${process.removedClientName} foi excluído. ` : "Este processo está sem cliente associado. "}
-          O processo foi mantido: vincule outro cliente ou resolva manualmente.
-        </Callout>
-      )}
-
       <Tabs items={tabs} value={active} onChange={setTab} label="Seções do processo" className="mb-5" />
 
       <TabPanel tabKey={active}>
-        {active === "visao-geral" && <OverviewTab process={process} client={client} responsibleName={responsible?.name} />}
-        {active === "movimentacoes" && <EventsTab processId={process.id} onAdd={() => setDialog("event")} />}
-        {active === "documentos" && <DocumentsTab processId={process.id} clientId={process.clientId} />}
-        {active === "prazos" && <DeadlinesTab deadlines={deadlines} onAdd={() => setDialog("deadline")} />}
-        {active === "revisoes" && (
-          <RequirePermission permission="reviews.view" fallback={null}>
-            <ReviewsTab reviews={reviews} />
-          </RequirePermission>
-        )}
-        {active === "financeiro" && (
-          <RequirePermission permission="finance.view" fallback={null}>
-            {/* O financeiro pertence ao caso e abrange todos os processos dele. */}
-            <Callout tone="info" className="mb-5" title="Financeiro do caso">
-              Contratos e parceria pertencem ao caso{legalCase ? ` “${legalCase.title}”` : ""} e abrangem todos os processos dele.
-            </Callout>
-            <CaseFinancePanel legalCaseId={process.legalCaseId} />
-          </RequirePermission>
-        )}
+        {active === "visao-geral" && <OverviewTab process={process} parties={parties} responsibleName={responsible?.name} lastMovementAt={lastMovementAt} />}
+        {active === "movimentacoes" && <EventsTab processId={process.id} initial={events} onAdd={() => setDialog({ kind: "event" })} />}
+        {active === "documentos" && <PendingIntegration description="Documentos do processo serão conectados ao sistema na próxima fase (upload e download reais)." />}
+        {active === "prazos" && <DeadlinesTab deadlines={deadlines} onAdd={() => setDialog({ kind: "deadline" })} onEdit={(deadline) => setDialog({ kind: "deadline", deadline })} />}
+        {active === "revisoes" && <PendingIntegration description="As revisões do processo serão conectadas em uma próxima fase." />}
+        {active === "financeiro" && <PendingIntegration description="O financeiro pertence ao caso e será conectado depois da revisão do ciclo de vida do acordo financeiro." />}
       </TabPanel>
 
-      {dialog === "delete" && <DeleteProcessDialog process={process} clientName={processClientLabel(process, client)} onClose={() => setDialog(null)} />}
-      {dialog === "link" && <LinkClientDialog process={process} onClose={() => setDialog(null)} />}
-      <AddEventDialog open={dialog === "event"} onOpenChange={(o) => setDialog(o ? "event" : null)} processId={process.id} />
-      <AddDeadlineDialog
-        open={dialog === "deadline"}
-        onOpenChange={(o) => setDialog(o ? "deadline" : null)}
-        processId={process.id}
-        defaultResponsibleId={process.responsibleUserId}
-      />
+      {dialog?.kind === "delete" && <DeleteProcessDialog process={process} openDeadlines={openDeadlines.length} onClose={close} />}
+      <AddEventDialog open={dialog?.kind === "event"} onOpenChange={(o) => (o ? setDialog({ kind: "event" }) : close())} processId={process.id} />
+      {dialog?.kind === "deadline" && (
+        <AddDeadlineDialog
+          key={dialog.deadline?.id ?? "new"}
+          open
+          onOpenChange={(o) => !o && close()}
+          processId={process.id}
+          legalCaseId={process.legalCaseId}
+          defaultResponsibleId={process.responsibleUserId}
+          deadline={dialog.deadline}
+        />
+      )}
     </PageContainer>
   );
 }

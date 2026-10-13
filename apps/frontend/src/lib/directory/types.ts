@@ -16,6 +16,8 @@ export interface DirectoryUser {
   name: string;
   displayName: string;
   role: Role;
+  /** Inscrito na OAB (Administrador só é responsável por caso se tiver OAB). */
+  hasOab: boolean;
 }
 
 export interface DirectoryOrganization {

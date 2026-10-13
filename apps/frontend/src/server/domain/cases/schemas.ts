@@ -62,6 +62,12 @@ export const listCasesSchema = pageInputSchema
     assignedLawyerId: zUuid().optional(),
     /** Só equipe interna: o parceiro sempre recebe apenas os casos do próprio escritório (RLS). */
     partnerOrganizationId: zUuid().optional(),
+    /** Área jurídica por código (ex.: BANKING). */
+    area: zCatalogCode().optional(),
+    /** Origem comercial (escritório proprietário ou parceiro). Só equipe interna. */
+    originOrganizationId: zUuid().optional(),
+    /** Criados a partir desta data (inclusive). */
+    createdFrom: zIsoDate().optional(),
   })
   .and(sortSchema(CASE_SORT_FIELDS, "updatedAt"));
 export type ListCasesInput = z.infer<typeof listCasesSchema>;

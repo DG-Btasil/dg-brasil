@@ -1,17 +1,16 @@
 "use client";
 
 import { useMemo } from "react";
+import { PendingIntegration } from "@/components/feedback/pending-integration";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
-import { useClientAnalyses } from "@/features/analyses/hooks";
-import { useClientCases } from "@/features/cases/hooks";
+import type { ActionResult } from "@/lib/actions/result";
+import type { Page } from "@/server/core/pagination";
+import type { CaseListItem } from "@/server/domain/cases/dto";
+import type { ProcessListItem } from "@/server/domain/processes/dto";
 import type { Client } from "@/types";
-import { useClientDocuments, useClientProcesses } from "../../hooks";
-import { documentProgress } from "../../utils";
-import { ActivityTab } from "./activity-tab";
 import { CasesTab } from "./cases-tab";
 import { ClientHeader } from "./client-header";
-import { DocumentsTab } from "./documents/documents-tab";
 import { OverviewTab } from "./overview/overview-tab";
 import { ProcessesTab } from "./processes-tab";
 
@@ -19,29 +18,29 @@ const TAB_KEYS = ["visao-geral", "documentos", "casos", "processos", "atividade"
 type TabKey = (typeof TAB_KEYS)[number];
 
 /**
- * Página do cliente. O cadastro vem do servidor (getClientAction, com o
- * registro LGPD de acesso); as abas de documentos, casos, processos e
- * atividade ainda leem os módulos de demonstração até as fases C/B/H.
- * Precisa estar dentro de <Suspense> (useUrlTab).
+ * Página do cliente, com dados do servidor: cadastro (getClientAction, com o
+ * registro LGPD de acesso), casos e processos. Documentos e atividade são
+ * conectados nas fases C e H. Precisa estar dentro de <Suspense> (useUrlTab).
  */
-export function ClientDetail({ client }: { client: Client }) {
-  const id = client.id;
-  const documents = useClientDocuments(id);
-  const analyses = useClientAnalyses(id);
-  const processes = useClientProcesses(id);
-  const cases = useClientCases(id);
+export function ClientDetail({
+  client,
+  cases,
+  processes,
+}: {
+  client: Client;
+  cases: ActionResult<Page<CaseListItem>>;
+  processes: ActionResult<Page<ProcessListItem>>;
+}) {
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
-
-  const progress = documentProgress(documents);
   const items = useMemo<TabItem<TabKey>[]>(
     () => [
       { key: "visao-geral", label: "Visão geral" },
-      { key: "documentos", label: "Documentos", count: documents.length, attention: progress.pending > 0 },
-      { key: "casos", label: "Casos", count: cases.length },
-      { key: "processos", label: "Processos", count: processes.length },
+      { key: "documentos", label: "Documentos" },
+      { key: "casos", label: "Casos", count: cases.ok ? cases.data.total : undefined },
+      { key: "processos", label: "Processos", count: processes.ok ? processes.data.total : undefined },
       { key: "atividade", label: "Atividade" },
     ],
-    [documents.length, progress.pending, cases.length, processes.length],
+    [cases, processes],
   );
 
   return (
@@ -50,10 +49,10 @@ export function ClientDetail({ client }: { client: Client }) {
       <Tabs items={items} value={tab} onChange={setTab} label="Seções do cliente" className="mb-5" />
       <TabPanel tabKey={tab}>
         {tab === "visao-geral" && <OverviewTab client={client} />}
-        {tab === "documentos" && <DocumentsTab client={client} documents={documents} analyses={analyses} />}
-        {tab === "casos" && <CasesTab client={client} />}
-        {tab === "processos" && <ProcessesTab client={client} processes={processes} />}
-        {tab === "atividade" && <ActivityTab clientId={client.id} />}
+        {tab === "documentos" && <PendingIntegration description="Documentos do cliente serão conectados ao sistema na próxima fase (upload e download reais)." />}
+        {tab === "casos" && <CasesTab client={client} cases={cases} />}
+        {tab === "processos" && <ProcessesTab clientId={client.id} processes={processes} />}
+        {tab === "atividade" && <PendingIntegration description="A linha do tempo de auditoria do cliente será conectada em uma próxima fase." />}
       </TabPanel>
     </>
   );

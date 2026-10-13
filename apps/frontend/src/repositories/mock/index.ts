@@ -10,7 +10,6 @@ import { useAppStore } from "@/store/app-store";
 import { selectScoped } from "@/store/scope";
 import type {
   AnalysisRepository,
-  CaseRepository,
   ReferenceRepository,
   ClientRepository,
   DgRepository,
@@ -22,7 +21,6 @@ import type {
   OfficeRepository,
   PartnerPortalRepository,
   PartnerRepository,
-  ProcessRepository,
   ReviewRepository,
   UserRepository,
 } from "../contracts";
@@ -64,20 +62,6 @@ export const mockAnalysisRepository: AnalysisRepository = {
   interrupt: async (id, reason) => state().interruptAnalysis(id, reason),
   resume: async (id) => state().resumeAnalysis(id),
   simulateAgentResult: async (id) => state().simulateAgentResult(id),
-};
-
-export const mockProcessRepository: ProcessRepository = {
-  list: () => ok(data().processes),
-  get: (id) => ok(data().processes.find((p) => p.id === id)),
-  create: async (input) => state().createProcess(input),
-  update: async (id, patch) => state().updateProcess(id, patch),
-  listEvents: (processId) => ok(data().processEvents.filter((e) => e.processId === processId)),
-  addEvent: async (processId, input) => state().addProcessEvent(processId, input),
-  listDeadlines: (processId) => ok(data().deadlines.filter((d) => !processId || d.processId === processId)),
-  addDeadline: async (input) => state().addDeadline(input),
-  completeDeadline: async (id) => state().completeDeadline(id),
-  remove: async (id) => state().deleteProcess(id),
-  linkClient: async (processId, clientId) => state().linkProcessClient(processId, clientId),
 };
 
 export const mockReviewRepository: ReviewRepository = {
@@ -188,19 +172,6 @@ export const mockPartnerPortalRepository: PartnerPortalRepository = {
   updateClientBasics: async (clientId, patch) => state().updatePartnerClientBasics(clientId, patch),
   submitDocument: async (input) => state().submitPartnerDocument(input),
   respondRequest: async (requestId, message) => state().respondPartnerRequest(requestId, message),
-};
-
-export const mockCaseRepository: CaseRepository = {
-  list: () => ok(data().legalCases),
-  get: (id) => ok(data().legalCases.find((c) => c.id === id)),
-  create: async (input) => state().createCase(input),
-  update: async (id, patch) => state().updateCase(id, patch),
-  submit: async (id) => state().submitCase(id),
-  changeOrigin: async (id, originOrganizationId, linkPartner) => state().changeCaseOrigin(id, originOrganizationId, linkPartner),
-  assignLawyer: async (id, lawyerId) => state().assignCaseLawyer(id, lawyerId),
-  accept: async (id, lawyerId) => state().acceptCase(id, lawyerId),
-  reject: async (id, input) => state().rejectCase(id, input),
-  setStatus: async (id, status) => state().setCaseStatus(id, status),
 };
 
 export const mockReferenceRepository: ReferenceRepository = {

@@ -2,56 +2,33 @@
 
 import Link from "next/link";
 import { RefreshCw, Sparkles } from "lucide-react";
-import { ANALYSIS_STATUS_LABEL, ANALYSIS_STATUS_TONE, CLIENT_POLE_LABEL } from "@/lib/constants/status";
-import { LEGAL_AREA_LABEL } from "@/lib/constants/legal";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/formatting";
-import { Can } from "@/components/layout/guards";
-import { StatusBadge } from "@/components/ui/badge";
+import { CLIENT_POLE_LABEL } from "@/lib/constants/status";
+import { formatCurrency, formatDate, formatDateTime, maskDocument } from "@/lib/formatting";
+import type { ActionResult } from "@/lib/actions/result";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
+import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
+import type { Page } from "@/server/core/pagination";
+import type { ProcessInternalDTO, ProcessPartyDTO } from "@/server/domain/processes/dto";
+import type { PartyType } from "@/server/domain/processes/schemas";
 import { usePermission } from "@/features/auth/hooks";
-import type { Client, Process } from "@/types";
-import { useAnalysis, useThesis } from "../../hooks";
-import { hasPendingClientLink, processClientLabel } from "../../utils";
 import { CnjText } from "../cnj-text";
 
-function ThesisValue({ thesisId }: { thesisId?: string }) {
-  const thesis = useThesis(thesisId);
-  const canSeeDg = usePermission("dgbrasil.view");
-  if (!thesis) return <span className="text-subtle">Nenhuma tese vinculada</span>;
-  return canSeeDg ? (
-    <Link href={`/dg-brasil/teses/${thesis.id}`} className="text-navy hover:underline underline-offset-2">
-      {thesis.name}
-    </Link>
-  ) : (
-    <span>{thesis.name}</span>
-  );
-}
+const PARTY_TYPE_LABEL: Record<PartyType, string> = {
+  PLAINTIFF: "Autor",
+  DEFENDANT: "Réu",
+  INTERESTED: "Interessado",
+  OTHER: "Outro",
+};
 
-function OriginPanel({ process }: { process: Process }) {
-  const analysis = useAnalysis(process.analysisId);
+function OriginPanel({ process }: { process: ProcessInternalDTO }) {
   if (process.origin === "AGENT") {
     return (
       <Panel>
-        <PanelHeader title="Origem: DG Brasil" as="h3" description="Criado a partir de uma análise aprovada em Revisões." />
-        <PanelBody className="space-y-3 text-[13px]">
-          <div className="flex items-start gap-2.5">
-            <Sparkles className="mt-0.5 size-4 shrink-0 text-gold-600" aria-hidden />
-            <div className="min-w-0">
-              {analysis ? (
-                <>
-                  <p className="text-foreground">Análise vinculada</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <StatusBadge status={analysis.status} labels={ANALYSIS_STATUS_LABEL} tones={ANALYSIS_STATUS_TONE} />
-                    <span className="text-[12px] text-muted">Iniciada em {formatDate(analysis.createdAt)}</span>
-                  </div>
-                  <Link href={`/clientes/${process.clientId}?aba=analise`} className="mt-2 inline-block text-[12.5px] font-medium text-navy hover:underline underline-offset-2">
-                    Abrir análise do cliente
-                  </Link>
-                </>
-              ) : (
-                <p className="text-muted">A análise de origem não está mais disponível.</p>
-              )}
-            </div>
+        <PanelBody className="flex items-start gap-2.5 text-[13px]">
+          <Sparkles className="mt-0.5 size-4 shrink-0 text-gold-600" aria-hidden />
+          <div>
+            <p className="font-medium text-foreground">Origem: DG Brasil</p>
+            <p className="mt-0.5 text-[12.5px] text-muted">Criado a partir de uma análise aprovada em Revisões.</p>
           </div>
         </PanelBody>
       </Panel>
@@ -73,9 +50,21 @@ function OriginPanel({ process }: { process: Process }) {
   return null;
 }
 
-export function OverviewTab({ process: p, client, responsibleName }: { process: Process; client?: Client; responsibleName?: string }) {
+/** Visão geral do processo (dados reais do servidor). */
+export function OverviewTab({
+  process: p,
+  parties,
+  responsibleName,
+  lastMovementAt,
+}: {
+  process: ProcessInternalDTO;
+  parties: ActionResult<Page<ProcessPartyDTO>>;
+  responsibleName?: string;
+  lastMovementAt?: string;
+}) {
   const showValue = usePermission("processes.caseValue.view");
   const location = [p.district, p.state].filter(Boolean).join("/");
+  const partyRows = parties.ok ? parties.data.items : [];
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_380px] gap-5">
@@ -92,8 +81,14 @@ export function OverviewTab({ process: p, client, responsibleName }: { process: 
                 { label: "Tribunal", value: p.court },
                 { label: "Unidade / vara", value: p.unit },
                 { label: "Comarca / UF", value: location || undefined },
-                { label: "Área", value: LEGAL_AREA_LABEL[p.area] },
-                { label: "Tese", value: <ThesisValue thesisId={p.thesisId} /> },
+                {
+                  label: "Caso",
+                  value: (
+                    <Link href={`/casos/${p.legalCaseId}`} className="text-navy hover:underline underline-offset-2">
+                      {p.caseTitle || "Abrir caso"}
+                    </Link>
+                  ),
+                },
                 { label: "Responsável", value: responsibleName },
                 ...(showValue ? [{ label: "Valor da causa", value: <span className="tabular">{formatCurrency(p.caseValue)}</span> }] : []),
               ]}
@@ -103,22 +98,57 @@ export function OverviewTab({ process: p, client, responsibleName }: { process: 
 
         <Panel>
           <PanelHeader title="Partes" as="h3" />
-          <PanelBody>
+          <PanelBody className="space-y-4">
             <DefinitionGrid
               items={[
                 {
-                  label: `Cliente — ${CLIENT_POLE_LABEL[p.clientPole]}`,
-                  value: hasPendingClientLink(p) ? (
-                    <span className="text-warning">{processClientLabel(p, client)}</span>
-                  ) : (
+                  label: `Cliente${p.clientPole ? ` — ${CLIENT_POLE_LABEL[p.clientPole]}` : ""}`,
+                  value: p.clientName ? (
                     <Link href={`/clientes/${p.clientId}`} className="text-navy hover:underline underline-offset-2">
-                      {processClientLabel(p, client)}
+                      {p.clientName}
                     </Link>
+                  ) : (
+                    <span className="text-muted">Cliente não disponível</span>
                   ),
                 },
                 { label: "Parte contrária", value: p.opposingParty },
               ]}
             />
+            {!parties.ok ? (
+              <p className="text-[12.5px] text-danger">Não foi possível carregar as partes cadastradas.</p>
+            ) : (
+              partyRows.length > 0 && (
+                <div className="-mx-5 -mb-4 border-t border-line">
+                  <Table caption="Partes cadastradas no processo">
+                    <THead>
+                      <tr>
+                        <Th>Parte</Th>
+                        <Th>Qualificação</Th>
+                        <Th>Documento</Th>
+                      </tr>
+                    </THead>
+                    <TBody>
+                      {partyRows.map((party) => (
+                        <Tr key={party.id}>
+                          <Td>
+                            {party.clientId ? (
+                              <Link href={`/clientes/${party.clientId}`} className="text-navy hover:underline underline-offset-2">
+                                {party.name}
+                              </Link>
+                            ) : (
+                              party.name
+                            )}
+                          </Td>
+                          <Td className="text-[12.5px] text-muted">{PARTY_TYPE_LABEL[party.type]}</Td>
+                          {/* Documento mascarado (minimização — LGPD). */}
+                          <Td className="tabular text-[12.5px] text-muted">{party.document ? maskDocument(party.document) : "—"}</Td>
+                        </Tr>
+                      ))}
+                    </TBody>
+                  </Table>
+                </div>
+              )
+            )}
           </PanelBody>
         </Panel>
 
@@ -145,15 +175,12 @@ export function OverviewTab({ process: p, client, responsibleName }: { process: 
               items={[
                 { label: "Distribuição", value: p.distributionDate ? formatDate(p.distributionDate) : "Não distribuído" },
                 { label: "Cadastro", value: formatDate(p.createdAt) },
-                { label: "Última movimentação", value: formatDateTime(p.lastMovementAt), wide: true },
+                { label: "Última movimentação", value: lastMovementAt ? formatDateTime(lastMovementAt) : "—", wide: true },
               ]}
             />
           </PanelBody>
         </Panel>
         <OriginPanel process={p} />
-        <Can permission="processes.edit">
-          <p className="px-1 text-[12px] text-muted">A edição dos dados cadastrais estará disponível em uma próxima etapa.</p>
-        </Can>
       </div>
     </div>
   );

@@ -41,6 +41,8 @@ export interface CasePartnerRow {
   updated_at: string;
   legal_areas: CatalogRef | CatalogRef[] | null;
   case_types: CatalogRef | CatalogRef[] | null;
+  /** Nome do cliente, com a RLS de quem pergunta. */
+  clients?: ClientNameRef | ClientNameRef[] | null;
 }
 
 /** Ficha interna: + autoria e advogado responsável. */
@@ -137,6 +139,7 @@ export function internalCaseFromRows(row: CaseRow, internalRow: CaseInternalRow 
     id: row.id,
     officeId: ownerOrganizationId,
     clientId: row.client_id,
+    clientName: clientName(row.clients ?? null),
     title: row.title,
     // O catálogo é extensível (novas áreas são linhas); o front conhece as do seed.
     area: (area?.code ?? "") as LegalArea,
@@ -178,6 +181,7 @@ export function partnerCaseFromRow(row: CasePartnerRow, partnerOrganizationId: I
   return {
     id: row.id,
     clientId: row.client_id,
+    clientName: clientName(row.clients ?? null),
     title: row.title,
     area: area?.code ?? "",
     areaName: area?.name ?? "",

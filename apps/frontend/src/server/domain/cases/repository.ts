@@ -24,7 +24,8 @@ const CATALOG_EMBEDS = `legal_areas!legal_cases_legal_area_id_fkey(code, name),
 const PARTNER_COLUMNS = `id, client_id, legal_area_id, case_type_id, title, summary, opposing_party, status,
   partner_organization_id, origin_organization_id, partner_notes,
   submitted_at, accepted_at, rejected_at, closed_at, archived_at, rejection_reason_public,
-  created_at, updated_at, ${CATALOG_EMBEDS}`;
+  created_at, updated_at, ${CATALOG_EMBEDS},
+  clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name))`;
 
 const INTERNAL_COLUMNS = `${PARTNER_COLUMNS}, created_by_organization_id, created_by, assigned_lawyer_id`;
 
@@ -86,6 +87,14 @@ export function likePattern(text: string): string {
   return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
+/**
+ * Valor entre aspas para um filtro `or=(...)` do PostgREST: vírgula, ponto e
+ * parênteses do usuário não viram sintaxe; barra e aspas são escapadas.
+ */
+export function orQuoted(value: string): string {
+  return `"${value.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
+}
+
 /* ------------------------------------------------------------------ */
 /* Leitura                                                             */
 /* ------------------------------------------------------------------ */
@@ -96,6 +105,9 @@ export interface CaseFilters {
   clientId?: string;
   assignedLawyerId?: string;
   partnerOrganizationId?: string;
+  legalAreaId?: string;
+  originOrganizationId?: string;
+  createdFrom?: string;
 }
 
 export async function listCases(
@@ -110,8 +122,15 @@ export async function listCases(
     .select(scope === "INTERNAL" ? LIST_INTERNAL_COLUMNS : LIST_BASE_COLUMNS, { count: "exact" })
     .is("deleted_at", null);
   const q = filters.q?.trim();
-  if (q) query = query.ilike("title", likePattern(q));
+  // Título ou parte contrária. O padrão vai entre aspas: vírgula/parênteses do usuário não viram sintaxe do filtro.
+  if (q) {
+    const pattern = orQuoted(likePattern(q));
+    query = query.or(`title.ilike.${pattern},opposing_party.ilike.${pattern}`);
+  }
   if (filters.status?.length) query = query.in("status", filters.status);
+  if (filters.legalAreaId) query = query.eq("legal_area_id", filters.legalAreaId);
+  if (filters.originOrganizationId) query = query.eq("origin_organization_id", filters.originOrganizationId);
+  if (filters.createdFrom) query = query.gte("created_at", filters.createdFrom);
   if (filters.clientId) query = query.eq("client_id", filters.clientId);
   if (filters.assignedLawyerId) query = query.eq("assigned_lawyer_id", filters.assignedLawyerId);
   if (filters.partnerOrganizationId) query = query.eq("partner_organization_id", filters.partnerOrganizationId);
@@ -146,9 +165,35 @@ export async function getCaseState(db: SupabaseClient, id: string): Promise<Case
   return unwrapCase(await db.from("legal_cases").select(STATE_COLUMNS).eq("id", id).is("deleted_at", null).maybeSingle()) as CaseStateRow | null;
 }
 
+/** Quantos processos (não excluídos) cada caso tem — uma consulta para a página inteira. */
+export async function countProcessesByCase(db: SupabaseClient, caseIds: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (caseIds.length === 0) return counts;
+  const data = unwrapCase(await db.from("legal_processes").select("legal_case_id").in("legal_case_id", caseIds).is("deleted_at", null)) as
+    | { legal_case_id: string }[]
+    | null;
+  for (const r of data ?? []) counts.set(r.legal_case_id, (counts.get(r.legal_case_id) ?? 0) + 1);
+  return counts;
+}
+
 /* ------------------------------------------------------------------ */
 /* Catálogo                                                            */
 /* ------------------------------------------------------------------ */
+
+/** Áreas e tipos de caso ativos (catálogo é leitura para toda sessão autenticada). */
+export async function listCatalog(db: SupabaseClient): Promise<{
+  areas: { id: string; code: string; name: string }[];
+  types: { id: string; legal_area_id: string; code: string; name: string }[];
+}> {
+  const [areas, types] = await Promise.all([
+    db.from("legal_areas").select("id, code, name").eq("active", true).order("name"),
+    db.from("case_types").select("id, legal_area_id, code, name").eq("active", true).order("name"),
+  ]);
+  return {
+    areas: (unwrapCase(areas) ?? []) as { id: string; code: string; name: string }[],
+    types: (unwrapCase(types) ?? []) as { id: string; legal_area_id: string; code: string; name: string }[],
+  };
+}
 
 export async function findAreaIdByCode(db: SupabaseClient, code: string): Promise<string | null> {
   const data = unwrapCase(await db.from("legal_areas").select("id").eq("code", code).eq("active", true).maybeSingle()) as { id: string } | null;

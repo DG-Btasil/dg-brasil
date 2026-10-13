@@ -29,10 +29,20 @@ export interface CaseListItem {
   acceptedAt?: ISODateTime;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+  /** Processos (não excluídos) do caso. */
+  processCount?: number;
+}
+
+/** Catálogo ativo: áreas jurídicas e tipos de caso por área. */
+export interface CaseCatalogDTO {
+  areas: { id: ID; code: string; name: string }[];
+  caseTypes: { id: ID; legalAreaId: ID; code: string; name: string }[];
 }
 
 /** Ficha completa para a equipe interna = tipo de domínio do front + ids do catálogo. */
 export type CaseInternalDTO = LegalCase & {
+  /** Nome do cliente do caso. */
+  clientName: string;
   legalAreaId: ID;
   areaName: string;
   caseTypeId?: ID;
@@ -43,6 +53,7 @@ export type CaseInternalDTO = LegalCase & {
 export interface CasePartnerDTO {
   id: ID;
   clientId: ID;
+  clientName: string;
   title: string;
   area: string;
   areaName: string;

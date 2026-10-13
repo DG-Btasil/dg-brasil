@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CLIENT_POLES, DEADLINE_TYPES, PROCESS_PHASES, PROCESS_STATUSES } from "@/lib/constants/status";
+import { CLIENT_POLES, DEADLINE_TYPES, PROCESS_ORIGINS, PROCESS_PHASES, PROCESS_STATUSES } from "@/lib/constants/status";
 import { pageInputSchema, sortSchema } from "@/server/core/pagination";
 import { zCnj, zIsoDate, zIsoDateTime, zMoney, zOptionalText, zTaxId, zText, zUf, zUuid } from "@/server/core/validation";
 
@@ -42,6 +42,13 @@ export const listProcessesSchema = pageInputSchema
     caseId: zUuid().optional(),
     /** Só equipe interna (parceiro não filtra por responsável interno). */
     responsibleUserId: zUuid().optional(),
+    phase: z.enum(PROCESS_PHASES).optional(),
+    /** Tribunal (texto exato da lista de tribunais). */
+    court: z.string().trim().min(1).max(200).optional(),
+    /** Origem técnica do cadastro. */
+    technicalOrigin: z.enum(PROCESS_ORIGINS).optional(),
+    /** Origem comercial do CASO do processo. Só equipe interna. */
+    caseOriginOrganizationId: zUuid().optional(),
   })
   .and(sortSchema(PROCESS_SORT_FIELDS, "updatedAt"));
 export type ListProcessesInput = z.infer<typeof listProcessesSchema>;

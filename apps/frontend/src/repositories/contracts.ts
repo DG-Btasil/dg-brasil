@@ -11,7 +11,7 @@
  * parceiro recebe apenas os registros da própria relação (ver
  * `lib/permissions/partner-scope.ts` e docs/BACKEND_HANDOFF.md).
  */
-import type { DocumentStatus, ExportFormat, IntegrationStatus, LegalCaseStatus, PartnerOfficeStatus, ReviewDecisionKind } from "@/lib/constants/status";
+import type { DocumentStatus, ExportFormat, IntegrationStatus, PartnerOfficeStatus, ReviewDecisionKind } from "@/lib/constants/status";
 import type {
   AgentTask,
   Agent,
@@ -19,7 +19,6 @@ import type {
   ChangeHistoryEntry,
   Client,
   ClientDocument,
-  Deadline,
   ExportedDocument,
   FeeModel,
   FinancialAgreement,
@@ -34,10 +33,7 @@ import type {
   PartnerRequest,
   PartnerRole,
   Payment,
-  Process,
-  ProcessEvent,
   CasePartnershipAgreement,
-  LegalCase,
   ReferenceMaterial,
   Review,
   ReviewContent,
@@ -47,9 +43,6 @@ import type {
 } from "@/types";
 import type { JudicialSyncResult } from "@/services/judicial-integration";
 import type {
-  CaseRejectionInput,
-  LegalCasePatch,
-  NewLegalCaseInput,
   NewReferenceInput,
   ClientLookupResult,
   NewPartnerOfficeInput,
@@ -69,10 +62,8 @@ import type {
   NewThesisInput,
   RegisterPaymentInput,
   NewAgreementInput,
-  NewDeadlineInput,
   NewDocumentInput,
   NewFeeModelInput,
-  NewProcessInput,
   SkillChangeProposal,
   StartAnalysisInput,
   UserPreferences,
@@ -117,21 +108,6 @@ export interface AnalysisRepository {
   resume(analysisId: ID): Promise<void>;
   /** Somente demonstração: simula o resultado que o agente enviaria. */
   simulateAgentResult(analysisId: ID): Promise<ID | null>;
-}
-
-export interface ProcessRepository {
-  list(): Promise<Process[]>;
-  get(id: ID): Promise<Process | undefined>;
-  create(input: NewProcessInput): Promise<ID>;
-  update(id: ID, patch: Partial<NewProcessInput>): Promise<void>;
-  listEvents(processId: ID): Promise<ProcessEvent[]>;
-  addEvent(processId: ID, input: { title: string; description?: string; important?: boolean }): Promise<void>;
-  listDeadlines(processId?: ID): Promise<Deadline[]>;
-  addDeadline(input: NewDeadlineInput): Promise<ID>;
-  completeDeadline(id: ID): Promise<void>;
-  /** Não exclui o cliente. */
-  remove(id: ID): Promise<void>;
-  linkClient(processId: ID, clientId: ID): Promise<void>;
 }
 
 export interface ReviewRepository {
@@ -246,19 +222,6 @@ export interface PartnerPortalRepository {
  * acordo de parceria (snapshot) quando a origem é parceiro; a nota interna
  * da rejeição nunca é devolvida a parceiros.
  */
-export interface CaseRepository {
-  list(): Promise<LegalCase[]>;
-  get(id: ID): Promise<LegalCase | undefined>;
-  create(input: NewLegalCaseInput): Promise<ID>;
-  update(id: ID, patch: LegalCasePatch): Promise<void>;
-  submit(id: ID): Promise<void>;
-  changeOrigin(id: ID, originOrganizationId: ID, linkPartner?: boolean): Promise<void>;
-  assignLawyer(id: ID, lawyerId: ID): Promise<void>;
-  accept(id: ID, lawyerId?: ID): Promise<void>;
-  reject(id: ID, input: CaseRejectionInput): Promise<void>;
-  setStatus(id: ID, status: Extract<LegalCaseStatus, "IN_PROGRESS" | "CLOSED" | "ARCHIVED">): Promise<void>;
-}
-
 /** Referências do DG Brasil (somente Administrador). */
 export interface ReferenceRepository {
   list(): Promise<ReferenceMaterial[]>;

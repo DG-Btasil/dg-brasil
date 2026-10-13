@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { CLIENT_POLES, DEADLINE_TYPES, PROCESS_PHASES, PROCESS_STATUSES } from "@/lib/constants/status";
-import { LEGAL_AREAS } from "@/lib/constants/legal";
 import { msg, zCnjOptional, zCurrencyOptional, zRequired } from "@/lib/validation";
 
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
@@ -26,7 +25,6 @@ export const processFormSchema = z
     unit: z.string().optional(),
     district: z.string().optional(),
     state: z.string().optional(),
-    area: requiredEnum(LEGAL_AREAS),
     actionType: zRequired("Informe o tipo de ação."),
     subject: z.string().optional(),
     clientPole: requiredEnum(CLIENT_POLES),
@@ -52,6 +50,11 @@ export const processFormSchema = z
 
 export type ProcessFormInput = z.input<typeof processFormSchema>;
 export type ProcessFormValues = z.output<typeof processFormSchema>;
+
+/** Edição: o caso não muda e o prazo inicial é só do cadastro (prazos têm aba própria). */
+export const processEditSchema = processFormSchema.omit({ legalCaseId: true, deadlineTitle: true, deadlineType: true, deadlineDueDate: true });
+export type ProcessEditInput = z.input<typeof processEditSchema>;
+export type ProcessEditValues = z.output<typeof processEditSchema>;
 
 /** "Registrar andamento". */
 export const processEventSchema = z.object({

@@ -13,8 +13,17 @@ import type { AddPartyInput, CreatePartnerProcessInput, CreateProcessInput, Part
 /* Linhas do banco                                                     */
 /* ------------------------------------------------------------------ */
 
+interface ClientNameRef {
+  individual_client_details: { full_name: string } | { full_name: string }[] | null;
+  company_client_details: { legal_name: string } | { legal_name: string }[] | null;
+}
+
 interface CaseRefRow {
   client_id: string;
+  title?: string | null;
+  origin_organization_id?: string | null;
+  partner_organization_id?: string | null;
+  clients?: ClientNameRef | ClientNameRef[] | null;
 }
 
 /** Colunas que as duas superfícies leem (legal_processes + cliente do caso). */
@@ -83,17 +92,37 @@ const one = <T>(v: T | T[] | null | undefined): T | undefined => (Array.isArray(
 const opt = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v);
 const money = (v: number | string | null | undefined): number | undefined => (v === null || v === undefined ? undefined : Number(v));
 
+/** Data civil em America/Sao_Paulo (vencimento exibido como data). */
+export function localDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+}
+
 export interface ProcessViewer {
   surface: "INTERNAL" | "PARTNER";
   /** `processes.caseValue.view` na matriz central. */
   canViewCaseValue: boolean;
 }
 
+/** Caso do processo: cliente, título, origem e parceiro. */
+function caseRef(row: ProcessRow) {
+  const c = one(row.legal_cases);
+  const client = one(c?.clients ?? null);
+  return {
+    clientId: c?.client_id ?? "",
+    clientName: one(client?.individual_client_details ?? null)?.full_name ?? one(client?.company_client_details ?? null)?.legal_name ?? "",
+    caseTitle: c?.title ?? "",
+    caseOriginOrganizationId: opt(c?.origin_organization_id),
+    casePartnerOrganizationId: opt(c?.partner_organization_id),
+  };
+}
+
 export function listItemFromRow(row: ProcessRow, viewer: ProcessViewer): ProcessListItem {
   return {
     id: row.id,
     legalCaseId: row.legal_case_id,
-    clientId: one(row.legal_cases)?.client_id ?? "",
+    ...caseRef(row),
+    actionType: opt(row.legal_class),
+    origin: row.technical_origin,
     cnj: opt(row.cnj_number),
     title: row.title ?? "",
     court: opt(row.court),
@@ -113,7 +142,7 @@ function baseFromRow(row: ProcessRow, canViewCaseValue: boolean): ProcessPartner
   return {
     id: row.id,
     legalCaseId: row.legal_case_id,
-    clientId: one(row.legal_cases)?.client_id ?? "",
+    ...caseRef(row),
     cnj: opt(row.cnj_number),
     title: row.title ?? "",
     court: opt(row.court),

@@ -1,22 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { FilePlus2, FolderPlus, Pencil } from "lucide-react";
+import { FolderPlus, Pencil } from "lucide-react";
 import { Can } from "@/components/layout/guards";
 import { Badge, StatusBadge } from "@/components/ui/badge";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { Avatar, Breadcrumbs } from "@/components/ui/display";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatEventTime } from "@/lib/formatting";
 import { useDirectoryUser, useOrganizationName } from "@/features/directory/directory-context";
 import { CLIENT_INACTIVATION_REASON_LABEL, type Client } from "@/types";
 import { clientDisplayName, clientDocumentLabel, clientSecondaryName, clientShortName, formatClientDocument, maskClientDocument } from "../../utils";
-import { DocumentAddDialog } from "./documents/document-add-dialog";
 import { MaskedIdentifier } from "./masked-identifier";
 
 export function ClientHeader({ client }: { client: Client }) {
   const responsible = useDirectoryUser(client.responsibleUserId);
-  const [addOpen, setAddOpen] = useState(false);
   const secondary = clientSecondaryName(client);
 
   return (
@@ -65,12 +62,6 @@ export function ClientHeader({ client }: { client: Client }) {
             <ButtonLink href={`/clientes/${client.id}/editar`} variant="secondary" icon={<Pencil className="size-4" aria-hidden />}>
               Editar cadastro
             </ButtonLink>
-          </Can>
-          <Can permission="documents.manage">
-            <Button variant="secondary" icon={<FilePlus2 className="size-4" aria-hidden />} onClick={() => setAddOpen(true)}>
-              Adicionar documento
-            </Button>
-            <DocumentAddDialog clientId={client.id} open={addOpen} onOpenChange={setAddOpen} />
           </Can>
           <Can permission="cases.edit">
             <ButtonLink href={`/casos/novo?cliente=${client.id}`} icon={<FolderPlus className="size-4" aria-hidden />}>

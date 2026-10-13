@@ -11,6 +11,7 @@ import {
   internalDetailsRow,
   internalProcessFromRows,
   listItemFromRow,
+  localDate,
   manualEventRow,
   partnerProcessFromRow,
   partyFromRow,
@@ -74,16 +75,32 @@ export async function listProcesses(ctx: ServiceContext, input: ListProcessesInp
       caseId: input.caseId,
       // Parceiro não filtra por responsável interno; a RLS já limita aos casos dele.
       responsibleUserId: scope === "INTERNAL" ? input.responsibleUserId : undefined,
+      phase: input.phase,
+      court: input.court,
+      technicalOrigin: input.technicalOrigin,
+      caseOriginOrganizationId: scope === "INTERNAL" ? input.caseOriginOrganizationId : undefined,
     },
     input,
     { column: input.column, ascending: input.ascending },
   );
-  return toPage(
-    rows.map((r) => listItemFromRow(r, viewer)),
-    total,
-    input,
-  );
+  const items = rows.map((r) => listItemFromRow(r, viewer));
+  return toPage(scope === "INTERNAL" ? await withNextDeadline(ctx, items) : items, total, input);
 }
+
+/** Próximo prazo em aberto de cada processo da página (uma consulta). */
+async function withNextDeadline(ctx: ServiceContext, items: ProcessListItem[]): Promise<ProcessListItem[]> {
+  const open = await repo.listOpenDeadlines(
+    ctx.db,
+    items.map((i) => i.id),
+  );
+  const next = new Map<string, (typeof open)[number]>();
+  for (const d of open) if (!next.has(d.legal_process_id)) next.set(d.legal_process_id, d);
+  return items.map((i) => {
+    const d = next.get(i.id);
+    return d ? { ...i, nextDeadline: { id: d.id, title: d.title, dueAt: d.due_at, dueDateLocal: localDate(d.due_at) } } : i;
+  });
+}
+
 
 /** Processos de um caso que o usuário acessa (caso inexistente/alheio → NOT_FOUND). */
 export async function listCaseProcesses(ctx: ServiceContext, input: ListCaseProcessesInput): Promise<Page<ProcessListItem>> {

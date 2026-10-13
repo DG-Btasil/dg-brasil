@@ -11,6 +11,7 @@ import { DomainError, forbidden, invalidState, notFound, validation } from "@/se
 import { toPage, type Page } from "@/server/core/pagination";
 import type {
   CaseAcceptedDTO,
+  CaseCatalogDTO,
   CaseCreatedDTO,
   CaseDetailDTO,
   CaseListItem,
@@ -119,6 +120,9 @@ async function resolveCatalog(
 export async function listCases(ctx: ServiceContext, input: ListCasesInput): Promise<Page<CaseListItem>> {
   requireCaseRead(ctx);
   const partner = isPartner(ctx);
+  const legalAreaId = input.area ? await repo.findAreaIdByCode(ctx.db, input.area) : undefined;
+  // Área inexistente: nenhum caso (e não "todos").
+  if (legalAreaId === null) return toPage([], 0, input);
   const { rows, total } = await repo.listCases(
     ctx.db,
     partner ? "PARTNER" : "INTERNAL",
@@ -126,18 +130,35 @@ export async function listCases(ctx: ServiceContext, input: ListCasesInput): Pro
       q: input.q,
       status: input.status,
       clientId: input.clientId,
+      legalAreaId,
+      createdFrom: input.createdFrom,
       // Parceiro não filtra por advogado nem por escritório: a RLS já limita aos próprios casos.
       assignedLawyerId: partner ? undefined : input.assignedLawyerId,
       partnerOrganizationId: partner ? undefined : input.partnerOrganizationId,
+      originOrganizationId: partner ? undefined : input.originOrganizationId,
     },
     input,
     { column: input.column, ascending: input.ascending },
   );
+  const processCounts = await repo.countProcessesByCase(
+    ctx.db,
+    rows.map((r) => r.id),
+  );
   return toPage(
-    rows.map((r) => listItemFromRow(r, ctx.session)),
+    rows.map((r) => ({ ...listItemFromRow(r, ctx.session), processCount: processCounts.get(r.id) ?? 0 })),
     total,
     input,
   );
+}
+
+/** Catálogo de áreas e tipos de caso ativos (formulários e filtros). */
+export async function getCaseCatalog(ctx: ServiceContext): Promise<CaseCatalogDTO> {
+  requireCaseRead(ctx);
+  const { areas, types } = await repo.listCatalog(ctx.db);
+  return {
+    areas: areas.map((a) => ({ id: a.id, code: a.code, name: a.name })),
+    caseTypes: types.map((t) => ({ id: t.id, legalAreaId: t.legal_area_id, code: t.code, name: t.name })),
+  };
 }
 
 /** Ficha do caso. Parceiro: só colunas compartilhadas; dados internos nem são consultados. */

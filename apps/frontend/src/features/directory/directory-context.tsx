@@ -39,6 +39,16 @@ export function useResponsibleUserOptions(): { value: ID; label: string }[] {
   return useMemo(() => users.map((u) => ({ value: u.id, label: u.name })), [users]);
 }
 
+/**
+ * Advogados que podem ser responsáveis por caso/processo: Advogado ou
+ * Administrador inscrito na OAB (o banco aceita ADMIN/LAWYER ativo; a regra
+ * da OAB é do produto).
+ */
+export function useLawyerOptions(): { value: ID; label: string }[] {
+  const { users } = useOrgDirectory();
+  return useMemo(() => users.filter((u) => u.role === "LAWYER" || (u.role === "ADMIN" && u.hasOab)).map((u) => ({ value: u.id, label: u.name })), [users]);
+}
+
 /** Nome de um escritório (proprietário ou parceiro visível). */
 export function useOrganizationName(id: ID | undefined): string | undefined {
   const { owner, partners } = useOrgDirectory();

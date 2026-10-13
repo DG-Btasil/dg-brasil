@@ -6,10 +6,9 @@ import { createSeedData } from "@/mocks";
 import { createAnalysisSlice, createClientSlice } from "./slices/clients-analyses";
 import { createImportSlice } from "./slices/data-import";
 import { createDgSlice, createFinanceSlice } from "./slices/finance-dg";
-import { createProcessSlice, createReviewSlice } from "./slices/processes-reviews";
+import { createReviewSlice } from "./slices/processes-reviews";
 import { nowISO } from "@/lib/clock";
 import { syncCaseStatuses } from "@/lib/domain/legal-case";
-import { createCaseSlice } from "./slices/cases";
 import { createPartnerSlice } from "./slices/partners";
 import { createReferenceSlice } from "./slices/references";
 import { createOfficeSlice, createSessionSlice, initialSession } from "./slices/session-office";
@@ -66,12 +65,10 @@ export const useAppStore = create<AppStore>()(
         ...createClientSlice(set, get),
         ...createImportSlice(set, get),
         ...createAnalysisSlice(set, get),
-        ...createProcessSlice(set, get),
         ...createReviewSlice(set, get),
         ...createFinanceSlice(set, get),
         ...createDgSlice(set, get),
         ...createPartnerSlice(set, get),
-        ...createCaseSlice(set, get),
         ...createReferenceSlice(set, get),
       };
     },

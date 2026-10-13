@@ -251,7 +251,9 @@ describe("repositório — partes puras", () => {
     expect(partner).not.toMatch(/responsible_user_id|operational_due_at|created_by|case_value/);
     expect(processColumns("PARTNER", true)).toMatch(/case_value/);
     expect(processColumns("INTERNAL", true)).toMatch(/responsible_user_id.*case_value/);
-    expect(partner).toMatch(/legal_cases!inner\(client_id\)/);
+    // O caso vem junto (cliente, título, origem, parceiro e nome do cliente, com a RLS de quem pergunta).
+    expect(partner).toMatch(/legal_cases!inner\(client_id, title, origin_organization_id, partner_organization_id, clients!/);
+    expect(partner).not.toMatch(/internal_notes|assigned_lawyer_id/);
   });
 
   it("busca: dígitos (com máscara CNJ) → CNJ; texto → título; curingas escapados", () => {

@@ -1,22 +1,27 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { callAction } from "@/lib/actions/result";
+import { useActionFeedback } from "@/lib/actions/use-action-feedback";
+import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { PageContainer } from "@/components/layout/guards";
+import type { PickerOption } from "@/components/ui/async-picker";
 import { PageHeader } from "@/components/ui/display";
-import { useLegalCases } from "@/features/cases/hooks";
-import { useProcessActions } from "../hooks";
+import { createProcessAction } from "@/server/domain/processes/actions";
+import { useToast } from "@/store/ui-store";
 import { ProcessForm } from "./process-form";
 
-/** Página de cadastro manual (/processos/novo). Aceita ?caso=<id> e ?cliente=<id>. */
-export function NewProcessPage() {
+/**
+ * Cadastro manual (/processos/novo, aceita ?caso=<id>). Chave de
+ * idempotência por intenção de envio: clique duplo ou nova tentativa com os
+ * mesmos dados devolve o MESMO processo (`deduplicated`), tratado como sucesso.
+ */
+export function NewProcessPage({ initialCase }: { initialCase?: PickerOption & { lawyerId?: string } }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const cases = useLegalCases();
-  const { createProcess } = useProcessActions();
-  const prefill = searchParams.get("caso") ?? "";
-  const initialCaseId = cases.some((c) => c.id === prefill) ? prefill : "";
-  const clientFilter = searchParams.get("cliente") ?? undefined;
-  const back = initialCaseId ? `/casos/${initialCaseId}?aba=processos` : clientFilter ? `/clientes/${clientFilter}?aba=processos` : "/processos";
+  const toast = useToast();
+  const failed = useActionFeedback();
+  const idempotency = useIdempotencyKey();
+  const back = initialCase ? `/casos/${initialCase.id}?aba=processos` : "/processos";
 
   return (
     <PageContainer className="max-w-[1200px]">
@@ -26,12 +31,19 @@ export function NewProcessPage() {
         breadcrumbs={[{ label: "Processos", href: "/processos" }, { label: "Cadastrar processo" }]}
       />
       <ProcessForm
-        initialCaseId={initialCaseId}
-        clientFilter={clientFilter}
+        initialCase={initialCase}
         onCancel={() => router.push(back)}
         onSubmit={async (input) => {
-          const id = await createProcess(input);
-          if (id) router.push(`/processos/${id}`);
+          const result = await callAction(() => createProcessAction({ ...input, idempotencyKey: idempotency.keyFor(input) }));
+          if (!result.ok) {
+            failed(result, "Não foi possível cadastrar o processo.");
+            return result;
+          }
+          idempotency.reset();
+          toast({ tone: "success", title: "Processo cadastrado", description: String(input.title) });
+          // Recurso devolvido pelo servidor (também quando deduplicado).
+          router.push(`/processos/${result.data.id}`);
+          return result;
         }}
       />
     </PageContainer>

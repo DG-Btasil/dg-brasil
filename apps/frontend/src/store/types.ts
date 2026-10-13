@@ -7,7 +7,6 @@ import type {
   IntegrationStatus,
   NotificationType,
   PartnerOfficeStatus,
-  LegalCaseStatus,
   PartnerRequestType,
   ReferenceMaterialType,
   ReviewDecisionKind,
@@ -396,18 +395,6 @@ export interface AnalysisActions {
   resumeAnalysis: (analysisId: ID) => void;
 }
 
-export interface ProcessActions {
-  createProcess: (input: NewProcessInput) => ID;
-  updateProcess: (id: ID, patch: Partial<NewProcessInput>) => void;
-  addProcessEvent: (processId: ID, input: { title: string; description?: string; important?: boolean }) => void;
-  addDeadline: (input: NewDeadlineInput) => ID;
-  completeDeadline: (id: ID) => void;
-  /** Exclui o processo. Nunca exclui o cliente. */
-  deleteProcess: (id: ID) => void;
-  /** Vincula (ou revincula) o cliente de um processo, resolvendo vínculo pendente. */
-  linkProcessClient: (processId: ID, clientId: ID) => void;
-}
-
 export interface ReviewActions {
   decideReview: (reviewId: ID, decision: ReviewDecisionKind, comment?: string) => void;
   /** Edição manual: guarda a versão anterior e registra MANUAL_EDIT. */
@@ -474,23 +461,6 @@ export interface PartnerActions {
   respondPartnerRequest: (requestId: ID, message: string) => void;
 }
 
-export interface CaseActions {
-  createCase: (input: NewLegalCaseInput) => ID;
-  updateCase: (id: ID, patch: LegalCasePatch) => void;
-  /** Rascunho → Enviado. */
-  submitCase: (id: ID) => void;
-  /**
-   * Antes do aceite: conforme as origens permitidas. Depois do aceite: somente Administrador interno.
-   * Nunca altera o acesso operacional, exceto com `linkPartner` (opt-in interno, caso sem parceiro).
-   */
-  changeCaseOrigin: (id: ID, originOrganizationId: ID, linkPartner?: boolean) => void;
-  assignCaseLawyer: (id: ID, lawyerId: ID) => void;
-  /** Exige advogado responsável; cria o acordo de parceria (snapshot) se a origem for parceiro. */
-  acceptCase: (id: ID, lawyerId?: ID) => void;
-  rejectCase: (id: ID, input: CaseRejectionInput) => void;
-  /** Transições simples após o aceite: em andamento, encerrado, arquivado. */
-  setCaseStatus: (id: ID, status: Extract<LegalCaseStatus, "IN_PROGRESS" | "CLOSED" | "ARCHIVED">) => void;
-}
 
 export interface ReferenceActions {
   createReference: (input: NewReferenceInput) => ID;
@@ -501,12 +471,10 @@ export type AppActions = SessionActions &
   ClientActions &
   ImportActions &
   AnalysisActions &
-  ProcessActions &
   ReviewActions &
   FinanceActions &
   DgActions &
   PartnerActions &
-  CaseActions &
   ReferenceActions;
 
 export type AppStore = AppState & AppActions;

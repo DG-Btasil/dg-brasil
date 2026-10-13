@@ -9,11 +9,36 @@ import type { PartyType } from "./schemas";
  * existe quando o papel tem `processes.caseValue.view`.
  */
 
+/** Caso do processo, para exibição (as duas superfícies). */
+interface ProcessCaseRef {
+  clientId: ID;
+  /** Nome do cliente do caso (vazio se a RLS não entrega o cadastro). */
+  clientName: string;
+  caseTitle: string;
+  /** Origem comercial do caso. */
+  caseOriginOrganizationId?: ID;
+  /** Parceiro com acesso operacional ao caso (nulo = caso interno). */
+  casePartnerOrganizationId?: ID;
+}
+
+/** Próximo prazo em aberto (só equipe interna). */
+export interface ProcessNextDeadline {
+  id: ID;
+  title: string;
+  dueAt: ISODateTime;
+  /** Data do vencimento em America/Sao_Paulo. */
+  dueDateLocal: ISODate;
+}
+
 /** Linha da listagem (as duas superfícies). */
-export interface ProcessListItem {
+export interface ProcessListItem extends ProcessCaseRef {
   id: ID;
   legalCaseId: ID;
-  clientId: ID;
+  actionType?: string;
+  /** Origem TÉCNICA do cadastro. */
+  origin: ProcessOrigin;
+  /** Só interno. */
+  nextDeadline?: ProcessNextDeadline;
   cnj?: string;
   title: string;
   court?: string;
@@ -32,10 +57,9 @@ export interface ProcessListItem {
 }
 
 /** Campos comuns às duas fichas. */
-interface ProcessBase {
+interface ProcessBase extends ProcessCaseRef {
   id: ID;
   legalCaseId: ID;
-  clientId: ID;
   cnj?: string;
   title: string;
   court?: string;

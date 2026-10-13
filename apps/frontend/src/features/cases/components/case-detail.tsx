@@ -2,108 +2,94 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Archive, Check, FilePlus2, FileSearch, FolderPlus, History, Pencil, Send, X } from "lucide-react";
-import { LEGAL_AREA_LABEL } from "@/lib/constants/legal";
+import { Archive, Check, FolderPlus, Handshake, Pencil, Send, X } from "lucide-react";
+import { LEGAL_AREA_LABEL, type LegalArea } from "@/lib/constants/legal";
 import { LEGAL_CASE_STATUS_LABEL, LEGAL_CASE_STATUS_TONE } from "@/lib/constants/status";
 import { isAccepted, isDecidable } from "@/lib/domain/legal-case";
 import { formatDateTime, formatEventTime } from "@/lib/formatting";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
+import type { ActionResult } from "@/lib/actions/result";
 import { Can } from "@/components/layout/guards";
+import { ActionErrorState } from "@/components/feedback/action-error";
+import { PendingIntegration } from "@/components/feedback/pending-integration";
 import { Callout, EmptyState } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Avatar, Breadcrumbs, Timeline } from "@/components/ui/display";
+import { Avatar, Breadcrumbs } from "@/components/ui/display";
 import { MenuButton } from "@/components/ui/menu";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
-import { AUDIT_ACTION_LABEL } from "@/types/audit";
-import type { LegalCase } from "@/types";
+import type { Page } from "@/server/core/pagination";
+import type { CaseCatalogDTO, CaseInternalDTO } from "@/server/domain/cases/dto";
+import type { ProcessListItem } from "@/server/domain/processes/dto";
 import { usePermission } from "@/features/auth/hooks";
-import { AnalysisTab } from "@/features/analyses/components/analysis-tab";
-import { isActiveAnalysis } from "@/features/analyses/utils";
-import { useAgentMap } from "@/features/analyses/hooks";
-import { DocumentAddDialog } from "@/features/clients/components/detail/documents/document-add-dialog";
-import { DocumentTable } from "@/features/clients/components/detail/documents/document-table";
-import { useClientOriginOptions } from "@/features/clients/hooks";
-import { CaseFinancePanel } from "@/features/finance/components/case-finance-panel";
-import { useUser } from "@/features/offices/hooks";
-import { CaseOriginTag, CasePartnerPanel } from "@/features/partners/components/case-partner-panel";
-import { useClientMap } from "@/features/processes/hooks";
-import { useProcessMap } from "@/features/reviews/hooks";
-import { clientDisplayName } from "@/features/processes/utils";
-import { ProcessesTab } from "@/features/clients/components/detail/processes-tab";
-import { ReviewTable } from "@/features/reviews/components/review-table";
-import {
-  useCaseActions,
-  useCaseActivity,
-  useCaseAnalyses,
-  useCaseDocuments,
-  useCasePartnerId,
-  useCasePartnership,
-  useCaseProcesses,
-  useCaseReviews,
-  useLegalCase,
-  useOfficeNames,
-} from "../hooks";
+import { useDirectoryUser, useOrganizationName, useOrgDirectory, useOriginOptions } from "@/features/directory/directory-context";
+import { ProcessListTable } from "@/features/processes/components/process-list-table";
+import { useCaseActions } from "../use-case-actions";
 import { AcceptCaseDialog, AssignLawyerDialog, ChangeOriginDialog, EditCaseDialog, RejectCaseDialog } from "./case-dialogs";
-import { CaseNotFound } from "./case-not-found";
 
 const TAB_KEYS = ["visao-geral", "documentos", "analise", "revisoes", "processos", "financeiro", "atividade"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
-type DialogKey = "accept" | "reject" | "origin" | "lawyer" | "edit" | "document";
+type DialogKey = "accept" | "reject" | "origin" | "lawyer" | "edit";
 
-/** Página do caso (equipe interna). Precisa estar dentro de <Suspense> (useUrlTab). */
-export function CaseDetail({ id }: { id: string }) {
-  const legalCase = useLegalCase(id);
-  const documents = useCaseDocuments(id);
-  const analyses = useCaseAnalyses(id);
-  const reviews = useCaseReviews(id);
-  const processes = useCaseProcesses(id);
+/**
+ * Página do caso (equipe interna), com dados do servidor (getCaseAction).
+ * Documentos, análise, revisões, financeiro e atividade são conectados nas
+ * próximas fases; até lá, a aba diz isso (nada de dado de demonstração).
+ * Precisa estar dentro de <Suspense> (useUrlTab).
+ */
+export function CaseDetail({
+  legalCase,
+  catalog,
+  processes,
+}: {
+  legalCase: CaseInternalDTO;
+  catalog: CaseCatalogDTO;
+  processes: ActionResult<Page<ProcessListItem>>;
+}) {
   const canFinance = usePermission("finance.view");
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
   const [dialog, setDialog] = useState<DialogKey | null>(null);
+  const processCount = processes.ok ? processes.data.total : undefined;
 
   const items = useMemo<TabItem<TabKey>[]>(
     () => [
       { key: "visao-geral", label: "Visão geral" },
-      { key: "documentos", label: "Documentos", count: documents.length, attention: documents.some((d) => d.status === "MISSING" || d.status === "PENDING") },
-      { key: "analise", label: "Análise", attention: analyses[0]?.status === "WAITING_DOCUMENTS" || analyses[0]?.status === "READY" },
-      { key: "revisoes", label: "Revisões", count: reviews.length },
-      { key: "processos", label: "Processos", count: processes.length },
+      { key: "documentos", label: "Documentos" },
+      { key: "analise", label: "Análise" },
+      { key: "revisoes", label: "Revisões" },
+      { key: "processos", label: "Processos", count: processCount },
       ...(canFinance ? [{ key: "financeiro" as const, label: "Financeiro" }] : []),
       { key: "atividade", label: "Atividade" },
     ],
-    [documents, analyses, reviews.length, processes.length, canFinance],
+    [processCount, canFinance],
   );
-
-  if (!legalCase) return <CaseNotFound />;
   const close = (o: boolean) => !o && setDialog(null);
 
   return (
     <>
-      <CaseHeader legalCase={legalCase} hasActiveAnalysis={analyses.some(isActiveAnalysis)} onDialog={setDialog} />
+      <CaseHeader legalCase={legalCase} onDialog={setDialog} />
       <Tabs items={items} value={tab} onChange={setTab} label="Seções do caso" className="mb-5" />
       <TabPanel tabKey={tab}>
         {tab === "visao-geral" && <CaseOverview legalCase={legalCase} onDialog={setDialog} />}
-        {tab === "documentos" && <CaseDocumentsTab legalCase={legalCase} onAdd={() => setDialog("document")} />}
-        {tab === "analise" && <AnalysisTab newHref={`/casos/${legalCase.id}/analise/nova`} analyses={analyses} onGoToDocuments={() => setTab("documentos")} />}
-        {tab === "revisoes" && <CaseReviewsTab legalCase={legalCase} />}
-        {tab === "processos" && <CaseProcessesTab legalCase={legalCase} />}
-        {tab === "financeiro" && canFinance && <CaseFinancePanel legalCaseId={legalCase.id} />}
-        {tab === "atividade" && <CaseActivityTab legalCaseId={legalCase.id} />}
+        {tab === "documentos" && <PendingIntegration description="Documentos do caso serão conectados ao sistema na próxima fase (upload e download reais)." />}
+        {tab === "analise" && <PendingIntegration description="A análise jurídica do caso será conectada depois que o início da análise for atômico (análise + execução do agente)." />}
+        {tab === "revisoes" && <PendingIntegration description="As revisões do caso serão conectadas em uma próxima fase." />}
+        {tab === "processos" && <CaseProcessesTab legalCase={legalCase} processes={processes} />}
+        {tab === "financeiro" && canFinance && <PendingIntegration description="O financeiro do caso será conectado depois da revisão do ciclo de vida do acordo financeiro." />}
+        {tab === "atividade" && <PendingIntegration description="A linha do tempo de auditoria será conectada em uma próxima fase." />}
       </TabPanel>
       {dialog === "accept" && <AcceptCaseDialog legalCase={legalCase} open onOpenChange={close} />}
       {dialog === "reject" && <RejectCaseDialog legalCase={legalCase} open onOpenChange={close} />}
       {dialog === "lawyer" && <AssignLawyerDialog legalCase={legalCase} open onOpenChange={close} />}
-      {dialog === "edit" && <EditCaseDialog legalCase={legalCase} open onOpenChange={close} />}
+      {dialog === "edit" && <EditCaseDialog legalCase={legalCase} catalog={catalog} open onOpenChange={close} />}
       {dialog === "origin" && <OriginDialog legalCase={legalCase} onOpenChange={close} />}
-      <DocumentAddDialog clientId={legalCase.clientId} legalCaseId={legalCase.id} open={dialog === "document"} onOpenChange={close} />
     </>
   );
 }
 
-function OriginDialog({ legalCase, onOpenChange }: { legalCase: LegalCase; onOpenChange: (o: boolean) => void }) {
-  const allowed = useClientOriginOptions(legalCase.originOrganizationId);
+function OriginDialog({ legalCase, onOpenChange }: { legalCase: CaseInternalDTO; onOpenChange: (o: boolean) => void }) {
+  const allowed = useOriginOptions(legalCase.originOrganizationId);
   return <ChangeOriginDialog legalCase={legalCase} options={allowed} open onOpenChange={onOpenChange} />;
 }
 
@@ -111,23 +97,45 @@ function OriginDialog({ legalCase, onOpenChange }: { legalCase: LegalCase; onOpe
 /* Cabeçalho e ações por situação                                      */
 /* ------------------------------------------------------------------ */
 
-function CaseHeader({ legalCase, hasActiveAnalysis, onDialog }: { legalCase: LegalCase; hasActiveAnalysis: boolean; onDialog: (d: DialogKey) => void }) {
-  const clientMap = useClientMap();
-  const lawyer = useUser(legalCase.assignedLawyerId ?? undefined);
+/** Origem do caso, com destaque quando é um parceiro. */
+export function CaseOriginLabel({ originOrganizationId }: { originOrganizationId: string }) {
+  const { owner } = useOrgDirectory();
+  const name = useOrganizationName(originOrganizationId);
+  if (originOrganizationId === owner.id) return <span>Origem do caso: {owner.name}</span>;
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Handshake className="size-3.5 text-gold-600" aria-hidden />
+      Origem do caso:{" "}
+      <Can permission="partners.view">
+        <Link href={`/parceiros/${originOrganizationId}`} className="font-medium text-navy hover:underline underline-offset-2">
+          {name ?? "Escritório parceiro"}
+        </Link>
+      </Can>
+    </span>
+  );
+}
+
+function CaseHeader({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onDialog: (d: DialogKey) => void }) {
+  const lawyer = useDirectoryUser(legalCase.assignedLawyerId ?? undefined);
   const actions = useCaseActions();
   const canEdit = usePermission("cases.edit");
   const canDecide = usePermission("cases.decide");
-  const canStart = usePermission("analyses.start");
   const canOverride = usePermission("cases.origin.override");
+  const [busy, setBusy] = useState<string | null>(null);
   const status = legalCase.status;
   const accepted = isAccepted(status);
-  const client = clientMap.get(legalCase.clientId);
   const locked = status === "ARCHIVED" || status === "REJECTED";
+
+  async function act(key: string, run: () => Promise<unknown>) {
+    setBusy(key);
+    await run();
+    setBusy(null);
+  }
 
   const editItems = [
     ...(canEdit && !locked ? [{ key: "edit", label: "Editar dados do caso", onSelect: () => onDialog("edit") }] : []),
     ...(canEdit && !locked && (!accepted || canOverride)
-      ? [{ key: "origin", label: "Alterar origem", description: accepted ? "Somente Administrador, com confirmação." : undefined, onSelect: () => onDialog("origin") }]
+      ? [{ key: "origin", label: "Alterar origem", description: accepted ? "Somente Administrador, com motivo e confirmação." : undefined, onSelect: () => onDialog("origin") }]
       : []),
     ...(canEdit && !locked ? [{ key: "lawyer", label: "Definir advogado responsável", onSelect: () => onDialog("lawyer") }] : []),
   ];
@@ -145,10 +153,10 @@ function CaseHeader({ legalCase, hasActiveAnalysis, onDialog }: { legalCase: Leg
             <span>
               <span className="text-subtle">Cliente</span>{" "}
               <Link href={`/clientes/${legalCase.clientId}`} className="font-medium text-navy-700 hover:underline underline-offset-2">
-                {clientDisplayName(client)}
+                {legalCase.clientName || "Cliente"}
               </Link>
             </span>
-            <CaseOriginTag legalCase={legalCase} />
+            <CaseOriginLabel originOrganizationId={legalCase.originOrganizationId} />
             <span className="inline-flex items-center gap-2">
               <span className="text-subtle">Responsável</span>
               {lawyer ? (
@@ -157,7 +165,7 @@ function CaseHeader({ legalCase, hasActiveAnalysis, onDialog }: { legalCase: Leg
                   <span className="text-foreground">{lawyer.name}</span>
                 </>
               ) : (
-                <span className="font-medium text-warning">Não definido</span>
+                <span className="font-medium text-warning">{legalCase.assignedLawyerId ? "—" : "Não definido"}</span>
               )}
             </span>
             <span>
@@ -168,37 +176,38 @@ function CaseHeader({ legalCase, hasActiveAnalysis, onDialog }: { legalCase: Leg
         <div className="flex shrink-0 items-center gap-2">
           {editItems.length > 0 && <MenuButton label="Editar" icon={<Pencil className="size-4" aria-hidden />} items={editItems} size="md" />}
           {status === "DRAFT" && canEdit && (
-            <Button icon={<Send className="size-4" aria-hidden />} onClick={() => void actions.submit(legalCase.id)}>
+            <Button icon={<Send className="size-4" aria-hidden />} loading={busy === "submit"} disabled={!!busy} onClick={() => act("submit", () => actions.submit(legalCase.id))}>
               Enviar para análise
             </Button>
           )}
-          {isDecidable(status) && canStart && !hasActiveAnalysis && (
-            <ButtonLink href={`/casos/${legalCase.id}/analise/nova`} variant="secondary" icon={<FileSearch className="size-4" aria-hidden />}>
-              Iniciar análise
-            </ButtonLink>
-          )}
           {isDecidable(status) && canDecide && (
             <>
-              <Button variant="secondary" icon={<X className="size-4" aria-hidden />} onClick={() => onDialog("reject")}>
+              <Button variant="secondary" icon={<X className="size-4" aria-hidden />} disabled={!!busy} onClick={() => onDialog("reject")}>
                 Rejeitar
               </Button>
-              <Button icon={<Check className="size-4" aria-hidden />} onClick={() => onDialog("accept")}>
+              <Button icon={<Check className="size-4" aria-hidden />} disabled={!!busy} onClick={() => onDialog("accept")}>
                 Aceitar
               </Button>
             </>
           )}
-          {status === "ACCEPTED" && canEdit && (
-            <Button variant="secondary" onClick={() => void actions.setStatus(legalCase.id, "IN_PROGRESS")}>
+          {status === "ACCEPTED" && canDecide && (
+            <Button variant="secondary" loading={busy === "start"} disabled={!!busy} onClick={() => act("start", () => actions.start(legalCase.id))}>
               Marcar em andamento
             </Button>
           )}
-          {(status === "ACCEPTED" || status === "IN_PROGRESS") && canEdit && (
-            <Button variant="secondary" onClick={() => void actions.setStatus(legalCase.id, "CLOSED")}>
+          {(status === "ACCEPTED" || status === "IN_PROGRESS") && canDecide && (
+            <Button variant="secondary" loading={busy === "close"} disabled={!!busy} onClick={() => act("close", () => actions.close(legalCase.id))}>
               Encerrar caso
             </Button>
           )}
-          {(status === "DRAFT" || status === "CLOSED" || status === "REJECTED") && canEdit && (
-            <Button variant="secondary" icon={<Archive className="size-4" aria-hidden />} onClick={() => void actions.setStatus(legalCase.id, "ARCHIVED")}>
+          {(status === "DRAFT" || status === "CLOSED" || status === "REJECTED") && canDecide && (
+            <Button
+              variant="secondary"
+              icon={<Archive className="size-4" aria-hidden />}
+              loading={busy === "archive"}
+              disabled={!!busy}
+              onClick={() => act("archive", () => actions.archive(legalCase.id))}
+            >
               Arquivar
             </Button>
           )}
@@ -212,14 +221,14 @@ function CaseHeader({ legalCase, hasActiveAnalysis, onDialog }: { legalCase: Leg
 /* Abas                                                                */
 /* ------------------------------------------------------------------ */
 
-function CaseOverview({ legalCase, onDialog }: { legalCase: LegalCase; onDialog: (d: DialogKey) => void }) {
-  const officeName = useOfficeNames();
-  const createdBy = useUser(legalCase.createdBy);
-  const acceptedBy = useUser(legalCase.acceptedBy);
-  const partnership = useCasePartnership(legalCase.id);
-  const partnerId = useCasePartnerId(legalCase);
-  const canPartnersFinance = usePermission("partners.finance.view");
+function CaseOverview({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onDialog: (d: DialogKey) => void }) {
+  const { owner } = useOrgDirectory();
+  const originName = useOrganizationName(legalCase.originOrganizationId);
+  const createdByOrg = useOrganizationName(legalCase.createdByOrganizationId);
+  const createdBy = useDirectoryUser(legalCase.createdBy || undefined);
+  const acceptedBy = useDirectoryUser(legalCase.acceptedBy);
   const canDecide = usePermission("cases.decide");
+  const partnerOrigin = legalCase.originOrganizationId !== owner.id;
   const needsLawyer = !legalCase.assignedLawyerId && isDecidable(legalCase.status);
 
   return (
@@ -258,15 +267,15 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: LegalCase; onDialog:
           <PanelBody>
             <DefinitionGrid
               items={[
-                { label: "Área", value: LEGAL_AREA_LABEL[legalCase.area] },
-                { label: "Tipo", value: legalCase.caseType },
+                { label: "Área", value: LEGAL_AREA_LABEL[legalCase.area as LegalArea] ?? legalCase.areaName },
+                { label: "Tipo", value: legalCase.caseType || "—" },
                 { label: "Parte contrária", value: legalCase.opposingParty ?? "—" },
-                { label: "Origem do caso", value: officeName(legalCase.originOrganizationId) },
-                { label: "Criado por", value: `${createdBy?.name ?? "—"} · ${officeName(legalCase.createdByOrganizationId)}` },
+                { label: "Origem do caso", value: originName ?? "—" },
+                { label: "Criado por", value: `${createdBy?.name ?? "—"} · ${createdByOrg ?? "—"}` },
                 { label: "Criado em", value: formatDateTime(legalCase.createdAt) },
                 { label: "Enviado para análise", value: legalCase.submittedAt ? formatDateTime(legalCase.submittedAt) : "—" },
                 { label: "Aceito", value: legalCase.acceptedAt ? `${formatDateTime(legalCase.acceptedAt)}${acceptedBy ? ` · ${acceptedBy.name}` : ""}` : "—" },
-                { label: "Resumo", value: legalCase.summary, wide: true },
+                { label: "Resumo", value: legalCase.summary || "—", wide: true },
                 ...(legalCase.partnerNotes ? [{ label: "Observações do parceiro", value: legalCase.partnerNotes, wide: true }] : []),
                 ...(legalCase.notes ? [{ label: "Observações internas", value: legalCase.notes, wide: true }] : []),
               ]}
@@ -275,20 +284,18 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: LegalCase; onDialog:
         </Panel>
       </div>
       <div className="col-span-12 space-y-5 xl:col-span-4">
-        {partnerId && (
+        {partnerOrigin && (
           <Panel>
             <PanelHeader title="Parceria" />
             <PanelBody className="space-y-2 text-[13px]">
-              {partnership && canPartnersFinance ? (
-                <>
-                  <p>
-                    Divisão do caso: <span className="font-semibold tabular">{partnership.partnerPercentage}% parceiro / {partnership.ownerPercentage}% escritório</span>
-                  </p>
-                  <p className="text-[12.5px] text-muted">Registrada no aceite em {formatDateTime(partnership.effectiveAt)} (snapshot). Mudanças futuras na divisão padrão não alteram este caso.</p>
-                </>
-              ) : (
-                <p className="text-[12.5px] text-muted">O acordo de parceria é criado no aceite, com a divisão vigente do parceiro naquele momento.</p>
-              )}
+              <p className="text-[12.5px] text-muted">
+                {isAccepted(legalCase.status)
+                  ? "O acordo de parceria foi registrado no aceite, com a divisão vigente do parceiro naquele momento (snapshot). Os valores aparecem no Financeiro."
+                  : "O acordo de parceria é criado no aceite, com a divisão vigente do parceiro naquele momento."}
+              </p>
+              <p className="text-[12.5px] text-muted">
+                {legalCase.partnerOrganizationId ? "O parceiro tem acesso operacional a este caso." : "O parceiro de origem não tem acesso operacional a este caso (vínculo não habilitado)."}
+              </p>
             </PanelBody>
           </Panel>
         )}
@@ -297,53 +304,10 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: LegalCase; onDialog:
   );
 }
 
-function CaseDocumentsTab({ legalCase, onAdd }: { legalCase: LegalCase; onAdd: () => void }) {
-  const documents = useCaseDocuments(legalCase.id);
-  const partnerId = useCasePartnerId(legalCase);
-  const fromPartner = !!partnerId || !!legalCase.partnerOrganizationId;
-  return (
-    <div className="space-y-5">
-      <Panel>
-        <PanelHeader
-          title="Documentos do caso"
-          description="Documentos ligados ao caso e aos processos dele. Documentos do cadastro do cliente ficam na página do cliente."
-          actions={
-            <Can permission="documents.manage">
-              <Button size="sm" variant="secondary" icon={<FilePlus2 className="size-4" aria-hidden />} onClick={onAdd}>
-                Adicionar documento
-              </Button>
-            </Can>
-          }
-        />
-        {documents.length === 0 ? <EmptyState compact icon={FilePlus2} title="Nenhum documento neste caso." /> : <DocumentTable documents={documents} />}
-      </Panel>
-      {fromPartner && <CasePartnerPanel legalCase={legalCase} documents={documents} />}
-    </div>
-  );
-}
-
-function CaseReviewsTab({ legalCase }: { legalCase: LegalCase }) {
-  const reviews = useCaseReviews(legalCase.id);
-  const agents = useAgentMap();
-  const clients = useClientMap();
-  const processes = useProcessMap();
-  return (
-    <Panel>
-      <PanelHeader title="Revisões do caso" description="Peças e análises produzidas para este caso. Toda peça passa por revisão humana." />
-      {reviews.length === 0 ? (
-        <EmptyState compact icon={FileSearch} title="Nenhuma revisão neste caso." />
-      ) : (
-        <ReviewTable reviews={reviews} agents={agents} clients={clients} processes={processes} />
-      )}
-    </Panel>
-  );
-}
-
-function CaseProcessesTab({ legalCase }: { legalCase: LegalCase }) {
-  const processes = useCaseProcesses(legalCase.id);
-  const clients = useClientMap();
-  const client = clients.get(legalCase.clientId);
-  if (processes.length === 0) {
+function CaseProcessesTab({ legalCase, processes }: { legalCase: CaseInternalDTO; processes: ActionResult<Page<ProcessListItem>> }) {
+  const newHref = `/processos/novo?caso=${legalCase.id}`;
+  if (!processes.ok) return <ActionErrorState error={processes} title="Não foi possível carregar os processos do caso." />;
+  if (processes.data.items.length === 0) {
     return (
       <Panel>
         <EmptyState
@@ -352,7 +316,7 @@ function CaseProcessesTab({ legalCase }: { legalCase: LegalCase }) {
           description="Um caso pode existir antes do processo. Cadastre o processo quando houver distribuição."
           action={
             <Can permission="processes.edit">
-              <ButtonLink href={`/processos/novo?caso=${legalCase.id}`} icon={<FolderPlus className="size-4" aria-hidden />}>
+              <ButtonLink href={newHref} icon={<FolderPlus className="size-4" aria-hidden />}>
                 Cadastrar processo
               </ButtonLink>
             </Can>
@@ -361,33 +325,20 @@ function CaseProcessesTab({ legalCase }: { legalCase: LegalCase }) {
       </Panel>
     );
   }
-  return client ? <ProcessesTab client={client} processes={processes} newHref={`/processos/novo?caso=${legalCase.id}`} title="Processos do caso" /> : null;
-}
-
-function CaseActivityTab({ legalCaseId }: { legalCaseId: string }) {
-  const events = useCaseActivity(legalCaseId);
   return (
-    <Panel className="max-w-[880px]">
-      <PanelHeader title="Atividade" description="Registro de auditoria do caso, seus processos e documentos." />
-      <PanelBody>
-        {events.length === 0 ? (
-          <EmptyState icon={History} title="Nenhuma atividade registrada." compact />
-        ) : (
-          <Timeline
-            items={events.map((e) => ({
-              id: e.id,
-              title: AUDIT_ACTION_LABEL[e.action],
-              description: (
-                <>
-                  {e.description} <span className="text-subtle">· {e.actor.name}</span>
-                </>
-              ),
-              meta: formatDateTime(e.at),
-              tone: e.actor.type === "AGENT" ? "navy" : "neutral",
-            }))}
-          />
-        )}
-      </PanelBody>
+    <Panel>
+      <PanelHeader
+        title="Processos do caso"
+        description={processes.data.total > processes.data.items.length ? `Mostrando ${processes.data.items.length} de ${processes.data.total}. Veja todos em Processos.` : undefined}
+        actions={
+          <Can permission="processes.edit">
+            <ButtonLink href={newHref} variant="secondary" size="sm" icon={<FolderPlus className="size-4" aria-hidden />}>
+              Cadastrar processo
+            </ButtonLink>
+          </Can>
+        }
+      />
+      <ProcessListTable rows={processes.data.items} showClient={false} />
     </Panel>
   );
 }

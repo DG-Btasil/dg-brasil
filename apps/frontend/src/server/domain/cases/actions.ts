@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { runAction } from "@/server/core/action";
 import { enforcePartnerTaxIdLimit } from "@/server/core/rate-limit";
 import * as service from "./service";
@@ -28,6 +29,10 @@ import {
 
 export async function listCasesAction(input: unknown) {
   return runAction({ name: "cases.list", schema: listCasesSchema, input, handler: service.listCases });
+}
+
+export async function getCaseCatalogAction(input?: unknown) {
+  return runAction({ name: "cases.catalog", schema: z.unknown(), input, handler: (ctx) => service.getCaseCatalog(ctx) });
 }
 
 export async function getCaseAction(input: unknown) {

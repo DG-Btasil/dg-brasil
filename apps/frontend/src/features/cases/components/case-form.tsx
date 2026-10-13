@@ -1,109 +1,110 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, type FormEvent } from "react";
-import { Paperclip, Send, Trash2 } from "lucide-react";
-import { LEGAL_AREA_LABEL, LEGAL_AREAS, type LegalArea } from "@/lib/constants/legal";
-import { repositories } from "@/repositories";
+import { useState, type FormEvent } from "react";
+import { Send } from "lucide-react";
+import { callAction, mapFieldErrors } from "@/lib/actions/result";
+import { useActionFeedback } from "@/lib/actions/use-action-feedback";
+import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { Callout } from "@/components/feedback/states";
-import { Button, IconButton } from "@/components/ui/button";
+import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
 import { Checkbox, Field, FormSection, Input, Select, Textarea } from "@/components/ui/form";
 import { Panel, PanelBody, PanelFooter } from "@/components/ui/panel";
-import { useClientOriginOptions, useClients, useDefaultClientOrigin } from "@/features/clients/hooks";
-import { toPickedFile, type PickedFile } from "@/features/clients/components/detail/documents/document-add-dialog";
-import { useOffice } from "@/features/offices/hooks";
-import { clientDisplayName } from "@/features/processes/utils";
-import { useCaseActions, useEligibleLawyers } from "../hooks";
+import { createCaseAction } from "@/server/domain/cases/actions";
+import type { CaseCatalogDTO } from "@/server/domain/cases/dto";
+import { useToast } from "@/store/ui-store";
+import { searchActiveClients } from "@/features/clients/picker";
+import { useDefaultOrigin, useLawyerOptions, useOrgDirectory, useOriginOptions } from "@/features/directory/directory-context";
 import { LINK_PARTNER_LABEL } from "../utils";
-
-const areaOptions = LEGAL_AREAS.map((a) => ({ value: a, label: LEGAL_AREA_LABEL[a] }));
+import { useCatalogOptions } from "./case-dialogs";
 
 interface Values {
-  clientId: string;
   title: string;
-  area: LegalArea | "";
-  caseType: string;
+  area: string;
+  caseTypeId: string;
   originOrganizationId: string;
   opposingParty: string;
   assignedLawyerId: string;
   summary: string;
 }
 
-type Errors = Partial<Record<keyof Values, string>>;
+type Errors = Partial<Record<keyof Values | "clientId", string>>;
 
-function validate(v: Values): Errors {
+function validate(v: Values, client: PickerOption | null): Errors {
   return {
-    clientId: v.clientId ? undefined : "Selecione o cliente.",
+    clientId: client ? undefined : "Selecione o cliente.",
     title: v.title.trim() ? undefined : "Informe um título para o caso.",
     area: v.area ? undefined : "Selecione a área.",
-    caseType: v.caseType.trim() ? undefined : "Informe o tipo do caso.",
     originOrganizationId: v.originOrganizationId ? undefined : "Selecione a origem do caso.",
     summary: v.summary.trim() ? undefined : "Descreva o caso em poucas linhas.",
   };
 }
 
 /**
- * Novo caso (equipe interna). A origem do CASO é independente da origem do
- * cliente: o mesmo cliente pode ter casos de origens diferentes. A origem
- * parceira não dá acesso ao parceiro: o vínculo operacional é opt-in explícito.
+ * Novo caso (equipe interna), gravado pelo createCaseAction com chave de
+ * idempotência por intenção de envio: clique duplo ou nova tentativa com os
+ * mesmos dados devolve o MESMO caso (`deduplicated`), tratado como sucesso.
+ * A origem do CASO é independente da origem do cliente e nunca concede
+ * acesso: o vínculo operacional do parceiro é opt-in explícito.
  */
-export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
+export function CaseForm({ catalog, defaultClient }: { catalog: CaseCatalogDTO; defaultClient?: PickerOption }) {
   const router = useRouter();
-  const actions = useCaseActions();
-  const clients = useClients();
-  const originOptions = useClientOriginOptions();
-  const defaultOrigin = useDefaultClientOrigin();
-  const lawyers = useEligibleLawyers();
-  const office = useOffice();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
+  const failed = useActionFeedback();
+  const idempotency = useIdempotencyKey();
+  const originOptions = useOriginOptions();
+  const defaultOrigin = useDefaultOrigin();
+  const lawyers = useLawyerOptions();
+  const { owner } = useOrgDirectory();
+  const [client, setClient] = useState<PickerOption | null>(defaultClient ?? null);
   const [values, setValues] = useState<Values>({
-    clientId: defaultClientId && clients.some((c) => c.id === defaultClientId) ? defaultClientId : "",
     title: "",
     area: "",
-    caseType: "",
+    caseTypeId: "",
     originOrganizationId: defaultOrigin,
     opposingParty: "",
     assignedLawyerId: "",
     summary: "",
   });
   const [linkPartner, setLinkPartner] = useState(false);
-  const [files, setFiles] = useState<PickedFile[]>([]);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState<"draft" | "submit" | null>(null);
-
-  const clientOptions = useMemo(
-    () => clients.filter((c) => c.status === "ACTIVE").map((c) => ({ value: c.id, label: clientDisplayName(c) })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
-    [clients],
-  );
+  const { areas, types } = useCatalogOptions(catalog, values.area);
   const set = <K extends keyof Values>(key: K, value: Values[K]) => setValues((v) => ({ ...v, [key]: value }));
-  const partnerOrigin = !!values.originOrganizationId && values.originOrganizationId !== office.id;
+  const partnerOrigin = !!values.originOrganizationId && values.originOrganizationId !== owner.id;
 
   async function save(submit: boolean, event?: FormEvent) {
     event?.preventDefault();
-    const found = validate(values);
+    if (saving) return;
+    const found = validate(values, client);
     setErrors(found);
-    if (Object.values(found).some(Boolean) || !values.area) return;
-    setSaving(submit ? "submit" : "draft");
-    const id = await actions.create({
-      clientId: values.clientId,
+    if (Object.values(found).some(Boolean) || !client) return;
+    const payload = {
+      clientId: client.id,
       title: values.title.trim(),
       area: values.area,
-      caseType: values.caseType.trim(),
+      caseTypeId: values.caseTypeId || undefined,
       originOrganizationId: values.originOrganizationId,
-      opposingParty: values.opposingParty.trim() || undefined,
-      assignedLawyerId: values.assignedLawyerId || null,
+      opposingParty: values.opposingParty.trim(),
+      assignedLawyerId: values.assignedLawyerId || undefined,
       summary: values.summary.trim(),
       submit,
       linkPartner: partnerOrigin && linkPartner,
-    });
-    if (id) {
-      for (const f of files) {
-        await repositories.documents.add({ clientId: values.clientId, legalCaseId: id, name: f.fileName.replace(/\.[^.]+$/, ""), category: "OTHER", fileName: f.fileName, sizeKb: f.sizeKb });
-      }
-      router.push(`/casos/${id}`);
-    }
+    };
+    setSaving(submit ? "submit" : "draft");
+    const result = await callAction(() => createCaseAction({ ...payload, idempotencyKey: idempotency.keyFor(payload) }));
     setSaving(null);
+    if (!result.ok) {
+      setErrors(mapFieldErrors(result.error.fieldErrors) as Errors);
+      failed(result, "Não foi possível criar o caso.");
+      return;
+    }
+    idempotency.reset();
+    toast({ tone: "success", title: submit ? "Caso criado e enviado para análise" : "Rascunho do caso salvo" });
+    // Navega para o recurso devolvido pelo servidor (também quando deduplicado).
+    router.push(`/casos/${result.data.id}`);
   }
 
   return (
@@ -118,8 +119,8 @@ export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
           <PanelBody className="space-y-6">
             <FormSection title="Cliente e origem">
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Cliente" requirement="required" error={errors.clientId}>
-                  {(p) => <Select {...p} value={values.clientId} onChange={(e) => set("clientId", e.target.value)} options={clientOptions} placeholder="Selecione o cliente" />}
+                <Field label="Cliente" requirement="required" error={errors.clientId} hint="Clientes ativos. Digite o nome ou o CPF/CNPJ.">
+                  {(p) => <AsyncPicker {...p} value={client} onChange={setClient} search={searchActiveClients} placeholder="Buscar cliente" />}
                 </Field>
                 <Field label="Origem do caso" requirement="required" error={errors.originOrganizationId} hint="Independe da origem do cliente. Define parceria e financeiro do caso.">
                   {(p) => (
@@ -140,18 +141,26 @@ export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
             <FormSection title="Dados do caso">
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Título" requirement="required" error={errors.title} className="col-span-2">
-                  {(p) => <Input {...p} value={values.title} onChange={(e) => set("title", e.target.value)} placeholder="Ex.: Revisional de empréstimo consignado" />}
+                  {(p) => <Input {...p} value={values.title} maxLength={200} onChange={(e) => set("title", e.target.value)} placeholder="Ex.: Revisional de empréstimo consignado" />}
                 </Field>
                 <Field label="Área" requirement="required" error={errors.area}>
-                  {(p) => <Select {...p} value={values.area} onChange={(e) => set("area", e.target.value as LegalArea)} options={areaOptions} placeholder="Selecione a área" />}
+                  {(p) => (
+                    <Select
+                      {...p}
+                      value={values.area}
+                      onChange={(e) => setValues((v) => ({ ...v, area: e.target.value, caseTypeId: "" }))}
+                      options={areas}
+                      placeholder="Selecione a área"
+                    />
+                  )}
                 </Field>
-                <Field label="Tipo" requirement="required" error={errors.caseType}>
-                  {(p) => <Input {...p} value={values.caseType} onChange={(e) => set("caseType", e.target.value)} placeholder="Ex.: Revisional, Indenizatória" />}
+                <Field label="Tipo" requirement="optional" error={errors.caseTypeId} hint={values.area && !types.length ? "Nenhum tipo cadastrado para esta área." : undefined}>
+                  {(p) => <Select {...p} value={values.caseTypeId} onChange={(e) => set("caseTypeId", e.target.value)} options={types} placeholder="Sem tipo" disabled={!types.length} />}
                 </Field>
-                <Field label="Parte contrária" requirement="optional">
-                  {(p) => <Input {...p} value={values.opposingParty} onChange={(e) => set("opposingParty", e.target.value)} />}
+                <Field label="Parte contrária" requirement="optional" error={errors.opposingParty}>
+                  {(p) => <Input {...p} value={values.opposingParty} maxLength={300} onChange={(e) => set("opposingParty", e.target.value)} />}
                 </Field>
-                <Field label="Advogado responsável" requirement="optional" hint="Obrigatório para aceitar o caso.">
+                <Field label="Advogado responsável" requirement="optional" hint="Obrigatório para aceitar o caso." error={errors.assignedLawyerId}>
                   {(p) => <Select {...p} value={values.assignedLawyerId} onChange={(e) => set("assignedLawyerId", e.target.value)} options={lawyers} placeholder="Definir depois" />}
                 </Field>
                 <Field label="Resumo" requirement="required" error={errors.summary} className="col-span-2">
@@ -159,42 +168,12 @@ export function CaseForm({ defaultClientId }: { defaultClientId?: string }) {
                 </Field>
               </div>
             </FormSection>
-            <FormSection title="Documentos" description="Opcional. Os arquivos ficam vinculados ao caso e entram como pendentes de verificação.">
-              <div className="space-y-2">
-                {files.map((f, i) => (
-                  <div key={`${f.fileName}-${i}`} className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2 text-[12.5px]">
-                    <span className="inline-flex min-w-0 items-center gap-2">
-                      <Paperclip className="size-4 shrink-0 text-subtle" aria-hidden />
-                      <span className="truncate">{f.fileName}</span>
-                      <span className="text-muted">· {f.sizeKb} KB</span>
-                    </span>
-                    <IconButton label={`Remover ${f.fileName}`} size="sm" onClick={() => setFiles((list) => list.filter((_, j) => j !== i))}>
-                      <Trash2 className="size-3.5" aria-hidden />
-                    </IconButton>
-                  </div>
-                ))}
-                <Button variant="secondary" size="sm" icon={<Paperclip className="size-4" aria-hidden />} onClick={() => fileRef.current?.click()}>
-                  Adicionar arquivos
-                </Button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  multiple
-                  className="sr-only"
-                  tabIndex={-1}
-                  aria-hidden
-                  onChange={(e) => {
-                    const picked = Array.from(e.target.files ?? []).map(toPickedFile);
-                    setFiles((list) => [...list, ...picked]);
-                    e.target.value = "";
-                  }}
-                />
-              </div>
-            </FormSection>
-            <Callout tone="info">“Salvar rascunho” mantém o caso com a equipe. “Enviar para análise” coloca o caso na fila de análise.</Callout>
+            <Callout tone="info">
+              “Salvar rascunho” mantém o caso com a equipe. “Enviar para análise” coloca o caso na fila de análise. Documentos são anexados na página do caso.
+            </Callout>
           </PanelBody>
           <PanelFooter>
-            <Button variant="ghost" onClick={() => router.push("/casos")}>
+            <Button variant="ghost" onClick={() => router.push("/casos")} disabled={!!saving}>
               Cancelar
             </Button>
             <Button variant="secondary" loading={saving === "draft"} disabled={!!saving} onClick={() => save(false)}>

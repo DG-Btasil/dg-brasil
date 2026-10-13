@@ -11,9 +11,14 @@ import type { EventRow, PartyRow, ProcessInternalRow, ProcessRow } from "./mappe
  * explícitas.
  */
 
-/** Colunas que as duas superfícies leem + o cliente do caso (o processo herda o acesso do caso). */
+/**
+ * Colunas que as duas superfícies leem + o caso (título, origem, parceiro) e o
+ * nome do cliente do caso — o processo herda o acesso do caso. O nome vem com
+ * a RLS de quem pergunta (cliente que o parceiro não enxerga = sem nome).
+ */
 const BASE_COLUMNS =
-  "id, legal_case_id, title, cnj_number, technical_origin, court, court_unit, district, state, legal_class, subject, client_side, adverse_party_summary, currency, status, phase, distribution_date, created_at, updated_at, legal_cases!inner(client_id)";
+  "id, legal_case_id, title, cnj_number, technical_origin, court, court_unit, district, state, legal_class, subject, client_side, adverse_party_summary, currency, status, phase, distribution_date, created_at, updated_at, " +
+  "legal_cases!inner(client_id, title, origin_organization_id, partner_organization_id, clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name)))";
 /** Só equipe interna. */
 const INTERNAL_COLUMNS = "responsible_user_id, operational_due_at, created_by";
 
@@ -49,6 +54,10 @@ export interface ProcessFilters {
   clientId?: string;
   caseId?: string;
   responsibleUserId?: string;
+  phase?: string;
+  court?: string;
+  technicalOrigin?: string;
+  caseOriginOrganizationId?: string;
 }
 
 export async function listProcesses(
@@ -66,10 +75,25 @@ export async function listProcesses(
   if (filters.caseId) query = query.eq("legal_case_id", filters.caseId);
   if (filters.clientId) query = query.eq("legal_cases.client_id", filters.clientId);
   if (filters.responsibleUserId) query = query.eq("responsible_user_id", filters.responsibleUserId);
+  if (filters.phase) query = query.eq("phase", filters.phase);
+  if (filters.court) query = query.eq("court", filters.court);
+  if (filters.technicalOrigin) query = query.eq("technical_origin", filters.technicalOrigin);
+  if (filters.caseOriginOrganizationId) query = query.eq("legal_cases.origin_organization_id", filters.caseOriginOrganizationId);
   const { from, to } = toRange(page);
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);
   if (error) throw fromDbError(error);
   return { rows: (data ?? []) as unknown as ProcessRow[], total: count ?? 0 };
+}
+
+/**
+ * Prazos EM ABERTO dos processos da página (uma consulta), por vencimento.
+ * Só equipe interna (parceiro não tem acesso a prazos — RLS).
+ */
+export async function listOpenDeadlines(db: SupabaseClient, processIds: string[]): Promise<{ id: string; legal_process_id: string; title: string; due_at: string }[]> {
+  if (processIds.length === 0) return [];
+  return (unwrap(
+    await db.from("deadlines").select("id, legal_process_id, title, due_at").in("legal_process_id", processIds).eq("status", "OPEN").order("due_at"),
+  ) ?? []) as { id: string; legal_process_id: string; title: string; due_at: string }[];
 }
 
 export async function getProcess(db: SupabaseClient, id: string, columns: string): Promise<ProcessRow | null> {

@@ -33,7 +33,7 @@ export const loadOrgDirectory = cache(async (): Promise<OrgDirectory> => {
   return {
     owner: owner ?? { id: "", name: "Escritório" },
     users: users.ok
-      ? users.data.items.filter((u) => u.active).map((u) => ({ id: u.userId, name: u.name, displayName: u.displayName, role: u.role }))
+      ? users.data.items.filter((u) => u.active).map((u) => ({ id: u.userId, name: u.name, displayName: u.displayName, role: u.role, hasOab: !!u.oab }))
       : [],
     partners: partners.ok ? partners.data.items.map((p) => ({ id: p.id, name: p.name, status: p.status })) : [],
     complete: owner !== null && users.ok && partners.ok,

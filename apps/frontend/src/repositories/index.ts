@@ -4,7 +4,6 @@
  */
 import {
   mockAnalysisRepository,
-  mockCaseRepository,
   mockReferenceRepository,
   mockClientRepository,
   mockDgRepository,
@@ -16,7 +15,6 @@ import {
   mockOfficeRepository,
   mockPartnerPortalRepository,
   mockPartnerRepository,
-  mockProcessRepository,
   mockReviewRepository,
   mockUserRepository,
 } from "./mock";
@@ -25,10 +23,8 @@ export const repositories = {
   office: mockOfficeRepository,
   users: mockUserRepository,
   clients: mockClientRepository,
-  cases: mockCaseRepository,
   documents: mockDocumentRepository,
   analyses: mockAnalysisRepository,
-  processes: mockProcessRepository,
   reviews: mockReviewRepository,
   notifications: mockNotificationRepository,
   finance: mockFinanceRepository,
