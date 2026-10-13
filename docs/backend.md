@@ -153,6 +153,17 @@ API (schema `private`, sem grant para ninguém; só as funções
   própria chave entra como sal: o hash não permite testar CPFs fora daquela
   linha. Nenhum dado de negócio fica em claro na tabela (a `response` guarda só
   IDs e flags);
+- **determinismo do hash** (verificado, testes `[027] determinismo`): o pedido
+  é `jsonb`, que o Postgres normaliza — chaves ordenadas em todos os níveis,
+  sem espaços, chave duplicada fica com o último valor. Logo a **ordem das
+  propriedades não muda o hash**. Continuam sendo conteúdo (de propósito): a
+  ordem dos itens de um array, `null` × chave ausente, a escala decimal
+  (`1234.5` ≠ `1234.50`) e a forma Unicode (NFC ≠ NFD). Isso não gera falso
+  conflito porque o pedido é montado **no servidor** pelos mappers, a partir
+  da entrada já validada/normalizada pelo Zod — o mesmo formulário reenviado
+  produz sempre o mesmo `jsonb`. Regra para quem mexer nos mappers: manter a
+  montagem determinística (sem data/hora "agora", sem id gerado, sem ordem
+  variável de arrays);
 - **mesma chave + mesmo pedido** → devolve o recurso já criado;
   **mesma chave + pedido diferente** → `CONFLICT` ("Esta chave de envio já foi
   usada com outros dados");
@@ -242,7 +253,7 @@ forte/distribuído antes de expansão do produto.
 
 - Unitários (`npm test`): mapeamentos, schemas, tradução de erros, redação de
   logs, paginação, DTOs (o do parceiro não tem campo interno).
-- Banco (`supabase/: npm run verificar`): 402 verificações, inclusive as RPCs
+- Banco (`supabase/: npm run verificar`): 406 verificações, inclusive as RPCs
   da 025–027 (envio de caso do parceiro, gravação de cliente, busca,
   correlation ID, Storage autorizado, idempotência, divisão do parceiro).
 - Integração (`apps/frontend: npm run test:integration`) — **107/107 no

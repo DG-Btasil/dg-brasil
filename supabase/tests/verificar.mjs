@@ -2301,6 +2301,50 @@ await deveFalhar('parceiro continua sem SELECT em partner_office_settings', asyn
   if (r.length === 0) throw new Error('vazio (esperado)')
 })
 
+secao('Idempotência: determinismo do request_hash [027]')
+// O hash é calculado NO BANCO sobre jsonb, que normaliza o objeto (ordena as
+// chaves, descarta espaços e chaves duplicadas). Estes testes provam que a
+// ordem das propriedades não muda o resultado — no topo e aninhada.
+const hashDe = (op, key) => um(db, `select request_hash h from private.idempotency_operations where operation = $1 and idempotency_key = $2`, [op, key])
+await deve('mesma chave + mesmo conteúdo com chaves em OUTRA ORDEM: mesmo hash e deduplicação', async () => {
+  const k = randomUUID()
+  const a = await como(ids.lucas, async (tx) => (await um(tx, `select public.create_legal_case_once($1, $2::jsonb, $3::jsonb) r`, [k,
+    `{"client_id":"${ids.joao}","legal_area_id":"${ids.banking}","title":"Caso ordem","origin_organization_id":"${ids.owner}","status":"DRAFT"}`,
+    `{"internal_notes":"nota"}`])).r)
+  const h1 = (await hashDe('legal_case.create', k)).h
+  const b = await como(ids.lucas, async (tx) => (await um(tx, `select public.create_legal_case_once($1, $2::jsonb, $3::jsonb) r`, [k,
+    `{ "status": "DRAFT", "origin_organization_id": "${ids.owner}",  "title": "Caso ordem", "legal_area_id": "${ids.banking}", "client_id": "${ids.joao}" }`,
+    `{"internal_notes":"nota"}`])).r)
+  igual([b.deduplicated, b.legal_case_id], [true, a.legal_case_id], 'deduplicou')
+  igual((await hashDe('legal_case.create', k)).h, h1, 'mesmo hash')
+})
+await deve('objetos ANINHADOS em outra ordem (cliente + endereço do portal): deduplica', async () => {
+  const k = randomUUID()
+  const enviar = (cli, kase) => como(ids.almeidaAdm, async (tx) => (await um(tx, `select public.partner_submit_case_once($1, $2::jsonb, $3::jsonb) r`, [k, cli, kase])).r)
+  const a = await enviar(
+    `{"document":"99902800001","kind":"INDIVIDUAL","origin_organization_id":"${ids.almeida}","full_name":"Ordem Aninhada","address":{"city":"Santos","state":"SP","postal_code":"11010000"}}`,
+    `{"legal_area_id":"${ids.banking}","title":"Caso aninhado","origin_organization_id":"${ids.almeida}"}`)
+  const b = await enviar(
+    `{"address":{"postal_code":"11010000","state":"SP","city":"Santos"},"full_name":"Ordem Aninhada","origin_organization_id":"${ids.almeida}","kind":"INDIVIDUAL","document":"99902800001"}`,
+    `{"origin_organization_id":"${ids.almeida}","title":"Caso aninhado","legal_area_id":"${ids.banking}"}`)
+  igual([b.deduplicated, b.legal_case_id], [true, a.legal_case_id], 'deduplicou')
+})
+await deve('controle: mesma chave + conteúdo REALMENTE diferente → conflito', async () => {
+  const k = randomUUID()
+  await criarCaso(ids.lucas, k, caso027('Caso controle A'))
+  const e = await criarCaso(ids.lucas, k, caso027('Caso controle B')).catch((x) => x)
+  if (!/já foi usada com outros dados/.test(e?.message ?? '')) throw new Error(`esperava conflito, veio ${e?.message ?? 'sucesso'}`)
+})
+await deve('representação jsonb: ordem de chaves e espaços não importam; ordem de array, null × ausente, escala decimal e forma Unicode importam', async () => {
+  const igualJ = async (x, y) => (await um(db, `select ($1::jsonb)::text = ($2::jsonb)::text v`, [x, y])).v
+  igual(await igualJ('{"b":1,"a":{"d":2,"c":3}}', '{ "a": {"c":3,"d":2}, "b":1 }'), true, 'ordem/aninhado/espaços')
+  igual(await igualJ('{"a":[1,2]}', '{"a":[2,1]}'), false, 'ordem de array é conteúdo')
+  igual(await igualJ('{"a":null}', '{}'), false, 'null ≠ ausente')
+  igual(await igualJ('{"v":1234.5}', '{"v":1234.50}'), false, 'escala decimal preservada')
+  igual(await igualJ('{"d":"2026-12-01T23:59:59-03:00"}', '{"d":"2026-12-01T23:59:59-03:00"}'), true, 'data como texto')
+  igual(await igualJ(JSON.stringify({ n: 'José' }), JSON.stringify({ n: 'José' })), false, 'NFC ≠ NFD')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(
