@@ -34,6 +34,15 @@ Supabase Auth.
 └──────────────────────────────────────────────────────────┘
 ```
 
+## Backend de domínio (Etapa 4.2)
+
+Dentro do próprio Next.js, sem segundo servidor: Server Action (sessão aal2 +
+permissão + Zod) → service (regra e autorização contextual) → repository
+(queries/RPCs com o JWT do usuário) → Postgres (RLS e funções como segunda
+barreira). Operações compostas são funções transacionais no banco; a service
+role só assina URLs do Storage que o banco autorizou e atende à Admin API do
+Auth. Detalhes em [docs/backend.md](docs/backend.md).
+
 ## Identidade e acesso (Etapa 4.1)
 
 Supabase Auth (convite, senha, MFA TOTP obrigatório). O proxy do Next só renova a

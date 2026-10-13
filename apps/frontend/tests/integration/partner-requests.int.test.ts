@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import * as requests from "@/server/domain/partner-requests/service";
 import { OWNER_TEAM_LABEL } from "@/server/domain/partner-requests/mappers";
@@ -110,7 +111,46 @@ describe("solicitações — equipe interna cria, parceiro do caso recebe", () =
     expect(data?.status).toBe("RESOLVED");
     expect(data?.resolved_at).toBeTruthy();
     await expectDomainError(requests.closePartnerRequest(assistant, { id, resolution: "CANCELLED" }), "INVALID_STATE");
-    await expectDomainError(requests.addPartnerRequestMessage(await ctxFor("PARTNER_USER_A"), message(id, "tarde demais")), "INVALID_STATE");
+    const a = await ctxFor("PARTNER_USER_A");
+    await expectDomainError(requests.addPartnerRequestMessage(a, message(id, "tarde demais")), "INVALID_STATE", /encerrada/);
+    await expectDomainError(requests.addPartnerRequestMessage(assistant, message(id, "comentário tardio")), "INVALID_STATE");
     await expectDomainError(requests.closePartnerRequest(assistant, { id: "00000000-0000-4000-8000-000000000000", resolution: "CANCELLED" }), "NOT_FOUND");
+
+    // Barreiras da 026 pela API direta: política de mensagem e máquina de estados.
+    const direct = await a.db.from("partner_request_messages").insert({ partner_request_id: id, author_id: world.users.PARTNER_USER_A.id, body: "direto" });
+    expect(direct.error).not.toBeNull();
+    const reopen = await assistant.db.from("partner_requests").update({ status: "OPEN" }).eq("id", id);
+    expect(reopen.error).not.toBeNull();
+    const { count } = await serviceDb().from("partner_request_messages").select("id", { count: "exact", head: true }).eq("partner_request_id", id);
+    expect(count).toBe(0);
+  });
+
+  it("caso e parceiro da solicitação não mudam depois de criada", async () => {
+    const caseId = await partnerACase();
+    const otherCase = await partnerACase();
+    const assistant = await ctxFor("ASSISTANT");
+    const { id } = await requests.createPartnerRequest(assistant, newRequest(caseId));
+    const moved = await assistant.db.from("partner_requests").update({ legal_case_id: otherCase }).eq("id", id);
+    expect(moved.error).not.toBeNull();
+    const { data } = await serviceDb().from("partner_requests").select("legal_case_id").eq("id", id).single();
+    expect(data?.legal_case_id).toBe(caseId);
+  });
+
+  it("answer_partner_request: mensagem + situação numa transação; repetir o mesmo id não duplica; B recusado", async () => {
+    const caseId = await partnerACase();
+    const { id } = await requests.createPartnerRequest(await ctxFor("LAWYER"), newRequest(caseId));
+    const a = await ctxFor("PARTNER_ADMIN_A");
+    const messageId = randomUUID();
+    const args = { p_request_id: id, p_message_id: messageId, p_body: "Segue a resposta.", p_document_id: null, p_reopen: false };
+    expect((await a.db.rpc("answer_partner_request", args)).data).toBe("ANSWERED");
+    expect((await a.db.rpc("answer_partner_request", args)).data).toBe("ANSWERED");
+    const { count } = await serviceDb().from("partner_request_messages").select("id", { count: "exact", head: true }).eq("partner_request_id", id);
+    expect(count).toBe(1);
+
+    const b = await ctxFor("PARTNER_ADMIN_B");
+    const denied = await b.db.rpc("answer_partner_request", { ...args, p_message_id: randomUUID(), p_body: "B tentando" });
+    expect(denied.error?.code).toBe("42501");
+    // Parceiro não reabre (p_reopen é só da equipe interna).
+    expect((await a.db.rpc("answer_partner_request", { ...args, p_message_id: randomUUID(), p_reopen: true })).data).toBe("ANSWERED");
   });
 });

@@ -42,10 +42,12 @@ qualquer dado real.
   convites (token de uso único com expiração), aceite dos termos, MFA TOTP
   obrigatório, sessão e autorização no servidor, gestão de equipe. Ver
   [docs/auth.md](docs/auth.md).
-- Next.js server-side chamando as RPCs (`decide_review`, `request_agent_run`,
-  `change_case_origin`...) com o JWT do usuário; service role só onde o contrato
-  manda.
-- Upload/download por signed URL, com registro de acesso a dado pessoal.
+- **4.2 (código pronto; validar no Supabase DEV)** — Backend de domínio no
+  Next.js: Server Actions → services → repositories, com o JWT do usuário (RLS
+  como segunda barreira), Zod, erros normalizados, paginação, DTO por
+  superfície, correlation ID na auditoria; Storage por signed URL autorizada
+  pelo banco. Migrations 025–026. Ver [docs/backend.md](docs/backend.md).
+- **4.3** — telas trocam os mocks pelas Server Actions, domínio a domínio.
 
 ### Etapa 5 — Front-end conectado
 

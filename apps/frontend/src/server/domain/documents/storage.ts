@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { DomainError } from "@/server/core/errors";
 
 /**
@@ -10,8 +9,9 @@ import { DomainError } from "@/server/core/errors";
  *   é reproduzida aqui (testada em storage.test.ts) — e o trigger
  *   `document_versions_validate` recusa qualquer caminho fora do padrão.
  * - O caminho NÃO é mecanismo de segurança: a autorização é do service + RLS.
- * - Toda operação de Storage usa o client do USUÁRIO (`ctx.db`): a RLS de
- *   `storage.objects` vale. Nunca a service role.
+ * - O usuário não assina URL nos buckets privados (017). A assinatura é feita
+ *   em `signed-storage.ts` (service role), SÓ para o caminho que o banco
+ *   autorizou com o JWT do usuário (authorize_document_upload/download, 026).
  * - O caminho contém o nome do arquivo (pode ter dado pessoal): nunca vai
  *   para log. Logue só IDs.
  */
@@ -93,31 +93,4 @@ export function fromStorageError(error: { status?: number; statusCode?: string; 
   if (status === 409) return new DomainError("CONFLICT", "Este arquivo já foi enviado.", { technicalCode });
   if (status === 413) return new DomainError("VALIDATION", "Arquivo maior que o limite de 50 MB.", { technicalCode });
   return new DomainError("INTERNAL", undefined, { technicalCode });
-}
-
-/** Storage com o JWT do usuário: a RLS de `storage.objects` decide. */
-export function userDocumentStorage(db: SupabaseClient): DocumentStorage {
-  const bucket = () => db.storage.from(LEGAL_DOCUMENTS_BUCKET);
-  return {
-    async createSignedUploadUrl(objectName) {
-      // upsert: false — objeto é write-once por versão.
-      const { data, error } = await bucket().createSignedUploadUrl(objectName, { upsert: false });
-      if (error || !data) throw fromStorageError(error as never);
-      return { signedUrl: data.signedUrl, token: data.token };
-    },
-    async getObjectInfo(objectName) {
-      const { data, error } = await bucket().info(objectName);
-      if (error || !data) {
-        const status = Number((error as { statusCode?: string; status?: number } | null)?.statusCode ?? (error as { status?: number } | null)?.status ?? 0);
-        if (status === 400 || status === 404) return null;
-        throw fromStorageError(error as never);
-      }
-      return { sizeBytes: typeof data.size === "number" ? data.size : undefined, contentType: data.contentType ?? undefined };
-    },
-    async createSignedDownloadUrl(objectName, expiresInSeconds, downloadName) {
-      const { data, error } = await bucket().createSignedUrl(objectName, expiresInSeconds, { download: downloadName });
-      if (error || !data) throw fromStorageError(error as never);
-      return data.signedUrl;
-    },
-  };
 }

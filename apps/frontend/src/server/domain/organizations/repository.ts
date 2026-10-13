@@ -145,25 +145,18 @@ export async function getPartnerSettings(db: SupabaseClient, organizationIds: st
   return (unwrap(await db.from("partner_office_settings").select(PARTNER_SETTINGS_COLUMNS).in("organization_id", organizationIds)) ?? []) as PartnerSettingsRow[];
 }
 
-/** Insere a organização com id gerado no servidor (sem RETURNING). */
-export async function insertOrganization(db: SupabaseClient, payload: Record<string, unknown>): Promise<void> {
-  check(await db.from("organizations").insert(payload));
-}
-
-export async function insertPartnerSettings(db: SupabaseClient, payload: Record<string, unknown>): Promise<void> {
-  check(await db.from("partner_office_settings").insert(payload));
+/**
+ * Cadastro atômico (migration 026): organização PARTNER/PENDING +
+ * partner_office_settings numa transação. A função recusa quem não é ADMIN.
+ */
+export async function createPartnerOffice(db: SupabaseClient, org: Record<string, unknown>, settings: Record<string, unknown>): Promise<string> {
+  return check(await db.rpc("create_partner_office", { p_org: org, p_settings: settings })) as string;
 }
 
 export async function updatePartnerSettings(db: SupabaseClient, organizationId: string, payload: Record<string, unknown>): Promise<number> {
   const { error, count } = await db.from("partner_office_settings").update(payload, { count: "exact" }).eq("organization_id", organizationId);
   if (error) throw fromOrganizationDbError(error);
   return count ?? 0;
-}
-
-/** Compensação do cadastro em duas etapas: exclusão lógica do parceiro recém-criado. */
-export async function softDeleteOrganization(db: SupabaseClient, id: string): Promise<void> {
-  const { error } = await db.from("organizations").update({ deleted_at: new Date().toISOString() }).eq("id", id).eq("type", "PARTNER");
-  if (error) throw fromOrganizationDbError(error);
 }
 
 /* ------------------------------------------------------------------ */

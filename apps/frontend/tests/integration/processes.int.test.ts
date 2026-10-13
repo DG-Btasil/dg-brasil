@@ -279,6 +279,31 @@ describe("prazos", () => {
     expect((await deadlines.listUpcomingDeadlines(lawyer, listUpcomingSchema.parse({ caseId, days: 7 }))).items).toHaveLength(0);
   });
 
+  it("filtro de responsável (\"me\") e prazo de processo excluído some das listagens", async () => {
+    const lawyer = await ctxFor("LAWYER");
+    const { caseId } = await internalCase();
+    const { id: processId } = await processes.createProcess(lawyer, newProcess(caseId));
+    const past = new Date(Date.now() - 86_400_000).toISOString();
+    const { id: mine } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId: caseId, processId, title: "Meu prazo", dueAt: past }));
+    const { id: theirs } = await deadlines.createDeadline(
+      lawyer,
+      createDeadlineSchema.parse({ legalCaseId: caseId, title: "Prazo do ADMIN", dueAt: past, responsibleUserId: world.users.ADMIN.id }),
+    );
+
+    const onlyMine = await deadlines.listOverdueDeadlines(lawyer, listOverdueSchema.parse({ caseId, responsibleUserId: "me" }));
+    expect(onlyMine.items.map((d) => d.id)).toEqual([mine]);
+    const admins = await deadlines.listDeadlines(lawyer, listDeadlinesSchema.parse({ caseId, responsibleUserId: world.users.ADMIN.id }));
+    expect(admins.items.map((d) => d.id)).toEqual([theirs]);
+
+    await processes.removeProcess(await ctxFor("ADMIN"), processId);
+    const after = await deadlines.listOverdueDeadlines(lawyer, listOverdueSchema.parse({ caseId }));
+    expect(after.items.map((d) => d.id)).toEqual([theirs]);
+    const all = await deadlines.listDeadlines(lawyer, listDeadlinesSchema.parse({ caseId }));
+    expect(all.items.map((d) => d.id)).not.toContain(mine);
+    await expectDomainError(deadlines.getDeadline(lawyer, mine), "NOT_FOUND");
+    expect((await deadlines.getDeadline(lawyer, theirs)).id).toBe(theirs);
+  });
+
   it("parceiro não acessa prazos", async () => {
     await expectDomainError(deadlines.listDeadlines(await ctxFor("PARTNER_ADMIN_A"), listDeadlinesSchema.parse({})), "FORBIDDEN");
     await expectDomainError(deadlines.listOverdueDeadlines(await ctxFor("PARTNER_USER_B"), listOverdueSchema.parse({})), "FORBIDDEN");

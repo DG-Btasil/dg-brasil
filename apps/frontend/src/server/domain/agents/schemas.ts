@@ -13,6 +13,8 @@ export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
 
 export const requestAgentRunSchema = z
   .object({
+    /** Chave do formulário (UUID gerado pelo navegador, um por formulário): repetir devolve a mesma execução. */
+    idempotencyKey: zUuid(),
     agentId: zUuid(),
     /** Obrigatório para LAWYER (o service e o banco recusam sem caso). */
     legalCaseId: zUuid().optional(),

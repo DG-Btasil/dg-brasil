@@ -88,9 +88,9 @@ export async function startAnalysis(ctx: ServiceContext, input: StartAnalysisInp
 
 /**
  * Envia ao agente principal do template: exige os documentos obrigatórios,
- * pede a execução (domínio de agentes, com anti-duplo-clique) e liga o id à
- * análise (QUEUED). Duas escritas, não atômicas — ver o relatório da 4.2
- * (RPC proposta `start_legal_analysis`).
+ * pede a execução (request_agent_run_once com a chave do formulário: duplo
+ * clique devolve a MESMA execução) e liga o id à análise (QUEUED). Duas
+ * escritas; a chave torna a repetição segura — ver relatório da 4.2.
  */
 export async function sendAnalysisToAgent(ctx: ServiceContext, input: SendAnalysisToAgentInput): Promise<{ agentRunId: string }> {
   requireAnalyst(ctx);
@@ -103,6 +103,7 @@ export async function sendAnalysisToAgent(ctx: ServiceContext, input: SendAnalys
   if (!template?.primary_agent_id) throw businessRule("O template desta análise não tem agente configurado.");
 
   const run = await agents.requestAgentRun(ctx, {
+    idempotencyKey: input.idempotencyKey,
     agentId: template.primary_agent_id,
     legalCaseId: row.legal_case_id,
     requestText: input.requestText,
@@ -110,7 +111,9 @@ export async function sendAnalysisToAgent(ctx: ServiceContext, input: SendAnalys
   });
   const changed = await repo.markQueued(ctx.db, row.id, run.runId, ctx.session.userId, SENDABLE);
   if (changed === 0) {
-    // Outro clique já mandou: a execução pedida aqui fica sem análise (o ADMIN pode cancelá-la).
+    // Duplo clique com a mesma chave: o outro clique já ligou ESTA execução — sucesso idempotente.
+    const current = await repo.getById(ctx.db, row.id);
+    if (current?.agent_run_id === run.runId) return { agentRunId: run.runId };
     ctx.log.warn("analysis.send_race", { analysisId: row.id, agentRunId: run.runId });
     throw invalidState("Esta análise já foi enviada ao agente.");
   }

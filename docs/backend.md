@@ -102,6 +102,63 @@ Dado jurídico nunca passa por cache compartilhado: o client do servidor usa
 | `createSupabaseBrowserClient` | Telas de login/MFA | Só Auth no navegador |
 | `createSupabaseAdminClient` | Servidor, `server-only` | Inventário abaixo — qualquer outro uso é bug |
 
+### Inventário da service role (completo)
+
+| Onde | Operação | Por que não dá com o JWT | Pré-validação | Auditoria |
+|---|---|---|---|---|
+| `server/auth/team-actions.ts` → `inviteUser` | `create_invitation` com `p_actor` | A RPC foi fechada ao navegador (023: impedia sondar quais e-mails têm conta) | `authorizeAction` (aal2) + papel; o banco revalida o papel do ator | `USER_INVITED` com o ator |
+| `server/auth/team-actions.ts` → envio do convite | `auth.admin.inviteUserByEmail` / `updateUserById` / `resetPasswordForEmail` | Admin API do Auth | Convite já criado e autorizado pelo banco | Convite auditado |
+| `server/auth/team-actions.ts` → `resetUserMfa` | `auth.admin.mfa.listFactors/deleteFactor` + `record_auth_event` | Admin API do Auth | Só ADMIN, nunca a si mesmo; o banco revalida | `MFA_RESET_REQUESTED/COMPLETED` |
+| `server/domain/documents/signed-storage.ts` | `createSignedUploadUrl`, `info`, `createSignedUrl(60 s)` no bucket `legal-documents` | Buckets privados sem política para o usuário (017) | `authorize_document_upload/download` com o JWT do usuário devolve o caminho exato; o servidor confere e só assina esse caminho | `DOCUMENT_DOWNLOADED` + acesso LGPD gravados pela RPC, ator USER |
+
+Nenhuma consulta ou gravação de domínio usa a service role. `grep createSupabaseAdminClient src` lista exatamente estes arquivos.
+
+## Domínios
+
+Cada domínio fica em `src/server/domain/<domínio>/` com `schemas`, `dto`,
+`mappers`, `repository`, `service`, `actions` e testes unitários ao lado;
+integração em `tests/integration/<domínio>.int.test.ts`.
+
+| Domínio | Operações | Mecanismo no banco |
+|---|---|---|
+| Clientes | listar/buscar (paginado), ficha (LGPD), consultar CPF/CNPJ, criar, editar, contato/endereço do parceiro, inativar/reativar, excluir (ADMIN), relacionamentos | `client_directory`, `save_client`, `set_client_status`, `partner_lookup_client` (025) |
+| Casos | listar, ficha, criar (interno), envio pelo portal, editar rascunho, enviar, pedir documentos, aceitar, rejeitar, iniciar, encerrar, arquivar, advogado, troca de origem, exceção de status | `partner_submit_case`, `change_case_origin`, `override_case_status`; máquina de estados e snapshot por trigger |
+| Processos e prazos | processos (CRUD, partes), movimentações (só MANUAL pela tela), prazos (criar, cumprir, cancelar, perdido; próximos e vencidos derivados) | `deadline_status` (026: responsável e escopo excluído) |
+| Documentos | listar, ficha, criar/vincular, preparar e confirmar upload (idempotente), download, visibilidade, arquivar, excluir, verificação; pendências (criar, solicitar, atender com versão, aprovar/rejeitar) | `authorize_document_upload/download` (026) + Storage assinado |
+| Solicitações ao parceiro | listar, ficha com mensagens, criar, responder (atômico), resolver/cancelar | `answer_partner_request` + máquina de estados (026) |
+| Revisões | listar, ficha (conteúdo do alvo), atribuir, decidir, reabrir | `decide_review` (nunca `UPDATE reviews.status`) |
+| Análises | listar, ficha, iniciar, documentos que faltam, enviar ao agente | `legal_analyses` + `request_agent_run_once` |
+| Execuções de agente | pedir (idempotente), resumos, cancelar (ADMIN) | `request_agent_run_once` (026), `get_agent_run_summaries` |
+| Financeiro | modelos, acordos, obrigações, lançamentos (recebimento, ajuste, estorno — append-only), divisões (leitura), parcerias, repasses, visão do parceiro | ledger + views; chaves de idempotência e `create_partner_transfer` (026) |
+| Organizações | escritório proprietário, parceiros (listar, cadastrar atômico, editar, status, divisão padrão), usuários (leitura) | `create_partner_office` (026); gestão de equipe segue em `server/auth/team-actions.ts` |
+| Notificações | listar, contar não lidas, marcar lida(s) | RLS do próprio usuário (aal2) |
+| Auditoria | eventos e acessos a dado pessoal (ADMIN, paginado, metadata por whitelist, sem IP/navegador) | `audit_events`, `personal_data_access_events` |
+
+## Idempotência
+
+Operações sensíveis recebem `idempotencyKey` (UUID gerado pelo navegador por
+formulário): lançamentos, obrigações, acordos, repasses e pedidos de execução
+de agente (índices únicos por autor, 026). Repetir devolve o mesmo registro
+com `deduplicated: true`. Upload: o id da versão é gerado no servidor e é a
+chave natural da confirmação. Resposta a solicitação: id da mensagem. Aceite de
+caso: update condicionado ao status + índice parcial do snapshot.
+
+## Lacunas conhecidas (próximas migrations)
+
+- Criação de caso e de processo não têm chave de idempotência; processo +
+  dados internos + prazo inicial ainda são escritas separadas.
+- Envio de análise ao agente: execução + vínculo à análise em duas escritas
+  (a chave torna a repetição segura; corrida com chaves diferentes pode deixar
+  execução órfã, cancelável pelo ADMIN). `legal_analyses` sem trigger de transição.
+- Acordo financeiro: sem `cancelled_at/by/reason` nem máquina de estados no banco
+  (hoje no service). Totais do parceiro somados no service.
+- `get_agent_run_summaries` sem paginação (limite até 50).
+- PARTNER_ADMIN não lê a própria divisão padrão; LAWYER não vê o advogado
+  responsável do parceiro (ambos ficam em `partner_office_settings`, só ADMIN).
+- Notificação ao parceiro quando uma solicitação é criada (exige RPC/trigger).
+- Busca: `*` digitado vira curinga do PostgREST (amplia o resultado, não
+  injeta). Sem índice de trigram por enquanto.
+
 ## Testes
 
 - Unitários (`npm test`): mapeamentos, schemas, tradução de erros, redação de

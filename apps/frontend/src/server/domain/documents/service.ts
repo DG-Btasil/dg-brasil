@@ -31,9 +31,9 @@ import {
   legalDocumentObjectName,
   objectNameMatchesVersion,
   sanitizeFilename,
-  userDocumentStorage,
   type DocumentStorage,
 } from "./storage";
+import { signedDocumentStorage } from "./signed-storage";
 
 /**
  * Regras de Documento (lógico + versões imutáveis + vínculos + verificação).
@@ -41,19 +41,41 @@ import {
  * Autorização contextual aqui; RLS, triggers e funções do banco como segunda
  * barreira — as invariantes de dado (versão imutável, caminho no padrão,
  * documento e caso do mesmo cliente, verificação append-only) continuam NO
- * BANCO. Storage com o client do USUÁRIO (RLS de storage.objects). Nenhuma
- * operação deste domínio usa a service role (ver `downloadDocument`).
+ * BANCO.
+ *
+ * Storage: o banco autoriza com o JWT do usuário e devolve o caminho
+ * (authorize_document_upload/download, 026); só então `signed-storage.ts`
+ * assina com a service role — o único uso dela no domínio, que nunca decide
+ * acesso.
  *
  * Logs: só IDs. Nunca nome de arquivo, caminho no Storage, URL assinada,
  * título ou descrição.
  */
 
 export interface DocumentDeps {
-  /** Padrão: Storage com o JWT do usuário (`ctx.db`). Injetável para teste. */
+  /** Padrão: assinatura com a service role (signed-storage.ts). Injetável para teste. */
   storage?: DocumentStorage;
 }
 
-const storageOf = (ctx: ServiceContext, deps?: DocumentDeps) => deps?.storage ?? userDocumentStorage(ctx.db);
+const storageOf = (deps?: DocumentDeps) => deps?.storage ?? signedDocumentStorage();
+
+/** Recusa da RPC de autorização ("não encontrado") vira NOT_FOUND, nunca revela existência. */
+async function authorized(promise: Promise<string>, notFoundMessage: string): Promise<string> {
+  try {
+    return await promise;
+  } catch (error) {
+    if (error instanceof DomainError && error.code === "FORBIDDEN" && /não encontrad/i.test(error.publicMessage)) throw notFound(notFoundMessage);
+    throw error;
+  }
+}
+
+/** O caminho devolvido pelo banco precisa ser o calculado aqui (mesma regra da 007). */
+function assertSamePath(ctx: ServiceContext, fromDb: string, expected: string, ids: { documentId: string; versionId: string }) {
+  if (fromDb !== expected) {
+    ctx.log.error("document.object_name_mismatch", ids);
+    throw new DomainError("INTERNAL");
+  }
+}
 
 const DOC_NOT_FOUND = "Documento não encontrado.";
 
@@ -233,17 +255,20 @@ function assertAcceptsVersions(doc: DocumentRow) {
 }
 
 /**
- * Passo 1. Autoriza (sessão, permissão, acesso ao documento pela RLS), gera o
- * id da versão NO SERVIDOR, monta o caminho pela regra do banco e pede a URL
- * assinada de upload com o client do usuário (RLS do Storage vale).
+ * Passo 1. Autoriza (sessão, permissão, documento acessível pela RLS), gera o
+ * id da versão NO SERVIDOR e pede ao banco, com o JWT do usuário, o caminho
+ * autorizado (authorize_document_upload). Só com o caminho do banco — igual
+ * ao calculado aqui — a URL de upload é assinada (service role).
  */
 export async function prepareUpload(ctx: ServiceContext, input: PrepareUploadInput, deps?: DocumentDeps): Promise<PreparedUploadDTO> {
   requireSubmit(ctx);
   const doc = await loadDocument(ctx, input.documentId);
   assertAcceptsVersions(doc);
   const versionId = randomUUID();
-  const path = legalDocumentObjectName(doc.client_id, doc.id, versionId, input.fileName);
-  const upload = await storageOf(ctx, deps).createSignedUploadUrl(path);
+  const expected = legalDocumentObjectName(doc.client_id, doc.id, versionId, input.fileName);
+  const path = await authorized(repo.authorizeUpload(ctx.db, doc.id, versionId, input.fileName), DOC_NOT_FOUND);
+  assertSamePath(ctx, path, expected, { documentId: doc.id, versionId });
+  const upload = await storageOf(deps).createSignedUploadUrl(path);
   ctx.log.info("document.upload_prepared", { documentId: doc.id, versionId });
   return { documentId: doc.id, versionId, signedUrl: upload.signedUrl, token: upload.token, bucket: LEGAL_DOCUMENTS_BUCKET, path };
 }
@@ -257,23 +282,33 @@ async function existingConfirmation(ctx: ServiceContext, versionId: string, docu
 }
 
 /**
- * Passo 2. Registra `document_versions` com o id do passo 1. Idempotente: o
- * id da versão é a chave natural — confirmar duas vezes não cria duas versões.
- * O caminho é recalculado aqui; o objeto precisa existir no Storage (sem
- * upload, sem versão) e tamanho/tipo vêm do Storage, não do navegador.
+ * Passo 2. Registra `document_versions` (JWT do usuário) com o id do passo 1.
+ * Idempotente: o id da versão é a chave natural — confirmar duas vezes não
+ * cria duas versões. O caminho é recalculado aqui e reautorizado pelo banco;
+ * o objeto precisa existir (consulta pela service role, só desse caminho) e
+ * tamanho/tipo vêm do Storage, não do navegador.
  */
 export async function confirmUpload(ctx: ServiceContext, input: ConfirmUploadInput, deps?: DocumentDeps): Promise<ConfirmedUploadDTO> {
   requireSubmit(ctx);
   const doc = await loadDocument(ctx, input.documentId);
   const versionId = input.versionId.toLowerCase();
-  const path = legalDocumentObjectName(doc.client_id, doc.id, versionId, input.fileName);
+  const expected = legalDocumentObjectName(doc.client_id, doc.id, versionId, input.fileName);
+  const already = { documentId: doc.id, versionId, alreadyConfirmed: true };
 
-  if (await existingConfirmation(ctx, versionId, doc.id, path)) {
-    return { documentId: doc.id, versionId, alreadyConfirmed: true };
-  }
+  if (await existingConfirmation(ctx, versionId, doc.id, expected)) return already;
   assertAcceptsVersions(doc);
 
-  const info = await storageOf(ctx, deps).getObjectInfo(path);
+  let path: string;
+  try {
+    path = await authorized(repo.authorizeUpload(ctx.db, doc.id, versionId, input.fileName), DOC_NOT_FOUND);
+  } catch (error) {
+    // "Versão já registrada" (corrida com outra confirmação).
+    if (error instanceof DomainError && error.code === "CONFLICT" && (await existingConfirmation(ctx, versionId, doc.id, expected))) return already;
+    throw error;
+  }
+  assertSamePath(ctx, path, expected, { documentId: doc.id, versionId });
+
+  const info = await storageOf(deps).getObjectInfo(path);
   if (!info) throw invalidState("O arquivo ainda não chegou. Envie o arquivo e confirme de novo.");
 
   const result = await repo.insertVersion(ctx.db, {
@@ -288,7 +323,7 @@ export async function confirmUpload(ctx: ServiceContext, input: ConfirmUploadInp
   });
   if (result === "DUPLICATE") {
     // Corrida (duplo clique): a outra confirmação venceu.
-    if (await existingConfirmation(ctx, versionId, doc.id, path)) return { documentId: doc.id, versionId, alreadyConfirmed: true };
+    if (await existingConfirmation(ctx, versionId, doc.id, path)) return already;
     throw conflict("Esta versão já foi registrada para outro arquivo.");
   }
   ctx.log.info("document.version_created", { documentId: doc.id, versionId });
@@ -304,16 +339,11 @@ export async function confirmUpload(ctx: ServiceContext, input: ConfirmUploadInp
  *
  *   1. sessão + permissão (documents.manage | partnerPortal.view);
  *   2. documento acessível pela RLS (parceiro: só PARTNER_VISIBLE de caso/processo
- *      dele — senão "não encontrado"), versão do próprio documento;
- *   3. URL assinada com o client do USUÁRIO (RLS de storage.objects);
- *   4. acesso a dado pessoal registrado (record_personal_data_access, ação
- *      DOWNLOAD, recurso DOCUMENT_VERSION, ator = usuário do JWT, request_id).
- *      Se o registro falhar, a URL é descartada (falha fechada).
- *
- * Sem service role: `private.record_audit_event` (DOCUMENT_DOWNLOADED) não é
- * alcançável pelo PostgREST (schema `private` não exposto) e, pela service
- * role, gravaria ator SYSTEM. O evento LGPD acima já guarda quem, qual
- * titular, qual versão, quando e o requestId. Proposta de RPC no relatório.
+ *      dele — senão "não encontrado") e versão do próprio documento (IDOR);
+ *   3. authorize_document_download com o JWT do usuário: o banco confere o
+ *      acesso de novo, registra o acesso a dado pessoal (DOWNLOAD) e a
+ *      auditoria DOCUMENT_DOWNLOADED (ator USER, request_id) e devolve o caminho;
+ *   4. só então a URL é assinada (service role, signed-storage.ts).
  */
 export async function downloadDocument(ctx: ServiceContext, input: DownloadInput, deps?: DocumentDeps): Promise<DownloadUrlDTO> {
   requireView(ctx);
@@ -328,15 +358,17 @@ export async function downloadDocument(ctx: ServiceContext, input: DownloadInput
     version = currentVersionOf(await repo.listVersions(ctx.db, [doc.id]));
   }
   if (!version) throw notFound("Arquivo não encontrado.");
+  const ids = { documentId: doc.id, versionId: version.id };
   if (!objectNameMatchesVersion(version.storage_object_name, doc.client_id, doc.id, version.id)) {
-    ctx.log.error("document.object_name_mismatch", { documentId: doc.id, versionId: version.id });
+    ctx.log.error("document.object_name_mismatch", ids);
     throw new DomainError("INTERNAL");
   }
 
-  const url = await storageOf(ctx, deps).createSignedDownloadUrl(version.storage_object_name, DOWNLOAD_URL_TTL_SECONDS, downloadNameOf(version, sanitizeFilename));
-  await repo.recordDownloadAccess(ctx.db, doc.client_id, version.id);
-  ctx.log.info("document.downloaded", { documentId: doc.id, versionId: version.id });
-  return { documentId: doc.id, versionId: version.id, url, expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS };
+  const path = await authorized(repo.authorizeDownload(ctx.db, version.id), "Arquivo não encontrado.");
+  assertSamePath(ctx, path, version.storage_object_name, ids);
+  const url = await storageOf(deps).createSignedDownloadUrl(path, DOWNLOAD_URL_TTL_SECONDS, downloadNameOf(version, sanitizeFilename));
+  ctx.log.info("document.downloaded", ids);
+  return { ...ids, url, expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS };
 }
 
 /* ------------------------------------------------------------------ */

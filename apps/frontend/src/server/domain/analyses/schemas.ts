@@ -38,6 +38,8 @@ export type StartAnalysisInput = z.infer<typeof startAnalysisSchema>;
 /** Envia a análise ao agente do template (pede a execução; não executa nada aqui). */
 export const sendAnalysisToAgentSchema = z.object({
   analysisId: zUuid(),
+  /** Chave do formulário (UUID do navegador): vira a chave de idempotência da execução. */
+  idempotencyKey: zUuid(),
   requestText: zOptionalText(20_000),
 });
 export type SendAnalysisToAgentInput = z.infer<typeof sendAnalysisToAgentSchema>;

@@ -4,17 +4,27 @@ import type { AgentRunSummaryRow } from "./mappers";
 
 /**
  * Acesso a dados de execução de agente. A tabela agent_runs é só de ADMIN:
- * pedido é SEMPRE por request_agent_run e leitura do advogado é SEMPRE pela
- * RPC get_agent_run_summaries (colunas fixas, autorização no banco). Nenhum
+ * pedido é SEMPRE por request_agent_run_once (026: chave de idempotência por
+ * solicitante; repetir devolve a mesma execução sem enfileirar de novo) e
+ * leitura do advogado é SEMPRE pela RPC get_agent_run_summaries. Nenhum
  * agente é executado aqui — o worker consome a fila.
  */
 
-export async function requestRun(
+export async function requestRunOnce(
   db: SupabaseClient,
-  params: { agentId: string; legalCaseId: string | null; processId: string | null; requestText: string | null; parameters: Record<string, string>; operation: string },
-): Promise<string> {
-  return unwrap(
-    await db.rpc("request_agent_run", {
+  params: {
+    idempotencyKey: string;
+    agentId: string;
+    legalCaseId: string | null;
+    processId: string | null;
+    requestText: string | null;
+    parameters: Record<string, string>;
+    operation: string;
+  },
+): Promise<{ runId: string; deduplicated: boolean }> {
+  const data = unwrap(
+    await db.rpc("request_agent_run_once", {
+      p_idempotency_key: params.idempotencyKey,
       p_agent_id: params.agentId,
       p_legal_case_id: params.legalCaseId,
       p_legal_process_id: params.processId,
@@ -22,7 +32,8 @@ export async function requestRun(
       p_parameters: params.parameters,
       p_operation: params.operation,
     }),
-  ) as string;
+  ) as { run_id: string; deduplicated: boolean };
+  return { runId: data.run_id, deduplicated: data.deduplicated === true };
 }
 
 export async function summaries(db: SupabaseClient, legalCaseId: string | null, limit: number): Promise<AgentRunSummaryRow[]> {

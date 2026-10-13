@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import * as documents from "@/server/domain/documents/service";
 import { createDocumentSchema, listDocumentsSchema, prepareUploadSchema } from "@/server/domain/documents/schemas";
+import { signedDocumentStorage } from "@/server/domain/documents/signed-storage";
 import { legalDocumentObjectName } from "@/server/domain/documents/storage";
 import * as requirements from "@/server/domain/documents/requirements/service";
 import { createRequirementSchema, listRequirementsSchema } from "@/server/domain/documents/requirements/schemas";
@@ -15,15 +16,21 @@ import { ctxFor, expectDomainError, fakeCpf, serviceDb, world, type WorldRole } 
  * PARTNER_VISIBLE, isolamento A × B (IDOR), verificação append-only e
  * pendências (versão de outro cliente é recusada pelo banco).
  *
- * ATENÇÃO — Storage: as operações de Storage usam o JWT do usuário. Com a
- * migration 017 como está (bucket `legal-documents` sem política permissiva
- * para `authenticated` + política RESTRICTIVE), os testes do bloco
- * "com Storage" FALHAM até a migration de políticas de Storage proposta no
- * relatório da Etapa 4.2 ser aplicada. Os demais blocos não dependem dela:
- * versões de cenário são gravadas com a service role SÓ como preparação.
+ * Storage (migration 026): o banco autoriza com o JWT do usuário
+ * (authorize_document_upload/download — o download já registra LGPD e
+ * DOCUMENT_DOWNLOADED com ator USER) e o servidor assina com a service role
+ * só o caminho autorizado (signed-storage.ts). Versões de cenário fora do
+ * bloco "com Storage" são gravadas com a service role SÓ como preparação.
  */
 
 const CONTENT = "conteúdo fictício de teste — DG Brasil";
+
+/**
+ * O módulo REAL de assinatura (signed-storage.ts), com o client de service
+ * role do teste no lugar de createSupabaseAdminClient (as variáveis do Next
+ * não existem aqui). Autorização continua 100% com o JWT do papel.
+ */
+const deps = { storage: signedDocumentStorage(() => serviceDb()) };
 
 /** Caso do parceiro A (caminho real do portal): cliente novo + caso SUBMITTED. */
 async function partnerACase(): Promise<{ clientId: string; caseId: string }> {
@@ -59,12 +66,22 @@ async function seedVersion(documentId: string, clientId: string): Promise<string
 async function uploadVersion(role: WorldRole, documentId: string, fileName = "rg frente.txt"): Promise<string> {
   const ctx = await ctxFor(role);
   const body = new Blob([CONTENT], { type: "text/plain" });
-  const prepared = await documents.prepareUpload(ctx, prepareUploadSchema.parse({ documentId, fileName, mimeType: "text/plain", sizeBytes: body.size }));
+  const prepared = await documents.prepareUpload(ctx, prepareUploadSchema.parse({ documentId, fileName, mimeType: "text/plain", sizeBytes: body.size }), deps);
   const sent = await ctx.db.storage.from(prepared.bucket).uploadToSignedUrl(prepared.path, prepared.token, body, { contentType: "text/plain" });
   expect(sent.error).toBeNull();
-  const confirmed = await documents.confirmUpload(ctx, { documentId, versionId: prepared.versionId, fileName });
+  const confirmed = await documents.confirmUpload(ctx, { documentId, versionId: prepared.versionId, fileName }, deps);
   expect(confirmed).toEqual({ documentId, versionId: prepared.versionId, alreadyConfirmed: false });
   return prepared.versionId;
+}
+
+async function downloadAuditEvents(versionId: string, role: WorldRole) {
+  const { data } = await serviceDb()
+    .from("audit_events")
+    .select("action, actor_type, entity_id")
+    .eq("action", "DOCUMENT_DOWNLOADED")
+    .eq("entity_id", versionId)
+    .eq("actor_user_id", world.users[role].id);
+  return data ?? [];
 }
 
 async function downloadAccessEvents(versionId: string, role: WorldRole) {
@@ -92,14 +109,14 @@ describe("documentos — visibilidade e isolamento (sem Storage)", () => {
 
     const a = await ctxFor("PARTNER_USER_A");
     await expectDomainError(documents.getDocument(a, internalDoc), "NOT_FOUND");
-    await expectDomainError(documents.downloadDocument(a, { documentId: internalDoc }), "NOT_FOUND");
+    await expectDomainError(documents.downloadDocument(a, { documentId: internalDoc }, deps), "NOT_FOUND");
     const list = await documents.listDocuments(a, listDocumentsSchema.parse({ legalCaseId: caseA.caseId, pageSize: 50 }));
     expect(list.items.map((d) => d.id)).toContain(sharedDoc);
     expect(list.items.map((d) => d.id)).not.toContain(internalDoc);
 
     const b = await ctxFor("PARTNER_ADMIN_B");
     await expectDomainError(documents.getDocument(b, sharedDoc), "NOT_FOUND");
-    await expectDomainError(documents.downloadDocument(b, { documentId: sharedDoc }), "NOT_FOUND");
+    await expectDomainError(documents.downloadDocument(b, { documentId: sharedDoc }, deps), "NOT_FOUND");
     const listB = await documents.listDocuments(b, listDocumentsSchema.parse({ legalCaseId: caseA.caseId }));
     expect(listB.items).toHaveLength(0);
     await expectDomainError(requirements.listRequirements(b, listRequirementsSchema.parse({ legalCaseId: caseA.caseId })), "NOT_FOUND");
@@ -110,7 +127,7 @@ describe("documentos — visibilidade e isolamento (sem Storage)", () => {
     const internalVersion = await seedVersion(internalDoc, caseA.clientId);
     const sharedDoc = await newDocument("LAWYER", { legalCaseId: caseA.caseId, visibility: "PARTNER_VISIBLE" });
     await seedVersion(sharedDoc, caseA.clientId);
-    await expectDomainError(documents.downloadDocument(await ctxFor("PARTNER_USER_A"), { documentId: sharedDoc, versionId: internalVersion }), "NOT_FOUND");
+    await expectDomainError(documents.downloadDocument(await ctxFor("PARTNER_USER_A"), { documentId: sharedDoc, versionId: internalVersion }, deps), "NOT_FOUND");
   });
 
   it("ficha do parceiro não tem campo interno; a interna tem", async () => {
@@ -219,18 +236,18 @@ describe("pendências de documento do caso", () => {
   });
 });
 
-describe("documentos — com Storage (exige as políticas de Storage propostas)", () => {
+describe("documentos — com Storage (upload e download reais)", () => {
   it("interno: prepare → upload → confirm (idempotente) → download funciona e registra acesso LGPD", async () => {
     const id = await newDocument("LAWYER", { legalCaseId: caseA.caseId });
     const versionId = await uploadVersion("LAWYER", id);
     const lawyer = await ctxFor("LAWYER");
 
     // Confirmar de novo não cria segunda versão.
-    expect(await documents.confirmUpload(lawyer, { documentId: id, versionId, fileName: "rg frente.txt" })).toMatchObject({ alreadyConfirmed: true });
+    expect(await documents.confirmUpload(lawyer, { documentId: id, versionId, fileName: "rg frente.txt" }, deps)).toMatchObject({ alreadyConfirmed: true });
     const { data: versions } = await serviceDb().from("document_versions").select("id, version_number, file_size, mime_type, created_by").eq("document_id", id);
     expect(versions).toEqual([{ id: versionId, version_number: 1, file_size: new Blob([CONTENT]).size, mime_type: "text/plain", created_by: world.users.LAWYER.id }]);
 
-    const link = await documents.downloadDocument(lawyer, { documentId: id });
+    const link = await documents.downloadDocument(lawyer, { documentId: id }, deps);
     expect(link).toMatchObject({ documentId: id, versionId, expiresInSeconds: 60 });
     const response = await fetch(link.url);
     expect(response.status).toBe(200);
@@ -238,13 +255,15 @@ describe("documentos — com Storage (exige as políticas de Storage propostas)"
     expect(await downloadAccessEvents(versionId, "LAWYER")).toEqual([
       expect.objectContaining({ action: "DOWNLOAD", resource_type: "DOCUMENT_VERSION", resource_id: versionId, actor_type: "USER" }),
     ]);
+    // Um registro só (sem LGPD duplicado no TypeScript) + auditoria com ator USER.
+    expect(await downloadAuditEvents(versionId, "LAWYER")).toEqual([{ action: "DOCUMENT_DOWNLOADED", actor_type: "USER", entity_id: versionId }]);
   });
 
   it("confirmar sem enviar o arquivo é recusado (nenhuma versão criada)", async () => {
     const id = await newDocument("LAWYER", { legalCaseId: caseA.caseId });
     const ctx = await ctxFor("LAWYER");
-    const prepared = await documents.prepareUpload(ctx, prepareUploadSchema.parse({ documentId: id, fileName: "nada.txt", mimeType: "text/plain", sizeBytes: 5 }));
-    await expectDomainError(documents.confirmUpload(ctx, { documentId: id, versionId: prepared.versionId, fileName: "nada.txt" }), "INVALID_STATE");
+    const prepared = await documents.prepareUpload(ctx, prepareUploadSchema.parse({ documentId: id, fileName: "nada.txt", mimeType: "text/plain", sizeBytes: 5 }), deps);
+    await expectDomainError(documents.confirmUpload(ctx, { documentId: id, versionId: prepared.versionId, fileName: "nada.txt" }, deps), "INVALID_STATE");
     const { count } = await serviceDb().from("document_versions").select("id", { count: "exact", head: true }).eq("document_id", id);
     expect(count).toBe(0);
   });
@@ -254,11 +273,13 @@ describe("documentos — com Storage (exige as políticas de Storage propostas)"
     const versionId = await uploadVersion("LAWYER", id, "extrato.txt");
     await documents.setVisibility(await ctxFor("LAWYER"), { id, visibility: "PARTNER_VISIBLE" });
 
-    const link = await documents.downloadDocument(await ctxFor("PARTNER_USER_A"), { documentId: id });
+    const link = await documents.downloadDocument(await ctxFor("PARTNER_USER_A"), { documentId: id }, deps);
     expect((await fetch(link.url)).status).toBe(200);
     expect(await downloadAccessEvents(versionId, "PARTNER_USER_A")).toHaveLength(1);
-    await expectDomainError(documents.downloadDocument(await ctxFor("PARTNER_USER_B"), { documentId: id }), "NOT_FOUND");
+    await expectDomainError(documents.downloadDocument(await ctxFor("PARTNER_USER_B"), { documentId: id }, deps), "NOT_FOUND");
     expect(await downloadAccessEvents(versionId, "PARTNER_USER_B")).toHaveLength(0);
+    expect(await downloadAuditEvents(versionId, "PARTNER_USER_A")).toHaveLength(1);
+    expect(await downloadAuditEvents(versionId, "PARTNER_USER_B")).toHaveLength(0);
   });
 
   it("parceiro A envia arquivo no próprio caso (documento + versão sem RETURNING)", async () => {

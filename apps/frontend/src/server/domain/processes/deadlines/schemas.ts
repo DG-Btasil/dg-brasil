@@ -21,6 +21,8 @@ export const deadlineIdSchema = z.object({ id: zUuid() });
 const scopeFilters = {
   caseId: zUuid().optional(),
   processId: zUuid().optional(),
+  /** Responsável: UUID de usuário interno ou "me" (o próprio usuário da sessão). */
+  responsibleUserId: z.union([z.literal("me"), zUuid()]).optional(),
 };
 
 /** Prazos de um caso/processo (qualquer situação), por vencimento. */

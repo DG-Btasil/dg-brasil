@@ -9,7 +9,6 @@ import {
   partnershipInternalFromRow,
   partnershipPartnerFromRow,
   paymentFromRows,
-  pickTransferItems,
   receiptFromRow,
   shareTotals,
   transferInternalFromRow,
@@ -208,29 +207,9 @@ describe("totais do parceiro (soma em centavos do que o banco derivou)", () => {
   });
 });
 
-describe("escolha das divisões do repasse", () => {
-  const rows = [
-    { allocation_id: "a", net_partner_amount: "10.00", transferred_amount: "10.00" },
-    { allocation_id: "b", net_partner_amount: "25.50", transferred_amount: "5.00" },
-    { allocation_id: "c", net_partner_amount: "40.00", transferred_amount: "0" },
-  ];
-
-  it("consome o saldo do banco na ordem, sem passar do disponível", () => {
-    expect(pickTransferItems(rows, 30.5)).toEqual([
-      { allocationId: "b", amount: 20.5 },
-      { allocationId: "c", amount: 10 },
-    ]);
-  });
-
-  it("saldo insuficiente → null", () => {
-    expect(pickTransferItems(rows, 60.51)).toBeNull();
-    expect(pickTransferItems(rows, 60.5)).toHaveLength(2);
-  });
-});
-
 describe("domínio → colunas", () => {
-  it("acordo: status decidido pelo service, autor da sessão; chaves ausentes não viram coluna", () => {
-    const input = createAgreementSchema.parse({ legalCaseId: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01", fixedFee: 1200, activate: true });
+  it("acordo: status decidido pelo service, autor da sessão; chaves ausentes não viram coluna; a chave de idempotência é gravada pelo repositório", () => {
+    const input = createAgreementSchema.parse({ legalCaseId: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01", fixedFee: 1200, activate: true, idempotencyKey: "9b2d4c6e-1a3f-4e5b-8c7d-0f1e2d3c4b5a" });
     expect(agreementInsert(input, "actor-1")).toEqual({
       legal_case_id: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01",
       fixed_fee: 1200,

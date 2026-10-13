@@ -2068,6 +2068,125 @@ await deve('client_directory: busca por nome e documento; parceiro só vê os se
   })
 })
 
+secao('Backend: Storage autorizado pelo banco [026]')
+await deve('upload: equipe interna recebe o caminho exato; versão repetida é recusada', () => como(ids.lucas, async (tx) => {
+  const v = randomUUID()
+  const nome = (await um(tx, `select public.authorize_document_upload($1, $2, 'Extrato Março.pdf') n`, [ids.docInterno, v])).n
+  igual(nome, `clients/${ids.joao}/documents/${ids.docInterno}/${v}/Extrato_Mar_o.pdf`, 'caminho')
+  await tx.query(`select public.authorize_document_upload($1, $2, 'x.pdf')`, [ids.docInterno, ids.vInterno]).then(
+    () => { throw new Error('aceitou versão existente') }, (e) => { if (!/já registrada/.test(e.message)) throw e })
+}))
+await deveFalhar('upload: parceiro não envia para documento INTERNAL', () => como(ids.almeidaUsr, (tx) =>
+  tx.query(`select public.authorize_document_upload($1, $2, 'x.pdf')`, [ids.docInterno, randomUUID()])), /não encontrado/)
+await deveFalhar('upload: sessão só com senha (aal1) não autoriza', () => comoAal1(ids.lucas, (tx) =>
+  tx.query(`select public.authorize_document_upload($1, $2, 'x.pdf')`, [ids.docInterno, randomUUID()])), /Sem sessão liberada/)
+await deve('download: parceiro baixa PARTNER_VISIBLE do próprio caso; LGPD e auditoria com o usuário', async () => {
+  const nome = await como(ids.almeidaUsr, async (tx) => (await um(tx, `select public.authorize_document_download($1) n`, [ids.v1])).n)
+  if (!nome?.includes(`/documents/${ids.docVisivel}/${ids.v1}/`)) throw new Error(`caminho ${nome}`)
+  const ac = await um(db, `select actor_user_id, action from personal_data_access_events where resource_id = $1 and action = 'DOWNLOAD' order by created_at desc limit 1`, [ids.v1])
+  igual([ac?.actor_user_id, ac?.action], [ids.almeidaUsr, 'DOWNLOAD'], 'LGPD')
+  const au = await um(db, `select actor_type, actor_user_id from audit_events where action = 'DOCUMENT_DOWNLOADED' and entity_id = $1 order by created_at desc limit 1`, [ids.v1])
+  igual([au?.actor_type, au?.actor_user_id], ['USER', ids.almeidaUsr], 'auditoria')
+})
+await deveFalhar('download: parceiro não baixa versão de documento INTERNAL', () => como(ids.almeidaUsr, (tx) =>
+  tx.query(`select public.authorize_document_download($1)`, [ids.vInterno])), /não encontrado/)
+await deveFalhar('download: outro parceiro não baixa (IDOR)', () => como(ids.ferreiraAdm, (tx) =>
+  tx.query(`select public.authorize_document_download($1)`, [ids.v1])), /não encontrado/)
+await deveFalhar('service role não usa as funções de autorização (precisa ser o usuário)', () => comoServico((tx) =>
+  tx.query(`select public.authorize_document_download($1)`, [ids.v1])), /permission denied/)
+
+secao('Backend: idempotência e operações atômicas [026]')
+await deve('lançamento com a mesma chave não duplica (unique por autor)', async () => {
+  const k = randomUUID()
+  await como(ids.barbara, async (tx) => {
+    const p = (await um(tx, `insert into payments (financial_agreement_id, amount, payment_type, idempotency_key) values ($1, 50, 'OTHER', $2) returning id`, [ids.acordo, randomUUID()])).id
+    await tx.query(`insert into payment_receipts (payment_id, kind, amount, idempotency_key) values ($1, 'RECEIPT', 10, $2)`, [p, k])
+    await tx.query(`savepoint s`)
+    await tx.query(`insert into payment_receipts (payment_id, kind, amount, idempotency_key) values ($1, 'RECEIPT', 10, $2)`, [p, k]).then(
+      () => { throw new Error('duplicou') }, async (e) => { if (!/payment_receipts_idempotency/.test(e.message)) throw e; await tx.query(`rollback to savepoint s`) })
+    igual((await um(tx, `select count(*)::int n from payment_receipts where payment_id = $1`, [p])).n, 1, 'lançamentos')
+  })
+})
+await deve('execução de agente com a mesma chave devolve a mesma execução (sem enfileirar de novo)', async () => {
+  const k = randomUUID()
+  const pedir = () => como(ids.lucas, async (tx) => (await um(tx, `select public.request_agent_run_once($1, $2, $3) r`, [k, ids.agente, ids.casoA])).r)
+  const a = await pedir()
+  const b = await pedir()
+  igual([a.deduplicated, b.deduplicated, b.run_id], [false, true, a.run_id], 'idempotência')
+  igual((await um(db, `select count(*)::int n from agent_runs where idempotency_key = $1`, [k])).n, 1, 'execuções')
+})
+await deveFalhar('ASSISTANT não pede execução nem com chave', () => como(ids.ana, (tx) =>
+  tx.query(`select public.request_agent_run_once($1, $2, $3)`, [randomUUID(), ids.agente, ids.casoA])), /ADMIN ou LAWYER/)
+await deve('repasse atômico: consome saldo disponível; repetir com a chave não duplica', async () => {
+  const disp = Number((await um(db, `select coalesce(sum(net_partner_amount - transferred_amount), 0) v from partner_allocation_balances where partner_organization_id = $1`, [ids.almeida])).v)
+  if (disp < 1) throw new Error(`cenário sem saldo disponível (${disp})`)
+  const k = randomUUID()
+  const r1 = await como(ids.barbara, async (tx) => (await um(tx, `select public.create_partner_transfer($1, 1, 'PIX teste', null, $2) r`, [ids.almeida, k])).r)
+  const r2 = await como(ids.barbara, async (tx) => (await um(tx, `select public.create_partner_transfer($1, 1, 'PIX teste', null, $2) r`, [ids.almeida, k])).r)
+  igual([r1.deduplicated, r2.deduplicated, r2.transfer_id], [false, true, r1.transfer_id], 'idempotência')
+  igual((await um(db, `select coalesce(sum(amount), 0)::text v from partner_transfer_items where transfer_id = $1`, [r1.transfer_id])).v, '1.00', 'itens')
+  const depois = Number((await um(db, `select coalesce(sum(net_partner_amount - transferred_amount), 0) v from partner_allocation_balances where partner_organization_id = $1`, [ids.almeida])).v)
+  igual(Math.round((disp - depois) * 100), 100, 'saldo consumido')
+})
+await deve('repasse acima do saldo é recusado e nada fica gravado', async () => {
+  const antes = (await um(db, `select count(*)::int n from partner_transfers`)).n
+  await como(ids.barbara, (tx) => tx.query(`select public.create_partner_transfer($1, 99999999)`, [ids.almeida])).then(
+    () => { throw new Error('aceitou') }, (e) => { if (!/insuficiente/.test(e.message)) throw e })
+  igual((await um(db, `select count(*)::int n from partner_transfers`)).n, antes, 'repasses')
+})
+await deveFalhar('LAWYER não registra repasse', () => como(ids.lucas, (tx) =>
+  tx.query(`select public.create_partner_transfer($1, 1)`, [ids.almeida])), /Somente ADMIN/)
+await deve('cadastro de parceiro atômico (organização + configuração)', async () => {
+  const id = await como(ids.barbara, async (tx) => (await um(tx, `select public.create_partner_office($1, $2) id`,
+    [JSON.stringify({ name: 'Parceiro 026', cnpj: '99.026.000/0001-26', address_state: 'sp' }), JSON.stringify({ default_partner_percentage: 40, default_owner_percentage: 60 })])).id)
+  const r = await um(db, `select o.type, o.status, s.default_partner_percentage::text p from organizations o join partner_office_settings s on s.organization_id = o.id where o.id = $1`, [id])
+  igual([r.type, r.status, r.p], ['PARTNER', 'PENDING', '40.00'], 'parceiro')
+})
+await deve('cadastro de parceiro com divisão inválida não deixa organização órfã', async () => {
+  const antes = (await um(db, `select count(*)::int n from organizations`)).n
+  await como(ids.barbara, (tx) => tx.query(`select public.create_partner_office($1, $2)`,
+    [JSON.stringify({ name: 'Parceiro Órfão' }), JSON.stringify({ default_partner_percentage: 40, default_owner_percentage: 40 })])).then(
+    () => { throw new Error('aceitou') }, () => {})
+  igual((await um(db, `select count(*)::int n from organizations`)).n, antes, 'organizações')
+})
+await deveFalhar('LAWYER não cadastra parceiro', () => como(ids.lucas, (tx) =>
+  tx.query(`select public.create_partner_office('{"name":"X"}', '{}')`)), /Somente ADMIN/)
+
+secao('Backend: solicitações ao parceiro [026]')
+await deve('resposta do parceiro: mensagem + ANSWERED numa transação; repetir o envio não duplica', async () => {
+  ids.ped026 = await como(ids.lucas, async (tx) => (await um(tx, `insert into partner_requests (partner_organization_id, legal_case_id, type, title)
+    values ($1, $2, 'INFORMATION', 'Confirmar dados') returning id`, [ids.almeida, ids.casoA])).id)
+  const m = randomUUID()
+  const s1 = await como(ids.almeidaUsr, async (tx) => (await um(tx, `select public.answer_partner_request($1, $2, 'Dados confirmados') s`, [ids.ped026, m])).s)
+  const s2 = await como(ids.almeidaUsr, async (tx) => (await um(tx, `select public.answer_partner_request($1, $2, 'Dados confirmados') s`, [ids.ped026, m])).s)
+  igual([s1, s2], ['ANSWERED', 'ANSWERED'], 'situação')
+  igual((await um(db, `select count(*)::int n from partner_request_messages where partner_request_id = $1`, [ids.ped026])).n, 1, 'mensagens')
+})
+await deve('equipe interna reabre (ANSWERED → OPEN) ao responder com p_reopen', () => como(ids.lucas, async (tx) =>
+  igual((await um(tx, `select public.answer_partner_request($1, $2, 'Faltou o anexo', null, true) s`, [ids.ped026, randomUUID()])).s, 'OPEN', 'situação')))
+await deveFalhar('outro parceiro não responde (IDOR)', () => como(ids.ferreiraAdm, (tx) =>
+  tx.query(`select public.answer_partner_request($1, $2, 'x')`, [ids.ped026, randomUUID()])), /não encontrada/)
+await deve('encerrada: não recebe mensagem (nem por insert direto) e não reabre', async () => {
+  await como(ids.lucas, (tx) => tx.query(`update partner_requests set status = 'RESOLVED' where id = $1`, [ids.ped026]))
+  await como(ids.almeidaUsr, (tx) => tx.query(`select public.answer_partner_request($1, $2, 'x')`, [ids.ped026, randomUUID()])).then(
+    () => { throw new Error('aceitou mensagem') }, (e) => { if (!/encerrada/.test(e.message)) throw e })
+  await como(ids.almeidaUsr, (tx) => tx.query(`insert into partner_request_messages (partner_request_id, author_id, body) values ($1, $2, 'x')`, [ids.ped026, ids.almeidaUsr])).then(
+    () => { throw new Error('aceitou insert direto') }, (e) => { if (!/row-level security/.test(e.message)) throw e })
+  await como(ids.lucas, (tx) => tx.query(`update partner_requests set status = 'OPEN' where id = $1`, [ids.ped026])).then(
+    () => { throw new Error('reabriu') }, (e) => { if (!/não muda de situação/.test(e.message)) throw e })
+})
+await deveFalhar('caso da solicitação não muda depois de criada', () => como(ids.lucas, async (tx) => {
+  const r = (await um(tx, `insert into partner_requests (partner_organization_id, legal_case_id, type, title) values ($1, $2, 'GENERAL', 'x') returning id`, [ids.almeida, ids.casoA])).id
+  await tx.query(`update partner_requests set legal_case_id = $2 where id = $1`, [r, ids.casoB])
+}), /não mudam/)
+
+secao('Backend: deadline_status [026]')
+await deve('a view traz responsável e indica prazo de caso/processo excluído', async () => {
+  const r = await linhas(db, `select responsible_user_id, scope_deleted from deadline_status limit 1`)
+  if (!r.length) throw new Error('sem prazos no cenário')
+  igual(typeof r[0].scope_deleted, 'boolean', 'scope_deleted')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

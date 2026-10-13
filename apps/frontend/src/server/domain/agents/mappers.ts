@@ -3,7 +3,7 @@ import type { AgentRunStatus } from "./schemas";
 
 /**
  * Banco ↔ domínio das execuções de agente. Funções puras, testadas em
- * agents.test.ts (inclusive a regra de duplo clique).
+ * agents.test.ts.
  */
 
 /** Linha de get_agent_run_summaries (colunas fixas da RPC). */
@@ -46,35 +46,4 @@ export function summaryFromRow(row: AgentRunSummaryRow): AgentRunSummaryDTO {
     completedAt: opt(row.completed_at),
     proposalCount: Number(row.proposal_count ?? 0),
   };
-}
-
-/** Janela do "duplo clique": o mesmo pedido repetido dentro dela devolve a execução existente. */
-export const DUPLICATE_WINDOW_MS = 30_000;
-
-export interface RunIdentity {
-  agentId: string;
-  legalCaseId: string | null;
-  processId: string | null;
-  operation: string;
-  requestedBy: string;
-}
-
-/**
- * Execução idêntica ainda na fila (mesmo agente, caso, processo, operação e
- * solicitante), pedida há menos de `windowMs`. Proteção de aplicação contra
- * duplo clique — o banco não tem chave de idempotência para execução (ver
- * relatório da 4.2: proposta de `agent_runs.idempotency_key`).
- */
-export function findRecentDuplicate(rows: AgentRunSummaryRow[], run: RunIdentity, now: number, windowMs = DUPLICATE_WINDOW_MS): AgentRunSummaryRow | undefined {
-  return rows.find(
-    (r) =>
-      r.status === "QUEUED" &&
-      r.agent_id === run.agentId &&
-      (r.legal_case_id ?? null) === run.legalCaseId &&
-      (r.legal_process_id ?? null) === run.processId &&
-      r.operation === run.operation &&
-      r.requested_by === run.requestedBy &&
-      now - Date.parse(r.created_at) >= -5_000 && // relógios de servidor e banco podem divergir um pouco
-      now - Date.parse(r.created_at) < windowMs,
-  );
 }

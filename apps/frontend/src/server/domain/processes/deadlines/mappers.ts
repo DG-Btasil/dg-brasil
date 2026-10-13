@@ -75,6 +75,12 @@ export function mergePage(statusRows: DeadlineStatusRow[], rows: DeadlineRow[], 
   return items.sort((a, b) => dir * (a.dueDateLocal.localeCompare(b.dueDateLocal) || Date.parse(a.dueAt) - Date.parse(b.dueAt)));
 }
 
+/** Filtro de responsável: "me" vira o usuário da sessão (nunca confiado do navegador). */
+export function resolveResponsible(value: string | undefined, sessionUserId: ID): ID | undefined {
+  if (!value) return undefined;
+  return value === "me" ? sessionUserId : value;
+}
+
 /** Data civil (YYYY-MM-DD) de um instante no fuso do escritório. */
 export function officeLocalDate(at: Date): string {
   // en-CA formata como YYYY-MM-DD.

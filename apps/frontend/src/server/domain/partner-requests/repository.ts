@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fromDbError, unwrap } from "@/server/core/db-errors";
+import { fromDbError, unwrap, type DbErrorLike } from "@/server/core/db-errors";
+import { notFound, validation, type DomainError } from "@/server/core/errors";
 import { toRange, type PageInput } from "@/server/core/pagination";
 import type { DbPartnerRequestType } from "@/repositories/api/db-mappings";
 import type { PartnerRequestStatus } from "@/lib/constants/status";
@@ -10,8 +11,9 @@ import type { PartnerRequestMessageRow, PartnerRequestRow } from "./mappers";
  * recorta o parceiro ao próprio escritório (partner_requests_select) e o
  * trigger private.partner_requests_guard trava o que o parceiro pode mudar.
  *
- * Inserções sem RETURNING (contrato do banco para escrita de parceiro): o id
- * é gerado no servidor e a leitura, quando necessária, é outra consulta.
+ * A máquina de estados (OPEN ↔ ANSWERED → RESOLVED/CANCELLED; encerrada não
+ * reabre) e a recusa de mensagem em solicitação encerrada são do banco (026).
+ * Inserções sem RETURNING: o id é gerado no servidor.
  */
 
 const REQUEST_COLUMNS =
@@ -110,8 +112,31 @@ export async function insert(db: SupabaseClient, row: Record<string, unknown>): 
   unwrap(await db.from("partner_requests").insert(row));
 }
 
-export async function insertMessage(db: SupabaseClient, row: { id: string; partner_request_id: string; author_id: string; body: string; document_id: string | null }): Promise<void> {
-  unwrap(await db.from("partner_request_messages").insert(row));
+/**
+ * Mensagem + situação numa transação (RPC answer_partner_request, 026).
+ * Parceiro: OPEN → ANSWERED; interno com `reopen`: ANSWERED → OPEN. Repetir
+ * com o mesmo id de mensagem não duplica. Devolve a situação final.
+ */
+export async function answer(
+  db: SupabaseClient,
+  params: { requestId: string; messageId: string; body: string; documentId: string | null; reopen: boolean },
+): Promise<PartnerRequestStatus> {
+  const { data, error } = await db.rpc("answer_partner_request", {
+    p_request_id: params.requestId,
+    p_message_id: params.messageId,
+    p_body: params.body,
+    p_document_id: params.documentId,
+    p_reopen: params.reopen,
+  });
+  if (error) throw answerError(error);
+  return data as PartnerRequestStatus;
+}
+
+/** A RPC responde 42501 para "não encontrada"/documento inacessível: viram NOT_FOUND/VALIDATION (não revelam existência). */
+export function answerError(error: DbErrorLike): DomainError {
+  if (error.code === "42501" && /Solicitação não encontrada/.test(error.message ?? "")) return notFound("Solicitação não encontrada.");
+  if (error.code === "42501" && /Documento não encontrado/.test(error.message ?? "")) return validation({ documentId: ["Documento não encontrado."] });
+  return fromDbError(error);
 }
 
 /**

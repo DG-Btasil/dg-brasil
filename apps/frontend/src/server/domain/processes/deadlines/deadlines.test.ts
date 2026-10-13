@@ -1,6 +1,8 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-import { addDays, deadlineFromRows, deadlineInsertRow, deadlineUpdatePatch, dueAtFromInput, mergePage, officeLocalDate, type DeadlineRow } from "./mappers";
-import { createDeadlineSchema, listUpcomingSchema, updateDeadlineSchema } from "./schemas";
+import { addDays, deadlineFromRows, deadlineInsertRow, deadlineUpdatePatch, dueAtFromInput, mergePage, officeLocalDate, resolveResponsible, type DeadlineRow, type DeadlineStatusRow } from "./mappers";
+import { getOne } from "./repository";
+import { createDeadlineSchema, listDeadlinesSchema, listOverdueSchema, listUpcomingSchema, updateDeadlineSchema } from "./schemas";
 
 const CASE = "00000000-0000-4000-8000-0000000000c1";
 const PROC = "00000000-0000-4000-8000-0000000000d1";
@@ -39,6 +41,15 @@ describe("schemas de prazo", () => {
     const parsed = updateDeadlineSchema.parse({ id: CASE, patch: { title: "y", status: "COMPLETED" } });
     expect(parsed.patch).not.toHaveProperty("status");
     expect(updateDeadlineSchema.safeParse({ id: CASE, patch: {} }).success).toBe(false);
+  });
+
+  it("filtro de responsável: UUID ou \"me\" (resolvido pela sessão)", () => {
+    expect(listOverdueSchema.parse({ responsibleUserId: "me" }).responsibleUserId).toBe("me");
+    expect(listDeadlinesSchema.parse({ responsibleUserId: USER }).responsibleUserId).toBe(USER);
+    expect(listUpcomingSchema.safeParse({ responsibleUserId: "todos" }).success).toBe(false);
+    expect(resolveResponsible("me", USER)).toBe(USER);
+    expect(resolveResponsible(CASE, USER)).toBe(CASE);
+    expect(resolveResponsible(undefined, USER)).toBeUndefined();
   });
 
   it("janela de próximos prazos limitada", () => {
@@ -106,5 +117,34 @@ describe("mapeamento de prazo", () => {
       due_at: "2026-11-01T23:59:59-03:00",
       responsible_user_id: null,
     });
+  });
+});
+
+describe("repositório — prazo de escopo excluído", () => {
+  /** Client mínimo: registra os filtros e devolve a linha só se a view não foi filtrada por scope_deleted. */
+  function stubDb(viewRow: DeadlineStatusRow | null) {
+    const calls: Record<string, [string, unknown][]> = {};
+    const db = {
+      from(table: string) {
+        const filters: [string, unknown][] = (calls[table] = []);
+        const builder = {
+          select: () => builder,
+          eq: (col: string, value: unknown) => (filters.push([col, value]), builder),
+          maybeSingle: async () => {
+            if (table === "deadlines") return { data: row(), error: null };
+            const hidden = filters.some(([c, v]) => c === "scope_deleted" && v === false);
+            return { data: hidden ? null : viewRow, error: null };
+          },
+        };
+        return builder;
+      },
+    };
+    return { db: db as unknown as SupabaseClient, calls };
+  }
+
+  it("getOne filtra scope_deleted = false na view (excluído → null → NOT_FOUND)", async () => {
+    const { db, calls } = stubDb({ deadline_id: "d1", effective_status: "OPEN", due_date_local: "2026-10-10" });
+    expect(await getOne(db, "d1")).toBeNull();
+    expect(calls.deadline_status).toContainEqual(["scope_deleted", false]);
   });
 });

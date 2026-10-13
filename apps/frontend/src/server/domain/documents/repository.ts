@@ -211,15 +211,20 @@ export async function insertVerification(
   return data.id;
 }
 
-/** LGPD: download de versão (ator = usuário do JWT; o banco confere o acesso ao titular). */
-export async function recordDownloadAccess(db: SupabaseClient, clientId: string, versionId: string): Promise<void> {
-  unwrap(
-    await db.rpc("record_personal_data_access", {
-      p_client_id: clientId,
-      p_resource_type: "DOCUMENT_VERSION",
-      p_resource_id: versionId,
-      p_action: "DOWNLOAD",
-      p_purpose: null,
-    }),
-  );
+/**
+ * Upload (026): com o JWT do usuário, o banco confere sessão, acesso ao
+ * documento, documento ativo e versão ainda não registrada, e devolve o
+ * caminho EXATO do objeto. Sem isto o servidor não assina.
+ */
+export async function authorizeUpload(db: SupabaseClient, documentId: string, versionId: string, filename: string): Promise<string> {
+  return unwrap(await db.rpc("authorize_document_upload", { p_document_id: documentId, p_version_id: versionId, p_filename: filename })) as string;
+}
+
+/**
+ * Download (026): com o JWT do usuário, o banco confere o acesso, registra o
+ * acesso a dado pessoal (DOWNLOAD) e a auditoria DOCUMENT_DOWNLOADED (ator
+ * USER, request_id) e devolve o caminho. Sem isto o servidor não assina.
+ */
+export async function authorizeDownload(db: SupabaseClient, versionId: string): Promise<string> {
+  return unwrap(await db.rpc("authorize_document_download", { p_version_id: versionId })) as string;
 }

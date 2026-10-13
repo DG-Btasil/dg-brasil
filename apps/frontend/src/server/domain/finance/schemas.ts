@@ -97,6 +97,8 @@ export const idSchema = z.object({ id: zUuid() });
 
 export const createAgreementSchema = z.object({
   legalCaseId: zUuid(),
+  /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
+  idempotencyKey: zUuid(),
   feeModelId: zUuid().optional(),
   ...feeTermsFields,
   startDate: zIsoDate().optional(),
@@ -149,6 +151,8 @@ export type ListPaymentsInput = z.infer<typeof listPaymentsSchema>;
 
 export const createPaymentSchema = z.object({
   agreementId: zUuid(),
+  /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
+  idempotencyKey: zUuid(),
   amount: zPositiveMoney(),
   dueDate: zIsoDate().optional(),
   paymentType: z.enum(PAYMENT_TYPES),
@@ -186,6 +190,8 @@ export type ListReceiptsInput = z.infer<typeof listReceiptsSchema>;
 /** Entrada. Sem `amount`, quita o saldo restante da obrigação (lido do banco). */
 export const registerReceiptSchema = z.object({
   paymentId: zUuid(),
+  /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
+  idempotencyKey: zUuid(),
   amount: zPositiveMoney().optional(),
   occurredAt: zPastDateTime().optional(),
   method: z.enum(RECEIPT_METHODS).optional(),
@@ -199,6 +205,8 @@ export type RegisterReceiptInput = z.infer<typeof registerReceiptSchema>;
  */
 export const registerAdjustmentSchema = z.object({
   paymentId: zUuid(),
+  /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
+  idempotencyKey: zUuid(),
   direction: z.enum(["INCREASE", "DECREASE"]),
   amount: zPositiveMoney(),
   justification: zText(1000, "Informe a justificativa do ajuste."),
@@ -211,6 +219,8 @@ export type RegisterAdjustmentInput = z.infer<typeof registerAdjustmentSchema>;
 /** Estorno de um lançamento de entrada. Sem `amount`, estorna o que resta dele. */
 export const registerReversalSchema = z.object({
   originalReceiptId: zUuid(),
+  /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
+  idempotencyKey: zUuid(),
   amount: zPositiveMoney().optional(),
   notes: zOptionalText(1000),
   occurredAt: zPastDateTime().optional(),
@@ -243,11 +253,14 @@ export type ListTransfersInput = z.infer<typeof listTransfersSchema>;
 
 /**
  * Novo repasse (ADMIN). Só o VALOR total é decidido por quem registra; quais
- * divisões ele consome é escolhido no servidor (mais antigas primeiro), entre
- * as que têm saldo disponível segundo o banco. Opcionalmente restrito a um caso.
+ * divisões ele consome é decidido pelo BANCO (public.create_partner_transfer,
+ * migration 026: mais antigas primeiro, travadas, numa transação).
+ * Opcionalmente restrito a um caso.
  */
 export const createTransferSchema = z.object({
   partnerOrganizationId: zUuid(),
+  /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
+  idempotencyKey: zUuid(),
   amount: zPositiveMoney(),
   legalCaseId: zUuid().optional(),
   reference: zOptionalText(200),

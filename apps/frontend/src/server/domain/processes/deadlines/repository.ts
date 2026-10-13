@@ -17,6 +17,7 @@ export interface StatusFilters {
   effectiveStatus?: string;
   caseId?: string;
   processId?: string;
+  responsibleUserId?: string;
   /** Data local (YYYY-MM-DD) mínima/máxima do vencimento, inclusivas. */
   fromLocalDate?: string;
   untilLocalDate?: string;
@@ -29,10 +30,12 @@ export async function listStatusPage(
   page: PageInput,
   ascending: boolean,
 ): Promise<{ rows: DeadlineStatusRow[]; total: number }> {
-  let query = db.from("deadline_status").select(STATUS_COLUMNS, { count: "exact" });
+  // Prazo de caso/processo excluído não aparece em nenhuma listagem (migration 026).
+  let query = db.from("deadline_status").select(STATUS_COLUMNS, { count: "exact" }).eq("scope_deleted", false);
   if (filters.effectiveStatus) query = query.eq("effective_status", filters.effectiveStatus);
   if (filters.caseId) query = query.eq("legal_case_id", filters.caseId);
   if (filters.processId) query = query.eq("legal_process_id", filters.processId);
+  if (filters.responsibleUserId) query = query.eq("responsible_user_id", filters.responsibleUserId);
   if (filters.fromLocalDate) query = query.gte("due_date_local", filters.fromLocalDate);
   if (filters.untilLocalDate) query = query.lte("due_date_local", filters.untilLocalDate);
   const { from, to } = toRange(page);
@@ -49,7 +52,8 @@ export async function getByIds(db: SupabaseClient, ids: string[]): Promise<Deadl
 export async function getOne(db: SupabaseClient, id: string): Promise<{ row: DeadlineRow; status: DeadlineStatusRow } | null> {
   const row = unwrap(await db.from("deadlines").select(DEADLINE_COLUMNS).eq("id", id).maybeSingle()) as DeadlineRow | null;
   if (!row) return null;
-  const status = unwrap(await db.from("deadline_status").select(STATUS_COLUMNS).eq("deadline_id", id).maybeSingle()) as DeadlineStatusRow | null;
+  // Prazo de caso/processo excluído = não encontrado (coerente com as listagens).
+  const status = unwrap(await db.from("deadline_status").select(STATUS_COLUMNS).eq("deadline_id", id).eq("scope_deleted", false).maybeSingle()) as DeadlineStatusRow | null;
   return status ? { row, status } : null;
 }
 

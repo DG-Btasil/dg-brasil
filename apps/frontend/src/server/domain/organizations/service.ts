@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { can } from "@/lib/permissions";
 import { PARTNER_OFFICE_STATUS_TO_DB } from "@/repositories/api/db-mappings";
 import { isPartner, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
@@ -6,8 +5,6 @@ import { forbidden, invalidState, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
 import type { OrganizationUserDTO, OwnerOfficeDetailDTO, PartnerDetailDTO, PartnerListItem } from "./dto";
 import {
-  newPartnerOrganizationPayload,
-  newPartnerSettingsPayload,
   organizationPatchPayload,
   organizationUserFromRows,
   ownerOfficeFromRows,
@@ -16,6 +13,8 @@ import {
   partnerAdminFromRows,
   partnerInternalFromRow,
   partnerListItemFromRow,
+  partnerOfficeOrgArg,
+  partnerOfficeSettingsArg,
   partnerOwnOfficeFromRow,
   partnerSettingsPatchPayload,
   sharePayload,
@@ -136,25 +135,14 @@ export async function getMyPartnerOffice(ctx: ServiceContext): Promise<PartnerDe
 
 /**
  * Cadastro de parceiro (ADMIN): organização PARTNER (PENDING) + divisão
- * padrão. O tipo é fixo — este caminho nunca cria OWNER (e o índice único do
- * banco recusaria um segundo).
- *
- * Duas gravações sem transação única (não há RPC para isto — ver relatório da
- * 4.2): se a configuração falhar, o parceiro recém-criado é excluído
- * logicamente para não ficar órfão, e o erro original segue.
+ * padrão, numa transação (public.create_partner_office, migration 026). O
+ * tipo e a situação são fixados pelo banco — este caminho nunca cria OWNER (e
+ * o índice único recusaria um segundo). A função também recusa quem não é ADMIN.
  */
 export async function createPartner(ctx: ServiceContext, input: CreatePartnerInput): Promise<{ id: string }> {
   requireInternal(ctx);
   requirePermission(ctx, "partners.manage");
-  const id = randomUUID();
-  await repo.insertOrganization(ctx.db, newPartnerOrganizationPayload(id, input));
-  try {
-    await repo.insertPartnerSettings(ctx.db, newPartnerSettingsPayload(id, input));
-  } catch (error) {
-    await repo.softDeleteOrganization(ctx.db, id).catch(() => ctx.log.error("partner.create_compensation_failed", { partnerOrganizationId: id }));
-    ctx.log.warn("partner.create_compensated", { partnerOrganizationId: id });
-    throw error;
-  }
+  const id = await repo.createPartnerOffice(ctx.db, partnerOfficeOrgArg(input), partnerOfficeSettingsArg(input));
   ctx.log.info("partner.created", { partnerOrganizationId: id });
   return { id };
 }

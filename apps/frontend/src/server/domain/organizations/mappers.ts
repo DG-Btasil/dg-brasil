@@ -272,12 +272,15 @@ export function organizationPatchPayload(patch: Record<string, unknown>): Json {
   return out;
 }
 
-/** Linha nova de `organizations`: sempre PARTNER, sempre PENDING (convite pendente). */
-export function newPartnerOrganizationPayload(id: string, input: CreatePartnerInput): Json {
+/**
+ * `p_org` de public.create_partner_office. Sem `id`, `type` nem `status`: a
+ * função grava sempre PARTNER/PENDING e devolve o id gerado. Sem
+ * `address_country` (a coluna fica no padrão BR).
+ */
+export function partnerOfficeOrgArg(input: CreatePartnerInput): Json {
+  const { address_country: _country, ...address } = addressColumns(input.address);
+  void _country;
   return {
-    id,
-    type: "PARTNER",
-    status: "PENDING",
     name: input.name,
     legal_name: input.legalName ?? null,
     trade_name: input.tradeName ?? null,
@@ -285,13 +288,13 @@ export function newPartnerOrganizationPayload(id: string, input: CreatePartnerIn
     email: input.email ?? null,
     phone: input.phone ?? null,
     website: input.website ?? null,
-    ...addressColumns(input.address),
+    ...address,
   };
 }
 
-export function newPartnerSettingsPayload(organizationId: string, input: CreatePartnerInput): Json {
+/** `p_settings` de public.create_partner_office (divisão padrão, responsável, notas internas). */
+export function partnerOfficeSettingsArg(input: CreatePartnerInput): Json {
   return {
-    organization_id: organizationId,
     default_partner_percentage: input.partnershipPercentage,
     default_owner_percentage: input.ownerPercentage,
     partnership_active: input.partnershipActive,

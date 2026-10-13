@@ -57,7 +57,7 @@ describe("análises (básico)", () => {
     expect(detail).toMatchObject({ dbStatus: "PENDING", status: "NOT_STARTED", requiredDocumentsComplete: false, legalCaseId: caseId });
     expect(detail.missingRequirements.filter((m) => m.required).map((m) => m.category)).toEqual(["IDENTIFICATION", "ADDRESS_PROOF", "BENEFIT_STATEMENT"]);
     expect(await analyses.getMissingRequirements(lawyer, id)).toEqual(detail.missingRequirements);
-    await expectDomainError(analyses.sendAnalysisToAgent(lawyer, { analysisId: id }), "BUSINESS_RULE");
+    await expectDomainError(analyses.sendAnalysisToAgent(lawyer, { analysisId: id, idempotencyKey: randomUUID() }), "BUSINESS_RULE");
     const { data } = await serviceDb().from("legal_analyses").select("status, started_by").eq("id", id).single();
     expect(data).toMatchObject({ status: "PENDING", started_by: world.users.LAWYER.id });
   });

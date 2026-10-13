@@ -83,13 +83,10 @@ export async function createPartnerRequest(ctx: ServiceContext, input: CreatePar
 }
 
 /**
- * Mensagem na conversa. Parceiro: responde a solicitação do próprio escritório
- * (OPEN → ANSWERED). Interno: comenta e, com `reopen`, pede nova resposta
- * (ANSWERED → OPEN). Solicitação resolvida/cancelada não recebe mensagem.
- *
- * Não é atômico (mensagem e status são duas escritas): a mensagem é gravada
- * primeiro e a troca de status é condicionada ao status atual — ver o
- * relatório da 4.2 (RPC proposta `answer_partner_request`).
+ * Mensagem na conversa — RPC answer_partner_request (026): mensagem + situação
+ * numa transação. Parceiro: responde a do próprio escritório (OPEN → ANSWERED).
+ * Interno: comenta e, com `reopen`, pede nova resposta (ANSWERED → OPEN).
+ * Encerrada não recebe mensagem (banco). Id da mensagem gerado no servidor.
  */
 export async function addPartnerRequestMessage(ctx: ServiceContext, input: AddPartnerRequestMessageInput): Promise<{ id: string; status: "OPEN" | "ANSWERED" }> {
   const partner = isPartner(ctx);
@@ -99,35 +96,31 @@ export async function addPartnerRequestMessage(ctx: ServiceContext, input: AddPa
     requirePermission(ctx, "partnerRequests.manage");
   }
 
-  const request = await repo.getById(ctx.db, input.requestId);
-  if (!request) throw notFound(NOT_FOUND_MESSAGE);
-  if (!(OPEN_STATUSES as readonly string[]).includes(request.status)) throw invalidState("Solicitação encerrada não recebe mensagens.");
-
-  if (input.documentId) await assertAttachableDocument(ctx, input.documentId, request.legal_case_id, partner);
+  // Regra extra do interno: anexo só PARTNER_VISIBLE do cliente do caso. Do
+  // parceiro, o banco já exige documento que ele abre.
+  if (input.documentId && !partner) {
+    const request = await repo.getById(ctx.db, input.requestId);
+    if (!request) throw notFound(NOT_FOUND_MESSAGE);
+    await assertAttachableDocument(ctx, input.documentId, request.legal_case_id);
+  }
 
   const id = randomUUID();
-  await repo.insertMessage(ctx.db, {
-    id,
-    partner_request_id: request.id,
-    author_id: ctx.session.userId,
+  const status = await repo.answer(ctx.db, {
+    requestId: input.requestId,
+    messageId: id,
     body: input.message,
-    document_id: input.documentId ?? null,
+    documentId: input.documentId ?? null,
+    reopen: !partner && input.reopen,
   });
-
-  let status: "OPEN" | "ANSWERED" = request.status as "OPEN" | "ANSWERED";
-  if (partner && request.status === "OPEN") {
-    // Se outro usuário respondeu no meio tempo, a resposta continua valendo.
-    await repo.updateStatus(ctx.db, request.id, "ANSWERED", ["OPEN"]);
-    status = "ANSWERED";
-  } else if (!partner && input.reopen && request.status === "ANSWERED") {
-    await repo.updateStatus(ctx.db, request.id, "OPEN", ["ANSWERED"]);
-    status = "OPEN";
-  }
-  ctx.log.info("partner_request.message_added", { partnerRequestId: request.id, messageId: id, status });
-  return { id, status };
+  ctx.log.info("partner_request.message_added", { partnerRequestId: input.requestId, messageId: id, status });
+  return { id, status: status as "OPEN" | "ANSWERED" };
 }
 
-/** Encerra (RESOLVED) ou cancela. Só equipe interna; só de OPEN/ANSWERED (dois cliques: um ganha). */
+/**
+ * Encerra (RESOLVED) ou cancela. Só equipe interna; só de OPEN/ANSWERED
+ * (UPDATE condicional: dois cliques, um ganha). O trigger de transição da 026
+ * recusa reabrir encerrada mesmo pela API direta.
+ */
 export async function closePartnerRequest(ctx: ServiceContext, input: ClosePartnerRequestInput): Promise<void> {
   requireInternal(ctx);
   requirePermission(ctx, "partnerRequests.manage");
@@ -141,15 +134,13 @@ export async function closePartnerRequest(ctx: ServiceContext, input: ClosePartn
 }
 
 /**
- * Documento anexado à mensagem. Parceiro: só documento que ele já abre (RLS
- * de documents; a política da mensagem confere de novo). Interno: documento
- * do cliente do caso e visível ao parceiro — anexar documento INTERNAL a uma
- * conversa com o parceiro seria vazamento.
+ * Documento anexado pela equipe interna: do cliente do caso e visível ao
+ * parceiro — anexar documento INTERNAL a uma conversa com o parceiro seria
+ * vazamento (o banco só confere que o autor acessa o documento).
  */
-async function assertAttachableDocument(ctx: ServiceContext, documentId: string, legalCaseId: string, partner: boolean): Promise<void> {
+async function assertAttachableDocument(ctx: ServiceContext, documentId: string, legalCaseId: string): Promise<void> {
   const doc = await repo.getDocument(ctx.db, documentId);
   if (!doc || doc.deleted_at) throw validation({ documentId: ["Documento não encontrado."] });
-  if (partner) return;
   if (doc.visibility !== "PARTNER_VISIBLE") throw businessRule("Só documento visível ao parceiro pode ser anexado à solicitação.");
   const legalCase = await repo.getCase(ctx.db, legalCaseId);
   if (!legalCase || legalCase.client_id !== doc.client_id) throw businessRule("O documento não é do cliente deste caso.");

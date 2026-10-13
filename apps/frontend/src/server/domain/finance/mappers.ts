@@ -381,33 +381,6 @@ export function agreementShareFromRows(agreement: PartnershipPartnerRow, balance
   };
 }
 
-/** Saldo disponível de uma divisão segundo o banco (líquido − em repasse não cancelado). */
-export function availableCents(row: Pick<AllocationBalanceRow, "net_partner_amount" | "transferred_amount">): number {
-  return toCents(row.net_partner_amount) - toCents(row.transferred_amount);
-}
-
-/**
- * Escolhe as divisões que cobrem o valor do repasse, na ordem recebida (o
- * repositório entrega as mais antigas primeiro). Não calcula divisão: só
- * consome o saldo que o banco já informou. null = saldo insuficiente.
- */
-export function pickTransferItems(
-  rows: Pick<AllocationBalanceRow, "allocation_id" | "net_partner_amount" | "transferred_amount">[],
-  amount: number,
-): { allocationId: ID; amount: number }[] | null {
-  let remaining = toCents(amount);
-  const items: { allocationId: ID; amount: number }[] = [];
-  for (const r of rows) {
-    if (remaining <= 0) break;
-    const available = availableCents(r);
-    if (available <= 0) continue;
-    const take = Math.min(available, remaining);
-    items.push({ allocationId: r.allocation_id, amount: fromCents(take) });
-    remaining -= take;
-  }
-  return remaining > 0 ? null : items;
-}
-
 /* ------------------------------------------------------------------ */
 /* Domínio → colunas (insert/update)                                   */
 /* ------------------------------------------------------------------ */

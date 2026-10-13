@@ -5,7 +5,8 @@ import { listAgentRunSummariesSchema, requestAgentRunSchema } from "@/server/dom
 import { ctxFor, expectDomainError, fakeCpf, serviceDb, world } from "./support/world";
 
 /**
- * Pedido e acompanhamento de execução de agente no Supabase DEV real.
+ * Pedido (request_agent_run_once, chave por formulário) e acompanhamento de
+ * execução de agente no Supabase DEV real.
  * Nada é executado: o agente é FICTÍCIO (criado com a service role, só no
  * setup — agentes são configuração do ADMIN, sem caminho de usuário neste
  * domínio) e toda execução que ficar na fila é CANCELADA logo depois de cada
@@ -50,9 +51,10 @@ afterAll(async () => {
   await svc.from("agents").update({ status: "INACTIVE" }).eq("id", agentId);
 });
 
-const request = (over: Record<string, unknown> = {}) => requestAgentRunSchema.parse({ agentId, ...over });
+/** Cada chamada é um formulário novo (chave nova), salvo quando o teste repete a chave de propósito. */
+const request = (over: Record<string, unknown> = {}) => requestAgentRunSchema.parse({ idempotencyKey: randomUUID(), agentId, ...over });
 
-describe("pedido de execução (request_agent_run)", () => {
+describe("pedido de execução (request_agent_run_once)", () => {
   it("ADMIN pede sem caso; a execução nasce QUEUED com o solicitante e só o correlation ID nos parâmetros", async () => {
     const admin = await ctxFor("ADMIN");
     const { runId, deduplicated } = await agents.requestAgentRun(admin, request({ operation: "ADMIN_CHECK" }));
@@ -66,21 +68,39 @@ describe("pedido de execução (request_agent_run)", () => {
     expect(input?.parameters.request_id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("LAWYER pede com caso; duplo clique devolve a mesma execução", async () => {
+  it("LAWYER pede com caso; mesma chave (duplo clique/nova tentativa) devolve a mesma execução; chave nova cria outra", async () => {
     const lawyer = await ctxFor("LAWYER");
-    const first = await agents.requestAgentRun(lawyer, request({ legalCaseId: caseId, requestText: "Analisar contratos do caso." }));
-    const second = await agents.requestAgentRun(lawyer, request({ legalCaseId: caseId, requestText: "Analisar contratos do caso." }));
-    expect(second).toEqual({ runId: first.runId, deduplicated: true });
+    const key = randomUUID();
+    const first = await agents.requestAgentRun(lawyer, request({ idempotencyKey: key, legalCaseId: caseId, requestText: "Analisar contratos do caso." }));
+    expect(first.deduplicated).toBe(false);
+    const [again, race] = await Promise.all([
+      agents.requestAgentRun(lawyer, request({ idempotencyKey: key, legalCaseId: caseId, requestText: "Analisar contratos do caso." })),
+      agents.requestAgentRun(lawyer, request({ idempotencyKey: key, legalCaseId: caseId, requestText: "Analisar contratos do caso." })),
+    ]);
+    expect(again).toEqual({ runId: first.runId, deduplicated: true });
+    expect(race).toEqual({ runId: first.runId, deduplicated: true });
+    const { data } = await svc.from("agent_runs").select("requested_by, idempotency_key").eq("id", first.runId).single();
+    expect(data).toEqual({ requested_by: world.users.LAWYER.id, idempotency_key: key });
     const { count } = await svc.from("agent_runs").select("id", { count: "exact", head: true }).eq("agent_id", agentId).eq("legal_case_id", caseId).eq("status", "QUEUED");
     expect(count).toBe(1);
-    const { data } = await svc.from("agent_runs").select("requested_by").eq("id", first.runId).single();
-    expect(data?.requested_by).toBe(world.users.LAWYER.id);
+
+    const other = await agents.requestAgentRun(lawyer, request({ legalCaseId: caseId }));
+    expect(other.deduplicated).toBe(false);
+    expect(other.runId).not.toBe(first.runId);
+  });
+
+  it("a chave é por solicitante: a mesma chave de outro usuário não devolve a execução alheia", async () => {
+    const key = randomUUID();
+    const lawyerRun = await agents.requestAgentRun(await ctxFor("LAWYER"), request({ idempotencyKey: key, legalCaseId: caseId }));
+    const adminRun = await agents.requestAgentRun(await ctxFor("ADMIN"), request({ idempotencyKey: key, legalCaseId: caseId }));
+    expect(adminRun.deduplicated).toBe(false);
+    expect(adminRun.runId).not.toBe(lawyerRun.runId);
   });
 
   it("LAWYER sem caso: recusado no service e no banco", async () => {
     const lawyer = await ctxFor("LAWYER");
     await expectDomainError(agents.requestAgentRun(lawyer, request()), "FORBIDDEN");
-    const direct = await lawyer.db.rpc("request_agent_run", { p_agent_id: agentId });
+    const direct = await lawyer.db.rpc("request_agent_run_once", { p_idempotency_key: randomUUID(), p_agent_id: agentId });
     expect(direct.error?.code).toBe("42501");
   });
 
@@ -88,7 +108,7 @@ describe("pedido de execução (request_agent_run)", () => {
     for (const role of ["ASSISTANT", "PARTNER_ADMIN_A", "PARTNER_USER_A"] as const) {
       const ctx = await ctxFor(role);
       await expectDomainError(agents.requestAgentRun(ctx, request({ legalCaseId: caseId })), "FORBIDDEN");
-      const direct = await ctx.db.rpc("request_agent_run", { p_agent_id: agentId, p_legal_case_id: caseId });
+      const direct = await ctx.db.rpc("request_agent_run_once", { p_idempotency_key: randomUUID(), p_agent_id: agentId, p_legal_case_id: caseId });
       expect(direct.error, role).not.toBeNull();
     }
     const { count } = await svc.from("agent_runs").select("id", { count: "exact", head: true }).eq("agent_id", agentId).in("requested_by", [
@@ -100,7 +120,7 @@ describe("pedido de execução (request_agent_run)", () => {
   });
 
   it("agente inexistente: estado inválido, sem execução", async () => {
-    await expectDomainError(agents.requestAgentRun(await ctxFor("ADMIN"), requestAgentRunSchema.parse({ agentId: randomUUID() })), "INVALID_STATE");
+    await expectDomainError(agents.requestAgentRun(await ctxFor("ADMIN"), requestAgentRunSchema.parse({ idempotencyKey: randomUUID(), agentId: randomUUID() })), "INVALID_STATE");
   });
 });
 

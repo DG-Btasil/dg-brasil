@@ -1,5 +1,16 @@
 # Handoff para o backend
 
+## Atualização — Backend de domínio (Etapa 4.2)
+
+O backend real existe em `src/server/` (ver [docs/backend.md](../../../docs/backend.md)).
+Para a Etapa 4.3, cada tela troca o mock pela Server Action do domínio
+(`src/server/domain/<domínio>/actions.ts`), que devolve
+`{ ok, data, requestId } | { ok: false, error: { code, message, fieldErrors } }`.
+Listagens são paginadas (`Page<T>`); DTOs são por superfície (interno ×
+parceiro). Os contratos de `src/repositories/contracts.ts` (que devolvem listas
+inteiras) serão revistos tela a tela: as leituras hoje vêm do store, não dos
+repositórios. Os mocks continuam intactos até lá.
+
 ## Atualização — Database V1 consolidado (Etapa 3.2)
 
 O banco (Postgres) é a fonte da verdade; o front foi alinhado ao vocabulário dele.

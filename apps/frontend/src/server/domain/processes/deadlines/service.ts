@@ -3,7 +3,7 @@ import { requireInternal, requirePermission, type ServiceContext } from "@/serve
 import { invalidState, notFound, validation } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
 import type { DeadlineDTO } from "./dto";
-import { addDays, deadlineFromRows, deadlineInsertRow, deadlineUpdatePatch, mergePage, officeLocalDate } from "./mappers";
+import { addDays, deadlineFromRows, deadlineInsertRow, deadlineUpdatePatch, mergePage, officeLocalDate, resolveResponsible } from "./mappers";
 import * as repo from "./repository";
 import type { CreateDeadlineInput, ListDeadlinesInput, ListOverdueInput, ListUpcomingInput, UpdateDeadlineInput } from "./schemas";
 
@@ -26,6 +26,11 @@ function requireWrite(ctx: ServiceContext) {
   requirePermission(ctx, "processes.edit");
 }
 
+/** Filtros comuns das listagens (só equipe interna chega aqui — requireRead). */
+function scope(ctx: ServiceContext, input: { caseId?: string; processId?: string; responsibleUserId?: string }): repo.StatusFilters {
+  return { caseId: input.caseId, processId: input.processId, responsibleUserId: resolveResponsible(input.responsibleUserId, ctx.session.userId) };
+}
+
 async function pageFromStatus(
   ctx: ServiceContext,
   filters: repo.StatusFilters,
@@ -43,7 +48,7 @@ async function pageFromStatus(
 /** Prazos de um caso/processo (ou do escritório), por vencimento. */
 export async function listDeadlines(ctx: ServiceContext, input: ListDeadlinesInput): Promise<Page<DeadlineDTO>> {
   requireRead(ctx);
-  return pageFromStatus(ctx, { effectiveStatus: input.effectiveStatus, caseId: input.caseId, processId: input.processId }, input);
+  return pageFromStatus(ctx, { ...scope(ctx, input), effectiveStatus: input.effectiveStatus }, input);
 }
 
 /** Em aberto e no prazo, vencendo de hoje até hoje + `days` (data local de São Paulo). */
@@ -52,7 +57,7 @@ export async function listUpcomingDeadlines(ctx: ServiceContext, input: ListUpco
   const today = officeLocalDate(now);
   return pageFromStatus(
     ctx,
-    { effectiveStatus: "OPEN", caseId: input.caseId, processId: input.processId, fromLocalDate: today, untilLocalDate: addDays(today, input.days) },
+    { ...scope(ctx, input), effectiveStatus: "OPEN", fromLocalDate: today, untilLocalDate: addDays(today, input.days) },
     input,
   );
 }
@@ -60,7 +65,7 @@ export async function listUpcomingDeadlines(ctx: ServiceContext, input: ListUpco
 /** Vencidos (OPEN com vencimento no passado — derivado pela view), mais antigos primeiro. */
 export async function listOverdueDeadlines(ctx: ServiceContext, input: ListOverdueInput): Promise<Page<DeadlineDTO>> {
   requireRead(ctx);
-  return pageFromStatus(ctx, { effectiveStatus: "OVERDUE", caseId: input.caseId, processId: input.processId }, input);
+  return pageFromStatus(ctx, { ...scope(ctx, input), effectiveStatus: "OVERDUE" }, input);
 }
 
 export async function getDeadline(ctx: ServiceContext, id: string): Promise<DeadlineDTO> {

@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DUPLICATE_WINDOW_MS, findRecentDuplicate, summaryFromRow, type AgentRunSummaryRow } from "./mappers";
+import { summaryFromRow, type AgentRunSummaryRow } from "./mappers";
 import { listAgentRunSummariesSchema, requestAgentRunSchema } from "./schemas";
 
 const AGENT = "00000000-0000-4000-8000-0000000000a1";
 const CASE = "00000000-0000-4000-8000-0000000000c1";
 const USER = "00000000-0000-4000-8000-0000000000b1";
-const NOW = Date.parse("2026-10-12T12:00:00Z");
 
 const row = (over: Partial<AgentRunSummaryRow> = {}): AgentRunSummaryRow => ({
   id: "run1",
@@ -19,14 +18,14 @@ const row = (over: Partial<AgentRunSummaryRow> = {}): AgentRunSummaryRow => ({
   requested_by: USER,
   attempt: 0,
   error_code: null,
-  created_at: new Date(NOW - 5_000).toISOString(),
+  created_at: "2026-10-12T11:59:55Z",
   started_at: null,
   completed_at: null,
   proposal_count: "2",
   ...over,
 });
 
-const identity = { agentId: AGENT, legalCaseId: CASE, processId: null, operation: "EXECUTE", requestedBy: USER };
+const KEY = "00000000-0000-4000-8000-0000000000d1";
 
 describe("resumo de execução", () => {
   it("mapeia as colunas fixas da RPC e converte o bigint", () => {
@@ -35,32 +34,22 @@ describe("resumo de execução", () => {
   });
 });
 
-describe("duplo clique", () => {
-  it("encontra o mesmo pedido ainda na fila dentro da janela", () => {
-    expect(findRecentDuplicate([row()], identity, NOW)?.id).toBe("run1");
-  });
-
-  it("não deduplica pedido diferente, antigo, já iniciado ou de outra pessoa", () => {
-    expect(findRecentDuplicate([row({ created_at: new Date(NOW - DUPLICATE_WINDOW_MS - 1).toISOString() })], identity, NOW)).toBeUndefined();
-    expect(findRecentDuplicate([row({ status: "RUNNING" })], identity, NOW)).toBeUndefined();
-    expect(findRecentDuplicate([row({ requested_by: "outro" })], identity, NOW)).toBeUndefined();
-    expect(findRecentDuplicate([row({ operation: "REVIEW" })], identity, NOW)).toBeUndefined();
-    expect(findRecentDuplicate([row({ legal_process_id: CASE })], identity, NOW)).toBeUndefined();
-    expect(findRecentDuplicate([row({ legal_case_id: null })], identity, NOW)).toBeUndefined();
-  });
-});
-
 describe("schemas", () => {
   it("pedido: operação no formato do banco, processo exige caso, texto com limite", () => {
-    expect(requestAgentRunSchema.parse({ agentId: AGENT, legalCaseId: CASE })).toMatchObject({ operation: "EXECUTE" });
-    expect(requestAgentRunSchema.safeParse({ agentId: AGENT, operation: "drop table" }).success).toBe(false);
-    expect(requestAgentRunSchema.safeParse({ agentId: AGENT, processId: CASE }).success).toBe(false);
-    expect(requestAgentRunSchema.safeParse({ agentId: AGENT, legalCaseId: CASE, requestText: "x".repeat(20_001) }).success).toBe(false);
-    expect(requestAgentRunSchema.parse({ agentId: AGENT, legalCaseId: CASE, requestText: "   " }).requestText).toBeUndefined();
+    expect(requestAgentRunSchema.parse({ idempotencyKey: KEY, agentId: AGENT, legalCaseId: CASE })).toMatchObject({ operation: "EXECUTE" });
+    expect(requestAgentRunSchema.safeParse({ idempotencyKey: KEY, agentId: AGENT, operation: "drop table" }).success).toBe(false);
+    expect(requestAgentRunSchema.safeParse({ idempotencyKey: KEY, agentId: AGENT, processId: CASE }).success).toBe(false);
+    expect(requestAgentRunSchema.safeParse({ idempotencyKey: KEY, agentId: AGENT, legalCaseId: CASE, requestText: "x".repeat(20_001) }).success).toBe(false);
+    expect(requestAgentRunSchema.parse({ idempotencyKey: KEY, agentId: AGENT, legalCaseId: CASE, requestText: "   " }).requestText).toBeUndefined();
+  });
+
+  it("chave de idempotência (UUID) é obrigatória", () => {
+    expect(requestAgentRunSchema.safeParse({ agentId: AGENT, legalCaseId: CASE }).success).toBe(false);
+    expect(requestAgentRunSchema.safeParse({ idempotencyKey: "clique-1", agentId: AGENT, legalCaseId: CASE }).success).toBe(false);
   });
 
   it("parâmetros livres do navegador são descartados", () => {
-    const parsed = requestAgentRunSchema.parse({ agentId: AGENT, legalCaseId: CASE, parameters: { input: "segredo" }, requestedBy: USER });
+    const parsed = requestAgentRunSchema.parse({ idempotencyKey: KEY, agentId: AGENT, legalCaseId: CASE, parameters: { input: "segredo" }, requestedBy: USER });
     expect(parsed).not.toHaveProperty("parameters");
     expect(parsed).not.toHaveProperty("requestedBy");
   });

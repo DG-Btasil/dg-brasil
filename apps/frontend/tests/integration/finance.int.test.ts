@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import * as finance from "@/server/domain/finance/service";
 import {
@@ -19,6 +20,9 @@ import { ctxFor, expectDomainError, fakeCpf, serviceDb, world } from "./support/
  * banco a partir do snapshot, status derivado, repasses, e isolamento —
  * PARTNER_ADMIN só a própria parceria, PARTNER_USER/LAWYER/ASSISTANT nada.
  */
+
+/** Chave de idempotência: o navegador gera uma por formulário. */
+const key = () => randomUUID();
 
 const GENERIC_FORBIDDEN = /^Você não tem permissão para esta operação\.$/;
 
@@ -45,8 +49,8 @@ async function acceptedPartnerCase(title = "Caso financeiro"): Promise<string> {
 /** Acordo ATIVO + obrigação de `amount` no caso, criados pelo ADMIN pelos services. */
 async function agreementWithPayment(caseId: string, amount: number, dueDate = isoDate(30)) {
   const admin = await ctxFor("ADMIN");
-  const agreement = await finance.createAgreement(admin, createAgreementSchema.parse({ legalCaseId: caseId, fixedFee: amount, activate: true }));
-  const payment = await finance.createPayment(admin, createPaymentSchema.parse({ agreementId: agreement.id, amount, dueDate, paymentType: "FIXED", description: "Parcela única" }));
+  const agreement = await finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseId, fixedFee: amount, activate: true }));
+  const payment = await finance.createPayment(admin, createPaymentSchema.parse({ idempotencyKey: key(), agreementId: agreement.id, amount, dueDate, paymentType: "FIXED", description: "Parcela única" }));
   return { agreementId: agreement.id, paymentId: payment.id };
 }
 
@@ -73,7 +77,7 @@ describe("financeiro — ADMIN", () => {
     expect(fresh).toMatchObject({ amount: 1000, receivedAmount: 0, balance: 1000, status: "PENDING", uiStatus: "PENDING" });
     expect(fresh).not.toHaveProperty("paidAmount");
 
-    const first = await finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId, amount: 400.01, method: "PIX" }));
+    const first = await finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 400.01, method: "PIX" }));
     expect(first.deduplicated).toBe(false);
     expect(await finance.getPayment(admin, paymentId)).toMatchObject({ receivedAmount: 400.01, balance: 599.99, status: "PARTIAL", uiStatus: "PARTIALLY_PAID" });
 
@@ -85,19 +89,19 @@ describe("financeiro — ADMIN", () => {
     expect(Math.round((division.partnerAmount + division.ownerAmount) * 100)).toBe(40001);
 
     // Estorno integral: obrigação volta a PENDING e a divisão inversa aponta a original.
-    const reversal = await finance.registerReversal(admin, registerReversalSchema.parse({ originalReceiptId: first.receiptId, notes: "Devolvido pelo banco" }));
+    const reversal = await finance.registerReversal(admin, registerReversalSchema.parse({ idempotencyKey: key(), originalReceiptId: first.receiptId, notes: "Devolvido pelo banco" }));
     expect(await finance.getPayment(admin, paymentId)).toMatchObject({ receivedAmount: 0, status: "PENDING" });
     const inverse = await finance.listAllocations(admin, listAllocationsSchema.parse({ receiptId: reversal.receiptId }));
     expect(inverse.items[0]).toMatchObject({ reversesAllocationId: division.id, partnerAmount: -division.partnerAmount, baseAmount: -400.01 });
     // Estornar de novo o que já foi estornado: recusado.
-    await expectDomainError(finance.registerReversal(admin, registerReversalSchema.parse({ originalReceiptId: first.receiptId, amount: 1 })), "BUSINESS_RULE");
+    await expectDomainError(finance.registerReversal(admin, registerReversalSchema.parse({ idempotencyKey: key(), originalReceiptId: first.receiptId, amount: 1 })), "BUSINESS_RULE");
 
     // Quitar o saldo (sem valor) e depois ajuste para menos, com justificativa.
-    const settle = await finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId }));
+    const settle = await finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId }));
     expect(await finance.getPayment(admin, paymentId)).toMatchObject({ receivedAmount: 1000, balance: 0, status: "PAID", uiStatus: "PAID" });
     const adjustment = await finance.registerAdjustment(
       admin,
-      registerAdjustmentSchema.parse({ paymentId, direction: "DECREASE", amount: 100, justification: "Tarifa bancária descontada", originalReceiptId: settle.receiptId }),
+      registerAdjustmentSchema.parse({ idempotencyKey: key(), paymentId, direction: "DECREASE", amount: 100, justification: "Tarifa bancária descontada", originalReceiptId: settle.receiptId }),
     );
     expect(await finance.getPayment(admin, paymentId)).toMatchObject({ receivedAmount: 900, status: "PARTIAL" });
 
@@ -111,23 +115,52 @@ describe("financeiro — ADMIN", () => {
     expect(ledger.items[3]).toMatchObject({ id: adjustment.receiptId, notes: "Tarifa bancária descontada", originalReceiptId: settle.receiptId });
 
     // Nada acima da obrigação.
-    await expectDomainError(finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId, amount: 100.01 })), "BUSINESS_RULE");
+    await expectDomainError(finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 100.01 })), "BUSINESS_RULE");
   });
 
-  it("clique duplo no recebimento não grava dois lançamentos", async () => {
+  it("idempotência por chave: mesma chave → mesmo registro; chaves diferentes → registros diferentes, mesmo idênticos", async () => {
     const admin = await ctxFor("ADMIN");
-    const caseId = await acceptedPartnerCase("Caso clique duplo");
+    const caseId = await acceptedPartnerCase("Caso idempotência");
     const { paymentId } = await agreementWithPayment(caseId, 500);
-    const input = registerReceiptSchema.parse({ paymentId, amount: 120 });
+
+    // Mesma chave, inclusive em envios simultâneos (corrida cai no índice único).
+    const input = registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 120 });
     const a = await finance.registerReceipt(admin, input);
     const b = await finance.registerReceipt(admin, input);
     expect(b).toEqual({ receiptId: a.receiptId, deduplicated: true });
-    // "Quitar saldo" duas vezes: a segunda encontra saldo zero e devolve a primeira.
-    const settle = await finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId }));
-    const again = await finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId }));
-    expect(again).toEqual({ receiptId: settle.receiptId, deduplicated: true });
+    const race = registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 10 });
+    const [r1, r2] = await Promise.all([finance.registerReceipt(admin, race), finance.registerReceipt(admin, race)]);
+    expect(r1.receiptId).toBe(r2.receiptId);
+    expect([r1.deduplicated, r2.deduplicated].sort()).toEqual([false, true]);
+
+    // Chaves diferentes com dados idênticos: dois lançamentos legítimos.
+    const c = await finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 120 }));
+    expect(c.deduplicated).toBe(false);
+    expect(c.receiptId).not.toBe(a.receiptId);
+
+    // "Quitar saldo" reenviado com a mesma chave: devolve o primeiro, não erra por saldo zero.
+    const settleInput = registerReceiptSchema.parse({ idempotencyKey: key(), paymentId });
+    const settle = await finance.registerReceipt(admin, settleInput);
+    expect(await finance.registerReceipt(admin, settleInput)).toEqual({ receiptId: settle.receiptId, deduplicated: true });
+    // Com chave nova, a obrigação já está quitada.
+    await expectDomainError(finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId })), "INVALID_STATE");
+
     const { count } = await serviceDb().from("payment_receipts").select("id", { count: "exact", head: true }).eq("payment_id", paymentId);
-    expect(count).toBe(2);
+    expect(count).toBe(4);
+
+    // Obrigação: mesma chave → mesma; chave nova com dados idênticos → outra.
+    const { data: payRow } = await serviceDb().from("payments").select("financial_agreement_id").eq("id", paymentId).single();
+    const agreementId = (payRow as { financial_agreement_id: string }).financial_agreement_id;
+    const payInput = createPaymentSchema.parse({ idempotencyKey: key(), agreementId, amount: 75, paymentType: "OTHER" });
+    const p1 = await finance.createPayment(admin, payInput);
+    expect(await finance.createPayment(admin, payInput)).toEqual({ id: p1.id, deduplicated: true });
+    const p2 = await finance.createPayment(admin, { ...payInput, idempotencyKey: key() });
+    expect(p2.id).not.toBe(p1.id);
+
+    // Estorno com a mesma chave: um só.
+    const revInput = registerReversalSchema.parse({ idempotencyKey: key(), originalReceiptId: c.receiptId });
+    const rev = await finance.registerReversal(admin, revInput);
+    expect(await finance.registerReversal(admin, revInput)).toEqual({ receiptId: rev.receiptId, deduplicated: true });
   });
 
   it("obrigação vencida com saldo é OVERDUE (fuso de São Paulo, derivado pela view)", async () => {
@@ -143,7 +176,7 @@ describe("financeiro — ADMIN", () => {
     const admin = await ctxFor("ADMIN");
     const caseId = await acceptedPartnerCase("Caso append-only");
     const { paymentId } = await agreementWithPayment(caseId, 200);
-    const { receiptId } = await finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId, amount: 50, notes: "original" }));
+    const { receiptId } = await finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 50, notes: "original" }));
 
     const update = await admin.db.from("payment_receipts").update({ amount: 200, notes: "alterado" }).eq("id", receiptId);
     expect(update.error).not.toBeNull();
@@ -162,16 +195,19 @@ describe("financeiro — ADMIN", () => {
   it("regras do acordo e da obrigação", async () => {
     const admin = await ctxFor("ADMIN");
     const caseId = await acceptedPartnerCase("Caso regras do acordo");
-    // Primeiro acordo ATIVO gravado direto (sem created_by): o service não o trata como clique duplo.
+    // Primeiro acordo ATIVO gravado direto no banco (como ADMIN).
     const direct = await admin.db.from("financial_agreements").insert({ legal_case_id: caseId, status: "ACTIVE", fixed_fee: 100 }).select("id").single();
     expect(direct.error).toBeNull();
     const agreementId = (direct.data as { id: string }).id;
-    await expectDomainError(finance.createAgreement(admin, createAgreementSchema.parse({ legalCaseId: caseId, activate: true })), "CONFLICT", /acordo financeiro ativo/);
+    await expectDomainError(finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseId, activate: true })), "CONFLICT", /acordo financeiro ativo/);
 
-    // Clique duplo na criação do acordo (rascunho): devolve o mesmo.
-    const draftA = await finance.createAgreement(admin, createAgreementSchema.parse({ legalCaseId: caseId, fixedFee: 10 }));
-    const draftB = await finance.createAgreement(admin, createAgreementSchema.parse({ legalCaseId: caseId, fixedFee: 10 }));
-    expect(draftB).toEqual({ id: draftA.id, deduplicated: true });
+    // Reenvio do mesmo formulário (mesma chave) devolve o mesmo rascunho; chave nova cria outro.
+    const draftInput = createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseId, fixedFee: 10 });
+    const draftA = await finance.createAgreement(admin, draftInput);
+    expect(await finance.createAgreement(admin, draftInput)).toEqual({ id: draftA.id, deduplicated: true });
+    const draftC = await finance.createAgreement(admin, { ...draftInput, idempotencyKey: key() });
+    expect(draftC).toMatchObject({ deduplicated: false });
+    expect(draftC.id).not.toBe(draftA.id);
 
     // Termos de acordo ativo não mudam; rascunho muda.
     await expectDomainError(finance.updateAgreement(admin, { id: agreementId, patch: { fixedFee: 1 } }), "INVALID_STATE");
@@ -179,15 +215,15 @@ describe("financeiro — ADMIN", () => {
     expect(await finance.getAgreement(admin, draftA.id)).toMatchObject({ status: "DRAFT", fixedFee: 20, notes: "ajustado" });
 
     // Obrigação com recebimento não cancela; acordo com obrigação em aberto não conclui nem cancela.
-    const payment = await finance.createPayment(admin, createPaymentSchema.parse({ agreementId, amount: 100, paymentType: "FIXED", dueDate: isoDate(10) }));
-    const receipt = await finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId: payment.id, amount: 30 }));
+    const payment = await finance.createPayment(admin, createPaymentSchema.parse({ idempotencyKey: key(), agreementId, amount: 100, paymentType: "FIXED", dueDate: isoDate(10) }));
+    const receipt = await finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId: payment.id, amount: 30 }));
     await expectDomainError(finance.cancelPayment(admin, { id: payment.id, reason: "Lançada por engano" }), "BUSINESS_RULE");
     await expectDomainError(finance.changeAgreementStatus(admin, { id: agreementId, to: "COMPLETED" }), "BUSINESS_RULE");
-    await finance.registerReversal(admin, registerReversalSchema.parse({ originalReceiptId: receipt.receiptId }));
+    await finance.registerReversal(admin, registerReversalSchema.parse({ idempotencyKey: key(), originalReceiptId: receipt.receiptId }));
     await finance.cancelPayment(admin, { id: payment.id, reason: "Lançada por engano" });
     const cancelled = await finance.getPayment(admin, payment.id);
     expect(cancelled).toMatchObject({ status: "CANCELLED", uiStatus: null, cancellationReason: "Lançada por engano" });
-    await expectDomainError(finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId: payment.id, amount: 10 })), "INVALID_STATE");
+    await expectDomainError(finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId: payment.id, amount: 10 })), "INVALID_STATE");
     await finance.changeAgreementStatus(admin, { id: agreementId, to: "CANCELLED" });
     expect((await finance.getAgreement(admin, agreementId)).status).toBe("CANCELLED");
     await expectDomainError(finance.changeAgreementStatus(admin, { id: agreementId, to: "ACTIVE" }), "INVALID_STATE");
@@ -197,11 +233,14 @@ describe("financeiro — ADMIN", () => {
     const admin = await ctxFor("ADMIN");
     const caseId = await acceptedPartnerCase("Caso repasse");
     const { paymentId } = await agreementWithPayment(caseId, 1000);
-    await finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId, amount: 1000 }));
+    await finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 1000 }));
 
     const before = (await finance.getPartnerFinance(admin, { partnerOrganizationId: world.partnerA })).totals;
-    const transfer = await finance.createTransfer(admin, createTransferSchema.parse({ partnerOrganizationId: world.partnerA, amount: 300, legalCaseId: caseId, reference: "PIX integração" }));
+    const transferInput = createTransferSchema.parse({ idempotencyKey: key(), partnerOrganizationId: world.partnerA, amount: 300, legalCaseId: caseId, reference: "PIX integração" });
+    const transfer = await finance.createTransfer(admin, transferInput);
     expect(transfer.deduplicated).toBe(false);
+    // Mesma chave (reenvio): o mesmo repasse, sem consumir saldo de novo (RPC atômica da 026).
+    expect(await finance.createTransfer(admin, transferInput)).toEqual({ id: transfer.id, deduplicated: true });
     const detail = await finance.getTransfer(admin, transfer.id);
     expect(detail).toMatchObject({ status: "PENDING", amount: 300 });
     expect(detail.items?.reduce((s, i) => s + i.amount, 0)).toBe(300);
@@ -223,7 +262,7 @@ describe("financeiro — ADMIN", () => {
 
     // Mais que o disponível: recusado antes de gravar qualquer coisa.
     await expectDomainError(
-      finance.createTransfer(admin, createTransferSchema.parse({ partnerOrganizationId: world.partnerA, amount: after.availableAmount + 1000, legalCaseId: caseId })),
+      finance.createTransfer(admin, createTransferSchema.parse({ idempotencyKey: key(), partnerOrganizationId: world.partnerA, amount: after.availableAmount + 1000, legalCaseId: caseId })),
       "BUSINESS_RULE",
     );
   });
@@ -234,7 +273,7 @@ describe("financeiro — Portal do Parceiro e isolamento", () => {
     const admin = await ctxFor("ADMIN");
     const caseId = await acceptedPartnerCase("Caso visão do parceiro");
     const { paymentId } = await agreementWithPayment(caseId, 800);
-    await finance.registerReceipt(admin, registerReceiptSchema.parse({ paymentId, amount: 800, notes: "nota interna do financeiro" }));
+    await finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 800, notes: "nota interna do financeiro" }));
 
     const pa = await ctxFor("PARTNER_ADMIN_A");
     const summary = await finance.getPartnerFinance(pa, {});
@@ -268,7 +307,7 @@ describe("financeiro — Portal do Parceiro e isolamento", () => {
 
     // Financeiro geral: nunca. Nem pelo service, nem direto no banco (RLS).
     await expectDomainError(finance.listPayments(pa, listPaymentsSchema.parse({ legalCaseId: caseId })), "FORBIDDEN", GENERIC_FORBIDDEN);
-    await expectDomainError(finance.registerReceipt(pa, registerReceiptSchema.parse({ paymentId, amount: 1 })), "FORBIDDEN", GENERIC_FORBIDDEN);
+    await expectDomainError(finance.registerReceipt(pa, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId, amount: 1 })), "FORBIDDEN", GENERIC_FORBIDDEN);
     await expectDomainError(finance.listAllocations(pa, listAllocationsSchema.parse({ legalCaseId: caseId })), "FORBIDDEN", GENERIC_FORBIDDEN);
     for (const table of ["payments", "payment_receipts", "financial_agreements", "fee_models"]) {
       const { data } = await pa.db.from(table).select("id").limit(5);
@@ -317,7 +356,7 @@ describe("financeiro — Portal do Parceiro e isolamento", () => {
       const ctx = await ctxFor(role);
       await expectDomainError(finance.listAgreements(ctx, { page: 1, pageSize: 5, column: "created_at", ascending: false }), "FORBIDDEN");
       await expectDomainError(finance.listPayments(ctx, listPaymentsSchema.parse({ legalCaseId: caseA })), "FORBIDDEN");
-      await expectDomainError(finance.createAgreement(ctx, createAgreementSchema.parse({ legalCaseId: caseA })), "FORBIDDEN");
+      await expectDomainError(finance.createAgreement(ctx, createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseA })), "FORBIDDEN");
       await expectDomainError(finance.listCasePartnerships(ctx, caseA), "FORBIDDEN");
       await expectDomainError(finance.getPartnerFinance(ctx, { partnerOrganizationId: world.partnerA }), "FORBIDDEN");
       await expectDomainError(finance.listTransfers(ctx, listTransfersSchema.parse({})), "FORBIDDEN");

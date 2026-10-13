@@ -10,6 +10,7 @@ import {
   type PartnerRequestMessageRow,
   type PartnerRequestRow,
 } from "./mappers";
+import { answerError } from "./repository";
 import { addPartnerRequestMessageSchema, closePartnerRequestSchema, createPartnerRequestSchema, listPartnerRequestsSchema } from "./schemas";
 
 const PARTNER_A = "00000000-0000-4000-8000-00000000000a";
@@ -94,6 +95,18 @@ describe("DTO por superfície (sanitização do parceiro)", () => {
     expect(dto.messages[0]).toEqual({ id: "m1", at: "2026-10-12T10:00:00Z", side: "OWNER", authorName: OWNER_TEAM_LABEL, message: "Precisamos da procuração." });
     expect(dto.messages[1]).toMatchObject({ side: "PARTNER", authorName: "Parceiro Fulano", documentId: VISIBLE_DOC });
     for (const m of dto.messages) expect(m).not.toHaveProperty("author");
+  });
+});
+
+describe("erros da RPC answer_partner_request", () => {
+  it("não encontrada → NOT_FOUND; documento inacessível → VALIDATION; encerrada → INVALID_STATE com a mensagem do banco", () => {
+    expect(answerError({ code: "42501", message: "Solicitação não encontrada" }).code).toBe("NOT_FOUND");
+    const doc = answerError({ code: "42501", message: "Documento não encontrado" });
+    expect(doc.code).toBe("VALIDATION");
+    expect(doc.fieldErrors).toHaveProperty("documentId");
+    const closed = answerError({ code: "23514", message: "Solicitação encerrada não recebe mensagem" });
+    expect(closed).toMatchObject({ code: "INVALID_STATE", publicMessage: "Solicitação encerrada não recebe mensagem" });
+    expect(answerError({ code: "42501", message: "new row violates row-level security policy" }).publicMessage).not.toMatch(/row-level/);
   });
 });
 

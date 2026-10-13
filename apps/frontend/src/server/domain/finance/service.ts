@@ -20,7 +20,6 @@ import {
   agreementShareFromRows,
   agreementUpdate,
   allocationFromRow,
-  availableCents,
   feeModelFromRow,
   feeModelInsert,
   feeModelUpdate,
@@ -28,7 +27,6 @@ import {
   partnershipInternalFromRow,
   partnershipPartnerFromRow,
   paymentFromRows,
-  pickTransferItems,
   receiptFromRow,
   shareTotals,
   toCents,
@@ -79,9 +77,6 @@ import type {
  *
  * Log: só IDs e tipos de operação — nunca valores ligados a pessoas.
  */
-
-/** Janela do "clique duplo": operação idêntica do mesmo usuário neste intervalo devolve a já gravada. */
-export const DEDUP_WINDOW_SECONDS = 10;
 
 /* ------------------------------------------------------------------ */
 /* Autorização                                                         */
@@ -175,8 +170,9 @@ export async function getAgreement(ctx: ServiceContext, id: string): Promise<Fin
  */
 export async function createAgreement(ctx: ServiceContext, input: CreateAgreementInput): Promise<{ id: string; deduplicated: boolean }> {
   requireFinance(ctx, "finance.manage");
-  const recent = await repo.findRecentAgreement(ctx.db, input.legalCaseId, ctx.session.userId, DEDUP_WINDOW_SECONDS);
-  if (recent) return { id: recent, deduplicated: true };
+  const actorId = ctx.session.userId;
+  const existing = await repo.findByIdempotencyKey(ctx.db, "financial_agreements", actorId, input.idempotencyKey);
+  if (existing) return { id: existing, deduplicated: true };
 
   let terms = input;
   if (input.feeModelId) {
@@ -188,9 +184,9 @@ export async function createAgreement(ctx: ServiceContext, input: CreateAgreemen
       terms = { ...input, upfrontFee: m.upfrontFee, fixedFee: m.fixedFee, installments: m.installments, monthlyFee: m.monthlyFee, successFeePercent: m.successFeePercent };
     }
   }
-  const id = await repo.insertAgreement(ctx.db, agreementInsert(terms, ctx.session.userId));
-  ctx.log.info("finance.agreement.created", { agreementId: id, legalCaseId: input.legalCaseId });
-  return { id, deduplicated: false };
+  const result = await repo.insertIdempotent(ctx.db, "financial_agreements", agreementInsert(terms, actorId), actorId, input.idempotencyKey);
+  if (!result.deduplicated) ctx.log.info("finance.agreement.created", { agreementId: result.id, legalCaseId: input.legalCaseId });
+  return result;
 }
 
 /** Termos só mudam em rascunho. Acordo ativo/encerrado é histórico de negócio. */
@@ -256,27 +252,30 @@ export async function getPayment(ctx: ServiceContext, id: string): Promise<Payme
 /** Nova obrigação. Moeda vem do acordo; acordo precisa estar em rascunho ou ativo. */
 export async function createPayment(ctx: ServiceContext, input: CreatePaymentInput): Promise<{ id: string; deduplicated: boolean }> {
   requireFinance(ctx, "finance.manage");
+  const actorId = ctx.session.userId;
+  const existing = await repo.findByIdempotencyKey(ctx.db, "payments", actorId, input.idempotencyKey);
+  if (existing) return { id: existing, deduplicated: true };
+
   const agreement = await repo.getAgreement(ctx.db, input.agreementId);
   if (!agreement) throw notFound("Acordo não encontrado.");
   if (agreement.status !== "DRAFT" && agreement.status !== "ACTIVE") throw invalidState("Acordo concluído ou cancelado não recebe novas obrigações.");
 
-  const recent = await repo.findRecentPayment(
+  const result = await repo.insertIdempotent(
     ctx.db,
-    { agreementId: input.agreementId, amount: input.amount, paymentType: input.paymentType, dueDate: input.dueDate, actorId: ctx.session.userId },
-    DEDUP_WINDOW_SECONDS,
+    "payments",
+    {
+      financial_agreement_id: input.agreementId,
+      amount: input.amount,
+      currency: agreement.currency,
+      due_date: input.dueDate ?? null,
+      payment_type: input.paymentType,
+      description: input.description ?? null,
+    },
+    actorId,
+    input.idempotencyKey,
   );
-  if (recent) return { id: recent, deduplicated: true };
-
-  const id = await repo.insertPayment(ctx.db, {
-    financial_agreement_id: input.agreementId,
-    amount: input.amount,
-    currency: agreement.currency,
-    due_date: input.dueDate ?? null,
-    payment_type: input.paymentType,
-    description: input.description ?? null,
-  });
-  ctx.log.info("finance.payment.created", { paymentId: id, agreementId: input.agreementId });
-  return { id, deduplicated: false };
+  if (!result.deduplicated) ctx.log.info("finance.payment.created", { paymentId: result.id, agreementId: input.agreementId });
+  return result;
 }
 
 /** Corrige valor, vencimento ou descrição. Nunca o recebido (ledger). */
@@ -324,38 +323,40 @@ export async function listReceipts(ctx: ServiceContext, input: ListReceiptsInput
  */
 export async function registerReceipt(ctx: ServiceContext, input: RegisterReceiptInput): Promise<ReceiptResultDTO> {
   requireFinance(ctx, "finance.manage");
+  const actorId = ctx.session.userId;
+  // Reenvio do mesmo formulário devolve o lançamento já gravado — antes das
+  // regras ("quitar saldo" reenviado encontraria saldo zero).
+  const existing = await repo.findByIdempotencyKey(ctx.db, "payment_receipts", actorId, input.idempotencyKey);
+  if (existing) return { receiptId: existing, deduplicated: true };
+
   const balance = await repo.getPaymentBalance(ctx.db, input.paymentId);
   if (!balance) throw notFound("Obrigação não encontrada.");
   if (balance.status === "CANCELLED") throw invalidState("Obrigação cancelada não recebe entrada.");
   const agreement = await repo.getAgreement(ctx.db, balance.financial_agreement_id);
   if (agreement?.status !== "ACTIVE") throw invalidState("Ative o acordo antes de registrar recebimentos.");
 
-  const actorId = ctx.session.userId;
   const balanceCents = toCents(balance.balance);
   const amountCents = input.amount !== undefined ? toCents(input.amount) : balanceCents;
-
-  if (amountCents <= 0) {
-    // "Quitar saldo" clicado duas vezes: a segunda encontra saldo zero.
-    const recent = await repo.findRecentReceipt(ctx.db, { paymentId: input.paymentId, kind: "RECEIPT", actorId }, DEDUP_WINDOW_SECONDS);
-    if (recent) return { receiptId: recent, deduplicated: true };
-    throw invalidState("Esta obrigação já está quitada.");
-  }
-  const amount = fromCents(amountCents);
-  const recent = await repo.findRecentReceipt(ctx.db, { paymentId: input.paymentId, kind: "RECEIPT", amount, actorId }, DEDUP_WINDOW_SECONDS);
-  if (recent) return { receiptId: recent, deduplicated: true };
+  if (amountCents <= 0) throw invalidState("Esta obrigação já está quitada.");
   if (amountCents > balanceCents) throw businessRule("O recebimento excede o saldo da obrigação. Corrija a obrigação antes.");
 
-  const receiptId = await repo.insertReceipt(ctx.db, {
-    payment_id: input.paymentId,
-    kind: "RECEIPT",
-    amount,
-    currency: balance.currency,
-    ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
-    method: input.method ?? null,
-    notes: input.notes ?? null,
-  });
-  ctx.log.info("finance.receipt.registered", { receiptId, paymentId: input.paymentId, kind: "RECEIPT" });
-  return { receiptId, deduplicated: false };
+  const result = await repo.insertIdempotent(
+    ctx.db,
+    "payment_receipts",
+    {
+      payment_id: input.paymentId,
+      kind: "RECEIPT",
+      amount: fromCents(amountCents),
+      currency: balance.currency,
+      ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
+      method: input.method ?? null,
+      notes: input.notes ?? null,
+    },
+    actorId,
+    input.idempotencyKey,
+  );
+  if (!result.deduplicated) ctx.log.info("finance.receipt.registered", { receiptId: result.id, paymentId: input.paymentId, kind: "RECEIPT" });
+  return { receiptId: result.id, deduplicated: result.deduplicated };
 }
 
 /**
@@ -365,6 +366,10 @@ export async function registerReceipt(ctx: ServiceContext, input: RegisterReceip
  */
 export async function registerAdjustment(ctx: ServiceContext, input: RegisterAdjustmentInput): Promise<ReceiptResultDTO> {
   requireFinance(ctx, "finance.manage");
+  const actorId = ctx.session.userId;
+  const existing = await repo.findByIdempotencyKey(ctx.db, "payment_receipts", actorId, input.idempotencyKey);
+  if (existing) return { receiptId: existing, deduplicated: true };
+
   const balance = await repo.getPaymentBalance(ctx.db, input.paymentId);
   if (!balance) throw notFound("Obrigação não encontrada.");
   if (input.direction === "INCREASE") {
@@ -378,26 +383,23 @@ export async function registerAdjustment(ctx: ServiceContext, input: RegisterAdj
     if (toCents(original.amount) <= 0) throw validation({ originalReceiptId: ["Só se ajusta lançamento de entrada."] });
   }
 
-  const amount = input.direction === "INCREASE" ? input.amount : -input.amount;
-  const actorId = ctx.session.userId;
-  const recent = await repo.findRecentReceipt(
+  const result = await repo.insertIdempotent(
     ctx.db,
-    { paymentId: input.paymentId, kind: "ADJUSTMENT", amount, originalReceiptId: input.originalReceiptId, actorId },
-    DEDUP_WINDOW_SECONDS,
+    "payment_receipts",
+    {
+      payment_id: input.paymentId,
+      kind: "ADJUSTMENT",
+      amount: input.direction === "INCREASE" ? input.amount : -input.amount,
+      currency: balance.currency,
+      original_receipt_id: input.originalReceiptId ?? null,
+      notes: input.justification,
+      ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
+    },
+    actorId,
+    input.idempotencyKey,
   );
-  if (recent) return { receiptId: recent, deduplicated: true };
-
-  const receiptId = await repo.insertReceipt(ctx.db, {
-    payment_id: input.paymentId,
-    kind: "ADJUSTMENT",
-    amount,
-    currency: balance.currency,
-    original_receipt_id: input.originalReceiptId ?? null,
-    notes: input.justification,
-    ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
-  });
-  ctx.log.info("finance.receipt.registered", { receiptId, paymentId: input.paymentId, kind: "ADJUSTMENT" });
-  return { receiptId, deduplicated: false };
+  if (!result.deduplicated) ctx.log.info("finance.receipt.registered", { receiptId: result.id, paymentId: input.paymentId, kind: "ADJUSTMENT" });
+  return { receiptId: result.id, deduplicated: result.deduplicated };
 }
 
 /**
@@ -407,40 +409,37 @@ export async function registerAdjustment(ctx: ServiceContext, input: RegisterAdj
  */
 export async function registerReversal(ctx: ServiceContext, input: RegisterReversalInput): Promise<ReceiptResultDTO> {
   requireFinance(ctx, "finance.manage");
+  const actorId = ctx.session.userId;
+  const existing = await repo.findByIdempotencyKey(ctx.db, "payment_receipts", actorId, input.idempotencyKey);
+  if (existing) return { receiptId: existing, deduplicated: true };
+
   const original = await repo.getReceipt(ctx.db, input.originalReceiptId);
   if (!original) throw notFound("Lançamento não encontrado.");
   if (toCents(original.amount) <= 0) throw invalidState("Só se estorna lançamento de entrada.");
 
   const reversedCents = (await repo.reversedAmountOf(ctx.db, original.id)).reduce((sum, v) => sum + toCents(v), 0);
   const remainingCents = toCents(original.amount) + reversedCents;
-  const actorId = ctx.session.userId;
-
-  if (input.amount === undefined && remainingCents <= 0) {
-    const recent = await repo.findRecentReceipt(ctx.db, { paymentId: original.payment_id, kind: "REVERSAL", originalReceiptId: original.id, actorId }, DEDUP_WINDOW_SECONDS);
-    if (recent) return { receiptId: recent, deduplicated: true };
-    throw invalidState("Este lançamento já foi estornado integralmente.");
-  }
+  if (remainingCents <= 0) throw invalidState("Este lançamento já foi estornado integralmente.");
   const amountCents = input.amount !== undefined ? toCents(input.amount) : remainingCents;
-  const amount = -fromCents(amountCents);
-  const recent = await repo.findRecentReceipt(
-    ctx.db,
-    { paymentId: original.payment_id, kind: "REVERSAL", amount, originalReceiptId: original.id, actorId },
-    DEDUP_WINDOW_SECONDS,
-  );
-  if (recent) return { receiptId: recent, deduplicated: true };
   if (amountCents > remainingCents) throw businessRule("O estorno excede o valor restante do lançamento.");
 
-  const receiptId = await repo.insertReceipt(ctx.db, {
-    payment_id: original.payment_id,
-    kind: "REVERSAL",
-    amount,
-    currency: original.currency,
-    original_receipt_id: original.id,
-    notes: input.notes ?? null,
-    ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
-  });
-  ctx.log.info("finance.receipt.registered", { receiptId, paymentId: original.payment_id, kind: "REVERSAL" });
-  return { receiptId, deduplicated: false };
+  const result = await repo.insertIdempotent(
+    ctx.db,
+    "payment_receipts",
+    {
+      payment_id: original.payment_id,
+      kind: "REVERSAL",
+      amount: -fromCents(amountCents),
+      currency: original.currency,
+      original_receipt_id: original.id,
+      notes: input.notes ?? null,
+      ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
+    },
+    actorId,
+    input.idempotencyKey,
+  );
+  if (!result.deduplicated) ctx.log.info("finance.receipt.registered", { receiptId: result.id, paymentId: original.payment_id, kind: "REVERSAL" });
+  return { receiptId: result.id, deduplicated: result.deduplicated };
 }
 
 /* ------------------------------------------------------------------ */
@@ -495,53 +494,32 @@ export async function getTransfer(ctx: ServiceContext, id: string): Promise<Tran
 
 /**
  * Registra repasse PENDING. Quem registra decide só o VALOR (e, se quiser, o
- * caso); as divisões consumidas são escolhidas aqui, das mais antigas, entre
- * as que o BANCO diz ter saldo. O trigger dos itens confere de novo (com
- * trava na divisão) — numa corrida, o segundo falha e o repasse é cancelado.
+ * caso). Repasse + itens numa transação no banco (public.create_partner_transfer,
+ * migration 026): consome as divisões com saldo, mais antigas primeiro e
+ * travadas — dois repasses simultâneos não usam o mesmo saldo.
  */
 export async function createTransfer(ctx: ServiceContext, input: CreateTransferInput): Promise<{ id: string; deduplicated: boolean }> {
   requireFinance(ctx, "finance.manage");
   if (!(await repo.isPartnerOrganization(ctx.db, input.partnerOrganizationId))) throw notFound("Parceiro não encontrado.");
-
-  const recent = await repo.findRecentTransfer(
-    ctx.db,
-    { partnerOrganizationId: input.partnerOrganizationId, amount: input.amount, actorId: ctx.session.userId },
-    DEDUP_WINDOW_SECONDS,
-  );
-  if (recent) return { id: recent, deduplicated: true };
-
-  const balances = (await repo.listAllocationBalances(ctx.db, { partnerOrganizationId: input.partnerOrganizationId, legalCaseId: input.legalCaseId })).filter(
-    (b) => availableCents(b) > 0,
-  );
-  const sequences = await repo.allocationSequences(
-    ctx.db,
-    balances.map((b) => b.allocation_id),
-  );
-  balances.sort((a, b) => (sequences.get(a.allocation_id) ?? 0) - (sequences.get(b.allocation_id) ?? 0));
-  const items = pickTransferItems(balances, input.amount);
-  if (!items) throw businessRule("O saldo disponível do parceiro é menor que o valor do repasse.");
-
-  const id = await repo.insertTransfer(ctx.db, {
-    partner_organization_id: input.partnerOrganizationId,
-    amount: input.amount,
-    reference: input.reference ?? null,
-  });
   try {
-    // Um INSERT com todas as linhas: ou entram todos os itens, ou nenhum.
-    await repo.insertTransferItems(ctx.db, id, items);
+    const result = await repo.createTransferRpc(
+      ctx.db,
+      {
+        partnerOrganizationId: input.partnerOrganizationId,
+        amount: input.amount,
+        reference: input.reference,
+        legalCaseId: input.legalCaseId,
+        idempotencyKey: input.idempotencyKey,
+      },
+      ctx.session.userId,
+    );
+    if (!result.deduplicated) ctx.log.info("finance.transfer.created", { transferId: result.transferId, partnerOrganizationId: input.partnerOrganizationId });
+    return { id: result.transferId, deduplicated: result.deduplicated };
   } catch (error) {
-    // Compensação: repasse sem itens não pode ficar PENDING (ver relatório: RPC atômica proposta).
-    await repo
-      .updateTransferWhere(ctx.db, id, ["PENDING"], { status: "CANCELLED", cancellation_reason: "Repasse não montado: o saldo do parceiro mudou durante o registro." })
-      .catch(() => ctx.log.error("finance.transfer.compensation_failed", { transferId: id }));
-    ctx.log.warn("finance.transfer.items_failed", { transferId: id });
-    if (error instanceof DomainError && (error.code === "INVALID_STATE" || error.code === "VALIDATION")) {
-      throw businessRule("O saldo do parceiro mudou durante o registro. Confira e tente novamente.");
-    }
+    // 23514 da RPC = saldo insuficiente; a transação inteira volta (nada gravado).
+    if (error instanceof DomainError && error.code === "INVALID_STATE") throw businessRule("O saldo disponível do parceiro é menor que o valor do repasse.");
     throw error;
   }
-  ctx.log.info("finance.transfer.created", { transferId: id, partnerOrganizationId: input.partnerOrganizationId, itemCount: items.length });
-  return { id, deduplicated: false };
 }
 
 export async function markTransferPaid(ctx: ServiceContext, input: MarkTransferPaidInput): Promise<void> {

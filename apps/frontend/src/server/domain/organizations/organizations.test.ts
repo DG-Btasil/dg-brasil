@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  newPartnerOrganizationPayload,
-  newPartnerSettingsPayload,
   organizationPatchPayload,
   ownerOfficeFromRows,
   ownerSettingsPatchPayload,
   partnerAdminFromRows,
   partnerInternalFromRow,
   partnerListItemFromRow,
+  partnerOfficeOrgArg,
+  partnerOfficeSettingsArg,
   partnerOwnOfficeFromRow,
   partnerSettingsPatchPayload,
   type OrganizationRow,
@@ -90,11 +90,29 @@ describe("DTOs de parceiro por superfície", () => {
 });
 
 describe("payloads de gravação", () => {
-  it("parceiro novo é sempre PARTNER/PENDING, mesmo com `type` no input", () => {
-    const input = createPartnerSchema.parse({ name: "Novo", type: "OWNER", status: "ACTIVE", email: "X@Y.TEST" });
-    const payload = newPartnerOrganizationPayload(PARTNER, input);
-    expect(payload).toMatchObject({ id: PARTNER, type: "PARTNER", status: "PENDING", email: "x@y.test" });
-    expect(newPartnerSettingsPayload(PARTNER, input)).toMatchObject({ default_partner_percentage: 50, default_owner_percentage: 50, partnership_active: true });
+  it("argumentos de create_partner_office: só as chaves do contrato; nada de id/type/status", () => {
+    const input = createPartnerSchema.parse({
+      name: "Novo",
+      type: "OWNER",
+      status: "ACTIVE",
+      email: "X@Y.TEST",
+      address: { city: "Santos", state: "sp" },
+      responsibleOab: { number: "12.345", state: "rj" },
+    });
+    const org = partnerOfficeOrgArg(input);
+    expect(Object.keys(org).sort()).toEqual(
+      [
+        "name", "legal_name", "trade_name", "cnpj", "email", "phone", "website",
+        "address_postal_code", "address_street", "address_number", "address_complement", "address_neighborhood", "address_city", "address_state",
+      ].sort(),
+    );
+    expect(org).toMatchObject({ name: "Novo", email: "x@y.test", address_city: "Santos", address_state: "SP" });
+
+    const settings = partnerOfficeSettingsArg(input);
+    expect(Object.keys(settings).sort()).toEqual(
+      ["default_partner_percentage", "default_owner_percentage", "partnership_active", "responsible_name", "responsible_oab_number", "responsible_oab_state", "notes"].sort(),
+    );
+    expect(settings).toMatchObject({ default_partner_percentage: 50, default_owner_percentage: 50, partnership_active: true, responsible_oab_number: "12345", responsible_oab_state: "RJ" });
   });
 
   it("PATCH só leva as chaves presentes; nunca type/status", () => {

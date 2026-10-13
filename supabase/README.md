@@ -17,7 +17,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As 19 migrations, na ordem da seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 329 verificações (inclusive Auth/MFA da 022, convite da 023 e preferências da 024), com a RLS testada por papel |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 380 verificações (inclusive Auth/MFA da 022, convite da 023, preferências da 024 e backend de domínio da 025/026), com a RLS testada por papel |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 
@@ -360,6 +360,8 @@ foi resetado em seguida.
 | `20261010000022_auth_sessions_invitations` | Etapa 4.1 (Auth): **MFA no banco** — `current_membership()` (logo toda a RLS), `resolve_actor`, resumo de execuções e notificações exigem JWT `aal2`; `get_my_session_context()` (pré-MFA); convites (`create_invitation`/`revoke_invitation`/`accept_invitation` idempotente); troca de papel/status/perfil com proteção do último ADMIN e do próprio acesso; `get_team_members`; eventos de MFA; escritório proprietário não suspende/exclui; auditoria de aceite de termos. Testes na seção "Auth (022)" |
 | `20261012000023_invitation_hardening` | `create_invitation` só pela service role com `p_actor` (fecha enumeração de contas por PARTNER_ADMIN via API); nome do convidado validado (`private.valid_person_name`, contra texto de golpe no e-mail); devolve `auth_user_id` da conta existente ao servidor. Testes `[023]` |
 | `20261013000024_preferences_require_mfa` | `user_preferences` e `user_notification_preferences` passam a exigir `aal2` (antes só `auth.uid()`). `tour_completed_at` (já existente desde a 010) é o estado canônico da introdução do produto, por usuário. Testes `[024]` |
+| `20261014000025_backend_domain_support` | Etapa 4.2: pré-requisição do PostgREST leva `x-dg-request-id` (UUID) à auditoria; `partner_lookup_client`/`partner_submit_case` (cliente canônico do parceiro sem vazamento, atômico); `client_directory` (busca paginada, `security_invoker`); `save_client`/`set_client_status` (gravação transacional). Testes `[025]` |
+| `20261015000026_backend_atomic_operations` | Etapa 4.2: Storage autorizado pelo banco (`authorize_document_upload/download`, LGPD + `DOCUMENT_DOWNLOADED` com ator USER — o servidor só assina o caminho devolvido); chaves de idempotência (lançamentos, obrigações, acordos, repasses, execuções — `request_agent_run_once`); repasse e cadastro de parceiro atômicos; resposta atômica e máquina de estados das solicitações ao parceiro; `deadline_status` com responsável e escopo excluído. Testes `[026]` |
 
 ### Supabase Advisors (2026-10-09)
 

@@ -86,7 +86,52 @@ function requireOne(result: { error: DbErrorLike | null; count: number | null })
   if (!result.count) throw notFound();
 }
 
-const since = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
+/* ------------------------------------------------------------------ */
+/* Idempotência por chave (migration 026)                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tabelas com `idempotency_key` + índice único (autor, chave). O navegador
+ * gera uma chave por formulário; reenviar a mesma chave devolve o registro já
+ * gravado. Chaves diferentes = registros diferentes, mesmo que idênticos.
+ */
+const IDEMPOTENCY_INDEX = {
+  payment_receipts: "payment_receipts_idempotency",
+  payments: "payments_idempotency",
+  financial_agreements: "financial_agreements_idempotency",
+} as const;
+export type IdempotentTable = keyof typeof IDEMPOTENCY_INDEX;
+
+function violates(error: DbErrorLike, index: string): boolean {
+  return error.code === "23505" && `${error.message ?? ""} ${error.details ?? ""}`.includes(index);
+}
+
+/** Registro do MESMO autor com a mesma chave (o autor é a sessão, nunca o input). */
+export async function findByIdempotencyKey(db: SupabaseClient, table: IdempotentTable, actorId: string, key: string): Promise<string | null> {
+  const data = check(await db.from(table).select("id").eq("created_by", actorId).eq("idempotency_key", key).maybeSingle()) as { id: string } | null;
+  return data?.id ?? null;
+}
+
+/**
+ * INSERT com chave. Corrida (dois envios simultâneos): o segundo cai no índice
+ * único e devolve o primeiro. `created_by` dos lançamentos e obrigações é
+ * preenchido pelo trigger com auth.uid() — o mesmo `actorId` da sessão.
+ */
+export async function insertIdempotent(
+  db: SupabaseClient,
+  table: IdempotentTable,
+  values: Record<string, unknown>,
+  actorId: string,
+  key: string,
+): Promise<{ id: string; deduplicated: boolean }> {
+  const result = await db.from(table).insert({ ...values, idempotency_key: key }).select("id").single();
+  if (!result.error) return { id: (result.data as { id: string }).id, deduplicated: false };
+  if (violates(result.error, IDEMPOTENCY_INDEX[table])) {
+    const existing = await findByIdempotencyKey(db, table, actorId, key);
+    if (existing) return { id: existing, deduplicated: true };
+  }
+  throw financeError(result.error);
+}
 
 /* ------------------------------------------------------------------ */
 /* Modelos de honorários                                               */
@@ -142,28 +187,9 @@ export async function getAgreement(db: SupabaseClient, id: string): Promise<Agre
   return check(await db.from("financial_agreements").select(AGREEMENT_COLUMNS).eq("id", id).maybeSingle()) as AgreementRow | null;
 }
 
-export async function insertAgreement(db: SupabaseClient, values: Record<string, unknown>): Promise<string> {
-  return (check(await db.from("financial_agreements").insert(values).select("id").single()) as { id: string }).id;
-}
-
 /** Atualiza só se o acordo ainda está no status esperado (corrida/clique duplo não pula estado). */
 export async function updateAgreementWhere(db: SupabaseClient, id: string, expectedStatus: string[], values: Record<string, unknown>): Promise<void> {
   requireOne(await db.from("financial_agreements").update(values, { count: "exact" }).eq("id", id).in("status", expectedStatus));
-}
-
-/** Acordo criado pelo mesmo usuário, para o mesmo caso, há poucos segundos (clique duplo). */
-export async function findRecentAgreement(db: SupabaseClient, legalCaseId: string, actorId: string, windowSeconds: number): Promise<string | null> {
-  const data = check(
-    await db
-      .from("financial_agreements")
-      .select("id")
-      .eq("legal_case_id", legalCaseId)
-      .eq("created_by", actorId)
-      .gte("created_at", since(windowSeconds))
-      .order("created_at", { ascending: false })
-      .limit(1),
-  ) as { id: string }[] | null;
-  return data?.[0]?.id ?? null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -207,32 +233,9 @@ export async function countOpenPayments(db: SupabaseClient, agreementId: string)
   return count ?? 0;
 }
 
-export async function insertPayment(db: SupabaseClient, values: Record<string, unknown>): Promise<string> {
-  return (check(await db.from("payments").insert(values).select("id").single()) as { id: string }).id;
-}
-
 /** Só obrigação não cancelada muda (o trigger também recusa reabrir). */
 export async function updateOpenPayment(db: SupabaseClient, id: string, values: Record<string, unknown>): Promise<void> {
   requireOne(await db.from("payments").update(values, { count: "exact" }).eq("id", id).is("cancelled_at", null));
-}
-
-export async function findRecentPayment(
-  db: SupabaseClient,
-  values: { agreementId: string; amount: number; paymentType: string; dueDate?: string; actorId: string },
-  windowSeconds: number,
-): Promise<string | null> {
-  let query = db
-    .from("payments")
-    .select("id")
-    .eq("financial_agreement_id", values.agreementId)
-    .eq("amount", values.amount)
-    .eq("payment_type", values.paymentType)
-    .eq("created_by", values.actorId)
-    .is("cancelled_at", null)
-    .gte("created_at", since(windowSeconds));
-  query = values.dueDate ? query.eq("due_date", values.dueDate) : query.is("due_date", null);
-  const data = check(await query.order("created_at", { ascending: false }).limit(1)) as { id: string }[] | null;
-  return data?.[0]?.id ?? null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -261,35 +264,6 @@ export async function reversedAmountOf(db: SupabaseClient, originalReceiptId: st
     | { amount: number | string }[]
     | null;
   return (data ?? []).map((r) => Number(r.amount));
-}
-
-export async function insertReceipt(db: SupabaseClient, values: Record<string, unknown>): Promise<string> {
-  return (check(await db.from("payment_receipts").insert(values).select("id").single()) as { id: string }).id;
-}
-
-/**
- * Lançamento idêntico do MESMO usuário nos últimos segundos (clique duplo /
- * reenvio). A tabela não tem chave de idempotência (ver relatório: proposta
- * de coluna + índice único); esta checagem cobre o caso comum, e os
- * invariantes do banco (nunca acima da obrigação, estorno nunca além do
- * original) limitam o dano de uma corrida real.
- */
-export async function findRecentReceipt(
-  db: SupabaseClient,
-  values: { paymentId: string; kind: string; amount?: number; originalReceiptId?: string; actorId: string },
-  windowSeconds: number,
-): Promise<string | null> {
-  let query = db
-    .from("payment_receipts")
-    .select("id")
-    .eq("payment_id", values.paymentId)
-    .eq("kind", values.kind)
-    .eq("created_by", values.actorId)
-    .gte("created_at", since(windowSeconds));
-  if (values.amount !== undefined) query = query.eq("amount", values.amount);
-  query = values.originalReceiptId ? query.eq("original_receipt_id", values.originalReceiptId) : query.is("original_receipt_id", null);
-  const data = check(await query.order("sequence", { ascending: false }).limit(1)) as { id: string }[] | null;
-  return data?.[0]?.id ?? null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -383,16 +357,6 @@ export async function listAllocationBalances(
   return rows;
 }
 
-/** sequence de cada divisão (para consumir as mais antigas primeiro). */
-export async function allocationSequences(db: SupabaseClient, ids: string[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  for (let i = 0; i < ids.length; i += 200) {
-    const data = check(await db.from("partner_revenue_allocations").select("id, sequence").in("id", ids.slice(i, i + 200))) as { id: string; sequence: number }[] | null;
-    for (const r of data ?? []) out.set(r.id, Number(r.sequence));
-  }
-  return out;
-}
-
 /* ------------------------------------------------------------------ */
 /* Repasses                                                            */
 /* ------------------------------------------------------------------ */
@@ -422,37 +386,39 @@ export async function listTransferItems(db: SupabaseClient, transferId: string):
     []) as TransferItemRow[];
 }
 
-export async function insertTransfer(db: SupabaseClient, values: Record<string, unknown>): Promise<string> {
-  return (check(await db.from("partner_transfers").insert(values).select("id").single()) as { id: string }).id;
-}
-
-/** Itens numa só requisição (um INSERT com várias linhas = uma transação no PostgREST). */
-export async function insertTransferItems(db: SupabaseClient, transferId: string, items: { allocationId: string; amount: number }[]): Promise<void> {
-  check(await db.from("partner_transfer_items").insert(items.map((i) => ({ transfer_id: transferId, allocation_id: i.allocationId, amount: i.amount }))));
+/**
+ * Repasse atômico (public.create_partner_transfer, migration 026): cria o
+ * repasse PENDING e consome as divisões com saldo — mais antigas primeiro,
+ * travadas — numa transação. Chave repetida devolve o repasse já gravado;
+ * corrida com a mesma chave cai no índice único e devolve o do primeiro envio.
+ */
+export async function createTransferRpc(
+  db: SupabaseClient,
+  args: { partnerOrganizationId: string; amount: number; reference?: string; legalCaseId?: string; idempotencyKey: string },
+  actorId: string,
+): Promise<{ transferId: string; deduplicated: boolean }> {
+  const { data, error } = await db.rpc("create_partner_transfer", {
+    p_partner_organization_id: args.partnerOrganizationId,
+    p_amount: args.amount,
+    p_reference: args.reference ?? null,
+    p_legal_case_id: args.legalCaseId ?? null,
+    p_idempotency_key: args.idempotencyKey,
+  });
+  if (error) {
+    if (violates(error, "partner_transfers_idempotency")) {
+      const existing = check(
+        await db.from("partner_transfers").select("id").eq("registered_by", actorId).eq("idempotency_key", args.idempotencyKey).maybeSingle(),
+      ) as { id: string } | null;
+      if (existing) return { transferId: existing.id, deduplicated: true };
+    }
+    throw financeError(error);
+  }
+  const result = data as { transfer_id: string; deduplicated: boolean };
+  return { transferId: result.transfer_id, deduplicated: result.deduplicated };
 }
 
 export async function updateTransferWhere(db: SupabaseClient, id: string, expectedStatus: string[], values: Record<string, unknown>): Promise<void> {
   requireOne(await db.from("partner_transfers").update(values, { count: "exact" }).eq("id", id).in("status", expectedStatus));
-}
-
-export async function findRecentTransfer(
-  db: SupabaseClient,
-  values: { partnerOrganizationId: string; amount: number; actorId: string },
-  windowSeconds: number,
-): Promise<string | null> {
-  const data = check(
-    await db
-      .from("partner_transfers")
-      .select("id")
-      .eq("partner_organization_id", values.partnerOrganizationId)
-      .eq("amount", values.amount)
-      .eq("registered_by", values.actorId)
-      .eq("status", "PENDING")
-      .gte("created_at", since(windowSeconds))
-      .order("created_at", { ascending: false })
-      .limit(1),
-  ) as { id: string }[] | null;
-  return data?.[0]?.id ?? null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -41,6 +41,29 @@ describe("parceiros — ADMIN", () => {
     expect(list.items.find((p) => p.id === id)?.share).toEqual({ partnershipPercentage: 40, ownerPercentage: 60, partnershipActive: true });
   });
 
+  it("create_partner_office é atômica: divisão inválida não deixa organização órfã", async () => {
+    const { db } = await ctxFor("ADMIN");
+    const name = `Parceiro Atômico ${world.run}`;
+    const { error } = await db.rpc("create_partner_office", {
+      p_org: { name },
+      p_settings: { default_partner_percentage: 40, default_owner_percentage: 50 },
+    });
+    expect(error).not.toBeNull();
+    const { count } = await serviceDb().from("organizations").select("id", { count: "exact", head: true }).eq("name", name);
+    expect(count).toBe(0);
+  });
+
+  it("a RPC recusa quem não é ADMIN, mesmo chamada direto", async () => {
+    for (const role of ["LAWYER", "PARTNER_ADMIN_A"] as const) {
+      const { db } = await ctxFor(role);
+      const name = `Parceiro Proibido ${world.run} ${role}`;
+      const { error } = await db.rpc("create_partner_office", { p_org: { name }, p_settings: {} });
+      expect(error?.code).toBe("42501");
+      const { count } = await serviceDb().from("organizations").select("id", { count: "exact", head: true }).eq("name", name);
+      expect(count).toBe(0);
+    }
+  });
+
   it("CNPJ repetido é CONFLICT com mensagem própria", async () => {
     const admin = await ctxFor("ADMIN");
     const cnpj = fakeCnpj();
