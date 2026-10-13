@@ -10,6 +10,8 @@ import { ProcessDetail } from "@/features/processes/components/process-detail";
 import { PortalProcessDetail } from "@/features/partner-portal/components/portal-processes";
 import { getProcessAction, listProcessEventsAction, listProcessPartiesAction } from "@/server/domain/processes/actions";
 import { listDeadlinesAction } from "@/server/domain/processes/deadlines/actions";
+import { listDocumentsAction } from "@/server/domain/documents/actions";
+import { documentListInput } from "@/features/documents/constants";
 
 const fallback = (
   <PageContainer>
@@ -51,14 +53,15 @@ async function InternalProcess({ id }: { id: string }) {
     );
   }
   if (result.data.surface !== "INTERNAL") return <ProcessNotFound />;
-  const [parties, events, deadlines] = await Promise.all([
+  const [parties, events, deadlines, documents] = await Promise.all([
     listProcessPartiesAction({ processId: id, pageSize: 50 }),
     listProcessEventsAction({ processId: id, pageSize: 50 }),
     listDeadlinesAction({ processId: id, pageSize: 50 }),
+    listDocumentsAction(documentListInput({ legalProcessId: id })),
   ]);
   return (
     <Suspense fallback={fallback}>
-      <ProcessDetail process={result.data.process} parties={parties} events={events} deadlines={deadlines} />
+      <ProcessDetail process={result.data.process} parties={parties} events={events} deadlines={deadlines} documents={documents} />
     </Suspense>
   );
 }

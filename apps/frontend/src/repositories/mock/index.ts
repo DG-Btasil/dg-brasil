@@ -13,7 +13,6 @@ import type {
   ReferenceRepository,
   ClientRepository,
   DgRepository,
-  DocumentRepository,
   FinanceRepository,
   ImportRepository,
   IntegrationRepository,
@@ -46,12 +45,6 @@ export const mockUserRepository: UserRepository = {
 export const mockClientRepository: ClientRepository = {
   list: () => ok(data().clients),
   get: (id) => ok(data().clients.find((c) => c.id === id)),
-};
-
-export const mockDocumentRepository: DocumentRepository = {
-  listByClient: (clientId) => ok(data().documents.filter((d) => d.clientId === clientId)),
-  add: async (input) => state().addDocument(input),
-  updateStatus: async (id, status, notes) => state().updateDocumentStatus(id, status, notes),
 };
 
 export const mockAnalysisRepository: AnalysisRepository = {

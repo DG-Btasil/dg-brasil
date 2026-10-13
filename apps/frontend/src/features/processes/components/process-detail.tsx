@@ -15,6 +15,8 @@ import { PageHeader } from "@/components/ui/display";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
 import type { Page } from "@/server/core/pagination";
 import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
+import type { DocumentListItem } from "@/server/domain/documents/dto";
+import { DocumentsPanel } from "@/features/documents/components/documents-panel";
 import type { ProcessEventDTO, ProcessInternalDTO, ProcessPartyDTO } from "@/server/domain/processes/dto";
 import { useCan } from "@/features/auth/hooks";
 import { CaseOriginLabel } from "@/features/cases/components/case-detail";
@@ -42,11 +44,13 @@ export function ProcessDetail({
   parties,
   events,
   deadlines,
+  documents,
 }: {
   process: ProcessInternalDTO;
   parties: ActionResult<Page<ProcessPartyDTO>>;
   events: ActionResult<Page<ProcessEventDTO>>;
   deadlines: ActionResult<Page<DeadlineDTO>>;
+  documents: ActionResult<Page<DocumentListItem>>;
 }) {
   const responsible = useDirectoryUser(process.responsibleUserId);
   const can = useCan();
@@ -61,13 +65,13 @@ export function ProcessDetail({
     const items: TabItem<TabKey>[] = [
       { key: "visao-geral", label: "Visão geral" },
       { key: "movimentacoes", label: "Movimentações", count: events.ok ? events.data.total : undefined },
-      { key: "documentos", label: "Documentos" },
+      { key: "documentos", label: "Documentos", count: documents.ok ? documents.data.total : undefined },
       { key: "prazos", label: "Prazos", count: openDeadlines.length, attention: urgent },
     ];
     if (can("reviews.view")) items.push({ key: "revisoes", label: "Revisões" });
     if (can("finance.view")) items.push({ key: "financeiro", label: "Financeiro" });
     return items;
-  }, [can, events, openDeadlines.length, urgent]);
+  }, [can, events, openDeadlines.length, urgent, documents]);
 
   // Aba sem permissão na URL cai na visão geral.
   const active: TabKey = tabs.some((t) => t.key === tab) ? tab : "visao-geral";
@@ -121,7 +125,15 @@ export function ProcessDetail({
       <TabPanel tabKey={active}>
         {active === "visao-geral" && <OverviewTab process={process} parties={parties} responsibleName={responsible?.name} lastMovementAt={lastMovementAt} />}
         {active === "movimentacoes" && <EventsTab processId={process.id} initial={events} onAdd={() => setDialog({ kind: "event" })} />}
-        {active === "documentos" && <PendingIntegration description="Documentos do processo serão conectados ao sistema na próxima fase (upload e download reais)." />}
+        {active === "documentos" && (
+          <DocumentsPanel
+            scope={{ legalProcessId: process.id }}
+            initial={documents}
+            title="Documentos do processo"
+            description="Peças, decisões e arquivos ligados a este processo (também aparecem no caso)."
+            allowSharing={!!process.casePartnerOrganizationId}
+          />
+        )}
         {active === "prazos" && <DeadlinesTab deadlines={deadlines} onAdd={() => setDialog({ kind: "deadline" })} onEdit={(deadline) => setDialog({ kind: "deadline", deadline })} />}
         {active === "revisoes" && <PendingIntegration description="As revisões do processo serão conectadas em uma próxima fase." />}
         {active === "financeiro" && <PendingIntegration description="O financeiro pertence ao caso e será conectado depois da revisão do ciclo de vida do acordo financeiro." />}

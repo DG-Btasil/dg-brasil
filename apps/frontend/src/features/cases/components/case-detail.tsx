@@ -21,7 +21,11 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
 import type { Page } from "@/server/core/pagination";
 import type { CaseCatalogDTO, CaseInternalDTO } from "@/server/domain/cases/dto";
+import type { DocumentListItem } from "@/server/domain/documents/dto";
+import type { RequirementDTO } from "@/server/domain/documents/requirements/dto";
 import type { ProcessListItem } from "@/server/domain/processes/dto";
+import { DocumentsPanel } from "@/features/documents/components/documents-panel";
+import { RequirementsPanel } from "@/features/documents/components/requirements-panel";
 import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUser, useOrganizationName, useOrgDirectory, useOriginOptions } from "@/features/directory/directory-context";
 import { ProcessListTable } from "@/features/processes/components/process-list-table";
@@ -33,19 +37,24 @@ type TabKey = (typeof TAB_KEYS)[number];
 type DialogKey = "accept" | "reject" | "origin" | "lawyer" | "edit";
 
 /**
- * Página do caso (equipe interna), com dados do servidor (getCaseAction).
- * Documentos, análise, revisões, financeiro e atividade são conectados nas
- * próximas fases; até lá, a aba diz isso (nada de dado de demonstração).
+ * Página do caso (equipe interna), com dados do servidor (getCaseAction):
+ * visão geral, documentos/pendências e processos. Análise, revisões,
+ * financeiro e atividade são conectados nas próximas fases; até lá, a aba diz
+ * isso (nada de dado de demonstração).
  * Precisa estar dentro de <Suspense> (useUrlTab).
  */
 export function CaseDetail({
   legalCase,
   catalog,
   processes,
+  documents,
+  requirements,
 }: {
   legalCase: CaseInternalDTO;
   catalog: CaseCatalogDTO;
   processes: ActionResult<Page<ProcessListItem>>;
+  documents: ActionResult<Page<DocumentListItem>>;
+  requirements: ActionResult<Page<RequirementDTO>>;
 }) {
   const canFinance = usePermission("finance.view");
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
@@ -55,14 +64,19 @@ export function CaseDetail({
   const items = useMemo<TabItem<TabKey>[]>(
     () => [
       { key: "visao-geral", label: "Visão geral" },
-      { key: "documentos", label: "Documentos" },
+      {
+        key: "documentos",
+        label: "Documentos",
+        count: documents.ok ? documents.data.total : undefined,
+        attention: requirements.ok && requirements.data.items.some((r) => r.required && (r.status === "MISSING" || r.status === "REQUESTED" || r.status === "REJECTED")),
+      },
       { key: "analise", label: "Análise" },
       { key: "revisoes", label: "Revisões" },
       { key: "processos", label: "Processos", count: processCount },
       ...(canFinance ? [{ key: "financeiro" as const, label: "Financeiro" }] : []),
       { key: "atividade", label: "Atividade" },
     ],
-    [processCount, canFinance],
+    [processCount, canFinance, documents, requirements],
   );
   const close = (o: boolean) => !o && setDialog(null);
 
@@ -72,7 +86,18 @@ export function CaseDetail({
       <Tabs items={items} value={tab} onChange={setTab} label="Seções do caso" className="mb-5" />
       <TabPanel tabKey={tab}>
         {tab === "visao-geral" && <CaseOverview legalCase={legalCase} onDialog={setDialog} />}
-        {tab === "documentos" && <PendingIntegration description="Documentos do caso serão conectados ao sistema na próxima fase (upload e download reais)." />}
+        {tab === "documentos" && (
+          <div className="space-y-5">
+            <RequirementsPanel legalCaseId={legalCase.id} requirements={requirements} documents={documents} />
+            <DocumentsPanel
+              scope={{ legalCaseId: legalCase.id }}
+              initial={documents}
+              title="Documentos do caso"
+              description="Documentos ligados ao caso e aos processos dele. Documentos só do cadastro do cliente ficam na página do cliente."
+              allowSharing={!!legalCase.partnerOrganizationId}
+            />
+          </div>
+        )}
         {tab === "analise" && <PendingIntegration description="A análise jurídica do caso será conectada depois que o início da análise for atômico (análise + execução do agente)." />}
         {tab === "revisoes" && <PendingIntegration description="As revisões do caso serão conectadas em uma próxima fase." />}
         {tab === "processos" && <CaseProcessesTab legalCase={legalCase} processes={processes} />}

@@ -15,7 +15,9 @@ retorno das operações.
 | B | Casos (equipe interna) | ✅ real | lista, filtros, ficha, cadastro idempotente, editar, enviar, aceitar, rejeitar, andamento, encerrar, arquivar, origem, advogado |
 | B | Processos, Prazos, Movimentações (equipe interna) | ✅ real | lista, filtros, ficha, partes (leitura), cadastro idempotente, edição, exclusão; prazos (criar, editar, cumprir, cancelar); andamentos |
 | B | Casos e Processos no Portal do Parceiro | ⏳ Fase D | o portal ainda lê o mock |
-| C | Documentos, Pendências documentais | ⏳ | |
+| C | Documentos (equipe interna) | ✅ real | cliente, caso e processo: lista, envio em etapas com URL assinada, nova versão, histórico, download por URL assinada curta, verificação por versão, compartilhar/recolher, arquivar, excluir (ADMIN) |
+| C | Pendências documentais do caso | ✅ real | criar, solicitar, registrar recebimento (versão concreta), aprovar/rejeitar |
+| C | Documentos no Portal do Parceiro | ⏳ Fase D | |
 | D | Solicitações, Portal do Parceiro | ⏳ | |
 | E | Revisões, Análises | ⏳ | Análise só depois de tornar atômico o início (análise + execução) |
 | F | Financeiro | ⏳ | mutações só depois de revisar o ciclo de vida do acordo financeiro |
@@ -188,6 +190,63 @@ origem, período; busca também por parte contrária, com escape do filtro
 leitura do catálogo; nome do cliente na ficha do caso; caso/cliente/próximo
 prazo na lista de processos; diretório com OAB.
 
+## Fase C — Documentos e Pendências documentais
+
+**Modelo real (diferente do Front V1).** No V1, "documento" era um item do
+cliente com status (faltando/pendente/recebido/rejeitado) e um checklist do
+modelo de análise. No banco:
+
+- **documento** = registro lógico (categoria, título, visibilidade) com
+  **versões imutáveis**; cada versão tem a **própria verificação**
+  (Não verificado / Verificado / Divergência). Versão nova nasce não
+  verificada e nunca herda o resultado da anterior;
+- **pendência** = "o que falta" no CASO (Não solicitado → Solicitado →
+  Arquivo recebido → Aprovado/Rejeitado), atendida por uma VERSÃO concreta.
+  A tela separa "documento solicitado" de "arquivo recebido".
+
+**Envio (upload)** — `features/documents/upload.ts`, sempre pelo servidor:
+1. `createDocumentAction` (documento + vínculo; só no primeiro envio);
+2. `prepareDocumentUploadAction`: o banco autoriza com o JWT do usuário e o
+   servidor devolve uma URL assinada de upload (id da versão gerado no
+   servidor; o navegador nunca monta caminho);
+3. envio do arquivo para a URL assinada (`uploadToSignedUrl`);
+4. `confirmDocumentUploadAction`: registra a versão (idempotente pelo id).
+
+A tela mostra cada etapa. Falha no envio: nada foi registrado, "Tentar
+novamente" pede outra URL. Arquivo enviado mas confirmação falhou: a tela
+**não** mostra sucesso e oferece "Confirmar de novo" com a MESMA versão
+(sem reenviar; confirmar duas vezes não duplica). Objeto enviado e nunca
+confirmado fica para a limpeza de órfãos do Storage (mecanismo existente).
+Tipo e tamanho são conferidos antes (mesma lista do bucket, testada) e de
+novo no servidor/bucket.
+
+**Download:** `downloadDocumentAction` — o banco autoriza, registra o
+acesso (LGPD + auditoria) e o servidor devolve URL assinada de **60 s**;
+nenhuma URL de Storage é montada no navegador nem guardada.
+
+**Visibilidade:** "Compartilhar com o parceiro" só aparece em caso/processo
+com parceiro vinculado, e o SERVIDOR confere as regras (caso de parceiro,
+arquivo enviado, versão não rejeitada em revisão, minuta de agente só
+aprovada). O parceiro só recebe `PARTNER_VISIBLE` (RLS) — nada é filtrado no
+navegador. Portal do parceiro: Fase D.
+
+**Onde aparece:** ficha do cliente (todos os documentos do cliente), caso
+(pendências + documentos do caso e dos processos dele) e processo. Ações:
+enviar, nova versão, histórico de versões (com download por versão e
+situação da revisão), verificar / registrar divergência, compartilhar /
+recolher, arquivar / reativar, excluir (ADMIN; versões ficam no histórico).
+
+**Diferenças do Front V1:** sem busca por texto e sem filtro de "status"
+antigo (o backend filtra por categoria e ativo/arquivado); sem pré-visualização
+embutida (o download por URL assinada substitui); o checklist por modelo de
+análise volta com a Fase E (análises) — as pendências do caso são o
+mecanismo real de "o que falta".
+
+**Mock removido:** escritas de documento (slice de cliente, repositório e
+contrato `documents`) e os componentes do V1 que só gravavam no mock (lista,
+diálogo de inclusão, área de soltar, prévia, rejeição). Ficam o checklist e o
+indicador de verificação (usados pelo assistente de análise, Fase E).
+
 ## Testes
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
@@ -198,6 +257,13 @@ prazo na lista de processos; diretório com OAB.
 - Fase B, unitários: `src/features/processes/phase-b-ui.test.ts` (URL das
   listas, impressão digital da idempotência, formulário de processo →
   schemas reais, embed do caso, data local do prazo, escape do filtro).
+- Fase C, unitários: `src/features/documents/documents-ui.test.ts` (limites
+  iguais aos do bucket, consulta da lista, ordem das etapas do envio, falha
+  no envio sem confirmar, falha na confirmação retomada sem reenviar, rede).
+- Fase C, integração: `tests/integration/frontend-documents.int.test.ts`
+  (envio real com confirmação idempotente, confirmar sem arquivo, verificação
+  por versão, download assinado, compartilhamento × parceiro A/B,
+  pendência solicitado → recebido → aprovado, ASSISTANT não aprova).
 - Fase B, integração: `tests/integration/frontend-cases-processes.int.test.ts`
   (caso idempotente, filtros e contagem, catálogo, isolamento, processo
   idempotente com próximo prazo, edição que limpa, ciclo do prazo,
@@ -289,3 +355,27 @@ Marque cada item com os cinco papéis indicados.
 
 - [ ] Casos e Processos continuam no portal de demonstração até a Fase D;
       rotas internas de outro escritório não mostram dados.
+
+## QA manual — Fase C (Supabase DEV, arquivos fictícios)
+
+**ADMIN / LAWYER / ASSISTANT**
+
+- [ ] Ficha do cliente → Documentos: arrastar um PDF e enviar; as etapas
+      aparecem; o documento entra como "Não verificado".
+- [ ] Tipo não aceito (.zip) ou arquivo > 50 MB: aviso antes de enviar.
+- [ ] Desligar a rede durante o envio: a tela mostra em que etapa parou e
+      "Tentar novamente" funciona depois de religar.
+- [ ] Baixar: o arquivo abre/baixa (o link expira em 60 s; abrir de novo pede
+      outro link).
+- [ ] Mais → Enviar nova versão: vira v2 "Não verificado"; Histórico de
+      versões mostra v1 e v2, com download de cada uma.
+- [ ] Marcar como verificado / Registrar divergência (com nota).
+- [ ] Arquivar → some de "Ativos", aparece em "Arquivados"; Reativar volta.
+- [ ] ADMIN exclui documento; LAWYER/ASSISTANT não veem "Excluir documento".
+- [ ] Caso → Documentos: "Nova pendência" (já solicitada), enviar o arquivo,
+      "Registrar recebimento" escolhendo o arquivo; LAWYER aprova (ASSISTANT
+      não vê Aprovar/Rejeitar); rejeitar → "Solicitar de novo".
+- [ ] Caso de parceiro: "Compartilhar com o parceiro" em documento com
+      arquivo; em caso interno a opção não aparece. Minuta de agente não
+      aprovada é recusada pelo servidor com mensagem.
+- [ ] Processo → Documentos: enviar; o documento aparece também no caso.

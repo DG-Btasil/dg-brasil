@@ -15,7 +15,7 @@ import {
   type GetState,
   type SetState,
 } from "../helpers";
-import type { AnalysisActions, AppState, ClientActions } from "../types";
+import type { AnalysisActions } from "../types";
 
 export function clientName(client: Client | undefined): string {
   if (!client) return "Cliente";
@@ -23,119 +23,6 @@ export function clientName(client: Client | undefined): string {
 }
 
 const DOCUMENTATION_AGENT = "agt_documentacao";
-
-/**
- * Após qualquer mudança de documento, reavalia as análises do cliente que
- * dependem de documentação. É a regra "documentos completos → pronta".
- */
-function reevaluateClientAnalyses(state: AppState, clientId: string): Pick<AppState, "analyses" | "clients"> {
-  const client = state.clients.find((c) => c.id === clientId);
-  if (!client) return { analyses: state.analyses, clients: state.clients };
-  let anyWaiting = false;
-  const analyses = state.analyses.map((a) => {
-    if (a.clientId !== clientId || !["WAITING_DOCUMENTS", "READY"].includes(a.status)) return a;
-    const template = state.templates.find((t) => t.id === a.templateId);
-    if (!template) return a;
-    const missing = missingDocumentCategories(template, client, state.documents);
-    if (missing.length === 0 && a.status === "WAITING_DOCUMENTS") {
-      return {
-        ...a,
-        status: "READY" as const,
-        missingDocuments: [],
-        steps: withStep(a, { documents: "DONE", agent: "PENDING" }),
-        timeline: [...a.timeline, timelineEvent(agentActor(state, DOCUMENTATION_AGENT), "Documentação completa. Análise pronta para envio ao agente.")],
-        updatedAt: nowISO(),
-      };
-    }
-    if (missing.length > 0) {
-      anyWaiting = true;
-      if (a.status === "READY") {
-        return {
-          ...a,
-          status: "WAITING_DOCUMENTS" as const,
-          missingDocuments: missing,
-          steps: withStep(a, { documents: "BLOCKED" }),
-          timeline: [...a.timeline, timelineEvent(agentActor(state, DOCUMENTATION_AGENT), "Nova pendência documental identificada.")],
-          updatedAt: nowISO(),
-        };
-      }
-      return { ...a, missingDocuments: missing };
-    }
-    return a;
-  });
-  const clients = updateById(state.clients, clientId, (c) => {
-    // Cliente inativado só muda de status por ação explícita (reativar).
-    if (c.status === "INACTIVE") return c;
-    if (anyWaiting) return { ...c, status: "WAITING_DOCUMENTS" as const, updatedAt: nowISO() };
-    if (c.status === "WAITING_DOCUMENTS") return { ...c, status: "ACTIVE" as const, updatedAt: nowISO() };
-    return c;
-  });
-  return { analyses, clients };
-}
-
-export function createClientSlice(set: SetState, get: GetState): ClientActions {
-  return {
-    addDocument: (input) => {
-      const s = get();
-      const at = nowISO();
-      const user = actorOf(s);
-      // Se já existe um item "ausente" da mesma categoria, ele é preenchido em vez de duplicado.
-      const placeholder = s.documents.find(
-        (d) => d.clientId === input.clientId && d.category === input.category && (d.status === "MISSING" || d.status === "NEEDS_UPDATE" || d.status === "REJECTED"),
-      );
-      const id = placeholder?.id ?? createId("doc");
-      const doc = {
-        id,
-        officeId: s.office.id,
-        clientId: input.clientId,
-        legalCaseId: input.legalCaseId ?? placeholder?.legalCaseId,
-        processId: input.processId,
-        name: input.name,
-        category: input.category,
-        status: "PENDING" as const,
-        verification: "UNVERIFIED" as const,
-        fileName: input.fileName ?? `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`,
-        sizeKb: input.sizeKb ?? 240,
-        uploadedAt: at,
-        uploadedBy: user.id,
-        required: placeholder?.required ?? false,
-        notes: input.notes,
-        updatedAt: at,
-        // Documento da equipe interna nasce INTERNAL; só a equipe pode disponibilizá-lo ao parceiro.
-        visibility: placeholder?.visibility ?? ("INTERNAL" as const),
-      };
-      const documents = placeholder ? updateById(s.documents, id, () => doc) : [doc, ...s.documents];
-      const client = s.clients.find((c) => c.id === input.clientId);
-      const next = { ...s, documents };
-      set({
-        documents,
-        ...reevaluateClientAnalyses(next, input.clientId),
-        auditEvents: [
-          auditEvent(s, "DOCUMENT_ADDED", "document", id, `${DOCUMENT_CATEGORY_LABEL[input.category]} adicionado para ${clientName(client)}.`),
-          ...s.auditEvents,
-        ],
-      });
-      return id;
-    },
-    updateDocumentStatus: (id, status, notes) => {
-      const s = get();
-      const doc = s.documents.find((d) => d.id === id);
-      if (!doc) return;
-      const documents = updateById(s.documents, id, (d) => ({
-        ...d,
-        status,
-        verification: status === "RECEIVED" ? "VERIFIED" : status === "REJECTED" ? "FAILED" : d.verification,
-        notes: notes ?? d.notes,
-        updatedAt: nowISO(),
-      }));
-      set({
-        documents,
-        ...reevaluateClientAnalyses({ ...s, documents }, doc.clientId),
-        auditEvents: [auditEvent(s, "DOCUMENT_STATUS_CHANGED", "document", id, `Status do documento “${doc.name}” alterado.`), ...s.auditEvents],
-      });
-    },
-  };
-}
 
 export function createAnalysisSlice(set: SetState, get: GetState): AnalysisActions {
   return {

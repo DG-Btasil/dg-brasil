@@ -9,6 +9,8 @@ import { PortalClientDetail } from "@/features/partner-portal/components/portal-
 import { listCasesAction } from "@/server/domain/cases/actions";
 import { getClientAction } from "@/server/domain/clients/actions";
 import { listProcessesAction } from "@/server/domain/processes/actions";
+import { listDocumentsAction } from "@/server/domain/documents/actions";
+import { documentListInput } from "@/features/documents/constants";
 
 /**
  * Ficha do cliente, lida no servidor a cada acesso (rota direta, nova aba e
@@ -22,13 +24,14 @@ async function InternalClient({ id }: { id: string }) {
     return <ActionErrorState error={result} title="Não foi possível abrir o cliente." />;
   }
   if (result.data.surface !== "INTERNAL") return <ClientNotFound />;
-  const [cases, processes] = await Promise.all([
+  const [cases, processes, documents] = await Promise.all([
     listCasesAction({ clientId: id, pageSize: 50 }),
     listProcessesAction({ clientId: id, pageSize: 50 }),
+    listDocumentsAction(documentListInput({ clientId: id })),
   ]);
   return (
     <Suspense fallback={<SkeletonRows rows={6} />}>
-      <ClientDetail client={result.data.client} cases={cases} processes={processes} />
+      <ClientDetail client={result.data.client} cases={cases} processes={processes} documents={documents} />
     </Suspense>
   );
 }

@@ -25,7 +25,8 @@ export function useServerList<Q, T>({
   initialQuery: Q;
   initialResult: ActionResult<Page<T>>;
   load: (query: Q) => Promise<ActionResult<Page<T>>>;
-  toSearch: (query: Q) => URLSearchParams;
+  /** Sem `toSearch`, a URL não muda (lista dentro de uma aba/painel). */
+  toSearch?: (query: Q) => URLSearchParams;
 }) {
   const [query, setQueryState] = useState(initialQuery);
   const [result, setResult] = useState(initialResult);
@@ -49,14 +50,25 @@ export function useServerList<Q, T>({
   const setQuery = useCallback(
     (next: Q) => {
       setQueryState(next);
-      const qs = toSearchRef.current(next).toString();
-      window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+      const toSearch = toSearchRef.current;
+      if (toSearch) {
+        const qs = toSearch(next).toString();
+        window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+      }
       run(next);
     },
     [run],
   );
 
   const retry = useCallback(() => run(query), [run, query]);
+
+  // Dados novos do servidor (router.refresh após uma mutação) substituem o resultado local.
+  const [base, setBase] = useState(initialResult);
+  if (base !== initialResult) {
+    setBase(initialResult);
+    setResult(initialResult);
+    setQueryState(initialQuery);
+  }
 
   return { query, setQuery, result, pending, retry };
 }

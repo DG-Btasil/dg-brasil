@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { createSeedData } from "@/mocks";
-import { createAnalysisSlice, createClientSlice } from "./slices/clients-analyses";
+import { createAnalysisSlice } from "./slices/clients-analyses";
 import { createImportSlice } from "./slices/data-import";
 import { createDgSlice, createFinanceSlice } from "./slices/finance-dg";
 import { createReviewSlice } from "./slices/processes-reviews";
@@ -62,7 +62,6 @@ export const useAppStore = create<AppStore>()(
         preferences: {},
         ...createSessionSlice(set, get),
         ...createOfficeSlice(set, get),
-        ...createClientSlice(set, get),
         ...createImportSlice(set, get),
         ...createAnalysisSlice(set, get),
         ...createReviewSlice(set, get),

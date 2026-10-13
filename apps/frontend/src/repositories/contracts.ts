@@ -11,14 +11,13 @@
  * parceiro recebe apenas os registros da própria relação (ver
  * `lib/permissions/partner-scope.ts` e docs/BACKEND_HANDOFF.md).
  */
-import type { DocumentStatus, ExportFormat, IntegrationStatus, PartnerOfficeStatus, ReviewDecisionKind } from "@/lib/constants/status";
+import type { ExportFormat, IntegrationStatus, PartnerOfficeStatus, ReviewDecisionKind } from "@/lib/constants/status";
 import type {
   AgentTask,
   Agent,
   AnalysisTemplate,
   ChangeHistoryEntry,
   Client,
-  ClientDocument,
   ExportedDocument,
   FeeModel,
   FinancialAgreement,
@@ -62,7 +61,6 @@ import type {
   NewThesisInput,
   RegisterPaymentInput,
   NewAgreementInput,
-  NewDocumentInput,
   NewFeeModelInput,
   SkillChangeProposal,
   StartAnalysisInput,
@@ -90,13 +88,6 @@ export interface UserRepository {
 export interface ClientRepository {
   list(): Promise<Client[]>;
   get(id: ID): Promise<Client | undefined>;
-}
-
-export interface DocumentRepository {
-  listByClient(clientId: ID): Promise<ClientDocument[]>;
-  /** Protótipo: registra apenas metadados. Upload real virá com storage seguro. */
-  add(input: NewDocumentInput): Promise<ID>;
-  updateStatus(id: ID, status: DocumentStatus, notes?: string): Promise<void>;
 }
 
 export interface AnalysisRepository {

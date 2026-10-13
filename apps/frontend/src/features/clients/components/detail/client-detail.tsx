@@ -8,6 +8,8 @@ import type { ActionResult } from "@/lib/actions/result";
 import type { Page } from "@/server/core/pagination";
 import type { CaseListItem } from "@/server/domain/cases/dto";
 import type { ProcessListItem } from "@/server/domain/processes/dto";
+import type { DocumentListItem } from "@/server/domain/documents/dto";
+import { DocumentsPanel } from "@/features/documents/components/documents-panel";
 import type { Client } from "@/types";
 import { CasesTab } from "./cases-tab";
 import { ClientHeader } from "./client-header";
@@ -19,28 +21,30 @@ type TabKey = (typeof TAB_KEYS)[number];
 
 /**
  * Página do cliente, com dados do servidor: cadastro (getClientAction, com o
- * registro LGPD de acesso), casos e processos. Documentos e atividade são
- * conectados nas fases C e H. Precisa estar dentro de <Suspense> (useUrlTab).
+ * registro LGPD de acesso), documentos, casos e processos. A atividade é
+ * conectada na fase H. Precisa estar dentro de <Suspense> (useUrlTab).
  */
 export function ClientDetail({
   client,
   cases,
   processes,
+  documents,
 }: {
   client: Client;
   cases: ActionResult<Page<CaseListItem>>;
   processes: ActionResult<Page<ProcessListItem>>;
+  documents: ActionResult<Page<DocumentListItem>>;
 }) {
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
   const items = useMemo<TabItem<TabKey>[]>(
     () => [
       { key: "visao-geral", label: "Visão geral" },
-      { key: "documentos", label: "Documentos" },
+      { key: "documentos", label: "Documentos", count: documents.ok ? documents.data.total : undefined },
       { key: "casos", label: "Casos", count: cases.ok ? cases.data.total : undefined },
       { key: "processos", label: "Processos", count: processes.ok ? processes.data.total : undefined },
       { key: "atividade", label: "Atividade" },
     ],
-    [cases, processes],
+    [cases, processes, documents],
   );
 
   return (
@@ -49,7 +53,14 @@ export function ClientDetail({
       <Tabs items={items} value={tab} onChange={setTab} label="Seções do cliente" className="mb-5" />
       <TabPanel tabKey={tab}>
         {tab === "visao-geral" && <OverviewTab client={client} />}
-        {tab === "documentos" && <PendingIntegration description="Documentos do cliente serão conectados ao sistema na próxima fase (upload e download reais)." />}
+        {tab === "documentos" && (
+          <DocumentsPanel
+            scope={{ clientId: client.id }}
+            initial={documents}
+            title="Documentos do cliente"
+            description="Todos os documentos do cliente, de qualquer caso ou processo, e os do cadastro."
+          />
+        )}
         {tab === "casos" && <CasesTab client={client} cases={cases} />}
         {tab === "processos" && <ProcessesTab clientId={client.id} processes={processes} />}
         {tab === "atividade" && <PendingIntegration description="A linha do tempo de auditoria do cliente será conectada em uma próxima fase." />}

@@ -2,7 +2,6 @@ import type { DataState } from "@/mocks";
 import type {
   DeadlineType,
   DocumentCategory,
-  DocumentStatus,
   ExportFormat,
   IntegrationStatus,
   NotificationType,
@@ -378,11 +377,6 @@ export interface OfficeActions {
   updateUserPreferences: (userId: ID, prefs: UserPreferences) => void;
 }
 
-export interface ClientActions {
-  addDocument: (input: NewDocumentInput) => ID;
-  updateDocumentStatus: (id: ID, status: DocumentStatus, notes?: string) => void;
-}
-
 export interface ImportActions {
   importData: (plan: ImportPlan) => ImportResult;
 }
@@ -468,7 +462,6 @@ export interface ReferenceActions {
 
 export type AppActions = SessionActions &
   OfficeActions &
-  ClientActions &
   ImportActions &
   AnalysisActions &
   ReviewActions &
