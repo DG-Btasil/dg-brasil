@@ -42,7 +42,7 @@ qualquer dado real.
   convites (token de uso único com expiração), aceite dos termos, MFA TOTP
   obrigatório, sessão e autorização no servidor, gestão de equipe. Ver
   [docs/auth.md](docs/auth.md).
-- **4.2 (código pronto; validar no Supabase DEV)** — Backend de domínio no
+- **4.2 ✅ (validado no Supabase DEV: 107 testes de integração, 2026-10-13)** — Backend de domínio no
   Next.js: Server Actions → services → repositories, com o JWT do usuário (RLS
   como segunda barreira), Zod, erros normalizados, paginação, DTO por
   superfície, correlation ID na auditoria; Storage por signed URL autorizada

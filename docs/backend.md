@@ -165,7 +165,8 @@ caso: update condicionado ao status + índice parcial do snapshot.
   logs, paginação, DTOs (o do parceiro não tem campo interno).
 - Banco (`supabase/: npm run verificar`): RPCs da 025 (envio de caso do
   parceiro, gravação de cliente, busca, correlation ID).
-- Integração (`apps/frontend: npm run test:integration`): services contra o
+- Integração (`apps/frontend: npm run test:integration`) — **107/107 no
+  Supabase DEV (2026-10-13)**, 11 domínios: services contra o
   **Supabase DEV** real (dados fictícios, `supabase/.env.real`,
   `DG_ENV=development`). O setup cria parceiros A e B e um usuário por papel
   com termos aceitos e **MFA TOTP real** (aal2); cada teste usa o service com o
