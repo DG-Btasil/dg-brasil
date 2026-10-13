@@ -1,0 +1,130 @@
+import { isPartner, requireAnyPermission, requireInternal, requirePermission, requireRole, type ServiceContext } from "@/server/core/context";
+import { duplicateClient, notFound } from "@/server/core/errors";
+import { toPage, type Page } from "@/server/core/pagination";
+import type { ClientDetailDTO, ClientListItem, ClientLookupDTO, ClientRelationshipDTO } from "./dto";
+import {
+  basicsPayload,
+  createPayload,
+  internalClientFromRows,
+  listItemFromRow,
+  partnerClientFromRow,
+  relationshipFromRow,
+  updatePayload,
+} from "./mappers";
+import * as repo from "./repository";
+import type { CreateClientInput, ListClientsInput, UpdateClientBasicsInput, UpdateClientInput } from "./schemas";
+
+/**
+ * Regras de Cliente. Autorização contextual aqui; RLS e funções do banco
+ * (private.save_client, partner_*) como segunda barreira — e as invariantes
+ * de dado (CPF/CNPJ único, origem permitida, só ADMIN corrige documento)
+ * continuam NO BANCO, não reimplementadas aqui.
+ */
+
+export async function listClients(ctx: ServiceContext, input: ListClientsInput): Promise<Page<ClientListItem>> {
+  requirePermission(ctx, "clients.view");
+  const partner = isPartner(ctx);
+  const { rows, total } = await repo.listDirectory(
+    ctx.db,
+    {
+      q: input.q,
+      status: input.status,
+      kind: input.kind,
+      // Parceiro não filtra por responsável interno; a RLS já limita aos próprios clientes.
+      originOrganizationId: input.originOrganizationId,
+      responsibleUserId: partner ? undefined : input.responsibleUserId,
+    },
+    input,
+    { column: input.column, ascending: input.ascending },
+  );
+  return toPage(
+    rows.map((r) => listItemFromRow(r, ctx.session)),
+    total,
+    input,
+  );
+}
+
+/** Ficha do cliente. Registra o acesso a dado pessoal (LGPD) antes de devolver. */
+export async function getClient(ctx: ServiceContext, id: string): Promise<ClientDetailDTO> {
+  requirePermission(ctx, "clients.view");
+  const partner = isPartner(ctx);
+  const row = await repo.getDetail(ctx.db, id, partner ? "PARTNER" : "INTERNAL");
+  if (!row) throw notFound("Cliente não encontrado.");
+  await repo.recordDetailAccess(ctx.db, id);
+  if (partner) return { surface: "PARTNER", client: partnerClientFromRow(row, ctx.session.organizationId) };
+  const internal = await repo.getInternalDetails(ctx.db, id);
+  return { surface: "INTERNAL", client: internalClientFromRows(row, internal, ctx.session.organizationId) };
+}
+
+/**
+ * CPF/CNPJ já existe? Interno: devolve o id. Parceiro: NOT_FOUND,
+ * ALREADY_RELATED (com id, porque já é dele) ou EXISTS — sem id, nome ou
+ * escritório (private.partner_lookup_client, que também audita a consulta).
+ */
+export async function lookupClientDocument(ctx: ServiceContext, digits: string): Promise<ClientLookupDTO> {
+  if (isPartner(ctx)) {
+    requirePermission(ctx, "partnerPortal.clients.create");
+    const r = await repo.partnerLookup(ctx.db, digits);
+    if (r.status === "ALREADY_RELATED" && r.client_id) return { status: "ALREADY_RELATED", clientId: r.client_id };
+    return r.status === "EXISTS" ? { status: "EXISTS" } : { status: "NOT_FOUND" };
+  }
+  requirePermission(ctx, "clients.view");
+  const found = await repo.findIdByDocument(ctx.db, digits);
+  return found ? { status: "FOUND", clientId: found.id } : { status: "NOT_FOUND" };
+}
+
+/** Cadastro interno. Parceiro cadastra cliente pelo envio de caso (partner_submit_case). */
+export async function createClient(ctx: ServiceContext, input: CreateClientInput): Promise<{ id: string }> {
+  requireInternal(ctx);
+  requirePermission(ctx, "clients.edit");
+  const digits = input.kind === "INDIVIDUAL" ? input.cpf : input.cnpj;
+  // Mensagem amigável antes de tentar; a unique do banco cobre a corrida (double-click).
+  if (await repo.findIdByDocument(ctx.db, digits)) throw duplicateClient();
+  const payload = createPayload({ ...input, responsibleUserId: input.responsibleUserId ?? ctx.session.userId });
+  const id = await repo.save(ctx.db, null, payload);
+  ctx.log.info("client.created", { clientId: id });
+  return { id };
+}
+
+export async function updateClient(ctx: ServiceContext, input: UpdateClientInput): Promise<void> {
+  requireInternal(ctx);
+  requirePermission(ctx, "clients.edit");
+  // Corrigir CPF/CNPJ é decisão de ADMIN (o trigger do banco também recusa).
+  if (input.patch.document !== undefined) requireRole(ctx, "ADMIN");
+  await repo.save(ctx.db, input.id, updatePayload(input.patch));
+  ctx.log.info("client.updated", { clientId: input.id });
+}
+
+/** Portal do parceiro: contato e endereço de cliente que ele acessa. */
+export async function updateClientBasics(ctx: ServiceContext, input: UpdateClientBasicsInput): Promise<void> {
+  requireAnyPermission(ctx, "partnerPortal.clients.edit", "clients.edit");
+  await repo.save(ctx.db, input.id, basicsPayload(input));
+  ctx.log.info("client.basics_updated", { clientId: input.id });
+}
+
+export async function inactivateClient(ctx: ServiceContext, input: { id: string; reason?: string; note?: string }): Promise<void> {
+  requireInternal(ctx);
+  requirePermission(ctx, "clients.edit");
+  await repo.setStatus(ctx.db, input.id, "INACTIVE", input.reason, input.note);
+}
+
+export async function reactivateClient(ctx: ServiceContext, id: string): Promise<void> {
+  requireInternal(ctx);
+  requirePermission(ctx, "clients.edit");
+  await repo.setStatus(ctx.db, id, "ACTIVE");
+}
+
+/** Exclusão lógica (ADMIN). Processos não são apagados: voltam para a lista de pendências. */
+export async function removeClient(ctx: ServiceContext, id: string): Promise<{ affectedProcessIds: string[] }> {
+  requirePermission(ctx, "clients.delete");
+  const affectedProcessIds = await repo.listLinkedProcessIds(ctx.db, id);
+  await repo.softDelete(ctx.db, id);
+  ctx.log.info("client.deleted", { clientId: id, affectedProcesses: affectedProcessIds.length });
+  return { affectedProcessIds };
+}
+
+/** Escritórios ligados ao cliente. Parceiro só enxerga o próprio vínculo (RLS). */
+export async function listClientRelationships(ctx: ServiceContext, clientId: string): Promise<ClientRelationshipDTO[]> {
+  requirePermission(ctx, "clients.view");
+  return (await repo.listRelationships(ctx.db, clientId)).map(relationshipFromRow);
+}

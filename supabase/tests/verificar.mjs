@@ -1926,6 +1926,148 @@ await deveFalhar('ninguém marca a introdução de outro usuário', () => como(i
 await deve('preferências de notificação também exigem aal2', () => comoAal1(ids.ana, async (tx) =>
   igual((await linhas(tx, `select 1 from user_notification_preferences`)).length, 0, 'visível em aal1')))
 
+secao('Backend: correlation ID na auditoria [025]')
+await deve('pré-requisição copia x-dg-request-id (UUID) para dg.request_id; a auditoria grava', () => como(ids.barbara, async (tx) => {
+  const rid = randomUUID()
+  await tx.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-dg-request-id': rid })])
+  await tx.query(`select public.dg_pre_request()`)
+  igual((await um(tx, `select current_setting('dg.request_id', true) v`)).v, rid, 'variável')
+  const c = (await um(tx, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99900025001', $1) returning id`, [ids.owner])).id
+  igual((await um(tx, `select request_id from audit_events where entity_id = $1 and action = 'CLIENT_CREATED'`, [c])).request_id, rid, 'auditoria')
+}))
+await deve('cabeçalho que não é UUID (texto livre, PII) é ignorado', () => como(ids.barbara, async (tx) => {
+  await tx.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-dg-request-id': "João 123.456.789-00'; drop" })])
+  await tx.query(`select public.dg_pre_request()`)
+  igual((await um(tx, `select coalesce(current_setting('dg.request_id', true), '') v`)).v, '', 'variável')
+}))
+await deve('sem cabeçalho (ou JSON inválido) a pré-requisição não falha', () => como(ids.barbara, async (tx) => {
+  await tx.query(`select set_config('request.headers', 'nao-json', true)`)
+  await tx.query(`select public.dg_pre_request()`)
+}))
+
+secao('Backend: cliente do parceiro sem vazamento [025]')
+const lookup = (uid, doc) => como(uid, async (tx) => (await um(tx, `select public.partner_lookup_client($1) r`, [doc])).r)
+const enviarCaso = (uid, client, kase) => como(uid, async (tx) =>
+  (await um(tx, `select public.partner_submit_case($1, $2) r`, [JSON.stringify(client), JSON.stringify(kase)])).r)
+const casoBase = () => ({ legal_area_id: ids.banking, title: 'Caso do portal', origin_organization_id: ids.almeida })
+await deve('consulta: CPF inexistente → NOT_FOUND', async () => igual(await lookup(ids.almeidaAdm, '999.000.250-99'), { status: 'NOT_FOUND' }, 'consulta'))
+await deve('consulta: cliente já relacionado → ALREADY_RELATED com id', async () => {
+  const cpf = (await um(db, `select cpf from clients where id = $1`, [ids.joao])).cpf
+  igual(await lookup(ids.almeidaAdm, cpf), { status: 'ALREADY_RELATED', client_id: ids.joao }, 'consulta')
+})
+await deve('consulta: cliente só de outro escritório → EXISTS sem id nem nome; auditado internamente', async () => {
+  const r = await lookup(ids.almeidaAdm, '55566677788')
+  igual(r, { status: 'EXISTS' }, 'consulta')
+  const ev = await um(db, `select actor_user_id, metadata from audit_events where action = 'CLIENT_DUPLICATE_DETECTED' and entity_id = $1 order by created_at desc limit 1`, [ids.carla])
+  igual([ev?.actor_user_id, ev?.metadata?.organization_id], [ids.almeidaAdm, ids.almeida], 'auditoria')
+})
+await deveFalhar('consulta: equipe interna não usa a operação do portal', () => lookup(ids.barbara, '55566677788'), /exclusiva do Portal/)
+await deveFalhar('consulta: parceiro sem MFA (aal1) é recusado', () => comoAal1(ids.almeidaAdm, (tx) =>
+  tx.query(`select public.partner_lookup_client('55566677788')`)), /exclusiva do Portal/)
+await deve('envio com cliente NOVO: cria cliente + detalhes + contato + caso SUBMITTED; parceiro passa a ver o cliente', async () => {
+  const r = await enviarCaso(ids.almeidaAdm, { document: '999.002.500-01', kind: 'INDIVIDUAL', origin_organization_id: ids.almeida,
+    full_name: 'Cliente Portal Teste', email: 'Portal@DGBrasil.test', phone: '(11) 99999-0000',
+    address: { postal_code: '01001-000', city: 'São Paulo', state: 'sp' } }, casoBase())
+  igual(r.client_existed, false, 'novo')
+  const c = await um(db, `select c.cpf, d.full_name, lc.status, lc.partner_organization_id
+                          from clients c join individual_client_details d on d.client_id = c.id
+                          join legal_cases lc on lc.client_id = c.id where c.id = $1`, [r.client_id])
+  igual([c.cpf, c.full_name, c.status, c.partner_organization_id], ['99900250001', 'Cliente Portal Teste', 'SUBMITTED', ids.almeida], 'gravado')
+  igual((await um(db, `select value from client_contacts where client_id = $1 and type = 'EMAIL'`, [r.client_id])).value, 'portal@dgbrasil.test', 'e-mail')
+  await como(ids.almeidaUsr, async (tx) => igual((await linhas(tx, `select 1 from clients where id = $1`, [r.client_id])).length, 1, 'visível ao parceiro'))
+  await como(ids.ferreiraAdm, async (tx) => igual((await linhas(tx, `select 1 from clients where id = $1`, [r.client_id])).length, 0, 'invisível ao outro parceiro'))
+})
+await deve('envio com cliente EXISTENTE de outro escritório: não duplica nem altera o cadastro; vincula e cria o caso', async () => {
+  const antes = await um(db, `select full_name from individual_client_details where client_id = $1`, [ids.carla])
+  const r = await enviarCaso(ids.almeidaAdm, { document: '55566677788', kind: 'INDIVIDUAL', origin_organization_id: ids.almeida, full_name: 'Nome Diferente' }, casoBase())
+  igual([r.client_existed, r.client_id], [true, ids.carla], 'existente')
+  igual((await um(db, `select full_name from individual_client_details where client_id = $1`, [ids.carla])).full_name, antes.full_name, 'nome canônico preservado')
+  igual((await um(db, `select count(*)::int n from clients where cpf = '55566677788'`)).n, 1, 'sem duplicata')
+  const ev = await um(db, `select metadata from audit_events where action = 'CLIENT_PARTNER_LINKED' and entity_id = $1`, [ids.carla])
+  igual(ev?.metadata?.organization_id, ids.almeida, 'vínculo auditado')
+  // O parceiro A continua sem ver o relacionamento nem os casos do parceiro B.
+  await como(ids.almeidaAdm, async (tx) => {
+    igual((await linhas(tx, `select organization_id from client_organization_relationships where client_id = $1`, [ids.carla])).map((x) => x.organization_id), [ids.almeida], 'só o próprio vínculo')
+    igual((await linhas(tx, `select 1 from legal_cases where client_id = $1 and partner_organization_id = $2`, [ids.carla, ids.ferreira])).length, 0, 'casos do outro parceiro')
+  })
+})
+await deveFalhar('envio com origem de OUTRO parceiro é recusado', () =>
+  enviarCaso(ids.almeidaAdm, { document: '99900250002', kind: 'INDIVIDUAL', origin_organization_id: ids.almeida, full_name: 'X Teste' },
+    { ...casoBase(), origin_organization_id: ids.ferreira }), /próprio escritório ou ao escritório proprietário/)
+await deveFalhar('envio com tipo de cliente que não bate com o documento é recusado', () =>
+  enviarCaso(ids.almeidaAdm, { document: '99900250003', kind: 'COMPANY', origin_organization_id: ids.almeida, legal_name: 'X' }, casoBase()),
+  /não corresponde/)
+await deve('falha no caso desfaz o cliente novo (atômico)', async () => {
+  await enviarCaso(ids.almeidaAdm, { document: '99900250004', kind: 'INDIVIDUAL', origin_organization_id: ids.almeida, full_name: 'Atomico Teste' },
+    { ...casoBase(), title: '   ' }).then(() => { throw new Error('aceitou título vazio') }, () => {})
+  igual((await um(db, `select count(*)::int n from clients where cpf = '99900250004'`)).n, 0, 'cliente desfeito')
+})
+await deveFalhar('equipe interna não usa o envio do portal', () =>
+  enviarCaso(ids.barbara, { document: '99900250005', kind: 'INDIVIDUAL', origin_organization_id: ids.owner, full_name: 'X Teste' }, casoBase()),
+  /exclusiva do Portal/)
+
+secao('Backend: gravação e busca de clientes [025]')
+const salvar = (uid, id, p) => como(uid, async (tx) => (await um(tx, `select public.save_client($1, $2) id`, [id, JSON.stringify(p)])).id)
+await deve('ASSISTANT cria PF completa numa transação (detalhes, contatos, endereço, dados internos)', async () => {
+  ids.cli025 = await salvar(ids.ana, null, {
+    kind: 'INDIVIDUAL', document: '999.025.000-01', origin_organization_id: ids.owner, responsible_user_id: ids.lucas,
+    full_name: 'Maria Teste 025', birth_date: '1950-05-01', gender: 'FEMALE', marital_status: 'WIDOWED',
+    identity_document: { type: 'RG', number: '1234567', issuer: 'SSP', state: 'sp' },
+    contact: { email: 'Maria@DGBrasil.test', phone: '(11) 98888-7777', secondary_phone: '1133334444', website: '' },
+    address: { postal_code: '01001-000', street: 'Rua A', number: '10', neighborhood: 'Centro', city: 'São Paulo', state: 'SP' },
+    notes: 'nota interna', legal_summary: 'resumo',
+  })
+  const r = await um(db, `select c.cpf, d.full_name, d.identity_document_state, i.notes,
+      (select count(*)::int from client_contacts where client_id = c.id) contatos,
+      (select postal_code from client_addresses where client_id = c.id and is_primary) cep
+    from clients c join individual_client_details d on d.client_id = c.id
+    left join client_internal_details i on i.client_id = c.id where c.id = $1`, [ids.cli025])
+  igual([r.cpf, r.full_name, r.identity_document_state, r.notes, r.contatos, r.cep],
+    ['99902500001', 'Maria Teste 025', 'SP', 'nota interna', 3, '01001000'], 'gravado')
+})
+await deve('PATCH: chave ausente não mexe; null limpa; contato vazio apaga', async () => {
+  await salvar(ids.lucas, ids.cli025, { profession: 'Aposentada', contact: { secondary_phone: null } })
+  const r = await um(db, `select d.full_name, d.profession,
+      (select count(*)::int from client_contacts where client_id = d.client_id and type = 'PHONE') fones
+    from individual_client_details d where d.client_id = $1`, [ids.cli025])
+  igual([r.full_name, r.profession, r.fones], ['Maria Teste 025', 'Aposentada', 1], 'patch')
+})
+await deveFalhar('CPF duplicado não cria outro cliente (unique)', () =>
+  salvar(ids.ana, null, { kind: 'INDIVIDUAL', document: '99902500001', origin_organization_id: ids.owner, full_name: 'Outra' }), /clients_cpf_key/)
+await deveFalhar('falha nos detalhes desfaz o cliente (atômico)', () =>
+  salvar(ids.ana, null, { kind: 'INDIVIDUAL', document: '99902500002', origin_organization_id: ids.owner, full_name: '   ' }))
+await deve('…e nenhum cliente sobrou do CPF que falhou', async () =>
+  igual((await um(db, `select count(*)::int n from clients where cpf = '99902500002'`)).n, 0, 'sobra'))
+await deveFalhar('ASSISTANT não corrige CPF (só ADMIN)', () => salvar(ids.ana, ids.cli025, { document: '99902500009' }), /Somente ADMIN/)
+await deve('parceiro altera contato e endereço de cliente que acessa', async () => {
+  await salvar(ids.almeidaAdm, ids.joao, { contact: { phone: '11 97777-6666' }, address: { city: 'Campinas', state: 'SP' } })
+  igual((await um(db, `select city from client_addresses where client_id = $1 and is_primary`, [ids.joao])).city, 'Campinas', 'endereço')
+})
+await deveFalhar('parceiro não altera nome nem dado interno', () => salvar(ids.almeidaAdm, ids.joao, { full_name: 'X Y' }), /só altera contato e endereço/)
+await deveFalhar('parceiro não altera cliente sem relacionamento (IDOR)', () =>
+  salvar(ids.almeidaAdm, ids.cli025, { contact: { phone: '1199999999' } }), /não encontrado/)
+await deveFalhar('parceiro não cria cliente por aqui', () =>
+  salvar(ids.almeidaAdm, null, { contact: {} }), /envio de caso/)
+await deve('inativar e reativar (interno) com motivo nos dados internos', async () => {
+  await como(ids.ana, (tx) => tx.query(`select public.set_client_status($1, 'INACTIVE', 'CLIENT_GAVE_UP', 'desistiu')`, [ids.cli025]))
+  const r = await um(db, `select c.status, i.inactivation_reason, i.inactivated_by from clients c join client_internal_details i on i.client_id = c.id where c.id = $1`, [ids.cli025])
+  igual([r.status, r.inactivation_reason, r.inactivated_by], ['INACTIVE', 'CLIENT_GAVE_UP', ids.ana], 'inativo')
+  await como(ids.ana, (tx) => tx.query(`select public.set_client_status($1, 'ACTIVE')`, [ids.cli025]))
+  igual((await um(db, `select status from clients where id = $1`, [ids.cli025])).status, 'ACTIVE', 'reativado')
+})
+await deveFalhar('parceiro não inativa cliente', () => como(ids.almeidaAdm, (tx) =>
+  tx.query(`select public.set_client_status($1, 'INACTIVE')`, [ids.joao])), /equipe interna/)
+await deve('client_directory: busca por nome e documento; parceiro só vê os seus', async () => {
+  await como(ids.lucas, async (tx) => {
+    igual((await linhas(tx, `select id from client_directory where display_name ilike '%teste 025%'`)).map((x) => x.id), [ids.cli025], 'nome')
+    igual((await linhas(tx, `select id from client_directory where cpf like '999025%'`)).map((x) => x.id), [ids.cli025], 'documento')
+  })
+  await como(ids.almeidaAdm, async (tx) => {
+    igual((await linhas(tx, `select 1 from client_directory where id = $1`, [ids.cli025])).length, 0, 'parceiro sem relacionamento')
+    igual((await linhas(tx, `select 1 from client_directory where id = $1`, [ids.joao])).length, 1, 'parceiro com relacionamento')
+  })
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

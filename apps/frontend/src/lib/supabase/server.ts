@@ -12,13 +12,21 @@ import { supabasePublicConfig } from "./config";
  * com o JWT de quem está logado — é a forma normal de falar com o banco.
  *
  * Um client por requisição (o cookie store é da requisição).
+ *
+ * `requestId` (UUID) vai no cabeçalho `x-dg-request-id`: a migration 025 leva
+ * esse correlation ID para `audit_events.request_id` dos eventos da operação.
+ * Dados jurídicos nunca passam por cache do Next: todo fetch é `no-store`.
  */
-export async function createSupabaseServerClient(): Promise<SupabaseClient> {
+export async function createSupabaseServerClient(options: { requestId?: string } = {}): Promise<SupabaseClient> {
   // cookies() primeiro: marca a rota como dinâmica (nunca pré-renderizada no build).
   const cookieStore = await cookies();
   const https = (await headers()).get("x-forwarded-proto") === "https" || process.env.NODE_ENV === "production";
   const { url, anonKey } = supabasePublicConfig();
   return createServerClient(url, anonKey, {
+    global: {
+      headers: options.requestId ? { "x-dg-request-id": options.requestId } : {},
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {
