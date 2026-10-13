@@ -141,6 +141,17 @@ await deve('public.rls_auto_enable() (função da plataforma) fechada para anon/
   for (const x of f) if (x.a || x.u) throw new Error('ainda executável pela API')
   console.log(`    ${f.length ? 'função presente, sem EXECUTE para a API' : 'função ausente neste projeto'}`)
 })
+await deve('replace_company_people [028]: definer com search_path fixo, sem EXECUTE para anon; API sem DELETE nas tabelas', async () => {
+  const f = await sql(`select n.nspname s, p.prosecdef d, p.proconfig c, has_function_privilege('anon', p.oid, 'execute') a,
+                              has_function_privilege('authenticated', p.oid, 'execute') u
+                       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                       where p.proname = 'replace_company_people' order by n.nspname`)
+  igual(f.map((x) => [x.s, x.d, x.a, x.u]), [['private', true, false, true], ['public', false, false, true]], 'funções')
+  if (!String(f[0].c).includes('search_path=')) throw new Error('private.replace_company_people sem search_path fixo')
+  const del = await sql(`select has_table_privilege('authenticated', 'public.company_representatives', 'delete') r,
+                                has_table_privilege('authenticated', 'public.company_shareholders', 'delete') s`)
+  igual([del[0].r, del[0].s], [false, false], 'DELETE direto')
+})
 await deve('nenhuma coluna de fornecedor (ADVBOX etc.)', async () => {
   igual((await um(`select count(*)::int n from information_schema.columns where table_schema = 'public' and column_name ilike '%advbox%'`)).n, 0, 'colunas')
 })

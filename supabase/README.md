@@ -17,7 +17,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As 19 migrations, na ordem da seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 406 verificações (inclusive Auth/MFA da 022, convite da 023, preferências da 024, backend de domínio da 025/026 e idempotência da 027), com a RLS testada por papel |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 425 verificações (inclusive Auth/MFA da 022, convite da 023, preferências da 024, backend de domínio da 025/026, idempotência da 027 e bloco societário de PJ da 028), com a RLS testada por papel |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 
@@ -363,6 +363,7 @@ foi resetado em seguida.
 | `20261014000025_backend_domain_support` | Etapa 4.2: pré-requisição do PostgREST leva `x-dg-request-id` (UUID) à auditoria; `partner_lookup_client`/`partner_submit_case` (cliente canônico do parceiro sem vazamento, atômico); `client_directory` (busca paginada, `security_invoker`); `save_client`/`set_client_status` (gravação transacional). Testes `[025]` |
 | `20261015000026_backend_atomic_operations` | Etapa 4.2: Storage autorizado pelo banco (`authorize_document_upload/download`, LGPD + `DOCUMENT_DOWNLOADED` com ator USER — o servidor só assina o caminho devolvido); chaves de idempotência (lançamentos, obrigações, acordos, repasses, execuções — `request_agent_run_once`); repasse e cadastro de parceiro atômicos; resposta atômica e máquina de estados das solicitações ao parceiro; `deadline_status` com responsável e escopo excluído. Testes `[026]` |
 | `20261016000027_idempotency_and_partner_settings` | Etapa 4.2.1: idempotência genérica (`private.idempotency_operations`, fora da Data API; usuário + operação + chave; hash salgado pela chave; mesma chave + outro pedido = conflito); criação atômica e idempotente de caso (`create_legal_case_once`, `partner_submit_case_once`) e de processo com dados internos e prazo inicial (`create_legal_process_once`); `get_my_partner_settings` (administrador do parceiro lê só a própria divisão). Testes `[027]` |
+| `20261017000028_company_people_replace` | Etapa 4.3 (Fase A): edição de representantes e sócios de Cliente PJ por `replace_company_people` — estado final das duas listas, atômico (item com `id` existente do cliente = atualiza; sem `id` = insere; ausente = remove; `id` alheio/repetido = recusa tudo). Equipe interna, aal2, só PJ; parceiro recusado; sem DELETE direto pela API. Auditoria: triggers de linha + resumo `COMPANY_PEOPLE_REPLACED` só com contagens. Testes `[028]` |
 
 ### Supabase Advisors (2026-10-09)
 

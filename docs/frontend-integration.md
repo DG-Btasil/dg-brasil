@@ -10,7 +10,7 @@ retorno das operações.
 | Fase | Domínio | Estado | Observação |
 |---|---|---|---|
 | A | Diretório (usuário/escritório) | ✅ real | `server/directory.ts`: integrantes ativos, escritório proprietário, parceiros visíveis |
-| A | Clientes (equipe interna) | ✅ real | lista, busca, filtros, detalhe, cadastro, edição, inativar/reativar/excluir |
+| A | Clientes (equipe interna) | ✅ real | lista, busca, filtros, detalhe, cadastro, edição, representantes/sócios de PJ (028), inativar/reativar/excluir |
 | A | Clientes no Portal do Parceiro | ⏳ Fase D | o portal ainda lê o mock |
 | B | Casos, Processos, Prazos, Movimentações | ⏳ | |
 | C | Documentos, Pendências documentais | ⏳ | |
@@ -77,11 +77,26 @@ migrado não tem mais escrita no mock.
   ADMIN corrige — a tela avisa no campo, o servidor recusa de todo modo).
   Data de nascimento, gênero, estado civil e documento de identidade não são
   apagáveis pela edição (o schema do servidor não aceita nulo nesses campos).
-- **Lacuna real encontrada:** representantes e sócios de PJ só são gravados no
-  cadastro (`save_client`, comentário "edição tem tela própria depois"; sem
-  política de DELETE). A edição mostra a lista só para leitura. Resolver
-  exige migration nova (028) com função atômica de substituição — decisão
-  pendente.
+- **Representantes e sócios de PJ (migration 028).** Lacuna real da 025
+  (`save_client` só os gravava no cadastro; sem DELETE). Agora:
+  `replace_company_people(cliente, representantes, sócios)` — UMA operação
+  para o bloco inteiro, com o **estado final** das duas listas:
+  - item com `id` (sempre o id do banco) = linha existente, atualizada no
+    lugar; sem `id` = nova; linha que não veio = removida; `id` de outro
+    cliente ou repetido = recusa tudo;
+  - tudo numa transação: qualquer item inválido desfaz a chamada inteira;
+  - autorização no banco: equipe interna (ADMIN/LAWYER/ASSISTANT, a mesma
+    regra de `clients.edit`), aal2, cliente PJ existente; parceiro recusado;
+  - auditoria: triggers de linha (inclusões/alterações, só nomes de campos)
+    + resumo `COMPANY_PEOPLE_REPLACED` com contagens (sem nome/CPF), com ator,
+    escritório, `request_id` e data;
+  - sem histórico temporal: estado atual + trilha de auditoria.
+  Na tela de edição de PJ, representantes e sócios têm **formulário e botão
+  próprios** ("Salvar representantes e sócios"): cada gravação é uma única
+  transação confirmada — o restante do cadastro continua no botão principal.
+  Por que uma operação para os dois blocos: são editados e salvos juntos na
+  mesma seção, e a regra do representante principal precisa da lista inteira;
+  duas RPCs separadas permitiriam salvar metade.
 - Mock: removidas as escritas de cliente do store, do contrato e do
   repositório mock. Os clientes do seed continuam porque Casos, Processos,
   Financeiro e o Portal (ainda mock) os referenciam; saem quando esses
@@ -91,10 +106,14 @@ migrado não tem mais escrita no mock.
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
   fora da URL, formulário → schema real do servidor, PATCH, erros de campo,
-  falha de rede).
+  falha de rede, bloco societário: só id do banco vai ao servidor, payload do
+  banco, dois principais recusados).
+- Banco (PGlite): `supabase/tests/verificar.mjs`, seção `[028]`.
 - Integração (Supabase DEV): `tests/integration/frontend-clients.int.test.ts`
   (formulário → service real, PATCH que apaga, LAWYER sem correção de CPF,
-  URL da lista → listagem, diretório por papel).
+  URL da lista → listagem, diretório por papel) e
+  `tests/integration/company-people.int.test.ts` (028 por papel, PF recusada,
+  parcial inválido não altera nada, 3 → 2 sócios, IDOR, auditoria sem PII).
 
 ## QA manual — Fase A (Supabase DEV, dados fictícios)
 
@@ -119,6 +138,10 @@ Marque cada item com os cinco papéis indicados.
       ADMIN: corrige.
 - [ ] Inativar/reativar: a ficha muda depois da resposta; lista "Inativos"
       mostra o cliente.
+- [ ] PJ — "Salvar representantes e sócios": adicionar, editar, remover e
+      trocar o principal; após salvar, recarregar a página mostra o mesmo
+      quadro. Erro (ex.: CPF inválido) mantém o que foi digitado e não muda
+      nada no banco. "Descartar alterações" volta ao último estado salvo.
 - [ ] ADMIN exclui: volta para a lista; o cliente sumiu. LAWYER/ASSISTANT não
       veem "Ações perigosas".
 - [ ] ASSISTANT: "Origem" só oferece o escritório proprietário.

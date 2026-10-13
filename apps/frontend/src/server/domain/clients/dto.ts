@@ -48,6 +48,12 @@ export type ClientDetailDTO = { surface: "INTERNAL"; client: ClientInternalDTO }
 /** Consulta de CPF/CNPJ. Para o parceiro, EXISTS não traz id, nome nem escritório. */
 export type ClientLookupDTO = { status: "NOT_FOUND" } | { status: "FOUND"; clientId: ID } | { status: "ALREADY_RELATED"; clientId: ID } | { status: "EXISTS" };
 
+/** Resultado da edição do bloco societário (só contagens). */
+export interface CompanyPeopleResultDTO {
+  representatives: { added: number; updated: number; removed: number };
+  partners: { added: number; updated: number; removed: number };
+}
+
 export interface ClientRelationshipDTO {
   organizationId: ID;
   status: "ACTIVE" | "ENDED";

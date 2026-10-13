@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { GENDERS } from "@/lib/constants/legal";
 import { isCnpjFormat, isCpfFormat, msg, zCepOptional, zCnpj, zCpf, zPhone, zPhoneOptional, zRequired } from "@/lib/validation";
-import { createId } from "@/lib/ids";
 import type { Address, CompanyClient, IndividualClient } from "@/types";
 
 /*
@@ -163,12 +162,25 @@ export function individualToValues(c: IndividualClient): IndividualFormValues {
   };
 }
 
+/**
+ * Item novo: `id` vazio. Só linha que já existe no banco tem id (o do banco);
+ * a chave visual da lista é do useFieldArray (keyName "key"), não um id de domínio.
+ */
 export function newRepresentative(isPrimary: boolean): CompanyFormValues["representatives"][number] {
-  return { id: createId("rep"), name: "", cpf: "", role: "", email: "", phone: "", isPrimary };
+  return { id: "", name: "", cpf: "", role: "", email: "", phone: "", isPrimary };
 }
 
 export function newPartner(): CompanyFormValues["partners"][number] {
-  return { id: createId("qsa"), name: "", document: "", qualification: "", sharePercent: "" };
+  return { id: "", name: "", document: "", qualification: "", sharePercent: "" };
+}
+
+/** Só o bloco societário (edição própria, operação atômica da 028). */
+export const companyPeopleSchema = companySchema.pick({ representatives: true, partners: true });
+export type CompanyPeopleFormValues = z.infer<typeof companyPeopleSchema>;
+
+export function companyPeopleToValues(c: CompanyClient): CompanyPeopleFormValues {
+  const v = companyToValues(c);
+  return { representatives: v.representatives, partners: v.partners };
 }
 
 export function emptyCompanyValues(responsibleUserId = "", originOfficeId = ""): CompanyFormValues {

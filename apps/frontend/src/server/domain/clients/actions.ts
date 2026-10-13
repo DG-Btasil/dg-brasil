@@ -10,6 +10,7 @@ import {
   inactivateClientSchema,
   listClientsSchema,
   lookupClientSchema,
+  replaceCompanyPeopleSchema,
   updateClientBasicsSchema,
   updateClientSchema,
 } from "./schemas";
@@ -47,6 +48,11 @@ export async function createClientAction(input: unknown) {
 
 export async function updateClientAction(input: unknown) {
   return runAction({ name: "clients.update", permission: "clients.edit", schema: updateClientSchema, input, handler: service.updateClient });
+}
+
+/** Bloco societário de PJ: estado final das listas, numa operação atômica (028). */
+export async function replaceCompanyPeopleAction(input: unknown) {
+  return runAction({ name: "clients.replace_company_people", permission: "clients.edit", schema: replaceCompanyPeopleSchema, input, handler: service.replaceCompanyPeople });
 }
 
 export async function updateClientBasicsAction(input: unknown) {

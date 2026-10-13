@@ -1,6 +1,6 @@
 import { onlyDigits } from "@/lib/formatting";
 import type { Client } from "@/types";
-import type { AddressFormValues, CompanyFormValues, IndividualFormValues } from "./schemas";
+import type { AddressFormValues, CompanyFormValues, CompanyPeopleFormValues, IndividualFormValues } from "./schemas";
 
 /**
  * Formulário (strings) → entrada das Server Actions de cliente.
@@ -115,6 +115,32 @@ export function companyCreateInput(v: CompanyFormValues): Json {
     partners: v.partners
       .filter((p) => p.name.trim())
       .map((p) => ({ name: p.name, document: p.document, qualification: p.qualification, sharePercent: sharePercent(p.sharePercent) })),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Bloco societário de PJ (estado final, operação atômica da 028)       */
+/* ------------------------------------------------------------------ */
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Só id que veio do banco vai ao servidor; item novo vai sem id. */
+const dbId = (id: string) => (UUID.test(id) ? id : undefined);
+
+export function companyPeopleInput(clientId: string, v: CompanyPeopleFormValues): Json {
+  return {
+    clientId,
+    representatives: v.representatives.map((r) => ({
+      id: dbId(r.id),
+      name: r.name,
+      cpf: filled(r.cpf),
+      role: r.role,
+      email: r.email,
+      phone: r.phone,
+      isPrimary: r.isPrimary,
+    })),
+    partners: v.partners
+      .filter((p) => p.name.trim())
+      .map((p) => ({ id: dbId(p.id), name: p.name, document: p.document, qualification: p.qualification, sharePercent: sharePercent(p.sharePercent) })),
   };
 }
 

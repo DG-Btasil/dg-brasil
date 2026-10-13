@@ -14,6 +14,7 @@ import { CLIENT_FIELD_MAP, COMPANY_FIELD_MAP, companyPatch, documentChanged, ind
 import { clientShortName } from "../../utils";
 import { useClientFormResult } from "./client-create";
 import { CompanyForm, IndividualForm } from "./client-forms";
+import { CompanyPeopleForm } from "./company-people-form";
 import { ClientLifecycleActions } from "./client-lifecycle-actions";
 
 const DOCUMENT_ADMIN_ONLY = "Só o administrador pode corrigir o CPF/CNPJ.";
@@ -66,13 +67,19 @@ export function ClientEdit({ client }: { client: Client }) {
           onSubmit={(values, { setError }) => save(individualPatch(values, client), setError, "cpf", values.cpf, CLIENT_FIELD_MAP)}
         />
       ) : (
-        <CompanyForm
-          mode="edit"
-          defaultValues={companyToValues(client)}
-          submitLabel="Salvar alterações"
-          onCancel={back}
-          onSubmit={(values, { setError }) => save(companyPatch(values, client), setError, "cnpj", values.cnpj, COMPANY_FIELD_MAP)}
-        />
+        <>
+          <CompanyForm
+            mode="edit"
+            defaultValues={companyToValues(client)}
+            submitLabel="Salvar alterações"
+            onCancel={back}
+            onSubmit={(values, { setError }) => save(companyPatch(values, client), setError, "cnpj", values.cnpj, COMPANY_FIELD_MAP)}
+          />
+          {/* Remonta com os ids reais depois de salvar (o banco avança updated_at). */}
+          <Can permission="clients.edit">
+            <CompanyPeopleForm key={client.updatedAt} client={client} />
+          </Can>
+        </>
       )}
       <Can permission="clients.edit">
         <ClientLifecycleActions client={client} />

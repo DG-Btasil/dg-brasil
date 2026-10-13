@@ -121,7 +121,7 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 
 | Domínio | Operações | Mecanismo no banco |
 |---|---|---|
-| Clientes | listar/buscar (paginado), ficha (LGPD), consultar CPF/CNPJ, criar, editar, contato/endereço do parceiro, inativar/reativar, excluir (ADMIN), relacionamentos | `client_directory`, `save_client`, `set_client_status`, `partner_lookup_client` (025) |
+| Clientes | listar/buscar (paginado), ficha (LGPD), consultar CPF/CNPJ, criar, editar, contato/endereço do parceiro, inativar/reativar, excluir (ADMIN), relacionamentos | `client_directory`, `save_client`, `set_client_status`, `partner_lookup_client` (025); representantes/sócios de PJ: `replace_company_people` (028, estado final atômico) |
 | Casos | listar, ficha, criar (interno), envio pelo portal, editar rascunho, enviar, pedir documentos, aceitar, rejeitar, iniciar, encerrar, arquivar, advogado, troca de origem, exceção de status | `partner_submit_case`, `change_case_origin`, `override_case_status`; máquina de estados e snapshot por trigger |
 | Processos e prazos | processos (CRUD, partes), movimentações (só MANUAL pela tela), prazos (criar, cumprir, cancelar, perdido; próximos e vencidos derivados) | `deadline_status` (026: responsável e escopo excluído) |
 | Documentos | listar, ficha, criar/vincular, preparar e confirmar upload (idempotente), download, visibilidade, arquivar, excluir, verificação; pendências (criar, solicitar, atender com versão, aprovar/rejeitar) | `authorize_document_upload/download` (026) + Storage assinado |
@@ -253,9 +253,10 @@ forte/distribuído antes de expansão do produto.
 
 - Unitários (`npm test`): mapeamentos, schemas, tradução de erros, redação de
   logs, paginação, DTOs (o do parceiro não tem campo interno).
-- Banco (`supabase/: npm run verificar`): 406 verificações, inclusive as RPCs
-  da 025–027 (envio de caso do parceiro, gravação de cliente, busca,
-  correlation ID, Storage autorizado, idempotência, divisão do parceiro).
+- Banco (`supabase/: npm run verificar`): 425 verificações, inclusive as RPCs
+  da 025–028 (envio de caso do parceiro, gravação de cliente, busca,
+  correlation ID, Storage autorizado, idempotência, divisão do parceiro,
+  bloco societário de PJ).
 - Integração (`apps/frontend: npm run test:integration`) — **107/107 no
   Supabase DEV (2026-10-13)**, 11 domínios: services contra o
   **Supabase DEV** real (dados fictícios, `supabase/.env.real`,

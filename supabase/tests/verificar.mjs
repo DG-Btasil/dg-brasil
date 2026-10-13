@@ -2345,6 +2345,136 @@ await deve('representação jsonb: ordem de chaves e espaços não importam; ord
   igual(await igualJ(JSON.stringify({ n: 'José' }), JSON.stringify({ n: 'José' })), false, 'NFC ≠ NFD')
 })
 
+secao('Bloco societário de Cliente PJ: substituição atômica [028]')
+const trocar = (uid, cliente, reps, socios) => como(uid, async (tx) =>
+  (await um(tx, `select public.replace_company_people($1, $2, $3) r`, [cliente, JSON.stringify(reps), JSON.stringify(socios)])).r)
+const quadro = async (cliente) => ({
+  reps: await linhas(db, `select id, full_name, cpf, role_title, primary_representative p from company_representatives where client_id = $1 order by full_name`, [cliente]),
+  socios: await linhas(db, `select id, name, document_number, share_percentage::text pct from company_shareholders where client_id = $1 order by name`, [cliente]),
+})
+const comoItem = (r) => ({ id: r.id, name: r.full_name, cpf: r.cpf, role: r.role_title, is_primary: r.p })
+const socioItem = (s) => ({ id: s.id, name: s.name, document: s.document_number, share_percentage: s.pct })
+await deve('cenário: PJ com 2 representantes e 3 sócios (cadastro)', async () => {
+  ids.pj028 = await salvar(ids.ana, null, {
+    kind: 'COMPANY', document: '99.028.000/0001-00', origin_organization_id: ids.owner, legal_name: 'Empresa 028 Ltda',
+    representatives: [
+      { name: 'Rep Um', cpf: '999.028.001-01', role: 'Diretor', is_primary: true },
+      { name: 'Rep Dois', cpf: '999.028.002-02', role: 'Procurador', is_primary: false },
+    ],
+    shareholders: [
+      { name: 'Sócio A', document: '99902800011', share_percentage: 40 },
+      { name: 'Sócio B', document: '99902800012', share_percentage: 30 },
+      { name: 'Sócio C', document: '99902800013', share_percentage: 30 },
+    ],
+  })
+  const q = await quadro(ids.pj028)
+  igual([q.reps.length, q.socios.length], [2, 3], 'quadro inicial')
+})
+await deve('ADMIN edita representantes: renomeia, troca o principal e adiciona um novo', async () => {
+  const antes = await quadro(ids.pj028)
+  const um1 = antes.reps.find((x) => x.full_name === 'Rep Um')
+  const dois = antes.reps.find((x) => x.full_name === 'Rep Dois')
+  const r = await trocar(ids.barbara, ids.pj028, [
+    { ...comoItem(um1), is_primary: false },
+    { ...comoItem(dois), name: 'Rep Dois Renomeado', is_primary: true },
+    { name: 'Rep Três', cpf: '999.028.003-03', role: 'Gerente', is_primary: false },
+  ], antes.socios.map(socioItem))
+  igual(r.representatives, { added: 1, removed: 0, updated: 2 }, 'contagem')
+  const q = await quadro(ids.pj028)
+  igual(q.reps.map((x) => [x.full_name, x.p]), [['Rep Dois Renomeado', true], ['Rep Três', false], ['Rep Um', false]], 'representantes')
+  igual(q.reps.find((x) => x.full_name === 'Rep Um').id, um1.id, 'linha existente mantém o id')
+})
+await deve('ADMIN edita sócios: 3 → 2 (um removido, um alterado) atomicamente', async () => {
+  const antes = await quadro(ids.pj028)
+  const [a, b] = antes.socios
+  const r = await trocar(ids.barbara, ids.pj028, antes.reps.map(comoItem), [{ ...socioItem(a), share_percentage: 60 }, socioItem(b)])
+  igual(r.shareholders, { added: 0, removed: 1, updated: 1 }, 'contagem')
+  igual((await quadro(ids.pj028)).socios.map((s) => [s.name, Number(s.pct)]), [['Sócio A', 60], ['Sócio B', 30]], 'sócios')
+})
+await deve('LAWYER e ASSISTANT seguem a matriz (clients.edit): podem alterar', async () => {
+  let q = await quadro(ids.pj028)
+  await trocar(ids.lucas, ids.pj028, q.reps.map(comoItem), [...q.socios.map(socioItem), { name: 'Sócio D', document: '', share_percentage: '' }])
+  q = await quadro(ids.pj028)
+  igual(q.socios.length, 3, 'LAWYER adicionou')
+  await trocar(ids.ana, ids.pj028, q.reps.map(comoItem), q.socios.filter((s) => s.name !== 'Sócio D').map(socioItem))
+  igual((await quadro(ids.pj028)).socios.length, 2, 'ASSISTANT removeu')
+})
+await deve('mesma lista de novo: nada muda e nada é auditado', async () => {
+  const q = await quadro(ids.pj028)
+  const n = (await um(db, `select count(*)::int n from audit_events where entity_id = $1 and action = 'COMPANY_PEOPLE_REPLACED'`, [ids.pj028])).n
+  const r = await trocar(ids.barbara, ids.pj028, q.reps.map(comoItem), q.socios.map(socioItem))
+  igual(r, { shareholders: { added: 0, removed: 0, updated: 0 }, representatives: { added: 0, removed: 0, updated: 0 } }, 'contagem')
+  igual((await um(db, `select count(*)::int n from audit_events where entity_id = $1 and action = 'COMPANY_PEOPLE_REPLACED'`, [ids.pj028])).n, n, 'sem evento')
+})
+await deve('payload parcialmente inválido (CPF ruim no 3º item): nada é removido nem gravado', async () => {
+  const antes = await quadro(ids.pj028)
+  let falhou = false
+  try {
+    await trocar(ids.barbara, ids.pj028, [comoItem(antes.reps[0]), { name: 'Novo Válido', is_primary: false }, { name: 'CPF Ruim', cpf: '123', is_primary: false }].map((x, i) => ({ ...x, is_primary: i === 0 })), [])
+  } catch { falhou = true }
+  igual(falhou, true, 'recusado')
+  igual(await quadro(ids.pj028), antes, 'quadro intacto')
+})
+await deve('sócio com documento inválido no fim da lista: nenhuma atualização parcial', async () => {
+  const antes = await quadro(ids.pj028)
+  let falhou = false
+  try {
+    await trocar(ids.barbara, ids.pj028, antes.reps.map(comoItem), [{ ...socioItem(antes.socios[0]), name: 'Mudou' }, { name: 'Doc Ruim', document: '123' }])
+  } catch { falhou = true }
+  igual(falhou, true, 'recusado')
+  igual(await quadro(ids.pj028), antes, 'quadro intacto')
+})
+await deveFalhar('dois representantes principais são recusados', async () => {
+  const q = await quadro(ids.pj028)
+  await trocar(ids.barbara, ids.pj028, q.reps.map((r) => ({ ...comoItem(r), is_primary: true })), q.socios.map(socioItem))
+}, /exatamente um representante/)
+await deveFalhar('cliente PF recusa a operação', () => trocar(ids.barbara, ids.joao, [], []), /só para pessoa jurídica/)
+await deveFalhar('parceiro não altera o bloco societário (dado interno)', () => trocar(ids.almeidaAdm, ids.pj028, [], []), /Somente a equipe interna/)
+await deveFalhar('parceiro não altera nem PJ com que tem relacionamento', () => trocar(ids.almeidaAdm, ids.empresa, [], []), /Somente a equipe interna/)
+await deveFalhar('sessão sem MFA (aal1) é recusada', () => comoAal1(ids.barbara, (tx) =>
+  tx.query(`select public.replace_company_people($1, '[]', '[]')`, [ids.pj028])), /Somente a equipe interna/)
+await deveFalhar('cliente inexistente → não encontrado', () => trocar(ids.barbara, randomUUID(), [], []), /não encontrado/)
+await deve('IDOR: id de representante de OUTRO cliente é recusado e nada muda nos dois', async () => {
+  const alheio = await um(db, `insert into company_representatives (client_id, full_name, primary_representative) values ($1, 'Rep Alheio', true) returning id`, [ids.empresa])
+  const antes = [await quadro(ids.pj028), await quadro(ids.empresa)]
+  let erroMsg = ''
+  try {
+    const q = antes[0]
+    await trocar(ids.barbara, ids.pj028, [...q.reps.map((r) => ({ ...comoItem(r), is_primary: false })), { id: alheio.id, name: 'Sequestro', is_primary: true }], q.socios.map(socioItem))
+  } catch (e) { erroMsg = e.message }
+  if (!/não pertence a este cliente/.test(erroMsg)) throw new Error(`esperava recusa, veio "${erroMsg}"`)
+  igual([await quadro(ids.pj028), await quadro(ids.empresa)], antes, 'intactos')
+})
+await deve('auditoria: resumo com contagens, ator e request_id; sem nome nem CPF no metadata', async () => {
+  const q = await quadro(ids.pj028)
+  return como(ids.barbara, async (tx) => {
+  const rid = randomUUID()
+  await tx.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-dg-request-id': rid })])
+  await tx.query(`select public.dg_pre_request()`)
+  await tx.query(`select public.replace_company_people($1, $2, $3)`, [ids.pj028,
+    JSON.stringify([...q.reps.map(comoItem), { name: 'Rep Auditado', cpf: '999.028.009-09', is_primary: false }]), JSON.stringify(q.socios.map(socioItem))])
+  const ev = await um(tx, `select actor_user_id, actor_organization_id, request_id, metadata, created_at from audit_events
+    where entity_id = $1 and action = 'COMPANY_PEOPLE_REPLACED' order by created_at desc limit 1`, [ids.pj028])
+  igual([ev.actor_user_id, ev.actor_organization_id, ev.request_id], [ids.barbara, ids.owner, rid], 'ator e correlação')
+  igual([ev.metadata.representatives.added, ev.metadata.representatives.updated, ev.metadata.representatives.removed, ev.metadata.representatives.total],
+    [1, 0, 0, q.reps.length + 1], 'contagens')
+  const todos = JSON.stringify(await linhas(tx, `select metadata from audit_events where entity_id = $1 and request_id = $2`, [ids.pj028, rid]))
+  if (/Rep Auditado|99902800909|999\.028/.test(todos)) throw new Error('PII no metadata de auditoria')
+  })
+})
+await deve('remover um sócio e adicionar um representante numa chamada; list "atualizado" muda', async () => {
+  const antes = await um(db, `select updated_at from clients where id = $1`, [ids.pj028])
+  const q = await quadro(ids.pj028)
+  const r = await trocar(ids.barbara, ids.pj028, [...q.reps.map(comoItem), { name: 'Rep Novo', is_primary: false }], q.socios.slice(1).map(socioItem))
+  igual([r.representatives.added, r.shareholders.removed], [1, 1], 'contagem')
+  const depois = await um(db, `select updated_at from clients where id = $1`, [ids.pj028])
+  if (!(new Date(depois.updated_at) >= new Date(antes.updated_at))) throw new Error('updated_at não avançou')
+})
+await deveFalhar('a API não ganhou DELETE direto nas tabelas (só pela operação)', () =>
+  como(ids.barbara, (tx) => tx.query(`delete from company_shareholders where client_id = $1`, [ids.pj028])), /permission denied/)
+await deveFalhar('…nem em representantes', () =>
+  como(ids.barbara, (tx) => tx.query(`delete from company_representatives where client_id = $1`, [ids.pj028])), /permission denied/)
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

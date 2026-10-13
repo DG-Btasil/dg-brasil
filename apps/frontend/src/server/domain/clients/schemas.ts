@@ -156,3 +156,18 @@ export const inactivateClientSchema = z.object({
 });
 
 export const lookupClientSchema = z.object({ document: zTaxId() });
+
+/**
+ * Bloco societário de PJ (028): ESTADO FINAL das duas listas. Item com `id` =
+ * linha existente do cliente (o banco confere que é dele); sem `id` = nova.
+ * Nada de CRUD linha a linha: a coleção inteira vai numa operação atômica.
+ */
+export const replaceCompanyPeopleSchema = z.object({
+  clientId: zUuid(),
+  representatives: z
+    .array(representativeSchema.extend({ id: zUuid().optional() }))
+    .max(20, "No máximo 20 representantes.")
+    .refine((list) => list.length === 0 || list.filter((r) => r.isPrimary).length === 1, "Marque exatamente um representante como principal."),
+  partners: z.array(shareholderSchema.extend({ id: zUuid().optional() })).max(50, "No máximo 50 sócios."),
+});
+export type ReplaceCompanyPeopleInput = z.infer<typeof replaceCompanyPeopleSchema>;

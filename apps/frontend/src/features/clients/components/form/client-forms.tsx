@@ -2,9 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRef, type ReactNode } from "react";
-import { FormProvider, useForm, useFormContext, type FieldValues, type UseFormSetError } from "react-hook-form";
+import { FormProvider, useForm, type FieldValues, type UseFormSetError } from "react-hook-form";
 import { z } from "zod";
-import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { companySchema, individualSchema, type CompanyFormValues, type IndividualFormValues } from "../../schemas";
@@ -51,7 +50,7 @@ function FormFrame({ children }: { children: ReactNode }) {
 }
 
 /** Um envio por vez: o segundo clique durante o envio é ignorado (além do botão desabilitado). */
-function useSingleSubmit<V extends FieldValues>(onSubmit: ClientFormSubmit<V>, setError: UseFormSetError<V>) {
+export function useSingleSubmit<V extends FieldValues>(onSubmit: ClientFormSubmit<V>, setError: UseFormSetError<V>) {
   const busy = useRef(false);
   return async (values: V) => {
     if (busy.current) return;
@@ -82,7 +81,7 @@ export function IndividualForm({ defaultValues, submitLabel, onSubmit, onCancel 
   );
 }
 
-/** Na edição, representantes e sócios só são exibidos (o banco ainda não os altera). */
+/** Na edição, representantes e sócios ficam fora deste formulário (gravação atômica própria). */
 const companyEditSchema = companySchema.extend({ representatives: z.array(z.any()), partners: z.array(z.any()) });
 
 export function CompanyForm({ defaultValues, submitLabel, onSubmit, onCancel, mode = "create" }: FormProps<CompanyFormValues> & { mode?: "create" | "edit" }) {
@@ -99,43 +98,17 @@ export function CompanyForm({ defaultValues, submitLabel, onSubmit, onCancel, mo
           <CompanyDataFields />
           <CompanyContactFields />
           <AddressFields description="Endereço da sede. Recomendado para qualificação e citações." />
-          {mode === "create" ? (
+          {/* Na edição, representantes e sócios têm formulário próprio (CompanyPeopleForm). */}
+          {mode === "create" && (
             <>
               <RepresentativesFields />
               <PartnersFields />
             </>
-          ) : (
-            <CompanyPeopleReadOnly />
           )}
           <InternalFields />
           <StickyFooter submitLabel={submitLabel} submitting={methods.formState.isSubmitting} onCancel={onCancel} />
         </FormFrame>
       </form>
     </FormProvider>
-  );
-}
-
-function CompanyPeopleReadOnly() {
-  const { getValues } = useFormContext<CompanyFormValues>();
-  const representatives = getValues("representatives").filter((r) => r.name);
-  const partners = getValues("partners").filter((p) => p.name);
-  return (
-    <section className="grid grid-cols-[240px_minmax(0,1fr)] gap-8 border-b border-line py-7">
-      <div>
-        <h3 className="text-[13.5px] font-semibold text-foreground">Representação e quadro societário</h3>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Informados no cadastro da empresa.</p>
-      </div>
-      <div className="space-y-3 text-[13px]">
-        <p>
-          <span className="text-subtle">Representantes: </span>
-          {representatives.length ? representatives.map((r) => `${r.name}${r.isPrimary ? " (principal)" : ""}`).join(", ") : "nenhum informado"}
-        </p>
-        <p>
-          <span className="text-subtle">Sócios: </span>
-          {partners.length ? partners.map((p) => p.name).join(", ") : "nenhum informado"}
-        </p>
-        <Callout tone="neutral">A alteração de representantes e sócios ainda não está disponível nesta tela.</Callout>
-      </div>
-    </section>
   );
 }

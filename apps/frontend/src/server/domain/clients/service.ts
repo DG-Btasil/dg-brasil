@@ -1,9 +1,10 @@
 import { isPartner, requireAnyPermission, requireInternal, requirePermission, requireRole, type ServiceContext } from "@/server/core/context";
 import { duplicateClient, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
-import type { ClientDetailDTO, ClientListItem, ClientLookupDTO, ClientRelationshipDTO } from "./dto";
+import type { ClientDetailDTO, ClientListItem, ClientLookupDTO, ClientRelationshipDTO, CompanyPeopleResultDTO } from "./dto";
 import {
   basicsPayload,
+  companyPeoplePayload,
   createPayload,
   internalClientFromRows,
   listItemFromRow,
@@ -12,7 +13,7 @@ import {
   updatePayload,
 } from "./mappers";
 import * as repo from "./repository";
-import type { CreateClientInput, ListClientsInput, UpdateClientBasicsInput, UpdateClientInput } from "./schemas";
+import type { CreateClientInput, ListClientsInput, ReplaceCompanyPeopleInput, UpdateClientBasicsInput, UpdateClientInput } from "./schemas";
 
 /**
  * Regras de Cliente. Autorização contextual aqui; RLS e funções do banco
@@ -112,6 +113,29 @@ export async function reactivateClient(ctx: ServiceContext, id: string): Promise
   requireInternal(ctx);
   requirePermission(ctx, "clients.edit");
   await repo.setStatus(ctx.db, id, "ACTIVE");
+}
+
+/**
+ * Representantes e sócios de PJ: o servidor manda o ESTADO FINAL das listas e
+ * o banco substitui tudo numa transação (028), conferindo equipe interna,
+ * aal2, cliente PJ acessível e que cada `id` é deste cliente. Parceiro nunca.
+ */
+export async function replaceCompanyPeople(ctx: ServiceContext, input: ReplaceCompanyPeopleInput): Promise<CompanyPeopleResultDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "clients.edit");
+  const counts = await repo.replaceCompanyPeople(ctx.db, input.clientId, companyPeoplePayload(input));
+  const r = counts.representatives;
+  const s = counts.shareholders;
+  ctx.log.info("client.company_people_replaced", {
+    clientId: input.clientId,
+    representativesAdded: r.added,
+    representativesUpdated: r.updated,
+    representativesRemoved: r.removed,
+    partnersAdded: s.added,
+    partnersUpdated: s.updated,
+    partnersRemoved: s.removed,
+  });
+  return { representatives: counts.representatives, partners: counts.shareholders };
 }
 
 /** Exclusão lógica (ADMIN). Processos não são apagados: voltam para a lista de pendências. */

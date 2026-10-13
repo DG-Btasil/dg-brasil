@@ -106,6 +106,18 @@ export async function save(db: SupabaseClient, id: string | null, payload: Recor
   return unwrap(await db.rpc("save_client", { p_id: id, p: payload })) as string;
 }
 
+/** Bloco societário de PJ: substituição atômica (private.replace_company_people, 028). */
+export async function replaceCompanyPeople(db: SupabaseClient, clientId: string, payload: { representatives: Record<string, unknown>[]; shareholders: Record<string, unknown>[] }): Promise<CompanyPeopleCounts> {
+  return unwrap(
+    await db.rpc("replace_company_people", { p_client_id: clientId, p_representatives: payload.representatives, p_shareholders: payload.shareholders }),
+  ) as CompanyPeopleCounts;
+}
+
+export interface CompanyPeopleCounts {
+  representatives: { added: number; updated: number; removed: number };
+  shareholders: { added: number; updated: number; removed: number };
+}
+
 export async function setStatus(db: SupabaseClient, id: string, status: "ACTIVE" | "INACTIVE", reason?: string, note?: string): Promise<void> {
   unwrap(await db.rpc("set_client_status", { p_id: id, p_status: status, p_reason: reason ?? null, p_note: note ?? null }));
 }

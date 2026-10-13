@@ -1,6 +1,6 @@
 import { CLIENT_STATUS_FROM_DB, type DbClientStatus } from "@/repositories/api/db-mappings";
 import type { Address, Client, ClientInactivationReason, Contact, ID } from "@/types";
-import type { CreateClientInput, UpdateClientInput, UpdateClientBasicsInput } from "./schemas";
+import type { CreateClientInput, ReplaceCompanyPeopleInput, UpdateClientInput, UpdateClientBasicsInput } from "./schemas";
 import type { ClientListItem, ClientPartnerDTO, ClientRelationshipDTO } from "./dto";
 
 /**
@@ -348,6 +348,28 @@ export function updatePayload(patch: UpdateClientInput["patch"]): Json {
   if ("contact" in patch) out.contact = contactPayload(patch.contact) ?? {};
   if ("address" in patch) out.address = addressPayload(patch.address ?? null);
   return out;
+}
+
+/** Bloco societário (028): listas no vocabulário de private.replace_company_people. */
+export function companyPeoplePayload(input: Pick<ReplaceCompanyPeopleInput, "representatives" | "partners">): { representatives: Json[]; shareholders: Json[] } {
+  return {
+    representatives: input.representatives.map((r) => ({
+      ...(r.id ? { id: r.id } : {}),
+      name: r.name,
+      cpf: r.cpf ?? null,
+      role: r.role ?? null,
+      email: r.email ?? null,
+      phone: r.phone ?? null,
+      is_primary: r.isPrimary,
+    })),
+    shareholders: input.partners.map((s) => ({
+      ...(s.id ? { id: s.id } : {}),
+      name: s.name,
+      document: s.document || null,
+      qualification: s.qualification ?? null,
+      share_percentage: s.sharePercent ?? null,
+    })),
+  };
 }
 
 /** Parceiro: o payload só PODE ter contato e endereço (o banco recusa o resto). */
