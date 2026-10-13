@@ -1,18 +1,15 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { daysSince } from "@/lib/clock";
-import { repositories } from "@/repositories";
 import { useScopedStore } from "@/store/scope";
-import type { PartnerCaseInput, PartnerClientBasicsPatch, PartnerDocumentInput, PartnerProcessInput } from "@/store/types";
-import { useToast } from "@/store/ui-store";
-import type { AuditEvent, Client, ClientDocument, ID, PartnerRequest, Process } from "@/types";
+import type { AuditEvent, Client, ID, PartnerRequest, Process } from "@/types";
 import { clientDisplayName } from "@/features/processes/utils";
 
 /*
- * Hooks do Portal do Parceiro. Tudo vem do estado recortado para a sessão
- * (store/scope.ts): não há filtro por escritório aqui porque os dados de
- * outros escritórios simplesmente não chegam.
+ * Hooks MOCK que restam do Portal do Parceiro: só o Início (Fase H) e o
+ * Financeiro (Fase F) ainda os usam. Clientes, casos, processos, documentos e
+ * pendências do portal já leem do servidor (Etapa 4.3, Fase D).
  */
 
 export function usePortalClients(): Client[] {
@@ -23,10 +20,6 @@ export function usePortalProcesses(): Process[] {
   return useScopedStore((s) => s.processes);
 }
 
-export function usePortalDocuments(): ClientDocument[] {
-  return useScopedStore((s) => s.documents);
-}
-
 export function usePortalRequests(): PartnerRequest[] {
   return useScopedStore((s) => s.partnerRequests);
 }
@@ -34,58 +27,6 @@ export function usePortalRequests(): PartnerRequest[] {
 export function usePortalClientMap(): Map<ID, Client> {
   const clients = usePortalClients();
   return useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
-}
-
-export interface PortalClientRow {
-  client: Client;
-  name: string;
-  processes: number;
-  activeProcesses: number;
-  openRequests: number;
-  lastUpdate: string;
-}
-
-export function usePortalClientRows(): PortalClientRow[] {
-  const clients = usePortalClients();
-  const processes = usePortalProcesses();
-  const requests = usePortalRequests();
-  return useMemo(
-    () =>
-      clients.map((client) => {
-        const own = processes.filter((p) => p.clientId === client.id);
-        return {
-          client,
-          name: clientDisplayName(client),
-          processes: own.length,
-          activeProcesses: own.filter((p) => p.status !== "CLOSED").length,
-          openRequests: requests.filter((r) => r.clientId === client.id && r.status === "OPEN").length,
-          lastUpdate: [client.updatedAt, ...own.map((p) => p.lastMovementAt ?? p.updatedAt)].sort().reverse()[0] ?? client.updatedAt,
-        };
-      }),
-    [clients, processes, requests],
-  );
-}
-
-/** Documentos em versão vigente (as substituídas ficam no histórico). */
-export function useCurrentDocuments(filter: { clientId?: ID; processId?: ID; legalCaseId?: ID } = {}): ClientDocument[] {
-  const documents = usePortalDocuments();
-  const { clientId, processId, legalCaseId } = filter;
-  return useMemo(
-    () =>
-      documents
-        .filter((d) => !d.supersededAt && (!clientId || d.clientId === clientId) && (!processId || d.processId === processId) && (!legalCaseId || d.legalCaseId === legalCaseId))
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    [documents, clientId, processId, legalCaseId],
-  );
-}
-
-/** Versões anteriores de um documento (mesma família). */
-export function useDocumentVersions(doc: ClientDocument): ClientDocument[] {
-  const documents = usePortalDocuments();
-  return useMemo(() => {
-    const group = doc.versionGroupId ?? doc.id;
-    return documents.filter((d) => (d.versionGroupId ?? d.id) === group).sort((a, b) => (b.version ?? 1) - (a.version ?? 1));
-  }, [documents, doc]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -157,48 +98,4 @@ export function usePortalAttention(): PortalAttentionItem[] {
 export function usePortalUpdates(limit = 10): AuditEvent[] {
   const events = useScopedStore((s) => s.auditEvents);
   return useMemo(() => [...events].sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), [events, limit]);
-}
-
-/* ------------------------------------------------------------------ */
-/* Ações                                                               */
-/* ------------------------------------------------------------------ */
-
-function message(error: unknown) {
-  return error instanceof Error && error.message ? error.message : undefined;
-}
-
-export function usePortalActions() {
-  const toast = useToast();
-
-  const run = useCallback(
-    async <T>(fn: () => Promise<T>, success: { title: string; description?: string } | null, failure: string): Promise<T | null> => {
-      try {
-        const result = await fn();
-        if (success) toast({ tone: "success", ...success });
-        return result;
-      } catch (error) {
-        toast({ tone: "danger", title: failure, description: message(error) });
-        return null;
-      }
-    },
-    [toast],
-  );
-
-  return {
-    lookupClient: (document: string) => run(() => repositories.partnerPortal.lookupClient(document), null, "Não foi possível verificar o CPF/CNPJ."),
-    submitCase: (input: PartnerCaseInput) =>
-      run(() => repositories.partnerPortal.submitCase(input), { title: "Enviado para Bárbara Cardoso Advocacia", description: "Você será notificado sobre o andamento." }, "Não foi possível enviar."),
-    createProcess: (input: PartnerProcessInput) =>
-      run(() => repositories.partnerPortal.createProcess(input), { title: "Processo cadastrado", description: input.title }, "Não foi possível cadastrar o processo."),
-    updateClientBasics: (clientId: ID, patch: PartnerClientBasicsPatch) =>
-      run(() => repositories.partnerPortal.updateClientBasics(clientId, patch), { title: "Dados atualizados" }, "Não foi possível salvar."),
-    submitDocument: (input: PartnerDocumentInput) =>
-      run(
-        () => repositories.partnerPortal.submitDocument(input),
-        { title: input.replacesDocumentId ? "Nova versão enviada" : "Documento enviado", description: input.replacesDocumentId ? "A versão anterior foi preservada." : input.name },
-        "Não foi possível enviar o documento.",
-      ),
-    respondRequest: (requestId: ID, text: string) =>
-      run(() => repositories.partnerPortal.respondRequest(requestId, text), { title: "Resposta enviada" }, "Não foi possível enviar a resposta."),
-  };
 }

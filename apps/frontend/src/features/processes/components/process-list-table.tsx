@@ -34,6 +34,8 @@ export function ProcessListTable({
   onSort?: (key: ProcessSortField) => void;
 }) {
   const showCaseValue = usePermission("processes.caseValue.view");
+  // Portal do Parceiro: o DTO não traz responsável nem prazos internos — as colunas nem aparecem.
+  const internal = !usePermission("partnerPortal.view");
   const canPartners = usePermission("partners.view");
   const users = useDirectoryUserMap();
   const names = useOrganizationNames();
@@ -53,12 +55,12 @@ export function ProcessListTable({
           {showClient && <Th>Cliente</Th>}
           {th("title", "Tipo / ação")}
           <Th>Tribunal</Th>
-          <Th>Responsável</Th>
+          {internal && <Th>Responsável</Th>}
           <Th>Fase</Th>
           <Th>Status</Th>
-          <Th>Próximo prazo</Th>
+          {internal && <Th>Próximo prazo</Th>}
           {showCaseValue && <Th className="text-right">Valor da causa</Th>}
-          <Th>Origem</Th>
+          {internal && <Th>Origem</Th>}
           {th("updatedAt", "Atualização")}
         </tr>
       </THead>
@@ -88,12 +90,12 @@ export function ProcessListTable({
                 <div className="truncate text-[12px] text-muted">{p.actionType ? p.title : p.caseTitle}</div>
               </Td>
               <Td className="whitespace-nowrap text-[12.5px]">{courtLocation(p) || <span className="text-subtle">—</span>}</Td>
-              <Td className="whitespace-nowrap text-[12.5px]">{(p.responsibleUserId && users.get(p.responsibleUserId)?.name) || "—"}</Td>
+              {internal && <Td className="whitespace-nowrap text-[12.5px]">{(p.responsibleUserId && users.get(p.responsibleUserId)?.name) || "—"}</Td>}
               <Td className="whitespace-nowrap text-[12.5px] text-muted">{p.phase ? PROCESS_PHASE_LABEL[p.phase] : "—"}</Td>
               <Td>
                 <StatusBadge status={p.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
               </Td>
-              <Td>
+              {internal && <Td>
                 {p.nextDeadline ? (
                   <div className="min-w-0">
                     <DeadlineBadge dueDate={p.nextDeadline.dueDateLocal} />
@@ -102,16 +104,16 @@ export function ProcessListTable({
                 ) : (
                   <span className="text-[12px] text-subtle">Sem prazo</span>
                 )}
-              </Td>
+              </Td>}
               {showCaseValue && <Td className="whitespace-nowrap text-right tabular">{formatCurrency(p.caseValue)}</Td>}
-              <Td>
+              {internal && <Td>
                 <ProcessOriginBadge origin={p.origin} />
                 {canPartners && partnerOrigin && (
                   <div className="mt-1 max-w-[160px] truncate text-[11.5px] font-medium text-navy-700" title="Origem do caso">
                     {names.get(partnerOrigin) ?? "Parceiro"}
                   </div>
                 )}
-              </Td>
+              </Td>}
               <Td className="whitespace-nowrap text-[12px] text-muted tabular">{formatEventTime(p.updatedAt)}</Td>
             </Tr>
           );

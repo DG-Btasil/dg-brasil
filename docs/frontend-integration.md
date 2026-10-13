@@ -11,14 +11,14 @@ retorno das operações.
 |---|---|---|---|
 | A | Diretório (usuário/escritório) | ✅ real | `server/directory.ts`: integrantes ativos, escritório proprietário, parceiros visíveis |
 | A | Clientes (equipe interna) | ✅ real | lista, busca, filtros, detalhe, cadastro, edição, representantes/sócios de PJ (028), inativar/reativar/excluir |
-| A | Clientes no Portal do Parceiro | ⏳ Fase D | o portal ainda lê o mock |
+| A | Clientes no Portal do Parceiro | ✅ real (D) | lista, ficha (ClientPartnerDTO), edição de contato/endereço |
 | B | Casos (equipe interna) | ✅ real | lista, filtros, ficha, cadastro idempotente, editar, enviar, aceitar, rejeitar, andamento, encerrar, arquivar, origem, advogado |
 | B | Processos, Prazos, Movimentações (equipe interna) | ✅ real | lista, filtros, ficha, partes (leitura), cadastro idempotente, edição, exclusão; prazos (criar, editar, cumprir, cancelar); andamentos |
-| B | Casos e Processos no Portal do Parceiro | ⏳ Fase D | o portal ainda lê o mock |
+| B | Casos e Processos no Portal do Parceiro | ✅ real (D) | listas, fichas (DTO do parceiro), envio de caso e cadastro de processo idempotentes |
 | C | Documentos (equipe interna) | ✅ real | cliente, caso e processo: lista, envio em etapas com URL assinada, nova versão, histórico, download por URL assinada curta, verificação por versão, compartilhar/recolher, arquivar, excluir (ADMIN) |
 | C | Pendências documentais do caso | ✅ real | criar, solicitar, registrar recebimento (versão concreta), aprovar/rejeitar |
-| C | Documentos no Portal do Parceiro | ⏳ Fase D | |
-| D | Solicitações, Portal do Parceiro | ⏳ | |
+| C | Documentos no Portal do Parceiro | ✅ real (D) | só PARTNER_VISIBLE; envio/nova versão em caso e processo; pendências documentais só leitura |
+| D | Parceiros (equipe interna), Solicitações, Portal do Parceiro | ✅ real | Início e Financeiro do portal ficam para H e F |
 | E | Revisões, Análises | ⏳ | Análise só depois de tornar atômico o início (análise + execução) |
 | F | Financeiro | ⏳ | mutações só depois de revisar o ciclo de vida do acordo financeiro |
 | G | Execuções de agente / Agentes | ⏳ | paginar o read model antes |
@@ -247,6 +247,63 @@ contrato `documents`) e os componentes do V1 que só gravavam no mock (lista,
 diálogo de inclusão, área de soltar, prévia, rejeição). Ficam o checklist e o
 indicador de verificação (usados pelo assistente de análise, Fase E).
 
+## Fase D — Parceiros, Solicitações e Portal do Parceiro
+
+**D1 — equipe interna.** `/parceiros`: lista (busca, situação, páginas e
+contadores reais), ficha (cadastro, divisão — só ADMIN —, situação, equipe,
+clientes relacionados, casos com origem ou acesso do parceiro, processos),
+cadastro e edição pelas Server Actions de `organizations`. Solicitações ao
+parceiro (`RequestsPanel`, as duas superfícies): lista paginada, conversa,
+nova solicitação por caso, pedir nova resposta, resolver/cancelar.
+
+**D2 — Portal do Parceiro.** Todas as telas leem do servidor no ramo
+`partner` das mesmas rotas (`AudienceSwitch`), com o **DTO do parceiro** — o
+navegador nunca recebe campo interno, e o escritório nunca vem da tela (a RLS
+recorta tudo ao escritório da sessão):
+
+| Tela | Fonte | Observação |
+|---|---|---|
+| `/clientes` | `listClientsAction` | busca por nome/CPF/CNPJ no servidor; dígitos nunca na URL |
+| `/clientes/[id]` | `getClientAction` (ClientPartnerDTO) | casos, processos e documentos compartilhados; "Editar" = `updateClientBasicsAction` (só contato e endereço; vazio apaga) |
+| `/clientes/novo`, `/casos/novo` | `lookupClientDocumentAction` + `partnerSubmitCaseAction` | ver "Envio de caso" abaixo |
+| `/casos` | `listCasesAction` | situações simplificadas do parceiro (um rótulo → várias situações reais no filtro) |
+| `/casos/[id]` | `getCaseAction` (CasePartnerDTO) | visão geral (só motivo PÚBLICO de rejeição), documentos (envio pelo parceiro), pendências documentais (leitura), solicitações (responder), processos |
+| `/processos` | `listProcessesAction` | sem colunas internas (responsável, prazo, origem técnica) |
+| `/processos/[id]` | `getProcessAction` (ProcessPartnerDTO) | movimentações oficiais e do sistema (nota manual/agente nunca chegam), documentos, solicitações do caso |
+| `/processos/novo` | `createPartnerProcessAction` | idempotente (chave por intenção); caso escolhido por busca no servidor |
+| `/pendencias` | `listPartnerRequestsAction` (escopo vazio = "as minhas") | responder enquanto aberta |
+| `/minha-conta` | sessão + `getMyPartnerOfficeAction`; `getMyPartnerSettingsAction` só PARTNER_ADMIN | gestão de usuários (TeamManager, já real) só PARTNER_ADMIN |
+
+**Envio de caso.** Identificação por CPF/CNPJ (`lookupClientDocumentAction`:
+NOT_FOUND → cadastro básico; EXISTS → caso para o cadastro canônico, sem
+revelar nome/escritório; ALREADY_RELATED → abrir cliente ou criar caso).
+Limite de consultas (RATE_LIMITED, best-effort na aplicação) vira aviso no
+próprio passo. Cliente + caso nascem numa operação atômica e idempotente
+(`partnerSubmitCaseAction`, chave por intenção, 027); cliente existente leva
+só tipo + documento (o banco nunca sobrescreve o cadastro de outro
+escritório). A origem vai como `OWN_OFFICE`/`OWNER` — o id sai da
+sessão/banco. **Arquivos** escolhidos no assistente sobem DEPOIS, para o caso
+criado, pelo fluxo de URL assinada da Fase C; falha num arquivo não desfaz o
+caso e tem "Tentar de novo" (retoma a confirmação sem reenviar).
+
+**Documentos no portal.** O parceiro só recebe `PARTNER_VISIBLE` (RLS). Envia
+arquivo e nova versão em caso/processo (`partnerPortal.documents.submit`; o
+servidor grava como `PARTNER_VISIBLE`); nunca só para o cliente. Caso
+recusado ou arquivado: sem envio. Verificação, visibilidade, arquivar e
+excluir continuam só da equipe interna.
+
+**Diferenças do Front V1 (portal):** a lista de clientes não mostra mais
+contagem de processos/pendências por cliente (não há read model; a ficha
+mostra); a aba "Histórico" do caso saiu (auditoria é interna); "Tipo" do caso
+é o catálogo real (opcional; o catálogo de tipos ainda está vazio);
+"Representante legal" de PJ saiu do envio (o schema do parceiro não tem); a
+aba "Financeiro" do caso volta na Fase F; o Início do portal é a Fase H.
+
+**Mock removido:** repositório `partnerPortal` (consulta, envio de caso,
+processo, contato, documento, resposta), as ações correspondentes do store e
+os diálogos do portal que só gravavam no mock. Restam no mock só os hooks do
+Início (H) e do Financeiro (F) do portal.
+
 ## Testes
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
@@ -264,6 +321,10 @@ indicador de verificação (usados pelo assistente de análise, Fase E).
   (envio real com confirmação idempotente, confirmar sem arquivo, verificação
   por versão, download assinado, compartilhamento × parceiro A/B,
   pendência solicitado → recebido → aprovado, ASSISTANT não aprova).
+- Fase D, unitários: `src/features/partner-portal/portal-ui.test.ts` (URL
+  das listas sem CPF/CNPJ, rótulo simplificado → situações reais, entrada sem
+  escritório, envio de caso → schema real com origem OWN_OFFICE/OWNER e
+  cliente existente só com documento, processo do parceiro sem campo interno).
 - Fase B, integração: `tests/integration/frontend-cases-processes.int.test.ts`
   (caso idempotente, filtros e contagem, catálogo, isolamento, processo
   idempotente com próximo prazo, edição que limpa, ciclo do prazo,
@@ -315,8 +376,8 @@ Marque cada item com os cinco papéis indicados.
 
 **PARTNER_ADMIN / PARTNER_USER**
 
-- [ ] `/clientes` continua mostrando o portal (ainda em demonstração até a
-      Fase D); `/clientes/<id de cliente interno>` não mostra dados internos.
+- [ ] `/clientes/<id de cliente interno>` não mostra dados internos (ver QA
+      da Fase D).
 - [ ] `/clientes/<id>/editar` → acesso negado.
 
 ## QA manual — Fase B (Supabase DEV, dados fictícios)
@@ -353,8 +414,8 @@ Marque cada item com os cinco papéis indicados.
 
 **PARTNER_ADMIN / PARTNER_USER**
 
-- [ ] Casos e Processos continuam no portal de demonstração até a Fase D;
-      rotas internas de outro escritório não mostram dados.
+- [ ] Rotas de caso/processo de outro escritório → "não encontrado" (ver QA
+      da Fase D).
 
 ## QA manual — Fase C (Supabase DEV, arquivos fictícios)
 
@@ -379,3 +440,55 @@ Marque cada item com os cinco papéis indicados.
       arquivo; em caso interno a opção não aparece. Minuta de agente não
       aprovada é recusada pelo servidor com mensagem.
 - [ ] Processo → Documentos: enviar; o documento aparece também no caso.
+
+## QA manual — Fase D (Supabase DEV, dados fictícios)
+
+Use dois parceiros fictícios (A e B), cada um com um PARTNER_ADMIN e um
+PARTNER_USER (@dgbrasil.test, CPF 999…).
+
+**ADMIN / LAWYER / ASSISTANT — parceiros e solicitações**
+
+- [ ] `/parceiros`: busca, situação e páginas; contadores (clientes, casos
+      novos, ativos, pendências) batem com os dados. LAWYER/ASSISTANT não
+      veem a divisão.
+- [ ] ADMIN cadastra parceiro, edita, muda a divisão (vale para casos novos)
+      e a situação. LAWYER não vê esses botões.
+- [ ] Ficha do parceiro: equipe, clientes, casos, processos e solicitações
+      listam só o que é desse parceiro.
+- [ ] Caso de parceiro → Solicitações: "Nova solicitação"; responder na
+      conversa; resolver e cancelar; a situação muda depois da resposta do
+      servidor.
+
+**PARTNER_ADMIN / PARTNER_USER — portal**
+
+- [ ] `/clientes`: só clientes do próprio escritório; busca por nome e por
+      CPF (os dígitos não aparecem na URL); recarregar mantém a página.
+- [ ] Ficha do cliente: "Editar" contato/endereço; apagar o e-mail apaga de
+      fato; recarregar mostra o salvo. Nenhum campo interno.
+- [ ] `/clientes/novo`: CPF novo → cadastro básico → caso → documentos →
+      revisão → enviar. Clique duplo em "Confirmar e enviar" → um caso só.
+      Os arquivos sobem depois do envio, com indicação por arquivo.
+- [ ] CPF já cadastrado por OUTRO escritório: "Cliente já cadastrado no
+      sistema." sem nome nem escritório; o caso é criado para o cadastro
+      existente e o cliente passa a aparecer na carteira.
+- [ ] CPF já na carteira: "Abrir cliente" / "Criar novo caso".
+- [ ] Muitas consultas seguidas de CPF/CNPJ → aviso "Consulta
+      temporariamente bloqueada" (limite best-effort).
+- [ ] `/casos`: filtro "Em análise" traz prontos para análise, em análise e
+      aguardando revisão. Caso recusado mostra só o motivo público.
+- [ ] Caso → Documentos: enviar arquivo; nova versão; baixar. Documento
+      interno não compartilhado NÃO aparece. Caso recusado/arquivado: sem
+      área de envio. Pendências documentais só para leitura.
+- [ ] Caso → Pendências: responder solicitação aberta; resolvida não aceita
+      resposta.
+- [ ] Caso → Processos → "Cadastrar processo" (já com o caso); clique duplo
+      → um processo só. Em `/processos` sem responsável/prazo interno.
+- [ ] Processo → Movimentações: só oficiais e do sistema (nota manual da
+      equipe não aparece).
+- [ ] `/pendencias`: todas as solicitações do escritório; filtro por
+      situação.
+- [ ] `/minha-conta`: dados da sessão real; PARTNER_ADMIN vê divisão padrão
+      e "Usuários do escritório"; PARTNER_USER não vê nenhum dos dois.
+- [ ] Parceiro A abrindo `/clientes|casos|processos/<id do parceiro B>` →
+      "não encontrado".
+- [ ] Desligar a rede e mudar um filtro → erro com "Tentar novamente".

@@ -18,7 +18,6 @@ import type {
   IntegrationRepository,
   NotificationRepository,
   OfficeRepository,
-  PartnerPortalRepository,
   PartnerRepository,
   ReviewRepository,
   UserRepository,
@@ -156,15 +155,6 @@ export const mockPartnerRepository: PartnerRepository = {
   listAgreements: () => ok(data().partnershipAgreements),
   updateAgreementValues: async (id, input) => state().updatePartnershipValues(id, input),
   registerPayout: async (id, amount, note) => state().registerPartnerPayout(id, amount, note),
-};
-
-export const mockPartnerPortalRepository: PartnerPortalRepository = {
-  lookupClient: async (document) => state().lookupClientDocument(document),
-  submitCase: async (input) => state().submitPartnerCase(input),
-  createProcess: async (input) => state().createPartnerProcess(input),
-  updateClientBasics: async (clientId, patch) => state().updatePartnerClientBasics(clientId, patch),
-  submitDocument: async (input) => state().submitPartnerDocument(input),
-  respondRequest: async (requestId, message) => state().respondPartnerRequest(requestId, message),
 };
 
 export const mockReferenceRepository: ReferenceRepository = {

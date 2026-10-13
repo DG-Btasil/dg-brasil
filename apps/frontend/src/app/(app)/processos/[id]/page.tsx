@@ -12,6 +12,8 @@ import { getProcessAction, listProcessEventsAction, listProcessPartiesAction } f
 import { listDeadlinesAction } from "@/server/domain/processes/deadlines/actions";
 import { listDocumentsAction } from "@/server/domain/documents/actions";
 import { documentListInput } from "@/features/documents/constants";
+import { requestListInput } from "@/features/partner-requests/query";
+import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 
 const fallback = (
   <PageContainer>
@@ -66,6 +68,31 @@ async function InternalProcess({ id }: { id: string }) {
   );
 }
 
+/** Portal: ProcessPartnerDTO + movimentações oficiais/sistema, documentos e solicitações do caso. */
+async function PartnerProcess({ id }: { id: string }) {
+  const result = await getProcessAction({ id });
+  if (!result.ok) {
+    if (result.error.code === "NOT_FOUND" || result.error.code === "VALIDATION") return <ProcessNotFound />;
+    return (
+      <PageContainer>
+        <ActionErrorState error={result} title="Não foi possível abrir o processo." />
+      </PageContainer>
+    );
+  }
+  if (result.data.surface !== "PARTNER") return <ProcessNotFound />;
+  const process = result.data.process;
+  const [events, documents, requests] = await Promise.all([
+    listProcessEventsAction({ processId: id, pageSize: 50 }),
+    listDocumentsAction(documentListInput({ legalProcessId: id })),
+    listPartnerRequestsAction(requestListInput({ legalCaseId: process.legalCaseId })),
+  ]);
+  return (
+    <Suspense fallback={fallback}>
+      <PortalProcessDetail process={process} events={events} documents={documents} requests={requests} />
+    </Suspense>
+  );
+}
+
 export default async function ProcessDetailPage({ params }: PageProps<"/processos/[id]">) {
   const { id } = await params;
   return (
@@ -77,9 +104,7 @@ export default async function ProcessDetailPage({ params }: PageProps<"/processo
       }
       partner={
         <RequirePermission permission="partnerPortal.view">
-          <Suspense fallback={fallback}>
-            <PortalProcessDetail id={id} />
-          </Suspense>
+          <PartnerProcess id={id} />
         </RequirePermission>
       }
     />

@@ -36,6 +36,22 @@ async function InternalClient({ id }: { id: string }) {
   );
 }
 
+/** Portal: ficha do parceiro (ClientPartnerDTO) + casos, processos e documentos do próprio escritório. */
+async function PartnerClient({ id }: { id: string }) {
+  const result = await getClientAction({ id });
+  if (!result.ok) {
+    if (result.error.code === "NOT_FOUND" || result.error.code === "VALIDATION") return <ClientNotFound />;
+    return <ActionErrorState error={result} title="Não foi possível abrir o cliente." />;
+  }
+  if (result.data.surface !== "PARTNER") return <ClientNotFound />;
+  const [cases, processes, documents] = await Promise.all([
+    listCasesAction({ clientId: id, pageSize: 50 }),
+    listProcessesAction({ clientId: id, pageSize: 50 }),
+    listDocumentsAction(documentListInput({ clientId: id })),
+  ]);
+  return <PortalClientDetail client={result.data.client} cases={cases} processes={processes} documents={documents} />;
+}
+
 export default async function ClientPage({ params }: PageProps<"/clientes/[id]">) {
   const { id } = await params;
   // Parceiro: cliente sem vínculo não existe no estado recortado e aparece como "não encontrado".
@@ -50,7 +66,9 @@ export default async function ClientPage({ params }: PageProps<"/clientes/[id]">
       }
       partner={
         <RequirePermission permission="partnerPortal.view">
-          <PortalClientDetail id={id} />
+          <PageContainer>
+            <PartnerClient id={id} />
+          </PageContainer>
         </RequirePermission>
       }
     />

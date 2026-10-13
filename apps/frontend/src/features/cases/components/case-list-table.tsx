@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { LEGAL_AREA_LABEL, type LegalArea } from "@/lib/constants/legal";
-import { LEGAL_CASE_STATUS_LABEL, LEGAL_CASE_STATUS_TONE } from "@/lib/constants/status";
+import { LEGAL_CASE_STATUS_LABEL, LEGAL_CASE_STATUS_TONE, type LegalCaseStatus } from "@/lib/constants/status";
 import { formatEventTime } from "@/lib/formatting";
 import { StatusBadge } from "@/components/ui/badge";
 import { SortableTh, Table, TBody, Td, Th, THead, Tr, type SortDirection } from "@/components/ui/table";
@@ -20,6 +20,8 @@ export function CaseListTable({
   originName,
   ownerId,
   showClient = true,
+  showLawyer = true,
+  statusLabels = LEGAL_CASE_STATUS_LABEL,
 }: {
   rows: CaseListItem[];
   sortKey?: CaseSortField;
@@ -30,6 +32,10 @@ export function CaseListTable({
   originName: (id: ID) => string | undefined;
   ownerId: ID;
   showClient?: boolean;
+  /** Portal do Parceiro: sem coluna de advogado responsável (dado interno). */
+  showLawyer?: boolean;
+  /** Portal do Parceiro: situações simplificadas (PARTNER_CASE_STATUS_LABEL). */
+  statusLabels?: Record<LegalCaseStatus, string>;
 }) {
   const th = (key: CaseSortField, label: string) =>
     onSort ? <SortableTh label={label} sortKey={key} currentKey={sortKey ?? null} direction={direction ?? "desc"} onSort={onSort} /> : <Th>{label}</Th>;
@@ -41,7 +47,7 @@ export function CaseListTable({
           {showClient && <Th>Cliente</Th>}
           <Th>Área</Th>
           <Th>Origem</Th>
-          <Th>Responsável</Th>
+          {showLawyer && <Th>Responsável</Th>}
           <Th className="text-right">Processos</Th>
           {th("status", "Situação")}
           {th("updatedAt", "Atualizado")}
@@ -75,10 +81,10 @@ export function CaseListTable({
                   {originName(c.originOrganizationId) ?? (partnerOrigin ? "Escritório parceiro" : "—")}
                 </span>
               </Td>
-              <Td className="whitespace-nowrap text-[12.5px]">{lawyerName(c.assignedLawyerId) ?? <span className="text-subtle">Não definido</span>}</Td>
+              {showLawyer && <Td className="whitespace-nowrap text-[12.5px]">{lawyerName(c.assignedLawyerId) ?? <span className="text-subtle">Não definido</span>}</Td>}
               <Td className="text-right tabular">{c.processCount ?? 0}</Td>
               <Td>
-                <StatusBadge status={c.status} labels={LEGAL_CASE_STATUS_LABEL} tones={LEGAL_CASE_STATUS_TONE} />
+                <StatusBadge status={c.status} labels={statusLabels} tones={LEGAL_CASE_STATUS_TONE} />
               </Td>
               <Td className="whitespace-nowrap text-[12px] text-muted tabular">{formatEventTime(c.updatedAt)}</Td>
             </Tr>

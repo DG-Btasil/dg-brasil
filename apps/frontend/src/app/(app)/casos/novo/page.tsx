@@ -18,6 +18,17 @@ async function InternalCaseForm({ clientId }: { clientId?: string }) {
   return <CaseForm catalog={catalog.data} defaultClient={defaultClient} />;
 }
 
+/** Portal: catálogo + cliente pré-selecionado (?cliente=) só se for da carteira do parceiro (RLS). */
+async function PartnerWizard({ clientId }: { clientId?: string }) {
+  const [catalog, client] = await Promise.all([getCaseCatalogAction(), clientId ? getClientAction({ id: clientId }) : Promise.resolve(null)]);
+  if (!catalog.ok) return <ActionErrorState error={catalog} title="Não foi possível abrir o envio de caso." />;
+  const c = client?.ok && client.data.surface === "PARTNER" ? client.data.client : undefined;
+  const preset = c
+    ? { id: c.id, name: c.kind === "INDIVIDUAL" ? c.fullName : c.legalName, kind: c.kind, document: c.kind === "INDIVIDUAL" ? c.cpf : c.cnpj }
+    : undefined;
+  return <NewCaseWizard mode="case" catalog={catalog.data} presetClient={preset} />;
+}
+
 export default async function NewCasePage({ searchParams }: PageProps<"/casos/novo">) {
   const params = await searchParams;
   const clientId = first(params.cliente);
@@ -31,7 +42,7 @@ export default async function NewCasePage({ searchParams }: PageProps<"/casos/no
         }
         partner={
           <RequirePermission permission="partnerPortal.cases.create">
-            <NewCaseWizard mode="case" initialClientId={clientId} />
+            <PartnerWizard clientId={clientId} />
           </RequirePermission>
         }
       />

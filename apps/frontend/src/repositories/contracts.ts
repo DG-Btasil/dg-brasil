@@ -43,15 +43,9 @@ import type {
 import type { JudicialSyncResult } from "@/services/judicial-integration";
 import type {
   NewReferenceInput,
-  ClientLookupResult,
   NewPartnerOfficeInput,
   NewPartnerRequestInput,
-  PartnerCaseInput,
-  PartnerCaseResult,
-  PartnerClientBasicsPatch,
-  PartnerDocumentInput,
   PartnerOfficePatch,
-  PartnerProcessInput,
   PartnershipValuesInput,
   ImportPlan,
   ImportResult,
@@ -189,21 +183,6 @@ export interface PartnerRepository {
   listAgreements(): Promise<CasePartnershipAgreement[]>;
   updateAgreementValues(id: ID, input: PartnershipValuesInput): Promise<void>;
   registerPayout(id: ID, amount: number, note?: string): Promise<void>;
-}
-
-/**
- * Operações do Portal do Parceiro. Nenhum método recebe `partnerOfficeId`:
- * o escritório é sempre o da sessão.
- */
-export interface PartnerPortalRepository {
-  /** Consulta CPF/CNPJ sem revelar dados de outros relacionamentos. */
-  lookupClient(document: string): Promise<ClientLookupResult>;
-  submitCase(input: PartnerCaseInput): Promise<PartnerCaseResult>;
-  createProcess(input: PartnerProcessInput): Promise<ID>;
-  updateClientBasics(clientId: ID, patch: PartnerClientBasicsPatch): Promise<void>;
-  /** Envio oficial. Com `replacesDocumentId`, cria nova versão e preserva a anterior. */
-  submitDocument(input: PartnerDocumentInput): Promise<ID>;
-  respondRequest(requestId: ID, message: string): Promise<void>;
 }
 
 /**

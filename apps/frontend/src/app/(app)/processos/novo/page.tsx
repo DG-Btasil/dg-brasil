@@ -22,6 +22,13 @@ async function InternalNewProcess({ caseId }: { caseId?: string }) {
   return <NewProcessPage initialCase={c ? { id: c.id, label: c.title, description: c.clientName, lawyerId: c.assignedLawyerId ?? undefined } : undefined} />;
 }
 
+/** Portal: caso pré-selecionado (?caso=) só se for do próprio escritório (RLS) e aceitar processo. */
+async function PartnerNewProcess({ caseId }: { caseId?: string }) {
+  const found = caseId ? await getCaseAction({ id: caseId }) : null;
+  const c = found?.ok && found.data.surface === "PARTNER" && !BLOCKED.has(found.data.legalCase.status) ? found.data.legalCase : undefined;
+  return <PortalProcessForm initialCase={c ? { id: c.id, label: c.title, description: c.clientName } : undefined} />;
+}
+
 export default async function NewProcessRoute({ searchParams }: PageProps<"/processos/novo">) {
   const caseId = first((await searchParams).caso);
   return (
@@ -34,7 +41,7 @@ export default async function NewProcessRoute({ searchParams }: PageProps<"/proc
       partner={
         <RequirePermission permission="partnerPortal.processes.create">
           <Suspense fallback={fallback}>
-            <PortalProcessForm />
+            <PartnerNewProcess caseId={caseId} />
           </Suspense>
         </RequirePermission>
       }

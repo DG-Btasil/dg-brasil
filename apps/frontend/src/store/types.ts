@@ -163,87 +163,6 @@ export type NewPartnerOfficeInput = Pick<
 >;
 export type PartnerOfficePatch = Partial<Omit<NewPartnerOfficeInput, "partnershipPercentage" | "ownerPercentage">>;
 
-/**
- * Resultado da consulta de CPF/CNPJ feita por um parceiro. Nunca revela
- * nome, escritório, processos ou qualquer dado de outro relacionamento.
- * `matchToken` é opaco (no backend: token curto e assinado, não o id).
- */
-export type ClientLookupResult =
-  | { status: "NOT_FOUND" }
-  | { status: "ALREADY_RELATED"; clientId: ID }
-  | { status: "EXISTS"; matchToken: string };
-
-export interface PartnerCaseDocumentInput {
-  name: string;
-  category: DocumentCategory;
-  fileName?: string;
-  sizeKb?: number;
-}
-
-/** Dados básicos que o parceiro informa para um cliente NOVO. */
-export type PartnerNewClientInput =
-  | {
-      kind: "INDIVIDUAL";
-      /** Origem do cliente (próprio parceiro ou Bárbara Cardoso Advocacia). */
-      originOfficeId: ID;
-      fullName: string;
-      cpf: string;
-      birthDate?: string;
-      contact: IndividualClient["contact"];
-      address?: IndividualClient["address"];
-    }
-  | {
-      kind: "COMPANY";
-      originOfficeId: ID;
-      legalName: string;
-      tradeName?: string;
-      cnpj: string;
-      contact: CompanyClient["contact"];
-      address?: CompanyClient["address"];
-      representativeName?: string;
-    };
-
-/** Envio de caso pelo parceiro: cliente (novo ou existente) + caso + documentos. Não cria processo. */
-export interface PartnerCaseInput {
-  client: { mode: "NEW"; data: PartnerNewClientInput } | { mode: "EXISTING"; matchToken?: string; clientId?: ID };
-  documents: PartnerCaseDocumentInput[];
-  caseInfo: {
-    title: string;
-    area: LegalArea;
-    caseType: string;
-    opposingParty?: string;
-    summary: string;
-    /** Origem do caso: o próprio parceiro (padrão) ou Bárbara Cardoso Advocacia. */
-    originOrganizationId: ID;
-  };
-  notes?: string;
-}
-
-export interface PartnerCaseResult {
-  clientId: ID;
-  legalCaseId: ID;
-}
-
-/** Processo cadastrado pelo parceiro: sempre para um caso dele. */
-export type PartnerProcessInput = Pick<
-  Process,
-  "legalCaseId" | "cnj" | "title" | "court" | "unit" | "district" | "state" | "area" | "actionType" | "subject" | "clientPole" | "opposingParty" | "distributionDate" | "caseValue"
->;
-
-export type PartnerClientBasicsPatch = {
-  contact?: IndividualClient["contact"];
-  address?: IndividualClient["address"];
-};
-
-export interface PartnerDocumentInput extends PartnerCaseDocumentInput {
-  clientId: ID;
-  legalCaseId?: ID;
-  processId?: ID;
-  /** Envio em resposta a uma solicitação. */
-  requestId?: ID;
-  /** Nova versão de um documento já enviado (a anterior é preservada). */
-  replacesDocumentId?: ID;
-}
 
 export interface NewPartnerRequestInput {
   partnerOfficeId: ID;
@@ -446,13 +365,6 @@ export interface PartnerActions {
   invitePartnerUser: (partnerOfficeId: ID, input: { name: string; email: string; role: PartnerRole }) => string;
   setPartnerUserStatus: (userId: ID, status: "ACTIVE" | "DISABLED") => void;
   changePartnerUserRole: (userId: ID, role: PartnerRole) => void;
-  /* Portal do parceiro (escopo sempre da sessão) */
-  lookupClientDocument: (document: string) => ClientLookupResult;
-  submitPartnerCase: (input: PartnerCaseInput) => PartnerCaseResult;
-  createPartnerProcess: (input: PartnerProcessInput) => ID;
-  updatePartnerClientBasics: (clientId: ID, patch: PartnerClientBasicsPatch) => void;
-  submitPartnerDocument: (input: PartnerDocumentInput) => ID;
-  respondPartnerRequest: (requestId: ID, message: string) => void;
 }
 
 

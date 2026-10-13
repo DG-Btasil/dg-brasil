@@ -7,7 +7,6 @@ import { DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABEL, DOCUMENT_VISIBILITY_LABEL
 import { formatDate } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { useServerList } from "@/lib/hooks/use-server-list";
-import { Can } from "@/components/layout/guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +42,7 @@ export function DocumentsPanel({
   title,
   description,
   allowSharing = false,
+  readOnly = false,
 }: {
   scope: DocumentScope;
   initial: ActionResult<Page<DocumentListItem>>;
@@ -50,6 +50,8 @@ export function DocumentsPanel({
   description?: string;
   /** Caso/processo com parceiro vinculado: oferece "compartilhar com o parceiro". */
   allowSharing?: boolean;
+  /** Sem envio (ex.: caso arquivado ou recusado no portal). */
+  readOnly?: boolean;
 }) {
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery: { category: "", status: "ACTIVE", page: 1 } as Query,
@@ -57,6 +59,9 @@ export function DocumentsPanel({
     load: (q: Query) => listDocumentsAction(documentListInput(scope, q)),
   });
   const canManage = usePermission("documents.manage");
+  // Parceiro envia arquivo para caso/processo do próprio escritório (o banco confere); nunca só para o cliente.
+  const partnerSubmit = usePermission("partnerPortal.documents.submit") && !("clientId" in scope);
+  const canUpload = !readOnly && (canManage || partnerSubmit);
   // Exclusão de documento: só ADMIN (o service exige o papel; o banco confere).
   const canDelete = useRole() === "ADMIN";
   const actions = useDocumentActions();
@@ -75,9 +80,7 @@ export function DocumentsPanel({
 
   return (
     <div className="space-y-5">
-      <Can permission="documents.manage">
-        <Dropzone onFile={(file) => setUpload({ target: newTarget, file })} />
-      </Can>
+      {canUpload && <Dropzone onFile={(file) => setUpload({ target: newTarget, file })} />}
       <Panel>
         <PanelHeader title={title} description={description} />
         <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2.5 border-b border-line px-5 py-3" role="search" aria-label="Filtrar documentos">
@@ -106,7 +109,7 @@ export function DocumentsPanel({
             query.category || query.status !== "ACTIVE" ? (
               <EmptyState icon={SearchX} compact title="Nenhum documento corresponde aos filtros." />
             ) : (
-              <EmptyState icon={FileStack} compact title="Nenhum documento registrado." description="Envie o primeiro arquivo pela área acima." />
+              <EmptyState icon={FileStack} compact title="Nenhum documento registrado." description={canUpload ? "Envie o primeiro arquivo pela área acima." : undefined} />
             )
           ) : (
             <>
@@ -128,7 +131,7 @@ export function DocumentsPanel({
                     const v = doc.currentVersion;
                     const internal = doc.surface === "INTERNAL";
                     const items = [
-                      ...(canManage && doc.status === "ACTIVE" ? [{ key: "version", label: "Enviar nova versão", onSelect: () => setUpload({ target: { kind: "version", documentId: doc.id, title: doc.title } }) }] : []),
+                      ...(canUpload && doc.status === "ACTIVE" ? [{ key: "version", label: "Enviar nova versão", onSelect: () => setUpload({ target: { kind: "version", documentId: doc.id, title: doc.title } }) }] : []),
                       ...(v ? [{ key: "history", label: "Histórico de versões", onSelect: () => setVersionsOf(doc.id) }] : []),
                       ...(canManage && v && v.verification !== "VERIFIED"
                         ? [{ key: "verify", label: "Marcar arquivo como verificado", onSelect: () => act(doc.id, () => actions.verify(v.id, "VERIFIED")) }]
@@ -186,7 +189,7 @@ export function DocumentsPanel({
                                 Baixar
                               </Button>
                             ) : (
-                              canManage &&
+                              canUpload &&
                               doc.status === "ACTIVE" && (
                                 <Button size="sm" variant="secondary" icon={<UploadCloud className="size-3.5" aria-hidden />} onClick={() => setUpload({ target: { kind: "version", documentId: doc.id, title: doc.title } })}>
                                   Enviar arquivo

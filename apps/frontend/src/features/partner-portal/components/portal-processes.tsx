@@ -1,140 +1,67 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Briefcase, Eye, FileClock, FileLock2, FilePlus2, History, Plus, SearchX } from "lucide-react";
-import { BRAZILIAN_STATES, COURTS, LEGAL_AREA_LABEL, LEGAL_AREAS, type LegalArea } from "@/lib/constants/legal";
-import {
-  CLIENT_POLE_LABEL,
-  CLIENT_POLES,
-  DOCUMENT_CATEGORY_LABEL,
-  PARTNERSHIP_STATUS_LABEL,
-  PARTNERSHIP_STATUS_TONE,
-  PROCESS_EVENT_SOURCE_LABEL,
-  PROCESS_PHASE_LABEL,
-  PROCESS_STATUS_LABEL,
-  PROCESS_STATUS_TONE,
-  LEGAL_CASE_STATUS_TONE,
-  PARTNER_CASE_STATUS_LABEL,
-  type ClientPole,
-} from "@/lib/constants/status";
-import { formatCurrency, formatDate, formatEventTime, pluralize } from "@/lib/formatting";
+import { Scale } from "lucide-react";
+import { BRAZILIAN_STATES, COURTS } from "@/lib/constants/legal";
+import { CLIENT_POLE_LABEL, CLIENT_POLES, LEGAL_CASE_STATUSES, PROCESS_PHASE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
+import { formatCurrency, formatDate } from "@/lib/formatting";
+import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/result";
+import { useActionFeedback } from "@/lib/actions/use-action-feedback";
+import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
-import { isCnjFormat, msg, parseCurrencyInput } from "@/lib/validation";
+import { isCnjFormat, msg } from "@/lib/validation";
 import { Can, PageContainer } from "@/components/layout/guards";
-import { Badge, StatusBadge } from "@/components/ui/badge";
+import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
+import { StatusBadge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { PageHeader, Stat, Timeline } from "@/components/ui/display";
-import { Field, Input, MaskedInput, SearchInput, Select } from "@/components/ui/form";
+import { PageHeader } from "@/components/ui/display";
+import { Field, Input, MaskedInput, Select } from "@/components/ui/form";
 import { DefinitionGrid, Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
-import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
-import { EmptyState } from "@/components/feedback/states";
-import { useCan } from "@/features/auth/hooks";
-import { useCaseMap, useCasePartnership, useLegalCases } from "@/features/cases/hooks";
-import { PartnerRequestList } from "@/features/partners/components/request-list";
-import { clientDisplayName } from "@/features/processes/utils";
-import { useScopedStore } from "@/store/scope";
-import type { ClientDocument, ID, Process } from "@/types";
-import {
-  useCurrentDocuments,
-  useDocumentVersions,
-  usePortalActions,
-  usePortalClientMap,
-  usePortalProcesses,
-  usePortalRequests,
-} from "../hooks";
-import { ApprovedDocumentDialog, RespondRequestDialog, SendDocumentDialog } from "./portal-dialogs";
+import type { Page } from "@/server/core/pagination";
+import { listCasesAction } from "@/server/domain/cases/actions";
+import type { DocumentListItem } from "@/server/domain/documents/dto";
+import type { PartnerRequestListItem } from "@/server/domain/partner-requests/dto";
+import { createPartnerProcessAction, listProcessesAction } from "@/server/domain/processes/actions";
+import type { ProcessEventDTO, ProcessListItem, ProcessPartnerDTO } from "@/server/domain/processes/dto";
+import { useToast } from "@/store/ui-store";
+import { usePermission } from "@/features/auth/hooks";
+import { DocumentsPanel } from "@/features/documents/components/documents-panel";
+import { RequestsPanel } from "@/features/partner-requests/components/requests-panel";
+import { CnjText } from "@/features/processes/components/cnj-text";
+import { ProcessListTable } from "@/features/processes/components/process-list-table";
+import { EventsTab } from "@/features/processes/components/tabs/events-tab";
+import { portalProcessInput, type PortalListQuery } from "../list-query";
+import { partnerProcessInput, type PartnerProcessValues } from "../server-input";
+import { PortalServerList } from "./portal-list";
 
-function normalize(v: string) {
-  return v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-}
-
-/** Processos do escritório parceiro. */
-export function PortalProcessList() {
-  const processes = usePortalProcesses();
-  const clientMap = usePortalClientMap();
-  const caseMap = useCaseMap();
-  const [q, setQ] = useState("");
-  const filtered = useMemo(() => {
-    const term = normalize(q.trim());
-    return processes
-      .filter((p) => !term || normalize(`${p.title} ${p.cnj ?? ""} ${clientDisplayName(clientMap.get(p.clientId))}`).includes(term))
-      .sort((a, b) => (b.lastMovementAt ?? b.updatedAt).localeCompare(a.lastMovementAt ?? a.updatedAt));
-  }, [processes, q, clientMap]);
-
+/** Processos dos casos do escritório parceiro (RLS). */
+export function PortalProcessList({ initialQuery, initialResult }: { initialQuery: PortalListQuery; initialResult: ActionResult<Page<ProcessListItem>> }) {
   const cta = (
     <Can permission="partnerPortal.processes.create">
-      <ButtonLink href="/processos/novo" icon={<Plus className="size-4" aria-hidden />}>
+      <ButtonLink href="/processos/novo" variant="secondary" icon={<Scale className="size-4" aria-hidden />}>
         Cadastrar processo
       </ButtonLink>
     </Can>
   );
-
   return (
-    <PageContainer>
-      <PageHeader title="Processos" description="Andamento dos casos do seu escritório conduzidos pela Bárbara Cardoso Advocacia." actions={cta} />
-      {processes.length === 0 ? (
-        <Panel>
-          <EmptyState icon={Briefcase} title="Nenhum processo ainda." description="Processos são cadastrados dentro de um caso. Envie um caso em Casos → Novo caso." action={cta} />
-        </Panel>
-      ) : (
-        <Panel>
-          <div className="flex items-center gap-3 border-b border-line px-5 py-3">
-            <SearchInput aria-label="Buscar processos" placeholder="Buscar por cliente, título ou número CNJ" value={q} onChange={(e) => setQ(e.target.value)} className="w-[380px]" />
-            <span className="text-[12.5px] text-muted">{pluralize(filtered.length, "processo", "processos")}</span>
-          </div>
-          {filtered.length === 0 ? (
-            <EmptyState icon={SearchX} title="Nenhum processo encontrado." />
-          ) : (
-            <Table caption="Processos do escritório parceiro">
-              <THead>
-                <tr>
-                  <Th>Processo</Th>
-                  <Th>Cliente</Th>
-                  <Th>Área</Th>
-                  <Th>Status</Th>
-                  <Th>Caso</Th>
-                  <Th>Atualização</Th>
-                </tr>
-              </THead>
-              <TBody>
-                {filtered.map((p) => {
-                  const legalCase = caseMap.get(p.legalCaseId);
-                  return (
-                    <Tr key={p.id}>
-                      <Td>
-                        <Link href={`/processos/${p.id}`} className="font-medium text-navy hover:underline underline-offset-2">
-                          {p.title}
-                        </Link>
-                        <div className="font-mono text-[11.5px] text-muted">{p.cnj ?? "Sem número CNJ"}</div>
-                      </Td>
-                      <Td className="text-[12.5px]">{clientDisplayName(clientMap.get(p.clientId))}</Td>
-                      <Td className="text-[12.5px] text-muted">{LEGAL_AREA_LABEL[p.area]}</Td>
-                      <Td>
-                        <StatusBadge status={p.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
-                      </Td>
-                      <Td className="max-w-[220px]">
-                        {legalCase ? (
-                          <Link href={`/casos/${legalCase.id}`} className="block truncate text-[12.5px] text-navy hover:underline underline-offset-2">
-                            {legalCase.title}
-                          </Link>
-                        ) : (
-                          <span className="text-[12px] text-subtle">—</span>
-                        )}
-                      </Td>
-                      <Td className="text-[12px] text-muted">{formatEventTime(p.lastMovementAt ?? p.updatedAt)}</Td>
-                    </Tr>
-                  );
-                })}
-              </TBody>
-            </Table>
-          )}
-        </Panel>
-      )}
-    </PageContainer>
+    <PortalServerList
+      title="Processos"
+      description="Processos dos casos do seu escritório, conduzidos pela Bárbara Cardoso Advocacia."
+      cta={cta}
+      initialQuery={initialQuery}
+      initialResult={initialResult}
+      load={(q) => listProcessesAction(portalProcessInput(q))}
+      noun={{ one: "processo", many: "processos" }}
+      searchLabel="Buscar por número CNJ ou título"
+      empty={{ icon: Scale, title: "Nenhum processo ainda.", description: "Processos são cadastrados dentro de um caso do seu escritório." }}
+      errorTitle="Não foi possível carregar os processos."
+    >
+      {(rows) => <ProcessListTable rows={rows} />}
+    </PortalServerList>
   );
 }
 
@@ -143,423 +70,157 @@ export function PortalProcessList() {
 const TAB_KEYS = ["visao-geral", "movimentacoes", "documentos", "pendencias"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
-/** Detalhe do processo no portal. Nenhum conteúdo interno chega aqui. */
-export function PortalProcessDetail({ id }: { id: string }) {
-  const processes = usePortalProcesses();
-  const process = processes.find((p) => p.id === id);
-  const clientMap = usePortalClientMap();
-  const legalCase = useCaseMap().get(process?.legalCaseId ?? "");
-  const allRequests = usePortalRequests();
-  const requests = useMemo(() => allRequests.filter((r) => r.processId === id), [allRequests, id]);
+/**
+ * Processo no portal (ProcessPartnerDTO): só dados processuais, movimentações
+ * oficiais e do sistema (nota manual e registro de agente ficam de fora no
+ * servidor), documentos compartilhados e as pendências do caso.
+ */
+export function PortalProcessDetail({
+  process,
+  events,
+  documents,
+  requests,
+}: {
+  process: ProcessPartnerDTO;
+  events: ActionResult<Page<ProcessEventDTO>>;
+  documents: ActionResult<Page<DocumentListItem>>;
+  requests: ActionResult<Page<PartnerRequestListItem>>;
+}) {
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
-
+  const showCaseValue = usePermission("processes.caseValue.view");
+  const open = requests.ok ? requests.data.items.filter((r) => r.status === "OPEN").length : 0;
   // O financeiro pertence ao caso: fica na página do caso.
   const tabs = useMemo<TabItem<TabKey>[]>(
     () => [
       { key: "visao-geral", label: "Visão geral" },
       { key: "movimentacoes", label: "Movimentações" },
       { key: "documentos", label: "Documentos" },
-      { key: "pendencias", label: "Pendências", count: requests.filter((r) => r.status === "OPEN").length, attention: requests.some((r) => r.status === "OPEN") },
+      { key: "pendencias", label: "Pendências do caso", count: open, attention: open > 0 },
     ],
-    [requests],
+    [open],
   );
-
-  // Processo de outro escritório (ou inexistente): não está no estado recortado.
-  if (!process) {
-    return (
-      <PageContainer>
-        <Panel className="mt-6">
-          <EmptyState
-            icon={SearchX}
-            title="Processo não encontrado."
-            description="O endereço pode estar incorreto ou este processo não pertence ao seu escritório."
-            action={<ButtonLink href="/processos" variant="secondary">Voltar para Processos</ButtonLink>}
-          />
-        </Panel>
-      </PageContainer>
-    );
-  }
-  const client = clientMap.get(process.clientId);
-  const active: TabKey = tabs.some((t) => t.key === tab) ? tab : "visao-geral";
 
   return (
     <PageContainer>
       <PageHeader
         breadcrumbs={[{ label: "Processos", href: "/processos" }, { label: process.title }]}
-        eyebrow={<span className="font-mono normal-case tracking-normal text-[12px]">{process.cnj ?? "Sem número CNJ"}</span>}
+        eyebrow={
+          <span className="font-mono normal-case tracking-normal text-[12px]">
+            <CnjText cnj={process.cnj} />
+          </span>
+        }
         title={process.title}
         meta={
           <>
-            {client && (
-              <Link href={`/clientes/${client.id}`} className="font-medium text-navy hover:underline underline-offset-2">
-                {clientDisplayName(client)}
+            {process.clientName && (
+              <Link href={`/clientes/${process.clientId}`} className="font-medium text-navy hover:underline underline-offset-2">
+                {process.clientName}
               </Link>
             )}
             <StatusBadge status={process.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
-            {legalCase && (
-              <span className="inline-flex items-center gap-1.5">
-                Caso:{" "}
-                <Link href={`/casos/${legalCase.id}`} className="font-medium text-navy hover:underline underline-offset-2">
-                  {legalCase.title}
-                </Link>
-                <StatusBadge status={legalCase.status} labels={PARTNER_CASE_STATUS_LABEL} tones={LEGAL_CASE_STATUS_TONE} />
-              </span>
-            )}
+            <span>
+              Caso:{" "}
+              <Link href={`/casos/${process.legalCaseId}`} className="font-medium text-navy hover:underline underline-offset-2">
+                {process.caseTitle}
+              </Link>
+            </span>
           </>
         }
       />
-      <Tabs items={tabs} value={active} onChange={setTab} label="Seções do processo" className="mb-5" />
-      <TabPanel tabKey={active}>
-        {active === "visao-geral" && <OverviewTab process={process} />}
-        {active === "movimentacoes" && <EventsTab processId={process.id} />}
-        {active === "documentos" && <DocumentsTab process={process} />}
-        {active === "pendencias" && <RequestsTab processId={process.id} />}
+      <Tabs items={tabs} value={tab} onChange={setTab} label="Seções do processo" className="mb-5" />
+      <TabPanel tabKey={tab}>
+        {tab === "visao-geral" && (
+          <Panel>
+            <PanelHeader title="Dados do processo" />
+            <PanelBody>
+              <DefinitionGrid
+                columns={3}
+                items={[
+                  { label: "Tipo de ação", value: process.actionType },
+                  { label: "Assunto", value: process.subject },
+                  { label: "Fase", value: process.phase ? PROCESS_PHASE_LABEL[process.phase] : undefined },
+                  { label: "Tribunal", value: process.court },
+                  { label: "Unidade", value: process.unit },
+                  { label: "Comarca/UF", value: [process.district, process.state].filter(Boolean).join("/") || undefined },
+                  { label: "Polo do cliente", value: process.clientPole ? CLIENT_POLE_LABEL[process.clientPole] : undefined },
+                  { label: "Parte contrária", value: process.opposingParty },
+                  { label: "Distribuição", value: process.distributionDate ? formatDate(process.distributionDate) : undefined },
+                  ...(showCaseValue ? [{ label: "Valor da causa", value: process.caseValue !== undefined ? formatCurrency(process.caseValue) : undefined }] : []),
+                  { label: "Conduzido por", value: "Bárbara Cardoso Advocacia" },
+                ]}
+              />
+            </PanelBody>
+          </Panel>
+        )}
+        {tab === "movimentacoes" && <EventsTab processId={process.id} initial={events} onAdd={() => undefined} />}
+        {tab === "documentos" && (
+          <DocumentsPanel
+            scope={{ legalProcessId: process.id }}
+            initial={documents}
+            title="Documentos do processo"
+            description="Documentos enviados não podem ser editados nem apagados. Para corrigir, envie uma nova versão."
+          />
+        )}
+        {tab === "pendencias" && (
+          <RequestsPanel scope={{ legalCaseId: process.legalCaseId }} initial={requests} title="Pendências do caso" description="Solicitações da Bárbara Cardoso Advocacia sobre o caso deste processo." showCase={false} />
+        )}
       </TabPanel>
     </PageContainer>
   );
 }
 
-function OverviewTab({ process }: { process: Process }) {
-  const can = useCan();
-  return (
-    <Panel>
-      <PanelHeader title="Dados do processo" />
-      <PanelBody>
-        <DefinitionGrid
-          columns={3}
-          items={[
-            { label: "Área", value: LEGAL_AREA_LABEL[process.area] },
-            { label: "Tipo de ação", value: process.actionType },
-            { label: "Fase", value: PROCESS_PHASE_LABEL[process.phase] },
-            { label: "Tribunal", value: process.court },
-            { label: "Unidade", value: process.unit },
-            { label: "Comarca/UF", value: [process.district, process.state].filter(Boolean).join("/") || undefined },
-            { label: "Polo do cliente", value: CLIENT_POLE_LABEL[process.clientPole] },
-            { label: "Parte contrária", value: process.opposingParty },
-            { label: "Distribuição", value: process.distributionDate ? formatDate(process.distributionDate) : undefined },
-            ...(can("processes.caseValue.view") ? [{ label: "Valor da causa", value: process.caseValue !== undefined ? formatCurrency(process.caseValue) : undefined }] : []),
-            { label: "Conduzido por", value: "Bárbara Cardoso Advocacia" },
-          ]}
-        />
-      </PanelBody>
-    </Panel>
-  );
-}
-
-function EventsTab({ processId }: { processId: ID }) {
-  const all = useScopedStore((s) => s.processEvents);
-  const events = useMemo(() => all.filter((e) => e.processId === processId).sort((a, b) => b.at.localeCompare(a.at)), [all, processId]);
-  return (
-    <Panel>
-      <PanelHeader title="Movimentações" />
-      <PanelBody>
-        {events.length === 0 ? (
-          <EmptyState compact title="Nenhuma movimentação registrada." />
-        ) : (
-          <Timeline
-            items={events.map((e) => ({
-              id: e.id,
-              title: e.title,
-              description: e.description,
-              meta: `${formatEventTime(e.at)} · ${PROCESS_EVENT_SOURCE_LABEL[e.source]}`,
-              highlight: e.important,
-            }))}
-          />
-        )}
-      </PanelBody>
-    </Panel>
-  );
-}
-
-function DocumentsTab({ process }: { process: Process }) {
-  const documents = useCurrentDocuments({ processId: process.id });
-  const signals = useScopedStore((s) => s.reviewSignals);
-  const inReview = signals.filter((s) => s.processId === process.id);
-  const [sending, setSending] = useState<{ replaces?: ClientDocument } | null>(null);
-  const [viewing, setViewing] = useState<ClientDocument | null>(null);
-  const [history, setHistory] = useState<ClientDocument | null>(null);
-  const mine = documents.filter((d) => d.uploadedByPartnerOfficeId);
-  const approved = documents.filter((d) => !d.uploadedByPartnerOfficeId);
-
-  return (
-    <div className="space-y-5">
-      <Panel>
-        <PanelHeader title="Documentos do escritório" description="Documentos elaborados pela Bárbara Cardoso Advocacia." />
-        {approved.length === 0 && inReview.length === 0 ? (
-          <EmptyState compact title="Nenhum documento disponível ainda." />
-        ) : (
-          <ul className="divide-y divide-line">
-            {inReview.map((s) => (
-              <li key={s.id} className="flex items-center gap-3 px-5 py-3">
-                <FileClock className="size-4 text-gold-600" aria-hidden />
-                <div className="flex-1">
-                  <p className="text-[13px] font-medium text-foreground">Documento em elaboração</p>
-                  <p className="text-[12px] text-muted">Desde {formatDate(s.since)}</p>
-                </div>
-                <Badge tone="gold">Em revisão interna</Badge>
-              </li>
-            ))}
-            {approved.map((d) => (
-              <li key={d.id} className="flex items-center gap-3 px-5 py-3">
-                <FileLock2 className="size-4 text-success" aria-hidden />
-                <div className="flex-1">
-                  <p className="text-[13px] font-medium text-foreground">{d.name}</p>
-                  <p className="text-[12px] text-muted">{d.approvedContent ? `Aprovado em ${formatDate(d.approvedContent.approvedAt)}` : formatDate(d.updatedAt)}</p>
-                </div>
-                <Badge tone="success">Documento aprovado</Badge>
-                <Button size="sm" variant="secondary" icon={<Eye className="size-3.5" aria-hidden />} onClick={() => setViewing(d)}>
-                  Visualizar
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-      <Panel>
-        <PanelHeader
-          title="Documentos enviados por você"
-          description="Documentos enviados não podem ser editados nem apagados. Para corrigir, envie uma nova versão — a anterior fica guardada."
-          actions={
-            <Can permission="partnerPortal.documents.submit">
-              <Button size="sm" icon={<FilePlus2 className="size-3.5" aria-hidden />} onClick={() => setSending({})}>
-                Enviar documento
-              </Button>
-            </Can>
-          }
-        />
-        {mine.length === 0 ? (
-          <EmptyState compact title="Nenhum documento enviado neste processo." />
-        ) : (
-          <Table caption="Documentos enviados">
-            <THead>
-              <tr>
-                <Th>Documento</Th>
-                <Th>Tipo</Th>
-                <Th>Versão</Th>
-                <Th>Enviado em</Th>
-                <Th>
-                  <span className="sr-only">Ações</span>
-                </Th>
-              </tr>
-            </THead>
-            <TBody>
-              {mine.map((d) => (
-                <Tr key={d.id}>
-                  <Td className="font-medium text-foreground">{d.name}</Td>
-                  <Td className="text-[12.5px] text-muted">{DOCUMENT_CATEGORY_LABEL[d.category]}</Td>
-                  <Td className="text-[12.5px] tabular">v{d.version ?? 1}</Td>
-                  <Td className="text-[12.5px] text-muted">{d.submittedAt ? formatDate(d.submittedAt) : "—"}</Td>
-                  <Td className="whitespace-nowrap text-right">
-                    {(d.version ?? 1) > 1 && (
-                      <Button size="sm" variant="ghost" icon={<History className="size-3.5" aria-hidden />} onClick={() => setHistory(d)}>
-                        Versões
-                      </Button>
-                    )}
-                    <Can permission="partnerPortal.documents.submit">
-                      <Button size="sm" variant="secondary" onClick={() => setSending({ replaces: d })}>
-                        Enviar nova versão
-                      </Button>
-                    </Can>
-                  </Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-        )}
-      </Panel>
-
-      {sending && (
-        <SendDocumentDialog clientId={process.clientId} legalCaseId={process.legalCaseId} processId={process.id} replaces={sending.replaces} open onOpenChange={(o) => !o && setSending(null)} />
-      )}
-      {viewing && <ApprovedDocumentDialog doc={viewing} open onOpenChange={(o) => !o && setViewing(null)} />}
-      {history && <VersionsList doc={history} onClose={() => setHistory(null)} />}
-    </div>
-  );
-}
-
-function VersionsList({ doc, onClose }: { doc: ClientDocument; onClose: () => void }) {
-  const versions = useDocumentVersions(doc);
-  return (
-    <Panel className="fixed bottom-6 right-6 z-40 w-[420px] shadow-overlay">
-      <PanelHeader
-        title={`Versões — ${doc.name}`}
-        actions={
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            Fechar
-          </Button>
-        }
-      />
-      <ul className="divide-y divide-line">
-        {versions.map((v) => (
-          <li key={v.id} className="flex items-center justify-between px-5 py-2.5 text-[12.5px]">
-            <span>
-              v{v.version ?? 1} · {v.fileName}
-            </span>
-            <span className="text-muted">{v.supersededAt ? `substituída em ${formatDate(v.supersededAt)}` : "vigente"}</span>
-          </li>
-        ))}
-      </ul>
-    </Panel>
-  );
-}
-
-function RequestsTab({ processId }: { processId: ID }) {
-  const all = usePortalRequests();
-  const requests = useMemo(() => all.filter((r) => r.processId === processId), [all, processId]);
-  const clientMap = usePortalClientMap();
-  const processes = usePortalProcesses();
-  const processMap = useMemo(() => new Map(processes.map((p) => [p.id, p])), [processes]);
-  const [respond, setRespond] = useState<ID | null>(null);
-  const [send, setSend] = useState<ID | null>(null);
-  const responding = requests.find((r) => r.id === respond);
-  const sendingFor = requests.find((r) => r.id === send);
-  return (
-    <Panel>
-      <PanelHeader title="Pendências deste processo" />
-      <PartnerRequestList
-        requests={requests}
-        clientMap={clientMap}
-        processMap={processMap}
-        emptyText="Nenhuma pendência neste processo."
-        actions={(r) =>
-          r.status === "OPEN" && (
-            <Can permission="partnerPortal.requests.respond">
-              {r.type === "DOCUMENT_REQUEST" || r.type === "CORRECTION_REQUEST" ? (
-                <Button size="sm" onClick={() => setSend(r.id)}>
-                  Enviar documento
-                </Button>
-              ) : (
-                <Button size="sm" onClick={() => setRespond(r.id)}>
-                  Responder
-                </Button>
-              )}
-            </Can>
-          )
-        }
-      />
-      {responding && <RespondRequestDialog request={responding} open onOpenChange={(o) => !o && setRespond(null)} />}
-      {sendingFor && sendingFor.clientId && <SendDocumentDialog clientId={sendingFor.clientId} request={sendingFor} open onOpenChange={(o) => !o && setSend(null)} />}
-    </Panel>
-  );
-}
-
-/**
- * Financeiro do CASO para o ADMINISTRADOR DO PARCEIRO: só a participação
- * do próprio parceiro. Sem custos internos, outros parceiros ou consumo.
- */
-export function PartnerFinancePanel({ caseValue, agreementStatus: a }: { caseValue?: number; agreementStatus?: ReturnType<typeof useCasePartnership> }) {
-  if (!a) {
-    return (
-      <Panel>
-        <EmptyState compact title="Ainda não há valores registrados para este caso." />
-      </Panel>
-    );
-  }
-  const realized = a.realizedRevenue !== undefined;
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-4">
-        <Stat label="Valor da causa" value={formatCurrency(caseValue)} hint="Dado jurídico — não é dividido" />
-        {realized ? (
-          <>
-            <Stat label="Honorários realizados" value={formatCurrency(a.realizedRevenue)} />
-            <Stat label="Sua participação" value={formatCurrency(a.realizedPartnerAmount)} hint={`Pago: ${formatCurrency(a.paidPartnerAmount)}`} />
-            <Stat label="A receber" value={formatCurrency(a.pendingPartnerAmount)} tone={a.pendingPartnerAmount ? "gold" : "neutral"} />
-          </>
-        ) : (
-          <>
-            <Stat label="Honorários estimados" value={formatCurrency(a.revenueBase)} hint="Estimativa — não é garantia" />
-            <Stat label="Sua participação estimada" value={formatCurrency(a.estimatedPartnerAmount)} hint="Estimativa" />
-            <Stat label="Situação" value={<StatusBadge status={a.status} labels={PARTNERSHIP_STATUS_LABEL} tones={PARTNERSHIP_STATUS_TONE} />} />
-          </>
-        )}
-      </div>
-      <p className="text-[12px] text-subtle">
-        Participação deste caso: {a.partnerPercentage}%, registrada em {formatDate(a.effectiveAt)}. Valores estimados podem mudar e não representam garantia de recebimento.
-      </p>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 
-interface ProcessValues {
-  legalCaseId: string;
-  cnj: string;
-  title: string;
-  court: string;
-  unit: string;
-  district: string;
-  state: string;
-  area: LegalArea | "";
-  actionType: string;
-  clientPole: ClientPole;
-  opposingParty: string;
-  distributionDate: string;
-  caseValue: string;
-}
-
 const opts = <T extends string>(values: readonly T[], labels?: Record<T, string>) => values.map((v) => ({ value: v, label: labels ? labels[v] : v }));
-const blank = (v: string) => (v.trim() ? v.trim() : undefined);
+/** Processo só entra em caso enviado, em análise, aceito, em andamento ou encerrado (o banco confere). */
+const CASE_STATUSES_FOR_PROCESS = LEGAL_CASE_STATUSES.filter((s) => s !== "DRAFT" && s !== "REJECTED" && s !== "ARCHIVED");
+const FIELD_MAP: Record<string, string> = { legalCaseId: "legalCaseId" };
 
 /**
- * Cadastro de processo pelo parceiro: sempre dentro de um caso do próprio
- * escritório. A origem é a do caso; não há escolha de escritório na tela.
+ * Cadastro de processo pelo parceiro (createPartnerProcessAction): sempre
+ * dentro de um caso do próprio escritório. A origem é a do caso; não há
+ * escolha de escritório. Chave de idempotência por intenção de envio.
  */
-export function PortalProcessForm() {
+export function PortalProcessForm({ initialCase }: { initialCase?: PickerOption }) {
   const router = useRouter();
-  const params = useSearchParams();
-  const clientMap = usePortalClientMap();
-  const cases = useLegalCases();
-  const actions = usePortalActions();
-  const clientFilter = params.get("cliente");
-  const caseOptions = useMemo(
-    () =>
-      cases
-        .filter((c) => c.status !== "REJECTED" && c.status !== "ARCHIVED" && (!clientFilter || c.clientId === clientFilter))
-        .map((c) => ({ value: c.id, label: `${c.title} · ${clientDisplayName(clientMap.get(c.clientId))}` }))
-        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
-    [cases, clientMap, clientFilter],
-  );
+  const toast = useToast();
+  const failed = useActionFeedback();
+  const idempotency = useIdempotencyKey();
+  const [legalCase, setLegalCase] = useState<PickerOption | null>(initialCase ?? null);
+  const [caseError, setCaseError] = useState<string>();
+  const searchCases = useCallback(async (q: string): Promise<{ ok: true; options: PickerOption[] } | { ok: false; message: string }> => {
+    const r = await callAction(() => listCasesAction({ q: q.trim() || undefined, status: CASE_STATUSES_FOR_PROCESS, pageSize: 10, sortBy: "updatedAt", sortDirection: "desc" }));
+    if (!r.ok) return { ok: false, message: r.error.message };
+    return { ok: true, options: r.data.items.map((c) => ({ id: c.id, label: c.title, description: c.clientName })) };
+  }, []);
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
-  } = useForm<ProcessValues>({
-    defaultValues: {
-      legalCaseId: params.get("caso") ?? "",
-      cnj: "",
-      title: "",
-      court: "",
-      unit: "",
-      district: "",
-      state: "",
-      area: "",
-      actionType: "",
-      clientPole: "ACTIVE",
-      opposingParty: "",
-      distributionDate: "",
-      caseValue: "",
-    },
+  } = useForm<PartnerProcessValues>({
+    defaultValues: { cnj: "", title: "", court: "", unit: "", district: "", state: "", actionType: "", subject: "", clientPole: "ACTIVE", opposingParty: "", distributionDate: "", caseValue: "" },
   });
+  const back = initialCase ? `/casos/${initialCase.id}?aba=processos` : "/processos";
+
   const onSubmit = handleSubmit(async (v) => {
-    const id = await actions.createProcess({
-      legalCaseId: v.legalCaseId,
-      cnj: blank(v.cnj),
-      title: v.title.trim(),
-      court: blank(v.court),
-      unit: blank(v.unit),
-      district: blank(v.district),
-      state: blank(v.state),
-      area: v.area as LegalArea,
-      actionType: v.actionType.trim(),
-      clientPole: v.clientPole,
-      opposingParty: blank(v.opposingParty),
-      distributionDate: blank(v.distributionDate),
-      caseValue: parseCurrencyInput(v.caseValue),
-    });
-    if (id) router.push(`/processos/${id}`);
+    if (!legalCase) {
+      setCaseError("Selecione o caso.");
+      return;
+    }
+    const input = partnerProcessInput(legalCase.id, v);
+    const result = await callAction(() => createPartnerProcessAction({ ...input, idempotencyKey: idempotency.keyFor(input) }));
+    if (!result.ok) {
+      const fields = mapFieldErrors(result.error.fieldErrors, FIELD_MAP);
+      if (fields.legalCaseId) setCaseError(fields.legalCaseId);
+      for (const [path, message] of Object.entries(fields)) if (path !== "legalCaseId") setError(path as keyof PartnerProcessValues, { message });
+      if (Object.keys(fields).length === 0) failed(result, "Não foi possível cadastrar o processo.");
+      return;
+    }
+    idempotency.reset();
+    toast({ tone: "success", title: "Processo cadastrado", description: String(input.title) });
+    // Recurso devolvido pelo servidor (também quando deduplicado).
+    router.push(`/processos/${result.data.id}`);
   });
 
   return (
@@ -569,65 +230,70 @@ export function PortalProcessForm() {
         title="Cadastrar processo"
         description="Todo processo pertence a um caso. Para uma nova demanda, envie antes um caso em Casos → Novo caso."
       />
-      {caseOptions.length === 0 ? (
-        <Panel>
-          <EmptyState compact title="Envie um caso primeiro." action={<ButtonLink href="/casos/novo">Novo caso</ButtonLink>} />
+      <form onSubmit={onSubmit} noValidate>
+        <Panel className="max-w-[900px]">
+          <PanelBody className="grid grid-cols-2 gap-x-5 gap-y-4">
+            <Field label="Caso relacionado" requirement="required" error={caseError} hint="Casos do seu escritório já enviados.">
+              {(p) => (
+                <AsyncPicker
+                  {...p}
+                  value={legalCase}
+                  onChange={(o) => {
+                    setLegalCase(o);
+                    setCaseError(undefined);
+                  }}
+                  search={searchCases}
+                  placeholder="Buscar caso pelo título"
+                />
+              )}
+            </Field>
+            <Field label="Número CNJ" requirement="optional" error={errors.cnj?.message}>
+              {(p) => <MaskedInput mask="cnj" placeholder="0000000-00.0000.0.00.0000" {...p} {...register("cnj", { validate: (x) => !x || isCnjFormat(x) || msg.cnj })} />}
+            </Field>
+            <Field label="Nome resumido" requirement="required" error={errors.title?.message} className="col-span-2">
+              {(p) => <Input {...p} maxLength={300} {...register("title", { validate: (x) => !!x.trim() || "Informe um nome resumido." })} />}
+            </Field>
+            <Field label="Tribunal" requirement="optional">
+              {(p) => <Select {...p} placeholder="Selecione" options={opts(COURTS)} {...register("court")} />}
+            </Field>
+            <Field label="Unidade / vara" requirement="optional">
+              {(p) => <Input {...p} maxLength={200} {...register("unit")} />}
+            </Field>
+            <Field label="Comarca" requirement="optional">
+              {(p) => <Input {...p} maxLength={120} {...register("district")} />}
+            </Field>
+            <Field label="UF" requirement="optional" error={errors.state?.message}>
+              {(p) => <Select {...p} placeholder="Selecione" options={opts(BRAZILIAN_STATES)} {...register("state")} />}
+            </Field>
+            <Field label="Tipo de ação" requirement="recommended" error={errors.actionType?.message}>
+              {(p) => <Input {...p} maxLength={200} {...register("actionType")} />}
+            </Field>
+            <Field label="Assunto" requirement="optional">
+              {(p) => <Input {...p} maxLength={300} {...register("subject")} />}
+            </Field>
+            <Field label="Polo do cliente" requirement="required">
+              {(p) => <Select {...p} options={opts(CLIENT_POLES, CLIENT_POLE_LABEL)} {...register("clientPole")} />}
+            </Field>
+            <Field label="Parte contrária" requirement="recommended">
+              {(p) => <Input {...p} maxLength={500} {...register("opposingParty")} />}
+            </Field>
+            <Field label="Data de distribuição" requirement="optional" error={errors.distributionDate?.message}>
+              {(p) => <Input {...p} type="date" {...register("distributionDate")} />}
+            </Field>
+            <Field label="Valor da causa" requirement="optional" hint="Dado jurídico — não é honorário." error={errors.caseValue?.message}>
+              {(p) => <Input {...p} inputMode="decimal" placeholder="R$ 0,00" {...register("caseValue")} />}
+            </Field>
+          </PanelBody>
+          <PanelFooter>
+            <Button variant="ghost" onClick={() => router.push(back)} disabled={isSubmitting}>
+              Cancelar
+            </Button>
+            <Button type="submit" loading={isSubmitting}>
+              Cadastrar processo
+            </Button>
+          </PanelFooter>
         </Panel>
-      ) : (
-        <form onSubmit={onSubmit} noValidate>
-          <Panel className="max-w-[900px]">
-            <PanelBody className="grid grid-cols-2 gap-x-5 gap-y-4">
-              <Field label="Caso relacionado" requirement="required" error={errors.legalCaseId?.message}>
-                {(p) => <Select {...p} placeholder="Selecione" options={caseOptions} {...register("legalCaseId", { required: "Selecione o caso." })} />}
-              </Field>
-              <Field label="Número CNJ" requirement="optional" error={errors.cnj?.message}>
-                {(p) => <MaskedInput mask="cnj" placeholder="0000000-00.0000.0.00.0000" {...p} {...register("cnj", { validate: (x) => !x || isCnjFormat(x) || msg.cnj })} />}
-              </Field>
-              <Field label="Nome resumido" requirement="required" error={errors.title?.message} className="col-span-2">
-                {(p) => <Input {...p} {...register("title", { validate: (x) => !!x.trim() || "Informe um nome resumido." })} />}
-              </Field>
-              <Field label="Tribunal" requirement="optional">
-                {(p) => <Select {...p} placeholder="Selecione" options={opts(COURTS)} {...register("court")} />}
-              </Field>
-              <Field label="Unidade / vara" requirement="optional">
-                {(p) => <Input {...p} {...register("unit")} />}
-              </Field>
-              <Field label="Comarca" requirement="optional">
-                {(p) => <Input {...p} {...register("district")} />}
-              </Field>
-              <Field label="UF" requirement="optional">
-                {(p) => <Select {...p} placeholder="Selecione" options={opts(BRAZILIAN_STATES)} {...register("state")} />}
-              </Field>
-              <Field label="Área" requirement="required" error={errors.area?.message}>
-                {(p) => <Select {...p} placeholder="Selecione" options={opts(LEGAL_AREAS, LEGAL_AREA_LABEL)} {...register("area", { required: "Selecione a área." })} />}
-              </Field>
-              <Field label="Tipo de ação" requirement="required" error={errors.actionType?.message}>
-                {(p) => <Input {...p} {...register("actionType", { validate: (x) => !!x.trim() || "Informe o tipo de ação." })} />}
-              </Field>
-              <Field label="Polo do cliente" requirement="required">
-                {(p) => <Select {...p} options={opts(CLIENT_POLES, CLIENT_POLE_LABEL)} {...register("clientPole")} />}
-              </Field>
-              <Field label="Parte contrária" requirement="recommended">
-                {(p) => <Input {...p} {...register("opposingParty")} />}
-              </Field>
-              <Field label="Data de distribuição" requirement="optional">
-                {(p) => <Input {...p} type="date" {...register("distributionDate")} />}
-              </Field>
-              <Field label="Valor da causa" requirement="optional" hint="Dado jurídico — não é honorário.">
-                {(p) => <Input {...p} inputMode="decimal" placeholder="R$ 0,00" {...register("caseValue")} />}
-              </Field>
-            </PanelBody>
-            <PanelFooter>
-              <Button variant="ghost" onClick={() => router.push("/processos")}>
-                Cancelar
-              </Button>
-              <Button type="submit" loading={isSubmitting}>
-                Cadastrar processo
-              </Button>
-            </PanelFooter>
-          </Panel>
-        </form>
-      )}
+      </form>
     </PageContainer>
   );
 }

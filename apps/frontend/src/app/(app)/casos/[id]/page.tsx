@@ -42,6 +42,27 @@ async function InternalCase({ id }: { id: string }) {
   );
 }
 
+/** Portal: CasePartnerDTO + processos, documentos compartilhados, pendências documentais e solicitações. */
+async function PartnerCase({ id }: { id: string }) {
+  const result = await getCaseAction({ id });
+  if (!result.ok) {
+    if (result.error.code === "NOT_FOUND" || result.error.code === "VALIDATION") return <CaseNotFound />;
+    return <ActionErrorState error={result} title="Não foi possível abrir o caso." />;
+  }
+  if (result.data.surface !== "PARTNER") return <CaseNotFound />;
+  const [processes, documents, requirements, requests] = await Promise.all([
+    listCaseProcessesAction({ caseId: id, pageSize: 50 }),
+    listDocumentsAction(documentListInput({ legalCaseId: id })),
+    listRequirementsAction({ legalCaseId: id, pageSize: 50 }),
+    listPartnerRequestsAction(requestListInput({ legalCaseId: id })),
+  ]);
+  return (
+    <Suspense fallback={<SkeletonRows rows={6} />}>
+      <PortalCaseDetail legalCase={result.data.legalCase} processes={processes} documents={documents} requirements={requirements} requests={requests} />
+    </Suspense>
+  );
+}
+
 export default async function CasePage({ params }: PageProps<"/casos/[id]">) {
   const { id } = await params;
   // Parceiro: caso de outro escritório não existe no estado recortado e aparece como "não encontrado".
@@ -56,9 +77,9 @@ export default async function CasePage({ params }: PageProps<"/casos/[id]">) {
       }
       partner={
         <RequirePermission permission="partnerPortal.view">
-          <Suspense fallback={<SkeletonRows rows={6} />}>
-            <PortalCaseDetail id={id} />
-          </Suspense>
+          <PageContainer>
+            <PartnerCase id={id} />
+          </PageContainer>
         </RequirePermission>
       }
     />

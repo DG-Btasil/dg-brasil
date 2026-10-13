@@ -2,6 +2,7 @@ import { AudienceSwitch, RequirePermission } from "@/components/layout/server-gu
 import { ProcessList } from "@/features/processes/components/process-list";
 import { processQueryFromSearchParams, processQueryToInput } from "@/features/processes/list-query";
 import { PortalProcessList } from "@/features/partner-portal/components/portal-processes";
+import { portalProcessInput, portalQueryFromSearchParams } from "@/features/partner-portal/list-query";
 import { listProcessesAction } from "@/server/domain/processes/actions";
 
 /** Primeira página carregada no servidor, já com os filtros da URL. */
@@ -10,6 +11,12 @@ async function InternalProcessList({ searchParams }: { searchParams: Record<stri
   const result = await listProcessesAction(processQueryToInput(query));
   const clientLabel = query.clientId && result.ok ? result.data.items[0]?.clientName : undefined;
   return <ProcessList initialQuery={query} initialResult={result} initialClientLabel={clientLabel || undefined} />;
+}
+
+/** Portal: primeira página dos processos dos casos do próprio escritório (RLS). */
+async function PartnerProcessList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
+  const query = portalQueryFromSearchParams(searchParams);
+  return <PortalProcessList initialQuery={query} initialResult={await listProcessesAction(portalProcessInput(query))} />;
 }
 
 export default async function ProcessesPage({ searchParams }: PageProps<"/processos">) {
@@ -23,7 +30,7 @@ export default async function ProcessesPage({ searchParams }: PageProps<"/proces
       }
       partner={
         <RequirePermission permission="partnerPortal.view">
-          <PortalProcessList />
+          <PartnerProcessList searchParams={params} />
         </RequirePermission>
       }
     />
