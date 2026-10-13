@@ -4,25 +4,25 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { useCan, useCurrentUser, useSessionActions } from "@/features/auth/hooks";
+import { useCan } from "@/features/auth/hooks";
+import { shouldOfferProductTour } from "@/lib/onboarding";
+import { useProductTourCompletion } from "./product-tour-state";
 import { TourOverlay } from "./tour-overlay";
 import { TOUR_STEPS } from "./tour-steps";
 import { useTourState } from "./use-tour";
 
 /**
- * Tour inicial do produto (separado da implantação institucional).
- * - Primeiro acesso de cada usuário, na Home: convite "Deseja conhecer o DG Brasil?".
- * - "Agora não" apenas adia (nesta sessão do navegador); o tour pode ser aberto pelo menu do usuário.
- * - Concluir ou pular marca o tour como feito para o usuário.
+ * Introdução do produto (tour) — separada do onboarding de SEGURANÇA.
+ * - Aparece UMA vez por usuário, na Home, depois de senha/termos/MFA.
+ * - Concluir ou "Pular introdução" grava `tour_completed_at` no banco: não
+ *   volta em nenhum navegador. Rever pelo menu do usuário não altera a data.
  */
 export function ProductTour() {
   const pathname = usePathname();
-  const user = useCurrentUser();
   const can = useCan();
-  const { completeTour } = useSessionActions();
+  const { completedAt, markCompleted } = useProductTourCompletion();
   const tour = useTourState();
   const { endTour, setStep, setMenuOpen } = tour;
-  const userId = user?.id;
 
   const steps = useMemo(() => TOUR_STEPS.filter((s) => !s.permission || can(s.permission)), [can]);
 
@@ -34,26 +34,32 @@ export function ProductTour() {
   }, [wantsMenu, setMenuOpen]);
 
   const finish = useCallback(() => {
-    if (userId) completeTour(userId);
+    markCompleted();
     endTour();
-  }, [userId, completeTour, endTour]);
+  }, [markCompleted, endTour]);
 
-  const showPrompt = Boolean(user) && user?.hasCompletedTour === false && !tour.promptDismissed && !tour.active && pathname === "/home";
+  const skip = useCallback(() => {
+    markCompleted();
+    tour.dismissPrompt();
+  }, [markCompleted, tour]);
+
+  const showPrompt = shouldOfferProductTour({ completedAt, pathname, promptDismissed: tour.promptDismissed, active: tour.active });
 
   return (
     <>
       <Dialog
         open={showPrompt}
         onOpenChange={(open) => {
+          // Fechar (Esc/fora) só adia nesta visita; "Pular introdução" grava.
           if (!open) tour.dismissPrompt();
         }}
         size="sm"
         title="Deseja conhecer o DG Brasil?"
-        description="Uma introdução curta às principais áreas do sistema, com cerca de um minuto. Você pode refazê-la depois pelo menu do usuário."
+        description="Uma introdução curta às principais áreas do sistema, com cerca de um minuto. Ela aparece só desta vez; depois, você pode revê-la pelo menu do usuário (Conhecer o DG Brasil)."
         footer={
           <>
-            <Button variant="ghost" onClick={tour.dismissPrompt}>
-              Agora não
+            <Button variant="ghost" onClick={skip}>
+              Pular introdução
             </Button>
             <Button onClick={tour.startTour}>Fazer introdução</Button>
           </>

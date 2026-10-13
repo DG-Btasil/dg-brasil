@@ -109,6 +109,42 @@ usa "Redefinir verificação em duas etapas" (remove os fatores pela Admin API;
 eventos `MFA_RESET_REQUESTED`/`MFA_RESET_COMPLETED` na auditoria; não vale para
 si mesmo). No próximo acesso a pessoa cadastra um novo.
 
+**Sessão e "Lembrar de mim"** (`src/lib/auth/session-cookies.ts`):
+
+- A sessão é **só** a do Supabase Auth (cookies `sb-*`, gravados pelo
+  `@supabase/ssr`; o proxy renova o token a cada requisição e a renovação
+  mantém o nível `aal2`). Não há segundo sistema de sessão.
+- **Marcado**: os cookies da sessão persistem (400 dias, renovados a cada
+  uso). Fechar e reabrir o navegador mantém a MESMA sessão `aal2` → entra
+  direto, sem senha nem código, enquanto o Supabase considerar a sessão válida.
+- **Desmarcado**: os mesmos cookies, sem prazo → **cookies de navegador**,
+  que somem ao fechar o navegador. Limitação: navegadores com "continuar de
+  onde parou" podem restaurar cookies de sessão.
+- A preferência é o cookie `dg-lembrar=1`. Ela **só muda a duração** dos
+  cookies (aplicada nos três `setAll`: proxy, servidor, navegador — a
+  biblioteca força 400 dias, então a duração é ajustada ali). Nunca é lida para
+  decidir acesso: login novo é sempre senha + TOTP, e o nível vem do JWT
+  assinado. `session-cookies.test.ts` trava isso.
+- **Sair** revoga a sessão no Supabase (o refresh token deixa de valer), apaga
+  os cookies e apaga `dg-lembrar`.
+- Produção: configurar no Supabase (plano Pro) *Time-box user sessions* e
+  *Inactivity timeout* (`[auth.sessions]` no `config.toml`) para limitar a
+  vida de uma sessão lembrada.
+- **Step-up futuro** (reset de MFA, mudanças críticas): o JWT traz `amr` com o
+  horário da última verificação TOTP. Uma operação sensível pode exigir
+  verificação recente (`challengeAndVerify` de novo na sessão `aal2`, que
+  renova o `amr`) sem desfazer o "Lembrar de mim". Ainda não implementado.
+
+**Introdução do produto (tour)** — separada do onboarding de segurança
+(convite → senha → termos → MFA): aparece **uma vez por usuário**, na Home,
+depois do acesso liberado. O estado é `user_preferences.tour_completed_at` no
+banco (RLS: só o próprio usuário, com `aal2` — migration 024), lido pelo
+servidor em `(app)/layout.tsx`; vale em qualquer navegador. Concluir ou
+"Pular introdução" grava a data (`completeProductTour`, idempotente). Fechar o
+convite (Esc) só adia até a próxima visita. Rever: menu do usuário →
+"Conhecer o DG Brasil" (não altera a data). Contas já existentes sem data veem
+a introdução uma vez. O portal do parceiro não tem tour.
+
 **Gestão**: troca de papel, suspender/reativar/remover vínculo (ADMIN e
 PARTNER_ADMIN no próprio escritório), inativar conta (só ADMIN). O banco impede:
 alterar o próprio acesso, remover o último ADMIN ativo, suspender/excluir o

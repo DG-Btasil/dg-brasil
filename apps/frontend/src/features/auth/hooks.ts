@@ -73,9 +73,11 @@ export function useCan(): (permission: Permission) => boolean {
   return useCallback((permission: Permission) => can(role, permission), [role]);
 }
 
-/** Ferramentas da demonstração (dados mock). Login/logout são do Supabase Auth. */
+/**
+ * Ferramentas da demonstração (dados mock). Login/logout são do Supabase Auth;
+ * a introdução do produto fica no banco (features/tour/product-tour-state).
+ */
 export function useSessionActions() {
   const resetDemo = useAppStore((s) => s.resetDemo);
-  const completeTour = useAppStore((s) => s.completeTour);
-  return { resetDemo, completeTour };
+  return { resetDemo };
 }

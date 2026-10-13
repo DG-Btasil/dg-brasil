@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/form";
+import { Checkbox, Field, Input } from "@/components/ui/form";
 import { loginErrorMessage } from "@/lib/auth/errors";
 import { AUTH_ROUTES, safeNextPath } from "@/lib/auth/redirects";
+import { rememberPreferenceCookie } from "@/lib/auth/session-cookies";
 import { HOSTS } from "@/lib/hosts";
 import { useHostAudience } from "@/lib/use-host-audience";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -28,6 +29,7 @@ export function LoginScreen({ next, notice }: { next?: string; notice?: string }
   const hostAudience = useHostAudience();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const info = notice ? NOTICES[notice] : undefined;
@@ -40,6 +42,9 @@ export function LoginScreen({ next, notice }: { next?: string; notice?: string }
       return;
     }
     setSubmitting(true);
+    // Só a DURAÇÃO dos cookies da sessão (ver session-cookies.ts). Login novo
+    // continua exigindo senha + TOTP: a preferência não eleva nada para aal2.
+    document.cookie = rememberPreferenceCookie(remember, window.location.protocol === "https:");
     const { error: authError } = await getSupabaseBrowserClient().auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
@@ -79,6 +84,12 @@ export function LoginScreen({ next, notice }: { next?: string; notice?: string }
             <Input {...p} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           )}
         </Field>
+        <Checkbox
+          label="Lembrar de mim neste dispositivo"
+          description="Você continua conectado ao fechar o navegador. Não use em computador compartilhado."
+          checked={remember}
+          onChange={(e) => setRemember(e.target.checked)}
+        />
         <Button type="submit" size="lg" className="w-full" loading={submitting}>
           Entrar
         </Button>

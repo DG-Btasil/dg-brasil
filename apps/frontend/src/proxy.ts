@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_ROUTES, isPublicPath, safeNextPath } from "@/lib/auth/redirects";
+import { REMEMBER_COOKIE, rememberEnabled, withSessionLifetime } from "@/lib/auth/session-cookies";
 import { supabasePublicConfig } from "@/lib/supabase/config";
 
 /**
@@ -30,7 +31,10 @@ export async function proxy(request: NextRequest) {
       setAll: (cookiesToSet, cacheHeaders) => {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = withPath();
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        // Duração conforme "Lembrar de mim" (só duração — ver session-cookies.ts).
+        const remember = rememberEnabled(request.cookies.get(REMEMBER_COOKIE)?.value);
+        const https = request.nextUrl.protocol === "https:" || request.headers.get("x-forwarded-proto") === "https";
+        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, withSessionLifetime(options, remember, https)));
         Object.entries(cacheHeaders).forEach(([key, value]) => response.headers.set(key, value));
       },
     },

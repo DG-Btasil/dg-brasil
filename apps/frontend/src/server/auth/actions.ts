@@ -1,22 +1,28 @@
 "use server";
 
 import { createHash } from "node:crypto";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { passwordErrorMessage, sanitizeForLog } from "@/lib/auth/errors";
 import { acceptedInviteMetadata, normalizePersonName, personNameProblem } from "@/lib/auth/invite-metadata";
 import { LEGAL_DOCUMENTS } from "@/lib/auth/legal-documents";
 import { passwordProblem } from "@/lib/auth/password-policy";
 import { AUTH_ROUTES, isInviteRef } from "@/lib/auth/redirects";
+import { REMEMBER_COOKIE } from "@/lib/auth/session-cookies";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentSession } from "./session";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
-/** Logout: encerra a sessão do Supabase (cookies) e volta ao login. */
+/**
+ * Logout: revoga a sessão no Supabase (o refresh token deixa de valer) e apaga
+ * os cookies. "Lembrar de mim" também é apagado: o próximo login começa do
+ * zero — senha + TOTP.
+ */
 export async function signOut(): Promise<void> {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut({ scope: "local" });
+  (await cookies()).delete(REMEMBER_COOKIE);
   redirect(`${AUTH_ROUTES.login}?aviso=saiu`);
 }
 

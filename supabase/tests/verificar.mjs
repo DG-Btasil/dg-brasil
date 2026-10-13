@@ -1905,6 +1905,27 @@ await deve('backend registra reset de MFA em nome do ADMIN (ator preservado)', a
 await deveFalhar('evento de Auth em nome de quem não é ADMIN é recusado', () => comoServico((tx) =>
   tx.query(`select public.record_auth_event('MFA_RESET_COMPLETED', $1, '{}', $2)`, [ids.ana, ids.lucas])), /Somente ADMIN/)
 
+secao('Introdução do produto: uma vez por usuário, no banco [024]')
+await deve('usuário novo: sem tour_completed_at (a introdução aparece)', () => como(ids.ana, async (tx) => {
+  const r = await linhas(tx, `select tour_completed_at from user_preferences where user_id = $1`, [ids.ana])
+  igual(r.length === 0 || r[0].tour_completed_at === null, true, 'pendente')
+}))
+await deve('concluir ou pular grava o horário (aal2, o próprio usuário)', () => como(ids.ana, async (tx) => {
+  await tx.query(`insert into user_preferences (user_id, tour_completed_at) values ($1, now())
+                  on conflict (user_id) do update set tour_completed_at = coalesce(user_preferences.tour_completed_at, excluded.tour_completed_at)`, [ids.ana])
+  igual((await um(tx, `select tour_completed_at is not null feito from user_preferences where user_id = $1`, [ids.ana])).feito, true, 'gravado')
+}))
+await deve('outro acesso (nova sessão, outro navegador) lê o mesmo estado do banco', () => como(ids.ana, async (tx) =>
+  igual((await um(tx, `select tour_completed_at is not null feito from user_preferences where user_id = $1`, [ids.ana])).feito, true, 'concluído')))
+await deve('sessão só com senha (aal1) não lê preferências', () => comoAal1(ids.ana, async (tx) =>
+  igual((await linhas(tx, `select 1 from user_preferences`)).length, 0, 'visível em aal1')))
+await deveFalhar('sessão só com senha (aal1) não grava preferências', () => comoAal1(ids.lucas, (tx) =>
+  tx.query(`insert into user_preferences (user_id, tour_completed_at) values ($1, now())`, [ids.lucas])), /row-level security/)
+await deveFalhar('ninguém marca a introdução de outro usuário', () => como(ids.barbara, (tx) =>
+  tx.query(`insert into user_preferences (user_id, tour_completed_at) values ($1, now())`, [ids.lucas])), /row-level security/)
+await deve('preferências de notificação também exigem aal2', () => comoAal1(ids.ana, async (tx) =>
+  igual((await linhas(tx, `select 1 from user_notification_preferences`)).length, 0, 'visível em aal1')))
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

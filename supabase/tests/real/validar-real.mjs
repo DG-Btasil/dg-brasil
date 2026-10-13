@@ -205,11 +205,14 @@ function totp(segredo, agora = Date.now()) {
   const o = h[h.length - 1] & 15
   return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0')
 }
-// Login completo como a aplicação faz: senha (aal1) → TOTP (aal2).
+// Login completo como a aplicação faz: senha (aal1) → TOTP (aal2). O segredo
+// fica só em memória (SEGREDOS), para logins seguintes da mesma rodada.
+const SEGREDOS = new Map()
 async function entrarComMfa(cliente, email, pass) {
   await r(cliente.auth.signInWithPassword({ email, password: pass }))
   const fator = await r(cliente.auth.mfa.enroll({ factorType: 'totp', friendlyName: `dg-${RODADA}-${randomUUID().slice(0, 6)}` }))
   await r(cliente.auth.mfa.challengeAndVerify({ factorId: fator.id, code: totp(fator.totp.secret) }))
+  SEGREDOS.set(email, { factorId: fator.id, secret: fator.totp.secret })
   const aal = await r(cliente.auth.mfa.getAuthenticatorAssuranceLevel())
   if (aal.currentLevel !== 'aal2') throw new Error(`aal ${aal.currentLevel}`)
 }
@@ -311,6 +314,92 @@ await deveOuPara('cenário: clientes, casos, processos e documentos de A e de B'
 })
 
 // ═════════════════════════════ RLS via PostgREST ═════════════════════════
+
+secao('4.1b. Sessão persistente ("Lembrar de mim"), logout e introdução do produto [024]')
+// O navegador guarda a sessão do Supabase em cookies; aqui, um "pote" em memória
+// faz o mesmo papel: cliente novo com o MESMO pote = recarregar a página ou
+// reabrir o navegador com os cookies persistidos.
+const pote = () => {
+  const m = new Map()
+  return { m, storage: { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => { m.set(k, v) }, removeItem: (k) => { m.delete(k) } } }
+}
+const clienteDoPote = (p) => createClient(URL_, ANON, {
+  auth: { persistSession: true, autoRefreshToken: false, storage: p.storage, storageKey: 'sb-dg-harness' },
+  global: { fetch: fetchComRetry },
+})
+const aalDe = async (c) => (await r(c.auth.mfa.getAuthenticatorAssuranceLevel())).currentLevel
+// Um código TOTP pode ser recusado se repetir o da mesma janela de 30 s
+// (proteção contra reuso): espera a janela seguinte e tenta uma vez mais.
+const verificarCodigo = async (c, email) => {
+  const s = SEGREDOS.get(email)
+  const { error } = await c.auth.mfa.challengeAndVerify({ factorId: s.factorId, code: totp(s.secret) })
+  if (!error) return
+  await new Promise((ok) => setTimeout(ok, 30000 - (Date.now() % 30000) + 1000))
+  await r(c.auth.mfa.challengeAndVerify({ factorId: s.factorId, code: totp(s.secret) }))
+}
+const P1 = pote()
+let refreshAntigo
+await deve('A. login + MFA (fator já cadastrado) → aal2; recarregar → continua aal2 e lendo dados', async () => {
+  const c = clienteDoPote(P1)
+  await r(c.auth.signInWithPassword({ email: U.ASSISTANT.email, password: U.ASSISTANT.pass }))
+  igual(await aalDe(c), 'aal1', 'antes do código')
+  await verificarCodigo(c, U.ASSISTANT.email)
+  igual(await aalDe(c), 'aal2', 'depois do código')
+  const recarregado = clienteDoPote(P1)
+  igual(await aalDe(recarregado), 'aal2', 'recarregado')
+  if ((await r(recarregado.from('organizations').select('id'))).length === 0) throw new Error('aal2 recarregado não lê dados')
+})
+await deve('B. reabrir com a sessão persistida e renovar o token → continua aal2 (sem senha nem código)', async () => {
+  const reaberto = clienteDoPote(P1)
+  refreshAntigo = (await r(reaberto.auth.getSession())).session.refresh_token
+  const renovada = await r(reaberto.auth.refreshSession())
+  if (renovada.session.refresh_token === refreshAntigo) throw new Error('refresh token não girou')
+  igual(await aalDe(clienteDoPote(P1)), 'aal2', 'depois da renovação')
+  const ctx = await r(clienteDoPote(P1).rpc('get_my_session_context'))
+  igual(ctx.aal, 'aal2', 'aal no banco')
+})
+await deve('C. logout explícito → sessão revogada; novo login volta a exigir o código', async () => {
+  const c = clienteDoPote(P1)
+  const refreshAtual = (await r(c.auth.getSession())).session.refresh_token
+  await r(c.auth.signOut({ scope: 'local' }))
+  igual(P1.m.size, 0, 'cookies/armazenamento apagados')
+  const { error } = await novoCliente().auth.refreshSession({ refresh_token: refreshAtual })
+  if (!error) throw new Error('refresh token continuou válido depois do logout')
+  const novo = clienteDoPote(P1)
+  await r(novo.auth.signInWithPassword({ email: U.ASSISTANT.email, password: U.ASSISTANT.pass }))
+  igual(await aalDe(novo), 'aal1', 'login novo sem código')
+  igual((await r(novo.from('organizations').select('id'))).length, 0, 'aal1 lê dados')
+  await verificarCodigo(novo, U.ASSISTANT.email)
+  igual(await aalDe(novo), 'aal2', 'depois do código')
+})
+await deve('D/E. aal1 não lê nem grava preferências; nada do cliente sobe aal1 para aal2', async () => {
+  const c = novoCliente()
+  await r(c.auth.signInWithPassword({ email: U.LAWYER.email, password: U.LAWYER.pass }))
+  igual((await r(c.from('user_preferences').select('user_id'))).length, 0, 'preferências em aal1')
+  const { error } = await c.from('user_preferences').insert({ user_id: U.LAWYER.id, tour_completed_at: new Date().toISOString() })
+  if (!error) throw new Error('aal1 gravou preferência')
+  // Metadados do usuário são editáveis por ele e não valem para nada de acesso.
+  // (o Auth pode recusar a alteração em aal1; aceita ou não, nada muda no acesso)
+  await c.auth.updateUser({ data: { aal: 'aal2', lembrar: true, invite_role: 'ADMIN' } })
+  await r(c.auth.refreshSession())
+  igual(await aalDe(c), 'aal1', 'aal depois de mexer nos metadados')
+  igual((await r(c.from('organizations').select('id'))).length, 0, 'leitura depois de mexer nos metadados')
+  igual((await r(c.rpc('get_my_session_context'))).membership.role, 'LAWYER', 'papel continua o do banco')
+})
+await deve('introdução: concluída num navegador não aparece no outro (estado no banco, por usuário)', async () => {
+  const P2 = pote(), P3 = pote()
+  const a = clienteDoPote(P2)
+  await r(a.auth.signInWithPassword({ email: U.ASSISTANT.email, password: U.ASSISTANT.pass }))
+  await verificarCodigo(a, U.ASSISTANT.email)
+  const antes = await r(a.from('user_preferences').select('tour_completed_at').eq('user_id', U.ASSISTANT.id).maybeSingle())
+  igual(antes?.tour_completed_at ?? null, null, 'usuário novo sem introdução concluída')
+  await r(a.from('user_preferences').upsert({ user_id: U.ASSISTANT.id, tour_completed_at: new Date().toISOString() }, { onConflict: 'user_id' }))
+  const b = clienteDoPote(P3)
+  await r(b.auth.signInWithPassword({ email: U.ASSISTANT.email, password: U.ASSISTANT.pass }))
+  await verificarCodigo(b, U.ASSISTANT.email)
+  const depois = await r(b.from('user_preferences').select('tour_completed_at').eq('user_id', U.ASSISTANT.id).single())
+  if (!depois.tour_completed_at) throw new Error('outro navegador não vê a introdução concluída')
+})
 
 secao('7/8. RLS via PostgREST e isolamento de parceiros')
 const ve = async (cli, tabela, id) => (await r(cli.from(tabela).select('id').eq('id', id))).length
