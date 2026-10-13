@@ -32,6 +32,12 @@ async function ok<R extends Outcome>(p: PromiseLike<R>, what: string): Promise<N
   return data as NonNullable<Extract<R, { error: null }>["data"]>;
 }
 
+/** Gravação sem retorno (insert sem .select()): só confere o erro. */
+async function done(p: PromiseLike<{ error: { message: string; code?: string } | null }>, what: string): Promise<void> {
+  const { error } = await p;
+  if (error) throw new Error(`[setup] ${what}: ${error.code ?? ""} ${error.message}`);
+}
+
 async function verifyCode(client: SupabaseClient, factorId: string, secret: string) {
   const first = await client.auth.mfa.challengeAndVerify({ factorId, code: totp(secret) });
   if (!first.error) return;
@@ -56,7 +62,7 @@ export default async function setup(project: TestProject) {
       `organização ${key}`,
     );
     orgs[key] = org.id;
-    await ok(
+    await done(
       service.from("partner_office_settings").insert({ organization_id: org.id, default_partner_percentage: 50, default_owner_percentage: 50 }),
       `percentual ${key}`,
     );
@@ -71,8 +77,8 @@ export default async function setup(project: TestProject) {
       `usuário ${r.role}`,
     );
     const id = created.user.id;
-    await ok(service.from("organization_memberships").insert({ organization_id: orgs[r.org], user_id: id, role: r.membership }), `vínculo ${r.role}`);
-    await ok(
+    await done(service.from("organization_memberships").insert({ organization_id: orgs[r.org], user_id: id, role: r.membership }), `vínculo ${r.role}`);
+    await done(
       service.from("user_legal_acceptances").insert(LEGAL_DOCUMENTS.map((d) => ({ user_id: id, document_type: d.type, document_version: d.version }))),
       `termos ${r.role}`,
     );
