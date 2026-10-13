@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "verificar": "node tests/verificar.mjs",
-    "validar:real": "node --env-file=.env.real tests/real/validar-real.mjs"
+    "validar:real": "node --env-file=.env.real tests/real/validar-real.mjs",
+    "emails": "node templates/build.mjs",
+    "emails:check": "node templates/build.mjs --check",
+    "emails:preview": "node templates/build.mjs --preview .preview-emails"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.16",

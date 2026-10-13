@@ -1,18 +1,218 @@
-<!-- DG Brasil — convite. O link usa token_hash (validado no servidor em /auth/confirm).
-     {{ .RedirectTo }} já traz "?fluxo=convite&ref=..." e PRECISA estar nas Redirect URLs do Auth. -->
-<div style="font-family: Arial, Helvetica, sans-serif; color: #14213d; max-width: 520px; margin: 0 auto; padding: 24px;">
-  <p style="font-size: 18px; font-weight: bold; letter-spacing: 2px; margin: 0 0 24px;">DG BRASIL</p>
-  <p>Olá,</p>
-  <p>Você foi convidado(a) para acessar o DG Brasil, o sistema da Bárbara Cardoso Advocacia.</p>
-  <p>
-    <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=invite"
-       style="display: inline-block; background: #14213d; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none;">
-      Aceitar convite
-    </a>
-  </p>
-  <p style="font-size: 13px; color: #555;">
-    No primeiro acesso você vai definir sua senha, aceitar os termos de uso e cadastrar a verificação em duas etapas
-    (aplicativo autenticador). O link vale por tempo limitado e só pode ser usado uma vez.
-  </p>
-  <p style="font-size: 13px; color: #555;">Se você não esperava este convite, ignore este e-mail.</p>
-</div>
+<!DOCTYPE html>
+<!-- GERADO por supabase/templates/build.mjs — não edite à mão. -->
+<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>Seu convite para o DG Brasil</title>
+<style>
+  body { margin: 0; padding: 0; width: 100% !important; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  table { border-collapse: collapse; }
+  a { color: #33506d; }
+  @media only screen and (max-width: 620px) {
+    .dg-outer { padding: 16px 8px 24px !important; }
+    .dg-container { width: 100% !important; }
+    .dg-header { padding: 28px 24px 24px !important; }
+    .dg-pad { padding-left: 24px !important; padding-right: 24px !important; }
+    .dg-title-main { font-size: 25px !important; }
+    .dg-btn-wrap, .dg-btn { width: 100% !important; }
+    .dg-col { display: block !important; width: 100% !important; padding: 0 0 12px !important; }
+    .dg-btn a { display: block !important; padding-left: 16px !important; padding-right: 16px !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    .dg-page { background: #0e151c !important; }
+    .dg-card { background: #151f2a !important; }
+    .dg-footer { background: #111a23 !important; border-color: #263545 !important; }
+    .dg-text { color: #e6ebf1 !important; }
+    .dg-muted { color: #aab4bf !important; }
+    .dg-title { color: #ffffff !important; }
+    .dg-eyebrow { color: #e2cc84 !important; }
+    .dg-panel { background: #1b2836 !important; border-color: #2c3d50 !important; }
+    .dg-box { background: #151f2a !important; border-color: #2c3d50 !important; border-top-color: #c9a227 !important; }
+    .dg-rule { border-color: #263545 !important; }
+    .dg-link { color: #e2cc84 !important; }
+    .dg-num { background: #c9a227 !important; color: #0b1f33 !important; }
+    .dg-btn { background: #c9a227 !important; }
+    .dg-btn a { color: #0b1f33 !important; }
+  }
+</style>
+</head>
+<body class="dg-page" style="margin:0;padding:0;background:#eef1f4;">
+<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:#eef1f4;">Seu acesso ao DG Brasil está pronto para ser configurado.&#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; </div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dg-page" bgcolor="#eef1f4" style="width:100%;background:#eef1f4;">
+  <tr>
+    <td align="center" class="dg-outer" style="padding:40px 16px 32px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="dg-container" style="width:600px;max-width:100%;">
+        <tr>
+          <td class="dg-header" bgcolor="#0b1f33" style="background:#0b1f33;border-radius:10px 10px 0 0;border-bottom:3px solid #c9a227;padding:36px 48px 30px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td aria-hidden="true" width="34" height="34" align="center" valign="middle" style="width:34px;height:34px;border:1px solid #c9a227;border-radius:3px;font-family:Georgia, 'Times New Roman', Times, serif;font-size:14px;font-weight:bold;line-height:34px;color:#e2cc84;">DG</td>
+                <td valign="middle" style="padding-left:14px;font-family:Georgia, 'Times New Roman', Times, serif;font-size:20px;line-height:1;letter-spacing:4px;color:#ffffff;white-space:nowrap;">DG&nbsp;BRASIL</td>
+              </tr>
+            </table>
+            <p style="margin:18px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.5;letter-spacing:0.2px;color:#b9c4cf;">Plataforma de parceiros da Bárbara Cardoso Advocacia</p>
+          </td>
+        </tr>
+        <tr>
+          <td class="dg-card dg-pad" bgcolor="#ffffff" style="background:#ffffff;padding:44px 48px 40px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td valign="middle" style="padding-right:12px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="28" height="2" bgcolor="#c9a227" style="width:28px;height:2px;background:#c9a227;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+              </td>
+              <td valign="middle" class="dg-eyebrow" style="font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1;letter-spacing:2px;text-transform:uppercase;color:#33506d;">{{ with $.Data.invite_role }}{{ if eq . "ADMIN" }}Convite para a equipe{{ else if eq . "LAWYER" }}Convite para a equipe{{ else if eq . "ASSISTANT" }}Convite para a equipe{{ else if eq . "PARTNER_ADMIN" }}Convite de parceria{{ else if eq . "PARTNER_USER" }}Convite de acesso{{ else }}Convite de acesso{{ end }}{{ else }}Convite de acesso{{ end }}</td>
+            </tr>
+          </table>
+          <h1 class="dg-title dg-title-main" style="margin:20px 0 24px;font-family:Georgia, 'Times New Roman', Times, serif;font-size:30px;font-weight:normal;line-height:1.2;color:#0b1f33;">Boas-vindas ao DG Brasil</h1>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:16px;line-height:1.65;color:#18222d;font-weight:bold;">{{ if .Data.first_name }}Olá, {{ .Data.first_name }}!{{ else if .Data.full_name }}Olá, {{ .Data.full_name }}!{{ else }}Olá!{{ end }}</p>
+          {{ with $.Data.invite_role }}{{ if eq . "ADMIN" }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">É um prazer receber você na equipe da Bárbara Cardoso Advocacia.</p>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">No DG Brasil, nossa equipe organiza clientes, casos e processos e acompanha o trabalho com os escritórios parceiros, em um ambiente integrado, seguro e profissional.</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dg-box" bgcolor="#ffffff" style="width:100%;background:#ffffff;border:1px solid #dde2e7;border-top:3px solid #0b1f33;border-radius:8px;margin:8px 0 24px;">
+            <tr><td style="padding:20px 24px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="dg-col" valign="top" width="55%" style="width:55%;padding:0 16px 0 0;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Escritório</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">{{ with $.Data.organization_name }}{{ . }}{{ else }}Bárbara Cardoso Advocacia{{ end }}</p></td>
+                  <td class="dg-col" valign="top" width="45%" style="width:45%;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Perfil de acesso</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">Administrador(a)</p></td>
+                </tr>
+              </table>
+              <p class="dg-muted" style="margin:14px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.65;color:#5f6b79;">Acesso completo à plataforma, incluindo Financeiro, Parceiros, a Central do DG Brasil e a gestão da equipe.</p>
+            </td></tr>
+          </table>{{ else if eq . "LAWYER" }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">É um prazer receber você na equipe da Bárbara Cardoso Advocacia.</p>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">No DG Brasil, nossa equipe organiza clientes, casos e processos e acompanha o trabalho com os escritórios parceiros, em um ambiente integrado, seguro e profissional.</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dg-box" bgcolor="#ffffff" style="width:100%;background:#ffffff;border:1px solid #dde2e7;border-top:3px solid #0b1f33;border-radius:8px;margin:8px 0 24px;">
+            <tr><td style="padding:20px 24px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="dg-col" valign="top" width="55%" style="width:55%;padding:0 16px 0 0;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Escritório</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">{{ with $.Data.organization_name }}{{ . }}{{ else }}Bárbara Cardoso Advocacia{{ end }}</p></td>
+                  <td class="dg-col" valign="top" width="45%" style="width:45%;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Perfil de acesso</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">Advogado(a)</p></td>
+                </tr>
+              </table>
+              <p class="dg-muted" style="margin:14px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.65;color:#5f6b79;">Clientes, casos (com aceite e rejeição), processos, revisões e parceiros.</p>
+            </td></tr>
+          </table>{{ else if eq . "ASSISTANT" }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">É um prazer receber você na equipe da Bárbara Cardoso Advocacia.</p>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">No DG Brasil, nossa equipe organiza clientes, casos e processos e acompanha o trabalho com os escritórios parceiros, em um ambiente integrado, seguro e profissional.</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dg-box" bgcolor="#ffffff" style="width:100%;background:#ffffff;border:1px solid #dde2e7;border-top:3px solid #0b1f33;border-radius:8px;margin:8px 0 24px;">
+            <tr><td style="padding:20px 24px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="dg-col" valign="top" width="55%" style="width:55%;padding:0 16px 0 0;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Escritório</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">{{ with $.Data.organization_name }}{{ . }}{{ else }}Bárbara Cardoso Advocacia{{ end }}</p></td>
+                  <td class="dg-col" valign="top" width="45%" style="width:45%;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Perfil de acesso</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">Assistente</p></td>
+                </tr>
+              </table>
+              <p class="dg-muted" style="margin:14px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.65;color:#5f6b79;">Cadastro e acompanhamento de clientes, casos e processos.</p>
+            </td></tr>
+          </table>{{ else if eq . "PARTNER_ADMIN" }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">{{ with $.Data.organization_name }}É um prazer receber o escritório <strong>{{ . }}</strong> como parceiro da Bárbara Cardoso Advocacia.{{ else }}É um prazer receber você na rede de parceiros da Bárbara Cardoso Advocacia.{{ end }}</p>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Estamos felizes em iniciar esta parceria e em apresentar o DG Brasil, nossa plataforma desenvolvida para oferecer uma experiência de trabalho organizada, integrada e profissional.</p>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Você será a pessoa responsável pela conta do escritório na plataforma. Depois de concluir seu acesso, poderá convidar e gerenciar os usuários da sua equipe.</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dg-box" bgcolor="#ffffff" style="width:100%;background:#ffffff;border:1px solid #dde2e7;border-top:3px solid #0b1f33;border-radius:8px;margin:8px 0 24px;">
+            <tr><td style="padding:20px 24px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="dg-col" valign="top" width="55%" style="width:55%;padding:0 16px 0 0;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Escritório</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">{{ with $.Data.organization_name }}{{ . }}{{ else }}Escritório parceiro{{ end }}</p></td>
+                  <td class="dg-col" valign="top" width="45%" style="width:45%;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Perfil de acesso</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">Administrador(a) do escritório</p></td>
+                </tr>
+              </table>
+              <p class="dg-muted" style="margin:14px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.65;color:#5f6b79;">Clientes, processos, documentos e pendências do escritório, a participação financeira da parceria e a gestão dos usuários da sua equipe.</p>
+            </td></tr>
+          </table>{{ else if eq . "PARTNER_USER" }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">{{ with $.Data.organization_name }}Você recebeu um convite para integrar a equipe do escritório <strong>{{ . }}</strong> no DG Brasil, a plataforma de parceiros da Bárbara Cardoso Advocacia.{{ else }}Você recebeu um convite para integrar a equipe de um escritório parceiro no DG Brasil, a plataforma de parceiros da Bárbara Cardoso Advocacia.{{ end }}</p>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Aqui, o seu escritório e a Bárbara Cardoso Advocacia trabalham de forma organizada e integrada, com clientes, processos e documentos em um só lugar.</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dg-box" bgcolor="#ffffff" style="width:100%;background:#ffffff;border:1px solid #dde2e7;border-top:3px solid #0b1f33;border-radius:8px;margin:8px 0 24px;">
+            <tr><td style="padding:20px 24px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="dg-col" valign="top" width="55%" style="width:55%;padding:0 16px 0 0;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Escritório</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">{{ with $.Data.organization_name }}{{ . }}{{ else }}Escritório parceiro{{ end }}</p></td>
+                  <td class="dg-col" valign="top" width="45%" style="width:45%;"><p class="dg-muted" style="margin:0 0 4px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1.4;letter-spacing:1.5px;text-transform:uppercase;color:#5f6b79;">Perfil de acesso</p><p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.35;color:#0b1f33;">Integrante da equipe</p></td>
+                </tr>
+              </table>
+              <p class="dg-muted" style="margin:14px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.65;color:#5f6b79;">Clientes, processos, documentos e pendências do escritório.</p>
+            </td></tr>
+          </table>{{ else }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">É um prazer receber você na rede de parceiros da Bárbara Cardoso Advocacia.</p>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Estamos felizes em iniciar esta parceria e em apresentar o DG Brasil, nossa plataforma desenvolvida para oferecer uma experiência de trabalho organizada, integrada e profissional.</p>{{ end }}{{ else }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">É um prazer receber você na rede de parceiros da Bárbara Cardoso Advocacia.</p>
+          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Estamos felizes em iniciar esta parceria e em apresentar o DG Brasil, nossa plataforma desenvolvida para oferecer uma experiência de trabalho organizada, integrada e profissional.</p>{{ end }}
+          <p class="dg-text" style="margin:0 0 8px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Seu convite já está disponível. Para começar, clique no botão abaixo e siga as etapas de configuração da sua conta.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="dg-btn-wrap" style="margin:12px 0 24px;">
+            <tr>
+              <td class="dg-btn" align="center" bgcolor="#0b1f33" style="background:#0b1f33;border-radius:6px;mso-padding-alt:16px 40px;">
+                <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=invite" target="_blank" style="display:inline-block;padding:16px 40px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;font-weight:bold;line-height:1.2;letter-spacing:0.3px;color:#ffffff;text-decoration:none;border-radius:6px;">Aceitar convite</a>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dg-panel" bgcolor="#fbf8ee" style="width:100%;background:#fbf8ee;border:1px solid #eee2bc;border-radius:8px;">
+            <tr><td style="padding:22px 24px 8px;"><p class="dg-title" style="margin:0 0 16px;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.3;color:#0b1f33;">Seu primeiro acesso em três etapas</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td valign="top" width="26" style="width:26px;padding:1px 0 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td class="dg-num" width="24" height="24" align="center" valign="middle" bgcolor="#0b1f33" style="width:24px;height:24px;background:#0b1f33;border-radius:12px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;font-weight:bold;line-height:24px;color:#ffffff;">1</td></tr></table>
+              </td>
+              <td valign="top" style="padding:0 0 16px 14px;">
+                <p class="dg-text" style="margin:0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;font-weight:bold;line-height:1.5;color:#18222d;">Crie sua senha</p>
+                <p class="dg-muted" style="margin:2px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.55;color:#5f6b79;">Confirme seu nome e defina a senha de acesso.</p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td valign="top" width="26" style="width:26px;padding:1px 0 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td class="dg-num" width="24" height="24" align="center" valign="middle" bgcolor="#0b1f33" style="width:24px;height:24px;background:#0b1f33;border-radius:12px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;font-weight:bold;line-height:24px;color:#ffffff;">2</td></tr></table>
+              </td>
+              <td valign="top" style="padding:0 0 16px 14px;">
+                <p class="dg-text" style="margin:0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;font-weight:bold;line-height:1.5;color:#18222d;">Aceite os termos de uso</p>
+                <p class="dg-muted" style="margin:2px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.55;color:#5f6b79;">Leia e aceite os documentos da plataforma.</p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td valign="top" width="26" style="width:26px;padding:1px 0 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td class="dg-num" width="24" height="24" align="center" valign="middle" bgcolor="#0b1f33" style="width:24px;height:24px;background:#0b1f33;border-radius:12px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;font-weight:bold;line-height:24px;color:#ffffff;">3</td></tr></table>
+              </td>
+              <td valign="top" style="padding:0 0 16px 14px;">
+                <p class="dg-text" style="margin:0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;font-weight:bold;line-height:1.5;color:#18222d;">Ative a verificação em duas etapas</p>
+                <p class="dg-muted" style="margin:2px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.55;color:#5f6b79;">Vincule um aplicativo autenticador do seu celular à conta.</p>
+              </td>
+            </tr>
+          </table>
+          <p class="dg-muted" style="margin:0 0 14px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.65;color:#5f6b79;">Concluídas as etapas, seu acesso ao DG Brasil estará liberado.</p></td></tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0;"><tr><td class="dg-rule" style="border-top:1px solid #dde2e7;font-size:0;line-height:0;height:1px;">&nbsp;</td></tr></table>
+          <p class="dg-text" style="margin:0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">{{ with $.Data.invite_role }}{{ if eq . "ADMIN" }}Estamos felizes em ter você conosco e desejamos um excelente trabalho.{{ else if eq . "LAWYER" }}Estamos felizes em ter você conosco e desejamos um excelente trabalho.{{ else if eq . "ASSISTANT" }}Estamos felizes em ter você conosco e desejamos um excelente trabalho.{{ else if eq . "PARTNER_ADMIN" }}Estamos felizes em ter você conosco e desejamos uma excelente experiência nesta nova parceria.{{ else if eq . "PARTNER_USER" }}Estamos felizes em ter você conosco e desejamos uma excelente experiência no DG Brasil.{{ else }}Estamos felizes em ter você conosco e desejamos uma excelente experiência nesta nova parceria.{{ end }}{{ else }}Estamos felizes em ter você conosco e desejamos uma excelente experiência nesta nova parceria.{{ end }}</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 0;">
+            <tr>
+              <td valign="top" style="padding-right:14px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="2" height="40" bgcolor="#c9a227" style="width:2px;height:40px;background:#c9a227;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+              </td>
+              <td valign="top">
+                <p class="dg-title" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.3;color:#0b1f33;">Equipe DG Brasil</p>
+                <p class="dg-muted" style="margin:3px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.4;color:#5f6b79;">Bárbara Cardoso Advocacia</p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0;"><tr><td class="dg-rule" style="border-top:1px solid #dde2e7;font-size:0;line-height:0;height:1px;">&nbsp;</td></tr></table>
+          <p class="dg-muted" style="margin:0 0 6px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:13px;line-height:1.65;color:#5f6b79;">Se o botão não funcionar, copie e cole este endereço no navegador:</p>
+          <p class="dg-break" style="margin:0 0 8px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;line-height:1.5;word-break:break-all;"><a class="dg-link" href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=invite" target="_blank" style="color:#33506d;text-decoration:underline;">{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=invite</a></p>
+          </td>
+        </tr>
+        <tr>
+          <td class="dg-footer dg-pad" bgcolor="#f7f8fa" style="background:#f7f8fa;border-top:1px solid #dde2e7;border-radius:0 0 10px 10px;padding:24px 48px 26px;">
+          <p class="dg-muted" style="margin:0 0 10px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;line-height:1.65;color:#5f6b79;">Este convite é individual e deve ser usado apenas por quem o recebeu. O link tem validade limitada e pode ser usado uma única vez; se ele expirar, peça um novo convite a quem enviou. Se você não esperava este convite, basta ignorar esta mensagem.</p>
+          
+          <p class="dg-muted" style="margin:0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;line-height:1.65;color:#5f6b79;">Mensagem enviada para {{ .Email }}.</p>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:24px 16px 0;">
+            <p class="dg-muted" style="margin:0;font-family:Georgia, 'Times New Roman', Times, serif;font-size:12px;line-height:1.6;letter-spacing:3px;color:#5f6b79;">DG&nbsp;BRASIL</p>
+            <p class="dg-muted" style="margin:2px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;line-height:1.6;color:#5f6b79;">Plataforma de parceiros da Bárbara Cardoso Advocacia</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

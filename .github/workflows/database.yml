@@ -22,3 +22,4 @@ jobs:
           cache-dependency-path: supabase/package-lock.json
       - run: npm ci
       - run: npm run verificar
+      - run: npm run emails:check

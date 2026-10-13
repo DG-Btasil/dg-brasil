@@ -70,8 +70,8 @@ decide no servidor.
    `user_invitations.token_hash` via `create_invitation` (com o JWT de quem convida —
    o banco aplica: ADMIN convida qualquer papel no escritório certo; PARTNER_ADMIN
    só `PARTNER_*` no próprio; convite pendente anterior é revogado).
-2. `admin.inviteUserByEmail` (ou link de recuperação, se o e-mail já existe no
-   Auth) com `redirectTo = <host do papel>/auth/confirm?fluxo=convite&ref=<ref>`.
+2. `admin.inviteUserByEmail` (também no reenvio a conta ainda não confirmada;
+   link de recuperação só se a conta já foi confirmada no Auth) com `redirectTo = <host do papel>/auth/confirm?fluxo=convite&ref=<ref>`.
 3. `/auth/confirm` valida o `token_hash` (`verifyOtp`) → `/primeiro-acesso?ref=`.
 4. Nome + senha → `accept_invitation(sha256(ref))` (exige sessão do MESMO e-mail;
    idempotente; inválido/revogado/expirado/conflito → `/acesso?motivo=...`) →
@@ -125,12 +125,53 @@ painel (ou `npx supabase config push`, que sobrescreve o painel com o arquivo):
 5. **Authentication → Email Templates**: *Invite user* e *Reset password* com o
    conteúdo de `supabase/templates/invite.html` e `recovery.html` (links com
    `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=...`). Os templates padrão
-   (fluxo implícito) **não funcionam** com o login SSR.
+   (fluxo implícito) **não funcionam** com o login SSR. Ver "E-mails do Auth" abaixo.
 6. **SMTP**: o SMTP padrão do Supabase só entrega para e-mails da equipe do
    projeto e tem limite baixo. Para testes use contas fictícias e o harness
    (`generateLink`). Produção exige SMTP próprio.
 7. Validade do link do e-mail: *Email OTP expiration* (padrão 1 h). O convite em
    si vale 7 dias; se o link expirar, o administrador reenvia.
+
+### E-mails do Auth (convite e redefinição de senha)
+
+`supabase/templates/invite.html` e `recovery.html` são **gerados** por
+`supabase/templates/build.mjs` (layout único, CSS inline, sem imagens externas:
+o logotipo é tipográfico, como no app). Não edite os `.html` à mão.
+
+```bash
+cd supabase
+npm run emails           # regera os dois .html
+npm run emails:check     # CI: falha se estiverem desatualizados ou com link alterado
+npm run emails:preview   # pré-visualização em supabase/.preview-emails/index.html
+```
+
+- **Saudação**: `Olá, {{ .Data.first_name }}!` → `Olá, {{ .Data.full_name }}!` →
+  `Olá!`. O `first_name` é gravado em `user_metadata` no convite
+  (`firstNameOf`, em `src/lib/auth/first-name.ts`); o template do Supabase
+  (`html/template` do Go, sem funções extras) não consegue recortar o nome.
+  Contas criadas antes disso ou pelo painel caem no nome completo ou em "Olá!".
+- **Suporte**: preencha `supportEmail` em `supabase/templates/email.config.json`
+  e rode `npm run emails`. Vazio = a seção não aparece. Domínios de exemplo
+  (`.test`, `.exemplo`, `example.com`…) são recusados.
+- **Aplicar no projeto remoto** (manual): Authentication → Email Templates →
+  *Invite user*: assunto `Seu convite para o DG Brasil | Bárbara Cardoso Advocacia`
+  e o conteúdo de `invite.html`; *Reset password*: assunto
+  `Redefinição de senha | DG Brasil` e o conteúdo de `recovery.html`. (Ou
+  `npx supabase config push`, que sobrescreve o painel inteiro com o `config.toml`.)
+- **Convite por público**: `user_metadata.invite_role` e `organization_name`
+  (gravados por `inviteUser`) escolhem o texto: equipe da Bárbara Cardoso
+  Advocacia (`ADMIN`/`LAWYER`/`ASSISTANT`), administrador(a) de escritório
+  parceiro (`PARTNER_ADMIN`, que depois convida a própria equipe) e integrante
+  do parceiro (`PARTNER_USER`), com o cartão "Escritório / Perfil de acesso".
+  Sem esses dados (convites antigos), texto genérico de parceria. O resumo de
+  cada perfil (`ROLE_COPY` no gerador) acompanha `ROLE_DESCRIPTION`.
+- **Reenvio**: conta ainda não confirmada recebe de novo o **convite**
+  (`generateLink` só para obter a conta → atualiza papel/escritório →
+  `inviteUserByEmail`). Só quem já tem conta **confirmada** (ex.: acesso
+  removido e reconvidado) recebe o link de recuperação; a nota no rodapé do
+  e-mail de redefinição orienta esse caso.
+- O Go template remove comentários HTML: nada de `<!--[if mso]>`. Botões são
+  tabelas com `bgcolor`.
 
 ### Primeiro ADMIN (DEV, fictício)
 

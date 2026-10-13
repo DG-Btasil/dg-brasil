@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loginErrorMessage, sanitizeForLog } from "./errors";
 import { evaluateSession } from "./evaluate";
+import { firstNameOf } from "./first-name";
 import { LEGAL_DOCUMENTS, pendingLegalDocuments } from "./legal-documents";
 import { passwordProblem } from "./password-policy";
 import { AUTH_ROUTES, destinationFor, safeNextPath } from "./redirects";
@@ -188,5 +189,24 @@ describe("mensagens e logs", () => {
     expect(out.message).not.toContain("sk_live");
     expect(out.message).not.toContain("convite987");
     expect(out.message).not.toContain("rt-xyz");
+  });
+});
+
+describe("firstNameOf (saudação dos e-mails)", () => {
+  it("usa o primeiro nome", () => {
+    expect(firstNameOf("Mariana Alves de Souza")).toBe("Mariana");
+    expect(firstNameOf("  João   Pedro ")).toBe("João");
+  });
+  it("ignora pronome de tratamento", () => {
+    expect(firstNameOf("Dra. Ana Lima")).toBe("Ana");
+    expect(firstNameOf("dr Carlos")).toBe("Carlos");
+  });
+  it("vazio vira fallback do template", () => {
+    expect(firstNameOf("")).toBe("");
+    expect(firstNameOf("   ")).toBe("");
+    expect(firstNameOf("Dra.")).toBe("");
+  });
+  it("limita o tamanho", () => {
+    expect(firstNameOf("A".repeat(80))).toHaveLength(40);
   });
 });

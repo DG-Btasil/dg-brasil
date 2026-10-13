@@ -250,14 +250,15 @@ otp_expiry = 3600
 # sender_name = "Admin"
 
 # DG Brasil: templates com token_hash (fluxo SSR). O link volta para
-# /auth/confirm, que valida o token no servidor. Em projeto remoto, copie o
+# /auth/confirm, que valida o token no servidor. Os .html são GERADOS por
+# templates/build.mjs (`npm run emails`). Em projeto remoto, copie assunto e
 # conteúdo para Authentication → Email Templates (ver docs/auth.md).
 [auth.email.template.invite]
-subject = "Convite para o DG Brasil"
+subject = "Seu convite para o DG Brasil | Bárbara Cardoso Advocacia"
 content_path = "./supabase/templates/invite.html"
 
 [auth.email.template.recovery]
-subject = "Redefinição de senha — DG Brasil"
+subject = "Redefinição de senha | DG Brasil"
 content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize notification email template

@@ -2,6 +2,7 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { sanitizeForLog } from "@/lib/auth/errors";
+import { firstNameOf } from "@/lib/auth/first-name";
 import { ALL_ROLES, can, type Role } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -193,6 +194,39 @@ export interface InviteInput {
   organizationId?: string;
 }
 
+/** Lido pelo template de convite (supabase/templates). `null` apaga a chave. */
+interface InviteMetadata {
+  full_name: string;
+  first_name: string;
+  invite_role: Role;
+  organization_name: string | null;
+}
+
+/**
+ * Envia o e-mail do convite pelo Supabase Auth.
+ * - Conta nova: `inviteUserByEmail` cria a conta já com os dados do convite.
+ * - Conta existente e ainda não confirmada (reenvio, ou convite refeito com
+ *   outro papel/escritório): o Auth reenvia o convite, mas IGNORA `data`.
+ *   Por isso `generateLink` (não envia nada) devolve a conta, os dados são
+ *   atualizados e o convite é reenviado — com o template de convite.
+ * - Conta já confirmada (ex.: acesso removido antes): o Auth recusa convite;
+ *   o link de recuperação prova o e-mail e leva ao mesmo primeiro acesso.
+ */
+async function sendInvitationEmail(email: string, redirectTo: string, metadata: InviteMetadata, existingAuthUser: boolean) {
+  const admin = createSupabaseAdminClient();
+  if (!existingAuthUser) {
+    return (await admin.auth.admin.inviteUserByEmail(email, { redirectTo, data: metadata })).error;
+  }
+  const link = await admin.auth.admin.generateLink({ type: "invite", email, options: { redirectTo } });
+  if (link.error) {
+    if (link.error.code !== "email_exists") return link.error;
+    return (await admin.auth.resetPasswordForEmail(email, { redirectTo })).error;
+  }
+  const updated = await admin.auth.admin.updateUserById(link.data.user.id, { user_metadata: metadata });
+  if (updated.error) return updated.error;
+  return (await admin.auth.admin.inviteUserByEmail(email, { redirectTo })).error;
+}
+
 /**
  * Convite: (1) o banco valida e grava o convite com o HASH de um token
  * aleatório; (2) o Supabase Auth envia o e-mail com o link de credencial,
@@ -220,15 +254,20 @@ export async function inviteUser(input: InviteInput): Promise<ActionResult> {
       p_token_hash: tokenHash,
     });
     if (error) return { ok: false, error: dbErrorMessage(error, session) };
-    const created = data as { invitation_id: string; existing_auth_user: boolean };
+    const created = data as { invitation_id: string; organization_id: string; existing_auth_user: boolean };
+
+    // O e-mail muda conforme o público (equipe interna, administrador do
+    // parceiro, integrante do parceiro) e mostra o escritório do convite.
+    const { data: org } = await supabase.from("organizations").select("name").eq("id", created.organization_id).maybeSingle();
+    const metadata: InviteMetadata = {
+      full_name: fullName,
+      first_name: firstNameOf(fullName),
+      invite_role: input.role,
+      organization_name: org?.name ?? null,
+    };
 
     const redirectTo = `${await emailLinkOrigin(input.role)}/auth/confirm?fluxo=convite&ref=${ref}`;
-    const admin = createSupabaseAdminClient();
-    const { error: mailError } = created.existing_auth_user
-      ? // Já tem conta no Auth (ex.: acesso removido antes): o link de
-        // recuperação prova o e-mail e leva ao mesmo primeiro acesso.
-        await admin.auth.resetPasswordForEmail(email, { redirectTo })
-      : await admin.auth.admin.inviteUserByEmail(email, { redirectTo, data: { full_name: fullName } });
+    const mailError = await sendInvitationEmail(email, redirectTo, metadata, created.existing_auth_user);
 
     if (mailError) {
       console.error("[equipe] envio do convite", sanitizeForLog(mailError));
