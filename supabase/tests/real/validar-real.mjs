@@ -540,9 +540,23 @@ await deve('dg_worker não envia mensagem nem decide revisão', async () => {
   }
 })
 let msg
+// Higiene do DEV: mensagens de execuções que já não estão na fila (canceladas
+// ou terminadas por outras suítes — ex.: npm run test:integration) são
+// ARQUIVADAS (pgmq.archive guarda o histórico; nada é apagado).
+await deve('fila: mensagens de execuções encerradas de rodadas anteriores são arquivadas', async () => {
+  const velhas = await sql(`select q.msg_id from pgmq.q_agent_execution q
+                            left join agent_runs r on r.id = (q.message ->> 'agent_run_id')::uuid
+                            where r.id is null or r.status <> 'QUEUED'`)
+  if (velhas.length) await sql(`select pgmq.archive('agent_execution'::text, $1::bigint[])`, [velhas.map((m) => m.msg_id)])
+  console.log(`    ${velhas.length} mensagem(ns) antiga(s) arquivada(s)`)
+})
 await deve('pgmq.read real (assinatura instalada) devolve a mensagem da execução', async () => {
-  const q = await w1.query(`select * from pgmq.read('agent_execution', 60, 10)`)
-  msg = q.rows.find((m) => m.message.agent_run_id === ids.run)
+  // Lê em lotes até achar a mensagem desta rodada (outras execuções QUEUED podem estar à frente).
+  for (let lote = 0; lote < 20 && !msg; lote++) {
+    const q = await w1.query(`select * from pgmq.read('agent_execution', 60, 50)`)
+    if (!q.rows.length) break
+    msg = q.rows.find((m) => m.message.agent_run_id === ids.run)
+  }
   if (!msg) throw new Error('mensagem não lida')
 })
 await deve('claim simultâneo de dois workers: só um ganha', async () => {
