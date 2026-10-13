@@ -18,8 +18,9 @@ import { SignOutButton } from "./sign-out-button";
  * gravado no nosso banco, enviado ao nosso servidor nem registrado em log.
  */
 
-function afterMfa(next?: string, retorno?: string) {
-  if (retorno === "senha") return hardNavigate(AUTH_ROUTES.newPassword);
+/** `returnTo` só chega pronto do servidor (mfaReturnPath, lista fechada). */
+function afterMfa(next?: string, returnTo?: string) {
+  if (returnTo) return hardNavigate(returnTo);
   hardNavigate(next ? `/?next=${encodeURIComponent(next)}` : "/");
 }
 
@@ -129,7 +130,7 @@ export function MfaEnrollScreen({ next }: { next?: string }) {
   );
 }
 
-export function MfaVerifyScreen({ next, retorno }: { next?: string; retorno?: string }) {
+export function MfaVerifyScreen({ next, returnTo }: { next?: string; returnTo?: string }) {
   const [factorId, setFactorId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +159,7 @@ export function MfaVerifyScreen({ next, retorno }: { next?: string; retorno?: st
       setCode("");
       return setError(mfaErrorMessage(verifyError));
     }
-    afterMfa(next, retorno);
+    afterMfa(next, returnTo);
   }
 
   if (!factorId) return <AuthLoading />;

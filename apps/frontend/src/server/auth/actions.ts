@@ -4,9 +4,10 @@ import { createHash } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { passwordErrorMessage, sanitizeForLog } from "@/lib/auth/errors";
+import { acceptedInviteMetadata, normalizePersonName, personNameProblem } from "@/lib/auth/invite-metadata";
 import { LEGAL_DOCUMENTS } from "@/lib/auth/legal-documents";
 import { passwordProblem } from "@/lib/auth/password-policy";
-import { AUTH_ROUTES } from "@/lib/auth/redirects";
+import { AUTH_ROUTES, isInviteRef } from "@/lib/auth/redirects";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentSession } from "./session";
 
@@ -55,8 +56,6 @@ export async function acceptLegalTerms(): Promise<ActionResult> {
   return { ok: true };
 }
 
-const REF_FORMAT = /^[A-Za-z0-9_-]{32,128}$/;
-
 /**
  * Primeiro acesso por convite: o link do Supabase Auth já provou o e-mail e
  * abriu uma sessão. Aqui o convite é aceito (vínculo criado uma única vez, no
@@ -65,10 +64,11 @@ const REF_FORMAT = /^[A-Za-z0-9_-]{32,128}$/;
 export async function completeInvitation(input: { ref: string; fullName: string; password: string }): Promise<ActionResult> {
   const result = await getCurrentSession();
   if (result.state === "ANONYMOUS") return { ok: false, error: "Sua sessão expirou. Abra o link do convite novamente." };
-  if (!REF_FORMAT.test(input.ref)) redirect(`${AUTH_ROUTES.blocked}?motivo=convite-invalido`);
+  if (!isInviteRef(input.ref)) redirect(`${AUTH_ROUTES.blocked}?motivo=convite-invalido`);
 
-  const fullName = input.fullName.trim();
-  if (fullName.length < 3) return { ok: false, error: "Informe seu nome completo." };
+  const fullName = normalizePersonName(input.fullName);
+  const nameProblem = personNameProblem(fullName);
+  if (nameProblem) return { ok: false, error: nameProblem };
   const problem = passwordProblem(input.password, { email: result.email, name: fullName });
   if (problem) return { ok: false, error: problem };
 
@@ -89,7 +89,9 @@ export async function completeInvitation(input: { ref: string; fullName: string;
   if (status && reason[status]) redirect(`${AUTH_ROUTES.blocked}?motivo=${reason[status]}`);
 
   await supabase.from("profiles").update({ full_name: fullName }).eq("id", result.userId!);
-  const { error: pwError } = await supabase.auth.updateUser({ password: input.password });
+  // Senha + limpeza dos dados de e-mail do convite (papel, escritório, marca de
+  // reconvite): depois do aceite a conta não carrega "papel do convite" no token.
+  const { error: pwError } = await supabase.auth.updateUser({ password: input.password, data: acceptedInviteMetadata(fullName) });
   if (pwError) return { ok: false, error: passwordErrorMessage(pwError) };
   return { ok: true };
 }

@@ -82,6 +82,8 @@ export interface SessionResult {
   userId?: string;
   email?: string;
   fullName?: string;
+  /** Estado do MFA da conta, mesmo sem vínculo (ex.: reconvite de conta com autenticador). */
+  mfa?: MfaStatus;
 }
 
 /** Recorte da sessão que vai para o navegador (sem dado de controle interno). */

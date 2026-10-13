@@ -1,7 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { sanitizeForLog } from "@/lib/auth/errors";
-import { AUTH_ROUTES } from "@/lib/auth/redirects";
+import { AUTH_ROUTES, isInviteRef } from "@/lib/auth/redirects";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
@@ -13,7 +13,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * do convite só passa se tiver o formato esperado. Nenhum token é exibido.
  */
 const OTP_TYPES: readonly EmailOtpType[] = ["invite", "recovery", "signup", "email", "magiclink", "email_change"];
-const REF_FORMAT = /^[A-Za-z0-9_-]{32,128}$/;
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -44,7 +43,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (fluxo === "convite" || type === "invite") {
-    if (!ref || !REF_FORMAT.test(ref)) return to(`${AUTH_ROUTES.blocked}?motivo=convite-invalido`);
+    if (!isInviteRef(ref)) return to(`${AUTH_ROUTES.blocked}?motivo=convite-invalido`);
     return to(`${AUTH_ROUTES.firstAccess}?ref=${ref}`);
   }
   if (fluxo === "recuperacao" || type === "recovery") return to(AUTH_ROUTES.newPassword);

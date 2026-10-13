@@ -42,7 +42,7 @@ export const getCurrentSession = cache(async (): Promise<SessionResult> => {
     currentLevel: (aal?.currentLevel as MfaStatus["currentLevel"]) ?? null,
     hasVerifiedFactor: (factors?.totp ?? []).some((f) => f.status === "verified"),
   };
-  return evaluateSession(ctx as SessionContextRow | null, mfa);
+  return { ...evaluateSession(ctx as SessionContextRow | null, mfa), mfa };
 });
 
 /** Página atual, para devolver a pessoa a ela depois do login/onboarding. */

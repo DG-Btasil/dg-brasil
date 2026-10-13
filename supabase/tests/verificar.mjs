@@ -1704,8 +1704,9 @@ async function usuarioAuth(email, nome = 'Teste') {
   return (await um(db, `insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id`,
     [email, JSON.stringify({ full_name: nome })])).id
 }
-const convidar = (uid, email, role, org = null, token = randomUUID()) => como(uid, async (tx) => {
-  const r = await um(tx, `select public.create_invitation($1, 'Convidado Teste', $2, $3, $4) r`, [email, role, org, await sha256hex(token)])
+// Convite: só o servidor (service role) chama, sempre informando o ator [023].
+const convidar = (uid, email, role, org = null, token = randomUUID(), nome = 'Convidado Teste') => comoServico(async (tx) => {
+  const r = await um(tx, `select public.create_invitation($1, $2, $3, $4, $5, $6) r`, [email, nome, role, org, await sha256hex(token), uid])
   return { ...r.r, token }
 })
 const aceitar = (uid, token) => comoAal1(uid, async (tx) =>
@@ -1777,6 +1778,30 @@ await deve('PARTNER_ADMIN A não vê nem revoga convite do parceiro B', async ()
   await como(ids.almeidaAdm, async (tx) => igual((await linhas(tx, `select 1 from user_invitations where id = $1`, [b.invitation_id])).length, 0, 'visível'))
   await como(ids.almeidaAdm, (tx) => tx.query(`select public.revoke_invitation($1)`, [b.invitation_id])).then(
     () => { throw new Error('revogou convite de outro parceiro') }, (e) => { if (!/não encontrado/.test(e.message)) throw e })
+})
+
+secao('Auth: convite só pelo servidor, nome validado [023]')
+await deveFalhar('usuário logado (mesmo ADMIN) não chama create_invitation pela API', () => como(ids.barbara, (tx) =>
+  tx.query(`select public.create_invitation('w1@dgbrasil.test', 'Nome Teste', 'LAWYER', null, $1)`, ['a'.repeat(64)])),
+  /permission denied/)
+await deveFalhar('PARTNER_ADMIN não sonda e-mails pela API (sem enumeração de contas)', () => como(ids.almeidaAdm, (tx) =>
+  tx.query(`select public.create_invitation('w2@dgbrasil.test', 'Nome Teste', 'PARTNER_USER', null, $1)`, ['b'.repeat(64)])),
+  /permission denied/)
+await deveFalhar('service role sem ator não convida', () => comoServico((tx) =>
+  tx.query(`select public.create_invitation('w3@dgbrasil.test', 'Nome Teste', 'LAWYER', null, $1)`, ['c'.repeat(64)])),
+  /precisa informar quem está agindo/)
+for (const nome of ['X', 'Acesse www.golpe.com', 'João http://x.y', 'Pague R$ 100', 'Ana <b>', 'Ana@mail', 'Nome--Duplo', 'Ana  .', 'A'.repeat(50) + ' Silva', '1234'])
+  await deveFalhar(`nome de convidado recusado: ${JSON.stringify(nome.slice(0, 24))}`, () =>
+    convidar(ids.barbara, `n${randomUUID().slice(0, 8)}@dgbrasil.test`, 'LAWYER', null, randomUUID(), nome), /Nome inválido/)
+for (const nome of ['Maria José da Silva', "Ana D'Ávila", 'Dr. João Pereira-Lima', 'Zoë Łukasiewicz', 'J. R. Tolkien Jr.'])
+  await deve(`nome de convidado aceito: ${nome}`, () =>
+    convidar(ids.barbara, `n${randomUUID().slice(0, 8)}@dgbrasil.test`, 'LAWYER', null, randomUUID(), nome))
+await deve('nome é normalizado (espaços) e conta existente devolve auth_user_id só ao servidor', async () => {
+  const id = await usuarioAuth('existente023@dgbrasil.test', 'Existente Teste')
+  const r = await convidar(ids.barbara, 'existente023@dgbrasil.test', 'ASSISTANT', null, randomUUID(), '  Existente   Teste ')
+  igual([r.existing_auth_user, r.auth_user_id], [true, id], 'conta existente')
+  igual((await um(db, `select full_name from user_invitations where id = $1`, [r.invitation_id])).full_name, 'Existente Teste', 'nome')
+  igual((await convidar(ids.barbara, 'nova023@dgbrasil.test', 'ASSISTANT')).auth_user_id, null, 'conta nova')
 })
 
 secao('Auth: aceite do convite (atômico, idempotente) [022]')

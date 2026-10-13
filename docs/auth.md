@@ -27,6 +27,7 @@ Etapa 4.3.
 | Camada | Arquivo | Papel |
 |---|---|---|
 | Banco | `supabase/migrations/20261010000022_auth_sessions_invitations.sql` | `current_membership()` exige **aal2** (RLS inteira), `resolve_actor` recusa aal1, convites, aceite idempotente, troca de papel/status, último ADMIN, auditoria |
+| Banco | `supabase/migrations/20261012000023_invitation_hardening.sql` | `create_invitation` só pelo servidor (service role + `p_actor`): o navegador não sonda quais e-mails têm conta; nome do convidado validado; devolve o id da conta existente ao servidor |
 | Proxy | `apps/frontend/src/proxy.ts` | Renova a sessão (cookies SSR), manda quem não tem sessão para `/login?next=` (saneado). **Não** decide papel |
 | Sessão | `src/server/auth/session.ts` | `getCurrentSession()` (1×/requisição): `getUser` + AAL + fatores + `get_my_session_context()` → `evaluateSession` |
 | Guards | `requireAppSession`, `requirePermission`, `requireInternalUser`, `requireAdmin`, `requireLawyerOrAdmin`, `requirePartnerUser`, `requirePartnerAdmin`, `authorizeAction` | Páginas redirecionam; Server Actions lançam `AuthorizationError` |
@@ -67,15 +68,34 @@ decide no servidor.
 **Convite** (Configurações → Equipe; Minha Conta para `PARTNER_ADMIN`):
 
 1. Servidor gera `ref` aleatório (32 bytes), grava só o **SHA-256** em
-   `user_invitations.token_hash` via `create_invitation` (com o JWT de quem convida —
-   o banco aplica: ADMIN convida qualquer papel no escritório certo; PARTNER_ADMIN
-   só `PARTNER_*` no próprio; convite pendente anterior é revogado).
+   `user_invitations.token_hash` via `create_invitation`. Desde a 023 essa RPC só
+   aceita a **service role com `p_actor`** (o navegador não chama: antes, um
+   PARTNER_ADMIN podia descobrir pela API se um e-mail tinha conta). A
+   autorização continua no banco, pelo papel do ator: ADMIN convida qualquer
+   papel no escritório certo; PARTNER_ADMIN só `PARTNER_*` no próprio; convite
+   pendente anterior é revogado. O **nome** do convidado é validado no banco e
+   no servidor (só letras, espaço, apóstrofo, hífen e ponto de abreviação), porque
+   aparece no e-mail com a nossa marca — sem isso daria para escrever um golpe
+   ("Acesse www…") no campo nome.
 2. `admin.inviteUserByEmail` (também no reenvio a conta ainda não confirmada;
-   link de recuperação só se a conta já foi confirmada no Auth) com `redirectTo = <host do papel>/auth/confirm?fluxo=convite&ref=<ref>`.
+   link de recuperação se a conta já foi confirmada no Auth) com
+   `redirectTo = <host do papel>/auth/confirm?fluxo=convite&ref=<ref>`.
 3. `/auth/confirm` valida o `token_hash` (`verifyOtp`) → `/primeiro-acesso?ref=`.
+   Conta reconvidada que **já tem autenticador** confirma o código antes
+   (`/seguranca/verificar?retorno=convite&ref=…`): o Auth só troca senha em aal2.
 4. Nome + senha → `accept_invitation(sha256(ref))` (exige sessão do MESMO e-mail;
    idempotente; inválido/revogado/expirado/conflito → `/acesso?motivo=...`) →
    termos → cadastro do MFA → app. O 1º `PARTNER_ADMIN` ativa o parceiro `PENDING`.
+   No aceite, os dados de e-mail do convite são apagados do `user_metadata`.
+
+**`user_metadata` = só texto de e-mail.** `full_name`, `first_name`,
+`invite_role`, `organization_name` e `invite_pending` existem para os templates.
+O próprio usuário pode alterá-los (`auth.updateUser`) e eles vão no JWT, então
+**nunca** decidem acesso: papel e escritório vêm de `organization_memberships`.
+`invite_role`, `organization_name` e `invite_pending` são apagados no aceite. A
+lista está em `src/lib/auth/invite-metadata.ts`; `metadata-guard.test.ts` falha
+se front, worker ou migration passarem a ler esses campos, ou se um template
+usar chave fora da lista.
 
 Reenviar = novo convite (novo `ref`; o anterior é revogado). Cancelar = revogar.
 
@@ -165,11 +185,14 @@ npm run emails:preview   # pré-visualização em supabase/.preview-emails/index
   do parceiro (`PARTNER_USER`), com o cartão "Escritório / Perfil de acesso".
   Sem esses dados (convites antigos), texto genérico de parceria. O resumo de
   cada perfil (`ROLE_COPY` no gerador) acompanha `ROLE_DESCRIPTION`.
-- **Reenvio**: conta ainda não confirmada recebe de novo o **convite**
-  (`generateLink` só para obter a conta → atualiza papel/escritório →
-  `inviteUserByEmail`). Só quem já tem conta **confirmada** (ex.: acesso
-  removido e reconvidado) recebe o link de recuperação; a nota no rodapé do
-  e-mail de redefinição orienta esse caso.
+- **Reenvio**: conta ainda não confirmada recebe de novo o **convite** (o
+  banco devolve o id da conta ao servidor → atualiza papel/escritório →
+  `inviteUserByEmail`). Conta **confirmada** (ex.: acesso removido e
+  reconvidado) recebe o e-mail de **recuperação** — o Auth não aceita convite
+  para ela — com `invite_pending` marcado, e o template troca o texto para
+  "Seu acesso ao DG Brasil / Acessar o DG Brasil". A marca é apagada no aceite.
+  Se o convite for cancelado sem aceite, a marca fica; essa conta não tem acesso
+  ativo, então o efeito é só o texto de um eventual e-mail de recuperação.
 - O Go template remove comentários HTML: nada de `<!--[if mso]>`. Botões são
   tabelas com `bgcolor`.
 

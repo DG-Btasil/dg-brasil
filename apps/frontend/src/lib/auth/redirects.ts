@@ -14,6 +14,21 @@ export const AUTH_ROUTES = {
   home: "/home",
 } as const;
 
+/** Formato do `ref` de convite (32 bytes em base64url, com folga). Só formato: a validade é do banco. */
+export function isInviteRef(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{32,128}$/.test(value);
+}
+
+/**
+ * Retornos especiais da verificação de MFA, para rotas de onboarding que
+ * `safeNextPath` recusa de propósito. Lista fechada; o `ref` é validado.
+ */
+export function mfaReturnPath(retorno: string | undefined, ref: string | undefined): string | null {
+  if (retorno === "senha") return AUTH_ROUTES.newPassword;
+  if (retorno === "convite" && isInviteRef(ref)) return `${AUTH_ROUTES.firstAccess}?ref=${ref}`;
+  return null;
+}
+
 /** Rotas abertas sem sessão. */
 export const PUBLIC_PATHS = [AUTH_ROUTES.login, AUTH_ROUTES.forgotPassword, AUTH_ROUTES.blocked, "/auth/"] as const;
 

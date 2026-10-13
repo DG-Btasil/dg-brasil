@@ -18,6 +18,12 @@
  *  - não há variável de configuração → o e-mail de suporte entra aqui, na
  *    geração, e a seção só existe quando `supportEmail` está preenchido.
  *
+ * Os dados de `user_metadata` usados aqui (first_name, full_name, invite_role,
+ * organization_name, invite_pending) servem SÓ para o texto do e-mail — o
+ * usuário pode editá-los; nunca são fonte de autorização. A lista fica em
+ * apps/frontend/src/lib/auth/invite-metadata.ts e um teste do front confere
+ * que estes templates não usam nenhuma chave fora dela.
+ *
  * Os links preservam exatamente o formato que `/auth/confirm` valida:
  * `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=<invite|recovery>`.
  */
@@ -82,6 +88,8 @@ const GO = {
   },
   /** Nome do escritório (`user_metadata.organization_name`), com alternativa se faltar. */
   org: (withName, without) => `{{ with $.Data.organization_name }}${withName("{{ . }}")}{{ else }}${without}{{ end }}`,
+  /** Reconvite de conta já confirmada (`user_metadata.invite_pending`): o Auth manda o e-mail de recuperação. */
+  reinvite: (yes, no) => `{{ if $.Data.invite_pending }}${yes}{{ else }}${no}{{ end }}`,
 };
 
 const ROLES = ["ADMIN", "LAWYER", "ASSISTANT", "PARTNER_ADMIN", "PARTNER_USER"];
@@ -96,6 +104,7 @@ function previewVars(sample) {
     linkText: (type) => esc(url(type, type === "invite" ? "convite" : "recuperacao")),
     byRole: (branches) => branches[sample.role] ?? branches.fallback,
     org: (withName, without) => (sample.org ? withName(esc(sample.org)) : without),
+    reinvite: (yes, no) => (sample.reinvite ? yes : no),
   };
 }
 
@@ -419,32 +428,48 @@ function invite(vars, config) {
 }
 
 /**
- * Também chega a quem é convidado com uma conta JÁ CONFIRMADA no Auth (ex.:
- * acesso removido e depois reconvidado), via `resetPasswordForEmail` em
- * team-actions.ts. Por isso a nota final orienta esse caso.
+ * Recuperação de senha. Também é o e-mail de quem é RECONVIDADO com conta já
+ * confirmada no Auth (ex.: acesso removido e depois devolvido): o Supabase não
+ * aceita convite para essa conta, então team-actions.ts envia a recuperação e
+ * marca `invite_pending` — com a marca, o texto fala de convite. A marca é
+ * apagada no aceite do convite.
  */
 function recovery(vars, config) {
   const href = vars.href("recovery");
-  const body = `${eyebrow("Segurança da conta")}
-          ${title("Redefinição de senha")}
+  const r = vars.reinvite;
+  const body = `${eyebrow(r("Convite de acesso", "Segurança da conta"))}
+          ${title(r("Seu acesso ao DG Brasil", "Redefinição de senha"))}
           ${text(vars.greeting, { size: 16, extra: "font-weight:bold;" })}
-          ${text(`Recebemos uma solicitação para redefinir a senha da sua conta no ${BRAND}.`)}
-          ${text("Para continuar, clique no botão abaixo. Você seguirá para o ambiente seguro de redefinição de senha.", { margin: "0 0 8px" })}
-          ${button(href, "Redefinir minha senha")}
+          ${r(
+            `${text(`Você recebeu um novo convite para acessar o ${BRAND}.`)}
+          ${text("Como você já tem uma conta, o primeiro acesso começa pelo botão abaixo: você confirma seus dados, define a senha e segue as etapas de segurança.", { margin: "0 0 8px" })}`,
+            `${text(`Recebemos uma solicitação para redefinir a senha da sua conta no ${BRAND}.`)}
+          ${text("Para continuar, clique no botão abaixo. Você seguirá para o ambiente seguro de redefinição de senha.", { margin: "0 0 8px" })}`,
+          )}
+          ${button(href, r("Acessar o DG Brasil", "Redefinir minha senha"))}
           ${panel(
             `${panelTitle("Por segurança")}
           ${muted("Este link tem validade limitada e pode ser usado uma única vez. Se a verificação em duas etapas estiver ativa, o código do seu aplicativo autenticador será solicitado antes da nova senha.", { size: 14, margin: "0 0 14px" })}`,
             { accent: true },
           )}
-          ${text("<strong>Não reconhece esta solicitação?</strong> Ignore este e-mail. Sua senha atual continua valendo enquanto nenhuma redefinição for concluída.", { margin: "24px 0 0", size: 14 })}
+          ${text(
+            r(
+              "<strong>Não esperava este convite?</strong> Ignore este e-mail. Nada muda na sua conta enquanto o link não for usado.",
+              "<strong>Não reconhece esta solicitação?</strong> Ignore este e-mail. Sua senha atual continua valendo enquanto nenhuma redefinição for concluída.",
+            ),
+            { margin: "24px 0 0", size: 14 },
+          )}
           ${signature()}
           ${divider()}
           ${fallbackLink(href, vars.linkText("recovery"))}`;
   return layout({
-    pageTitle: `Redefinição de senha | ${BRAND}`,
-    preheader: `Use o link seguro para criar uma nova senha no ${BRAND}.`,
+    pageTitle: r(`Seu acesso ao ${BRAND}`, `Redefinição de senha | ${BRAND}`),
+    preheader: r(`Seu novo convite para o ${BRAND} está pronto.`, `Use o link seguro para criar uma nova senha no ${BRAND}.`),
     body,
-    notice: `Recebeu esta mensagem depois de um convite para o ${BRAND}? Use o mesmo botão para concluir seu primeiro acesso.`,
+    notice: r(
+      "Este convite é individual e deve ser usado apenas por quem o recebeu. Se o link expirar, peça um novo convite a quem enviou.",
+      `Recebeu esta mensagem depois de um convite para o ${BRAND}? Use o mesmo botão para concluir seu primeiro acesso.`,
+    ),
     vars,
     supportEmail: config.supportEmail,
   });
@@ -487,6 +512,7 @@ const SAMPLES = {
   recovery: [
     { key: "com-nome", label: "Com nome", firstName: "Mariana", email: "mariana@almeidaprado.adv.br" },
     { key: "sem-nome", label: "Sem nome (fallback)", firstName: "", email: "contato@escritorio-parceiro.com.br" },
+    { key: "reconvite", label: "Reconvite de conta já confirmada (invite_pending)", firstName: "Mariana", reinvite: true, email: "mariana@almeidaprado.adv.br" },
   ],
 };
 

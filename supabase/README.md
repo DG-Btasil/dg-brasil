@@ -17,7 +17,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As 19 migrations, na ordem da seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 301 verificações (inclusive Auth/MFA da 022), com a RLS testada por papel |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 321 verificações (inclusive Auth/MFA da 022 e convite da 023), com a RLS testada por papel |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 
@@ -358,6 +358,7 @@ foi resetado em seguida.
 | `20261009000020_fix_partnership_snapshot_trigger` | Achado na validação real: o aceite pelo caminho normal (PostgREST, só `status`) não criava o snapshot de parceria, porque o trigger era `UPDATE OF accepted_at` e `accepted_at` é preenchido por outro trigger. Teste de regressão em `verificar.mjs` (marcado `[020]`) |
 | `20261009000021_revoke_platform_rls_auto_enable` | Security Advisor: `public.rls_auto_enable()` (criada pela plataforma com "RLS automática") era SECURITY DEFINER executável por anon/authenticated via RPC. Revoga EXECUTE se existir. Teste marcado `[021]` |
 | `20261010000022_auth_sessions_invitations` | Etapa 4.1 (Auth): **MFA no banco** — `current_membership()` (logo toda a RLS), `resolve_actor`, resumo de execuções e notificações exigem JWT `aal2`; `get_my_session_context()` (pré-MFA); convites (`create_invitation`/`revoke_invitation`/`accept_invitation` idempotente); troca de papel/status/perfil com proteção do último ADMIN e do próprio acesso; `get_team_members`; eventos de MFA; escritório proprietário não suspende/exclui; auditoria de aceite de termos. Testes na seção "Auth (022)" |
+| `20261012000023_invitation_hardening` | `create_invitation` só pela service role com `p_actor` (fecha enumeração de contas por PARTNER_ADMIN via API); nome do convidado validado (`private.valid_person_name`, contra texto de golpe no e-mail); devolve `auth_user_id` da conta existente ao servidor. Testes `[023]` |
 
 ### Supabase Advisors (2026-10-09)
 

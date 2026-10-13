@@ -233,12 +233,13 @@ for (const p of papeis) {
 }
 const anon = novoCliente()
 
-secao('4.1. Convite, aceite e papel no Supabase real [022]')
+secao('4.1. Convite, aceite e papel no Supabase real [022, 023]')
 const sha256 = (t) => createHash('sha256').update(t).digest('hex')
 await deve('ADMIN convida; link real do Auth; convidado aceita (idempotente) e define senha', async () => {
   const email = `${RODADA}.convidado@dgbrasil.test`, token = randomUUID()
-  const conv = await r(C.ADMIN.rpc('create_invitation', { p_email: email, p_full_name: 'Convidado Teste', p_role: 'ASSISTANT', p_organization_id: null, p_token_hash: sha256(token) }))
-  igual([conv.organization_id, conv.existing_auth_user], [ids.owner, false], 'convite')
+  // [023] só o servidor convida: service role + ator explícito.
+  const conv = await r(service.rpc('create_invitation', { p_email: email, p_full_name: 'Convidado Teste', p_role: 'ASSISTANT', p_organization_id: null, p_token_hash: sha256(token), p_actor: U.ADMIN.id }))
+  igual([conv.organization_id, conv.existing_auth_user, conv.auth_user_id], [ids.owner, false, null], 'convite')
   const link = await r(service.auth.admin.generateLink({ type: 'invite', email }))
   const c = novoCliente()
   await r(c.auth.verifyOtp({ type: 'invite', token_hash: link.properties.hashed_token }))
@@ -249,9 +250,15 @@ await deve('ADMIN convida; link real do Auth; convidado aceita (idempotente) e d
   const n = await um(`select count(*)::int n from organization_memberships m join auth.users u on u.id = m.user_id where lower(u.email) = $1`, [email])
   igual(n.n, 1, 'um vínculo')
 })
-await deveFalhar('PARTNER_ADMIN A não convida para o parceiro B (IDOR, API real)', () =>
-  r(C.PARTNER_ADMIN_A.rpc('create_invitation', { p_email: `${RODADA}.x@dgbrasil.test`, p_full_name: 'X', p_role: 'PARTNER_USER', p_organization_id: ids.pB, p_token_hash: sha256(randomUUID()) })),
+await deveFalhar('PARTNER_ADMIN A não convida para o parceiro B (IDOR, ator pelo servidor)', () =>
+  r(service.rpc('create_invitation', { p_email: `${RODADA}.x@dgbrasil.test`, p_full_name: 'Nome Teste', p_role: 'PARTNER_USER', p_organization_id: ids.pB, p_token_hash: sha256(randomUUID()), p_actor: U.PARTNER_ADMIN_A.id })),
   /próprio escritório/)
+await deveFalhar('usuário logado não chama create_invitation pela API (sem enumeração de contas) [023]', () =>
+  r(C.PARTNER_ADMIN_A.rpc('create_invitation', { p_email: U.LAWYER.email, p_full_name: 'Nome Teste', p_role: 'PARTNER_USER', p_organization_id: null, p_token_hash: sha256(randomUUID()) })),
+  /permission denied/)
+await deveFalhar('nome de convidado com endereço é recusado [023]', () =>
+  r(service.rpc('create_invitation', { p_email: `${RODADA}.y@dgbrasil.test`, p_full_name: 'Acesse www.golpe.com', p_role: 'ASSISTANT', p_organization_id: null, p_token_hash: sha256(randomUUID()), p_actor: U.ADMIN.id })),
+  /Nome inválido/)
 await deve('equipe com e-mail e situação de MFA (leitura de auth.users/auth.mfa_factors no Supabase real)', async () => {
   const t = await r(C.ADMIN.rpc('get_team_members', {}))
   const lawyer = t.find((x) => x.user_id === U.LAWYER.id)

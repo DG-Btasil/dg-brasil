@@ -8,7 +8,7 @@
 <meta name="x-apple-disable-message-reformatting">
 <meta name="color-scheme" content="light dark">
 <meta name="supported-color-schemes" content="light dark">
-<title>Redefinição de senha | DG Brasil</title>
+<title>{{ if $.Data.invite_pending }}Seu acesso ao DG Brasil{{ else }}Redefinição de senha | DG Brasil{{ end }}</title>
 <style>
   body { margin: 0; padding: 0; width: 100% !important; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
   table { border-collapse: collapse; }
@@ -42,7 +42,7 @@
 </style>
 </head>
 <body class="dg-page" style="margin:0;padding:0;background:#eef1f4;">
-<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:#eef1f4;">Use o link seguro para criar uma nova senha no DG Brasil.&#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; </div>
+<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:#eef1f4;">{{ if $.Data.invite_pending }}Seu novo convite para o DG Brasil está pronto.{{ else }}Use o link seguro para criar uma nova senha no DG Brasil.{{ end }}&#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; &#8199;&#65279;&#847; </div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="dg-page" bgcolor="#eef1f4" style="width:100%;background:#eef1f4;">
   <tr>
     <td align="center" class="dg-outer" style="padding:40px 16px 32px;">
@@ -65,17 +65,18 @@
               <td valign="middle" style="padding-right:12px;">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="28" height="2" bgcolor="#c9a227" style="width:28px;height:2px;background:#c9a227;font-size:0;line-height:0;">&nbsp;</td></tr></table>
               </td>
-              <td valign="middle" class="dg-eyebrow" style="font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1;letter-spacing:2px;text-transform:uppercase;color:#33506d;">Segurança da conta</td>
+              <td valign="middle" class="dg-eyebrow" style="font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:11px;font-weight:bold;line-height:1;letter-spacing:2px;text-transform:uppercase;color:#33506d;">{{ if $.Data.invite_pending }}Convite de acesso{{ else }}Segurança da conta{{ end }}</td>
             </tr>
           </table>
-          <h1 class="dg-title dg-title-main" style="margin:20px 0 24px;font-family:Georgia, 'Times New Roman', Times, serif;font-size:30px;font-weight:normal;line-height:1.2;color:#0b1f33;">Redefinição de senha</h1>
+          <h1 class="dg-title dg-title-main" style="margin:20px 0 24px;font-family:Georgia, 'Times New Roman', Times, serif;font-size:30px;font-weight:normal;line-height:1.2;color:#0b1f33;">{{ if $.Data.invite_pending }}Seu acesso ao DG Brasil{{ else }}Redefinição de senha{{ end }}</h1>
           <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:16px;line-height:1.65;color:#18222d;font-weight:bold;">{{ if .Data.first_name }}Olá, {{ .Data.first_name }}!{{ else if .Data.full_name }}Olá, {{ .Data.full_name }}!{{ else }}Olá!{{ end }}</p>
-          <p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Recebemos uma solicitação para redefinir a senha da sua conta no DG Brasil.</p>
-          <p class="dg-text" style="margin:0 0 8px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Para continuar, clique no botão abaixo. Você seguirá para o ambiente seguro de redefinição de senha.</p>
+          {{ if $.Data.invite_pending }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Você recebeu um novo convite para acessar o DG Brasil.</p>
+          <p class="dg-text" style="margin:0 0 8px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Como você já tem uma conta, o primeiro acesso começa pelo botão abaixo: você confirma seus dados, define a senha e segue as etapas de segurança.</p>{{ else }}<p class="dg-text" style="margin:0 0 16px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Recebemos uma solicitação para redefinir a senha da sua conta no DG Brasil.</p>
+          <p class="dg-text" style="margin:0 0 8px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;line-height:1.65;color:#18222d;">Para continuar, clique no botão abaixo. Você seguirá para o ambiente seguro de redefinição de senha.</p>{{ end }}
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="dg-btn-wrap" style="margin:12px 0 24px;">
             <tr>
               <td class="dg-btn" align="center" bgcolor="#0b1f33" style="background:#0b1f33;border-radius:6px;mso-padding-alt:16px 40px;">
-                <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery" target="_blank" style="display:inline-block;padding:16px 40px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;font-weight:bold;line-height:1.2;letter-spacing:0.3px;color:#ffffff;text-decoration:none;border-radius:6px;">Redefinir minha senha</a>
+                <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery" target="_blank" style="display:inline-block;padding:16px 40px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:15px;font-weight:bold;line-height:1.2;letter-spacing:0.3px;color:#ffffff;text-decoration:none;border-radius:6px;">{{ if $.Data.invite_pending }}Acessar o DG Brasil{{ else }}Redefinir minha senha{{ end }}</a>
               </td>
             </tr>
           </table>
@@ -83,7 +84,7 @@
             <tr><td style="padding:22px 24px 8px;"><p class="dg-title" style="margin:0 0 16px;font-family:Georgia, 'Times New Roman', Times, serif;font-size:17px;line-height:1.3;color:#0b1f33;">Por segurança</p>
           <p class="dg-muted" style="margin:0 0 14px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:14px;line-height:1.65;color:#5f6b79;">Este link tem validade limitada e pode ser usado uma única vez. Se a verificação em duas etapas estiver ativa, o código do seu aplicativo autenticador será solicitado antes da nova senha.</p></td></tr>
           </table>
-          <p class="dg-text" style="margin:24px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:14px;line-height:1.65;color:#18222d;"><strong>Não reconhece esta solicitação?</strong> Ignore este e-mail. Sua senha atual continua valendo enquanto nenhuma redefinição for concluída.</p>
+          <p class="dg-text" style="margin:24px 0 0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:14px;line-height:1.65;color:#18222d;">{{ if $.Data.invite_pending }}<strong>Não esperava este convite?</strong> Ignore este e-mail. Nada muda na sua conta enquanto o link não for usado.{{ else }}<strong>Não reconhece esta solicitação?</strong> Ignore este e-mail. Sua senha atual continua valendo enquanto nenhuma redefinição for concluída.{{ end }}</p>
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 0;">
             <tr>
               <td valign="top" style="padding-right:14px;">
@@ -102,7 +103,7 @@
         </tr>
         <tr>
           <td class="dg-footer dg-pad" bgcolor="#f7f8fa" style="background:#f7f8fa;border-top:1px solid #dde2e7;border-radius:0 0 10px 10px;padding:24px 48px 26px;">
-          <p class="dg-muted" style="margin:0 0 10px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;line-height:1.65;color:#5f6b79;">Recebeu esta mensagem depois de um convite para o DG Brasil? Use o mesmo botão para concluir seu primeiro acesso.</p>
+          <p class="dg-muted" style="margin:0 0 10px;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;line-height:1.65;color:#5f6b79;">{{ if $.Data.invite_pending }}Este convite é individual e deve ser usado apenas por quem o recebeu. Se o link expirar, peça um novo convite a quem enviou.{{ else }}Recebeu esta mensagem depois de um convite para o DG Brasil? Use o mesmo botão para concluir seu primeiro acesso.{{ end }}</p>
           
           <p class="dg-muted" style="margin:0;font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;font-size:12px;line-height:1.65;color:#5f6b79;">Mensagem enviada para {{ .Email }}.</p>
           </td>

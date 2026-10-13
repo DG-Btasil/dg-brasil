@@ -9,6 +9,6 @@ export const metadata: Metadata = { title: "Nova senha" };
 /** Com MFA cadastrado, a troca de senha exige a sessão verificada (aal2). */
 export default async function NewPasswordPage() {
   const result = await requireAuthenticatedUser();
-  if (result.state === "MFA_VERIFY") redirect(`${AUTH_ROUTES.mfaVerify}?retorno=senha`);
+  if (result.mfa?.hasVerifiedFactor && result.mfa.currentLevel !== "aal2") redirect(`${AUTH_ROUTES.mfaVerify}?retorno=senha`);
   return <NewPasswordScreen email={result.email} />;
 }
