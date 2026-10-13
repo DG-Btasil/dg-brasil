@@ -3,7 +3,6 @@
  * Para conectar o backend: implementar `repositories/api/*` e trocar aqui.
  */
 import {
-  mockAnalysisRepository,
   mockReferenceRepository,
   mockClientRepository,
   mockDgRepository,
@@ -13,7 +12,6 @@ import {
   mockNotificationRepository,
   mockOfficeRepository,
   mockPartnerRepository,
-  mockReviewRepository,
   mockUserRepository,
 } from "./mock";
 
@@ -21,8 +19,6 @@ export const repositories = {
   office: mockOfficeRepository,
   users: mockUserRepository,
   clients: mockClientRepository,
-  analyses: mockAnalysisRepository,
-  reviews: mockReviewRepository,
   notifications: mockNotificationRepository,
   finance: mockFinanceRepository,
   dg: mockDgRepository,

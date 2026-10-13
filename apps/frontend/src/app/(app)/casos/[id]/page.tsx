@@ -13,6 +13,11 @@ import { listRequirementsAction } from "@/server/domain/documents/requirements/a
 import { documentListInput } from "@/features/documents/constants";
 import { requestListInput } from "@/features/partner-requests/query";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
+import { IN_FLIGHT_STATUSES } from "@/features/analyses/fields";
+import { can } from "@/lib/permissions";
+import { requireAppSession } from "@/server/auth/session";
+import { getAnalysisAction, getAnalysisSetupAction, listAnalysesAction } from "@/server/domain/analyses/actions";
+import { listReviewsAction } from "@/server/domain/reviews/actions";
 
 /**
  * Ficha do caso, lida no servidor a cada acesso (rota direta, nova aba e
@@ -27,17 +32,36 @@ async function InternalCase({ id }: { id: string }) {
   }
   if (result.data.surface !== "INTERNAL") return <CaseNotFound />;
   const withPartner = !!result.data.legalCase.partnerOrganizationId;
-  const [catalog, processes, documents, requirements, partnerRequests] = await Promise.all([
+  const session = await requireAppSession();
+  // Análises e revisões: só ADMIN/LAWYER (ASSISTANT não tem as abas nem a leitura).
+  const canAnalyses = can(session.role, "analyses.start");
+  const canReviews = can(session.role, "reviews.view");
+  const [catalog, processes, documents, requirements, partnerRequests, analyses, reviews] = await Promise.all([
     getCaseCatalogAction(),
     listCaseProcessesAction({ caseId: id, pageSize: 50 }),
     listDocumentsAction(documentListInput({ legalCaseId: id })),
     listRequirementsAction({ legalCaseId: id, pageSize: 50 }),
     withPartner ? listPartnerRequestsAction(requestListInput({ legalCaseId: id })) : Promise.resolve(undefined),
+    canAnalyses ? listAnalysesAction({ legalCaseId: id, pageSize: 50 }) : Promise.resolve(undefined),
+    canReviews ? listReviewsAction({ legalCaseId: id, pageSize: 50 }) : Promise.resolve(undefined),
   ]);
   if (!catalog.ok) return <ActionErrorState error={catalog} title="Não foi possível abrir o caso." />;
+  // Análise atual: a em curso, ou a mais recente; com os rótulos dos campos do modelo.
+  const latest = analyses?.ok ? (analyses.data.items.find((a) => IN_FLIGHT_STATUSES.includes(a.dbStatus)) ?? analyses.data.items[0]) : undefined;
+  const [current, setup] = latest ? await Promise.all([getAnalysisAction({ id: latest.id }), getAnalysisSetupAction({ legalCaseId: id })]) : [undefined, undefined];
+  const fieldDefs = (latest && setup?.ok && setup.data.templates.find((t) => t.id === latest.templateId)?.fields) || [];
   return (
     <Suspense fallback={<SkeletonRows rows={6} />}>
-      <CaseDetail legalCase={result.data.legalCase} catalog={catalog.data} processes={processes} documents={documents} requirements={requirements} partnerRequests={partnerRequests} />
+      <CaseDetail
+        legalCase={result.data.legalCase}
+        catalog={catalog.data}
+        processes={processes}
+        documents={documents}
+        requirements={requirements}
+        partnerRequests={partnerRequests}
+        analysis={analyses ? { list: analyses, current, fieldDefs } : undefined}
+        reviews={reviews}
+      />
     </Suspense>
   );
 }

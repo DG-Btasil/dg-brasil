@@ -11,6 +11,7 @@ import type { DocumentCategory, ReviewDecisionKind } from "@/lib/constants/statu
 import { resultFromRow } from "../analyses/mappers";
 import type { ReviewDecisionDTO, ReviewListItem, ReviewTargetDTO, ReviewTargetKind } from "./dto";
 import type { AssignReviewInput } from "./schemas";
+import { PROPOSAL_TYPE_LABEL } from "./labels";
 
 /**
  * Banco ↔ domínio da revisão humana. Funções puras, testadas em
@@ -35,8 +36,16 @@ export interface ReviewRow {
   created_at: string;
   updated_at: string;
   decided_at: string | null;
-  agent_proposals?: { proposal_type: string } | { proposal_type: string }[] | null;
+  agent_proposals?: Many<{ proposal_type: string; agent_runs?: Many<{ agents?: Many<{ name: string }> }> }>;
+  legal_analyses?: Many<{ analysis_templates?: Many<{ name: string }> }>;
+  document_versions?: Many<{ version_number: number; documents?: Many<{ title: string }> }>;
+  legal_cases?: Many<{
+    title: string;
+    clients?: Many<{ individual_client_details?: Many<{ full_name: string }>; company_client_details?: Many<{ legal_name: string }> }>;
+  }>;
 }
+
+type Many<T> = T | T[] | null;
 
 export interface ReviewDecisionRow {
   id: string;
@@ -115,14 +124,37 @@ export function statusFilterToDb(filter: string | undefined): DbReviewStatus[] |
 /* Banco → domínio                                                     */
 /* ------------------------------------------------------------------ */
 
+function subjectOf(row: ReviewRow, kind: ReviewTargetKind, proposalType: string | undefined): string {
+  if (kind === "ANALYSIS") {
+    const name = one(one(row.legal_analyses)?.analysis_templates)?.name;
+    return name ? `Análise: ${name}` : "Resultado de análise";
+  }
+  if (kind === "DOCUMENT_VERSION") {
+    const v = one(row.document_versions);
+    const title = one(v?.documents)?.title;
+    return title ? `${title} (v${v?.version_number})` : "Versão de documento";
+  }
+  return (proposalType && PROPOSAL_TYPE_LABEL[proposalType]) ?? "Proposta do agente";
+}
+
+function caseClientName(row: ReviewRow): string | undefined {
+  const c = one(one(row.legal_cases)?.clients);
+  return one(c?.individual_client_details)?.full_name ?? one(c?.company_client_details)?.legal_name ?? undefined;
+}
+
 export function listItemFromRow(row: ReviewRow): ReviewListItem {
   const target = targetOf(row);
-  const proposalType = one(row.agent_proposals)?.proposal_type;
+  const proposal = one(row.agent_proposals);
+  const proposalType = proposal?.proposal_type;
   return {
     id: row.id,
     targetKind: target.kind,
     targetId: target.id,
     proposalType,
+    subject: subjectOf(row, target.kind, proposalType),
+    agentName: one(one(proposal?.agent_runs)?.agents)?.name,
+    caseTitle: one(row.legal_cases)?.title,
+    clientName: caseClientName(row),
     requiresAdmin: requiresAdminDecision(proposalType),
     legalCaseId: opt(row.legal_case_id),
     processId: opt(row.legal_process_id),

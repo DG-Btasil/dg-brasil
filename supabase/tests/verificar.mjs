@@ -2525,6 +2525,130 @@ await deve('auditoria da limpeza: nomes de campo, sem data nem número de docume
   if (/1981-04-05|1980-02-03|111222|7654321/.test(tudo)) throw new Error('PII na auditoria')
 })
 
+secao('Análise jurídica: início atômico e idempotente [029]')
+const iniciar = (uid, k, caso, template, campos = {}, enviar = false, pedido = null) => como(uid, async (tx) =>
+  (await um(tx, `select public.start_legal_analysis_once($1, $2, $3, $4, $5, $6, $7) r`, [k, caso, template, JSON.stringify(campos), enviar, pedido,
+    JSON.stringify({ request_id: randomUUID() })])).r)
+const enviarAnalise = (uid, k, analise, pedido = null) => como(uid, async (tx) =>
+  (await um(tx, `select public.send_legal_analysis_once($1, $2, $3) r`, [k, analise, pedido])).r)
+const contar029 = async () => (await um(db, `select (select count(*)::int from legal_analyses) a, (select count(*)::int from agent_runs) r,
+  (select count(*)::int from pgmq.q_agent_execution) f`))
+await deve('cenário: template bancário COM agente (o do seed fica sem agente) e template de outra área', async () => {
+  ids.tpl029 = (await um(db, `insert into analysis_templates (legal_area_id, name, primary_agent_id) values ($1, 'Template 029', $2) returning id`, [ids.banking, ids.agente])).id
+  const outra = (await um(db, `select id from legal_areas where code <> 'BANKING' order by code limit 1`)).id
+  ids.tpl029Outra = (await um(db, `insert into analysis_templates (legal_area_id, name, primary_agent_id) values ($1, 'Template 029 outra área', $2) returning id`, [outra, ids.agente])).id
+})
+await deve('LAWYER cria análise sem enviar: PENDING, sem execução; repetir a chave devolve a mesma', async () => {
+  const k = randomUUID()
+  const antes = await contar029()
+  const r1 = await iniciar(ids.lucas, k, ids.casoA, ids.tpl029, { banco: 'Banco X' })
+  const r2 = await iniciar(ids.lucas, k, ids.casoA, ids.tpl029, { banco: 'Banco X' })
+  igual([r1.deduplicated, r2.deduplicated, r2.analysis_id === r1.analysis_id, r1.agent_run_id], [false, true, true, null], 'idempotente')
+  const a = await um(db, `select status, field_values, started_by, agent_run_id from legal_analyses where id = $1`, [r1.analysis_id])
+  igual([a.status, a.field_values.banco, a.started_by, a.agent_run_id], ['PENDING', 'Banco X', ids.lucas, null], 'análise')
+  const depois = await contar029()
+  igual([depois.a - antes.a, depois.r - antes.r], [1, 0], 'uma análise, nenhuma execução')
+  ids.analise029 = r1.analysis_id
+})
+await deve('criar E enviar numa transação: análise QUEUED ligada a UMA execução enfileirada', async () => {
+  const k = randomUUID()
+  const antes = await contar029()
+  const r = await iniciar(ids.barbara, k, ids.casoA, ids.tpl029, {}, true, 'Conferir descontos')
+  const a = await um(db, `select status, agent_run_id, started_at from legal_analyses where id = $1`, [r.analysis_id])
+  igual([a.status, a.agent_run_id, !!a.started_at], ['QUEUED', r.agent_run_id, true], 'análise ligada')
+  const run = await um(db, `select status, legal_case_id, requested_by from agent_runs where id = $1`, [r.agent_run_id])
+  igual([run.status, run.legal_case_id, run.requested_by], ['QUEUED', ids.casoA, ids.barbara], 'execução')
+  const depois = await contar029()
+  igual([depois.a - antes.a, depois.r - antes.r, depois.f - antes.f], [1, 1, 1], 'uma análise, uma execução, uma mensagem na fila')
+  const again = await iniciar(ids.barbara, k, ids.casoA, ids.tpl029, {}, true, 'Conferir descontos')
+  igual([again.deduplicated, again.analysis_id, again.agent_run_id], [true, r.analysis_id, r.agent_run_id], 'repetição devolve o mesmo par')
+  igual((await contar029()).r, depois.r, 'repetição não enfileira de novo')
+})
+await deve('falha no envio desfaz TUDO: template sem agente não deixa análise nem execução nem chave', async () => {
+  const k = randomUUID()
+  const antes = await contar029()
+  let msg = ''
+  try { await iniciar(ids.lucas, k, ids.casoA, ids.template, {}, true) } catch (e) { msg = e.message }
+  if (!/não tem agente configurado/.test(msg)) throw new Error(`esperava recusa, veio "${msg}"`)
+  const depois = await contar029()
+  igual([depois.a, depois.r, depois.f], [antes.a, antes.r, antes.f], 'nada gravado')
+  const chave = await um(db, `select count(*)::int n from private.idempotency_operations where idempotency_key = $1`, [k])
+  igual(chave.n, 0, 'chave liberada (pode tentar de novo)')
+})
+await deve('agente inativo no meio do envio: nada fica gravado (rollback da análise)', async () => {
+  await db.query(`update agents set status = 'INACTIVE' where id = $1`, [ids.agente])
+  const antes = await contar029()
+  try {
+    let falhou = false
+    try { await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl029, {}, true) } catch { falhou = true }
+    igual(falhou, true, 'recusado')
+    const depois = await contar029()
+    igual([depois.a, depois.r], [antes.a, antes.r], 'nada gravado')
+  } finally {
+    await db.query(`update agents set status = 'ACTIVE' where id = $1`, [ids.agente])
+  }
+})
+await deveFalhar('mesma chave com outros dados = conflito (nunca reaproveita calado)', async () => {
+  const k = randomUUID()
+  await iniciar(ids.lucas, k, ids.casoA, ids.tpl029, { banco: 'A' })
+  await iniciar(ids.lucas, k, ids.casoA, ids.tpl029, { banco: 'B' })
+}, /já foi usada com outros dados/)
+await deveFalhar('template de outra área é recusado', () => iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl029Outra), /área jurídica/)
+await deveFalhar('template inativo é recusado', async () => {
+  await db.query(`update analysis_templates set active = false where id = $1`, [ids.tpl029Outra])
+  await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl029Outra)
+}, /indisponível/)
+await deveFalhar('ASSISTANT não inicia análise', () => iniciar(ids.ana, randomUUID(), ids.casoA, ids.tpl029), /ADMIN ou advogado/)
+await deveFalhar('parceiro não inicia análise', () => iniciar(ids.almeidaAdm, randomUUID(), ids.casoA, ids.tpl029), /ADMIN ou advogado/)
+await deveFalhar('sessão sem MFA (aal1) não inicia análise', () => comoAal1(ids.lucas, (tx) =>
+  tx.query(`select public.start_legal_analysis_once($1, $2, $3)`, [randomUUID(), ids.casoA, ids.tpl029])), /ADMIN ou advogado|sessão/i)
+await deveFalhar('caso inexistente é recusado', () => iniciar(ids.lucas, randomUUID(), randomUUID(), ids.tpl029), /Caso não encontrado/)
+await deve('correlação (request_id) muda a cada tentativa e não quebra a idempotência; vai para os parâmetros da execução', async () => {
+  const k = randomUUID()
+  const r1 = await iniciar(ids.lucas, k, ids.casoA, ids.tpl029, {}, true)
+  const r2 = await iniciar(ids.lucas, k, ids.casoA, ids.tpl029, {}, true)
+  igual([r2.deduplicated, r2.agent_run_id === r1.agent_run_id], [true, true], 'mesma execução')
+  const p = await um(db, `select parameters from agent_run_inputs where agent_run_id = $1`, [r1.agent_run_id])
+  igual(Object.keys(p.parameters), ['request_id'], 'só a correlação')
+})
+await deve('enviar análise existente: QUEUED + execução numa transação; repetir a chave não duplica', async () => {
+  const k = randomUUID()
+  const antes = await contar029()
+  const r1 = await enviarAnalise(ids.lucas, k, ids.analise029, 'Pedido do advogado')
+  const r2 = await enviarAnalise(ids.lucas, k, ids.analise029, 'Pedido do advogado')
+  igual([r1.deduplicated, r2.deduplicated, r2.agent_run_id === r1.agent_run_id], [false, true, true], 'idempotente')
+  const a = await um(db, `select status, agent_run_id from legal_analyses where id = $1`, [ids.analise029])
+  igual([a.status, a.agent_run_id], ['QUEUED', r1.agent_run_id], 'ligada')
+  const depois = await contar029()
+  igual([depois.r - antes.r, depois.f - antes.f], [1, 1], 'uma execução e uma mensagem')
+  const input = await um(db, `select request_text from agent_run_inputs where agent_run_id = $1`, [r1.agent_run_id])
+  igual(input.request_text, 'Pedido do advogado', 'pedido fica em agent_run_inputs')
+})
+await deveFalhar('outra chave para a análise já enfileirada é recusada (nunca duas execuções)', () =>
+  enviarAnalise(ids.barbara, randomUUID(), ids.analise029), /já está com o agente/)
+await deve('análise FAILED pode ser reenviada (nova execução) e o motivo da interrupção é limpo', async () => {
+  await db.query(`update legal_analyses set status = 'FAILED', interruption_reason = 'Erro simulado' where id = $1`, [ids.analise029])
+  const r = await enviarAnalise(ids.lucas, randomUUID(), ids.analise029)
+  const a = await um(db, `select status, agent_run_id, interruption_reason from legal_analyses where id = $1`, [ids.analise029])
+  igual([a.status, a.agent_run_id, a.interruption_reason], ['QUEUED', r.agent_run_id, null], 'reenviada')
+})
+await deveFalhar('ASSISTANT não envia análise', () => enviarAnalise(ids.ana, randomUUID(), ids.analise029), /ADMIN ou advogado/)
+await deveFalhar('parceiro não envia análise', () => enviarAnalise(ids.almeidaAdm, randomUUID(), ids.analise029), /ADMIN ou advogado/)
+await deveFalhar('análise inexistente', () => enviarAnalise(ids.lucas, randomUUID(), randomUUID()), /não encontrada/)
+await deve('auditoria na mesma transação: ANALYSIS_STARTED com a execução e o request_id, sem o texto do pedido', async () =>
+  como(ids.barbara, async (tx) => {
+    const rid = randomUUID()
+    await tx.query(`select set_config('request.headers', $1, true)`, [JSON.stringify({ 'x-dg-request-id': rid })])
+    await tx.query(`select public.dg_pre_request()`)
+    const r = (await um(tx, `select public.start_legal_analysis_once($1, $2, $3, '{}', true, 'Texto sigiloso do pedido') r`, [randomUUID(), ids.casoA, ids.tpl029])).r
+    const ev = await um(tx, `select action, actor_user_id, request_id, metadata from audit_events where entity_id = $1 and action = 'ANALYSIS_STARTED'`, [r.analysis_id])
+    igual([ev.action, ev.actor_user_id, ev.request_id, ev.metadata.agent_run_id, ev.metadata.to], ['ANALYSIS_STARTED', ids.barbara, rid, r.agent_run_id, 'QUEUED'], 'evento')
+    const run = await um(tx, `select count(*)::int n from audit_events where entity_id = $1 and request_id = $2`, [r.agent_run_id, rid])
+    if (run.n < 1) throw new Error('execução sem auditoria na mesma requisição')
+    const tudo = JSON.stringify(await linhas(tx, `select metadata from audit_events where request_id = $1`, [rid]))
+    if (/Texto sigiloso/.test(tudo)) throw new Error('texto do pedido na auditoria')
+  }))
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

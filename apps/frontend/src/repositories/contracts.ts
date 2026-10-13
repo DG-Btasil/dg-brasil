@@ -11,20 +11,17 @@
  * parceiro recebe apenas os registros da própria relação (ver
  * `lib/permissions/partner-scope.ts` e docs/BACKEND_HANDOFF.md).
  */
-import type { ExportFormat, IntegrationStatus, PartnerOfficeStatus, ReviewDecisionKind } from "@/lib/constants/status";
+import type { IntegrationStatus, PartnerOfficeStatus } from "@/lib/constants/status";
 import type {
   AgentTask,
   Agent,
-  AnalysisTemplate,
   ChangeHistoryEntry,
   Client,
-  ExportedDocument,
   FeeModel,
   FinancialAgreement,
   ID,
   Integration,
   JudicialSourceState,
-  LegalAnalysis,
   LegalThesis,
   Notification,
   Office,
@@ -34,8 +31,6 @@ import type {
   Payment,
   CasePartnershipAgreement,
   ReferenceMaterial,
-  Review,
-  ReviewContent,
   Role,
   Skill,
   User,
@@ -57,7 +52,6 @@ import type {
   NewAgreementInput,
   NewFeeModelInput,
   SkillChangeProposal,
-  StartAnalysisInput,
   UserPreferences,
 } from "@/store/types";
 
@@ -82,35 +76,6 @@ export interface UserRepository {
 export interface ClientRepository {
   list(): Promise<Client[]>;
   get(id: ID): Promise<Client | undefined>;
-}
-
-export interface AnalysisRepository {
-  listTemplates(): Promise<AnalysisTemplate[]>;
-  listByClient(clientId: ID): Promise<LegalAnalysis[]>;
-  start(input: StartAnalysisInput): Promise<ID>;
-  sendToAgent(analysisId: ID): Promise<void>;
-  interrupt(analysisId: ID, reason: string): Promise<void>;
-  resume(analysisId: ID): Promise<void>;
-  /** Somente demonstração: simula o resultado que o agente enviaria. */
-  simulateAgentResult(analysisId: ID): Promise<ID | null>;
-}
-
-export interface ReviewRepository {
-  list(): Promise<Review[]>;
-  get(id: ID): Promise<Review | undefined>;
-  decide(reviewId: ID, decision: ReviewDecisionKind, comment?: string): Promise<void>;
-  /** Edição manual (origem MANUAL_EDIT). Preserva a versão anterior. */
-  editContent(reviewId: ID, content: ReviewContent): Promise<void>;
-  /** Reabre revisão decidida; a decisão anterior permanece no histórico. */
-  reopen(reviewId: ID, reason?: string): Promise<void>;
-  /** "Editar com agente": nova versão (AGENT_EDIT) a partir da instrução do advogado. */
-  requestAgentEdit(reviewId: ID, instruction: string): Promise<void>;
-  /**
-   * Exporta UMA versão específica. Versão não aprovada sai como rascunho
-   * (marca "RASCUNHO — NÃO APROVADO"). Backend: gera/obtém o arquivo, registra
-   * o download e devolve URL temporária ou stream autorizado.
-   */
-  exportVersion(reviewId: ID, versionNumber: number, format: ExportFormat): Promise<ExportedDocument>;
 }
 
 export interface NotificationRepository {

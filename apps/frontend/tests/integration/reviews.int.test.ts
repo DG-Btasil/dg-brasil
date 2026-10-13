@@ -35,7 +35,7 @@ async function partnerACase(): Promise<string> {
 /** Análise nova + revisão aberta dela (uma revisão aberta por alvo). */
 async function analysisReview(): Promise<{ analysisId: string; reviewId: string }> {
   const lawyer = await ctxFor("LAWYER");
-  const { id: analysisId } = await analyses.startAnalysis(lawyer, startAnalysisSchema.parse({ legalCaseId: caseId, templateId, fields: {} }));
+  const { id: analysisId } = await analyses.startAnalysis(lawyer, startAnalysisSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, templateId, fields: {} }));
   const reviewId = randomUUID();
   const { error } = await lawyer.db.from("reviews").insert({ id: reviewId, legal_case_id: caseId, legal_analysis_id: analysisId });
   if (error) throw new Error(`revisão: ${error.message}`);
@@ -52,7 +52,7 @@ beforeAll(async () => {
 describe("análises (básico)", () => {
   it("LAWYER cria; status do front depende dos documentos; sem documentos não vai ao agente", async () => {
     const lawyer = await ctxFor("LAWYER");
-    const { id } = await analyses.startAnalysis(lawyer, startAnalysisSchema.parse({ legalCaseId: caseId, templateId, fields: {} }));
+    const { id } = await analyses.startAnalysis(lawyer, startAnalysisSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, templateId, fields: {} }));
     const detail = await analyses.getAnalysis(lawyer, id);
     expect(detail).toMatchObject({ dbStatus: "PENDING", status: "NOT_STARTED", requiredDocumentsComplete: false, legalCaseId: caseId });
     expect(detail.missingRequirements.filter((m) => m.required).map((m) => m.category)).toEqual(["IDENTIFICATION", "ADDRESS_PROOF", "BENEFIT_STATEMENT"]);
@@ -64,10 +64,10 @@ describe("análises (básico)", () => {
 
   it("campo fora do template é recusado; ASSISTANT e parceiro não acessam análises", async () => {
     await expectDomainError(
-      analyses.startAnalysis(await ctxFor("LAWYER"), startAnalysisSchema.parse({ legalCaseId: caseId, templateId, fields: { inventado: "x" } })),
+      analyses.startAnalysis(await ctxFor("LAWYER"), startAnalysisSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, templateId, fields: { inventado: "x" } })),
       "VALIDATION",
     );
-    const input = startAnalysisSchema.parse({ legalCaseId: caseId, templateId, fields: {} });
+    const input = startAnalysisSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, templateId, fields: {} });
     await expectDomainError(analyses.startAnalysis(await ctxFor("ASSISTANT"), input), "FORBIDDEN");
     const { analysisId } = await analysisReview();
     await expectDomainError(analyses.getAnalysis(await ctxFor("ASSISTANT"), analysisId), "FORBIDDEN");

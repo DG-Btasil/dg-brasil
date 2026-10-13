@@ -1,151 +1,361 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
-import { Callout } from "@/components/feedback/states";
-import { Button } from "@/components/ui/button";
-import { usePermission } from "@/features/auth/hooks";
-import { ChevronLeft, ChevronRight, FilePen, FileSearch } from "lucide-react";
-import { REVIEW_STATUS_LABEL, REVIEW_STATUS_TONE, REVIEW_TYPE_LABEL } from "@/lib/constants/status";
-import { Can, PageContainer } from "@/components/layout/guards";
+import { CheckCircle2, Download, MessageSquareWarning, RotateCcw, XCircle } from "lucide-react";
+import {
+  DOCUMENT_CATEGORY_LABEL,
+  PRIORITIES,
+  PRIORITY_LABEL,
+  REVIEW_DECISION_LABEL,
+  REVIEW_STATUS_LABEL,
+  REVIEW_STATUS_TONE,
+  type DocumentCategory,
+  type Priority,
+  type ReviewDecisionKind,
+} from "@/lib/constants/status";
+import { formatDate, formatDateTime } from "@/lib/formatting";
+import { PageContainer } from "@/components/layout/guards";
+import { Callout, EmptyState } from "@/components/feedback/states";
 import { Badge, StatusBadge } from "@/components/ui/badge";
-import { ButtonLink } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/display";
-import { Panel } from "@/components/ui/panel";
-import { EmptyState } from "@/components/feedback/states";
-import { useAgentMap, usePendingNeighbors, useReview, useReviewVersions } from "../hooks";
-import { contentVersionOf, isOpenReview, wasManuallyEdited } from "../utils";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { PageHeader, Timeline } from "@/components/ui/display";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
+import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
+import type { ReviewDetailDTO, ReviewTargetDTO } from "@/server/domain/reviews/dto";
+import { PROPOSAL_TYPE_LABEL } from "@/server/domain/reviews/labels";
+import { usePermission, useRole } from "@/features/auth/hooks";
+import { useDirectoryUserMap, useLawyerOptions } from "@/features/directory/directory-context";
+import { useDocumentActions } from "@/features/documents/use-document-actions";
+import { REVIEW_KIND_LABEL } from "../list-query";
+import { useReviewActions } from "../use-review-actions";
+import { DecisionDialog } from "./decision-dialog";
 import { PriorityBadge } from "./priority-badge";
-import { ReviewContext } from "./review-context";
-import { ReopenedNotice, ReviewDecisionBanner, ReviewDecisionBar } from "./review-decision-bar";
-import { ReviewDocument } from "./review-document";
-import { ReviewDocumentToolbar } from "./review-document-toolbar";
-import { ReviewEditor } from "./review-editor";
+import { DB_STATUS_LABEL, isOpen } from "./review-table";
 
-function PendingNavigation({ id }: { id: string }) {
-  const { previous, next, position, total } = usePendingNeighbors(id);
-  if (total === 0) return null;
-  return (
-    <nav aria-label="Navegação entre revisões pendentes" className="flex items-center gap-2">
-      {position > 0 && <span className="mr-1 text-[12px] text-muted tabular">{position} de {total} pendentes</span>}
-      {previous && (
-        <ButtonLink href={`/revisoes/${previous.id}`} variant="ghost" size="sm" icon={<ChevronLeft className="size-4" aria-hidden />}>
-          Anterior
-        </ButtonLink>
-      )}
-      {next && (
-        <ButtonLink href={`/revisoes/${next.id}`} variant="secondary" size="sm">
-          Próxima revisão pendente
-          <ChevronRight className="size-4" aria-hidden />
-        </ButtonLink>
-      )}
-    </nav>
-  );
-}
+const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }));
 
-export function ReviewDetail({ id }: { id: string }) {
-  const review = useReview(id);
-  const agents = useAgentMap();
-  const versions = useReviewVersions(review);
+/**
+ * Revisão humana (ADMIN/LAWYER): o CONTEÚDO vem do alvo, lido na hora no
+ * servidor (análise, versão de documento ou proposta do agente). Decidir é só
+ * pela RPC decide_review; a tela muda depois da resposta (sem otimismo).
+ */
+export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
   const canDecide = usePermission("reviews.decide");
-  const [editing, setEditing] = useState(false);
-  const [viewingVersion, setViewingVersion] = useState<number | null>(null);
-
-  if (!review) {
-    return (
-      <PageContainer>
-        <Panel className="mt-6">
-          <EmptyState
-            icon={FileSearch}
-            title="Revisão não encontrada."
-            description="O item pode ter sido removido ou o endereço está incorreto."
-            action={<ButtonLink href="/revisoes" variant="secondary">Voltar para Revisões</ButtonLink>}
-          />
-        </Panel>
-      </PageContainer>
-    );
-  }
-
-  const open = isOpenReview(review);
-  // Edição só existe enquanto a revisão aguarda decisão.
-  const isEditing = editing && open;
-  const current = versions[0];
-  // Versão exibida: a atual, salvo escolha no seletor (versões antigas são somente leitura).
-  const viewed = versions.find((v) => v.versionNumber === viewingVersion) ?? current;
-  const viewingOld = !!viewed && !viewed.current;
+  const isAdmin = useRole() === "ADMIN";
+  const users = useDirectoryUserMap();
+  const actions = useReviewActions();
+  const [deciding, setDeciding] = useState<ReviewDecisionKind | null>(null);
+  const [reopening, setReopening] = useState(false);
+  const open = isOpen(review);
+  const allowed = canDecide && (!review.requiresAdmin || isAdmin);
+  const last = [...review.decisions].reverse().find((d) => d.decision !== null);
 
   return (
     <PageContainer>
       <PageHeader
-        breadcrumbs={[{ label: "Revisões", href: "/revisoes" }, { label: review.title }]}
-        eyebrow={REVIEW_TYPE_LABEL[review.type]}
-        title={review.title}
+        breadcrumbs={[{ label: "Revisões", href: "/revisoes" }, { label: review.subject }]}
+        eyebrow={REVIEW_KIND_LABEL[review.targetKind]}
+        title={review.subject}
         meta={
           <>
             <StatusBadge status={review.status} labels={REVIEW_STATUS_LABEL} tones={REVIEW_STATUS_TONE} />
             {review.status !== "URGENT" && <PriorityBadge priority={review.priority} />}
-            {wasManuallyEdited(review) && (
-              <Badge tone="neutral" icon={<FilePen className="size-3" aria-hidden />} title={`Conteúdo na versão v${contentVersionOf(review)}`}>
-                Editado manualmente · v{contentVersionOf(review)}
-              </Badge>
+            {review.agentName && <span>Gerado por {review.agentName}</span>}
+            {review.legalCaseId && (
+              <Link href={`/casos/${review.legalCaseId}`} className="font-medium text-navy hover:underline underline-offset-2">
+                {review.caseTitle ?? "Abrir caso"}
+              </Link>
             )}
-            <span>Gerado por {agents.get(review.agentId)?.name ?? "agente do DG Brasil"}</span>
+            {review.clientName && <span>{review.clientName}</span>}
           </>
         }
-        actions={<PendingNavigation id={review.id} />}
       />
 
       <div className="mb-5 space-y-3">
-        <ReopenedNotice review={review} />
+        {review.dbStatus === "REOPENED" && (
+          <Callout tone="warning" title="Revisão reaberta">
+            A decisão anterior continua no histórico. Efeitos já aplicados por ela não são desfeitos automaticamente.
+          </Callout>
+        )}
         {open ? (
-          <Can permission="reviews.decide">
-            <ReviewDecisionBar review={review} editing={isEditing} />
-          </Can>
+          allowed ? (
+            <Panel>
+              <PanelBody className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[13px] text-muted">Leia o material ao lado e decida. Pedir alterações e rejeitar exigem justificativa.</p>
+                <div className="flex gap-2">
+                  <Button variant="danger" icon={<XCircle className="size-4" aria-hidden />} onClick={() => setDeciding("REJECTED")}>
+                    Rejeitar
+                  </Button>
+                  <Button variant="secondary" icon={<MessageSquareWarning className="size-4" aria-hidden />} onClick={() => setDeciding("CHANGES_REQUESTED")}>
+                    Solicitar alterações
+                  </Button>
+                  <Button icon={<CheckCircle2 className="size-4" aria-hidden />} onClick={() => setDeciding("APPROVED")}>
+                    Aprovar
+                  </Button>
+                </div>
+              </PanelBody>
+            </Panel>
+          ) : (
+            review.requiresAdmin && (
+              <Callout tone="neutral" title="Decisão do administrador">
+                Esta proposta altera a configuração do DG Brasil: só um administrador pode decidir.
+              </Callout>
+            )
+          )
         ) : (
-          <ReviewDecisionBanner review={review} />
+          <Callout
+            tone={review.dbStatus === "APPROVED" ? "success" : review.dbStatus === "REJECTED" ? "danger" : "warning"}
+            title={`${DB_STATUS_LABEL[review.dbStatus]}${review.decidedAt ? ` em ${formatDateTime(review.decidedAt)}` : ""}`}
+            action={
+              allowed && review.targetKind !== "AGENT_PROPOSAL" ? (
+                <Button size="sm" variant="secondary" icon={<RotateCcw className="size-3.5" aria-hidden />} onClick={() => setReopening(true)}>
+                  Reabrir
+                </Button>
+              ) : undefined
+            }
+          >
+            {last?.notes ?? "Sem justificativa registrada."}
+          </Callout>
         )}
       </div>
 
-      {isEditing ? (
-        // Edição manual ocupa a área central inteira.
-        <ReviewEditor review={review} onDone={() => setEditing(false)} />
-      ) : (
-        <div className="grid grid-cols-[minmax(0,62fr)_minmax(340px,38fr)] items-start gap-6">
-          {viewed && (
-            <ReviewDocument
-              content={viewed.content}
-              toolbar={
-                <ReviewDocumentToolbar
-                  review={review}
-                  versions={versions}
-                  viewed={viewed}
-                  onSelectVersion={(v) => setViewingVersion(v === current?.versionNumber ? null : v)}
-                  canEdit={open && canDecide && !viewingOld}
-                  onEditManually={() => setEditing(true)}
+      <div className="grid grid-cols-12 items-start gap-5">
+        <div className="col-span-12 space-y-5 xl:col-span-8">
+          <TargetPanel target={review.target} />
+        </div>
+        <aside className="col-span-12 space-y-5 xl:col-span-4" aria-label="Atribuição e histórico">
+          <Assignment review={review} editable={open && allowed} />
+          <Panel>
+            <PanelHeader title="Histórico de decisões" />
+            <PanelBody>
+              {review.decisions.length === 0 ? (
+                <EmptyState compact title="Nenhuma decisão ainda." />
+              ) : (
+                <Timeline
+                  items={[...review.decisions].reverse().map((d) => ({
+                    id: d.id,
+                    title: d.decision ? REVIEW_DECISION_LABEL[d.decision] : "Reaberta",
+                    meta: `${formatDateTime(d.at)} · ${users.get(d.decidedById)?.name ?? "—"}`,
+                    description: d.notes,
+                  }))}
                 />
-              }
-              notice={
-                viewingOld ? (
-                  <Callout
-                    tone="neutral"
-                    className="mx-auto mb-4 max-w-[760px]"
-                    title={`Versão ${viewed.versionNumber} — somente leitura`}
-                    action={
-                      <Button size="sm" variant="secondary" onClick={() => setViewingVersion(null)}>
-                        Ver versão atual
-                      </Button>
-                    }
-                  >
-                    Decisões e edições valem apenas para a versão atual (v{current?.versionNumber}).
-                  </Callout>
-                ) : undefined
-              }
+              )}
+            </PanelBody>
+          </Panel>
+        </aside>
+      </div>
+
+      {deciding && (
+        <DecisionDialog
+          decision={deciding}
+          description={review.subject}
+          onClose={() => setDeciding(null)}
+          onConfirm={(comment) => actions.decide(review.id, deciding, comment)}
+        />
+      )}
+      {reopening && <ReopenDialog review={review} onClose={() => setReopening(false)} />}
+    </PageContainer>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+const show = (v: unknown): string => (v === null || v === undefined ? "—" : typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
+
+function TargetPanel({ target }: { target: ReviewTargetDTO | null }) {
+  const docs = useDocumentActions();
+  const [busy, setBusy] = useState(false);
+  if (!target) {
+    return (
+      <Panel>
+        <EmptyState compact title="O material desta revisão não está mais disponível." description="Ele pode ter sido removido ou você não tem acesso a ele." />
+      </Panel>
+    );
+  }
+  if (target.kind === "ANALYSIS") {
+    return (
+      <Panel>
+        <PanelHeader title="Resultado da análise" description="Saída estruturada do agente. Nada segue sem a sua decisão." />
+        <PanelBody className="space-y-4">
+          {!target.result ? (
+            <EmptyState compact title="A análise ainda não tem resultado." />
+          ) : (
+            <DefinitionGrid
+              columns={2}
+              items={[
+                { label: "Resumo", value: target.result.summary || undefined, wide: true },
+                { label: "Recomendação", value: target.result.recommendation || undefined, wide: true },
+                { label: "Teses identificadas", value: target.result.identifiedThesisIds.length ? String(target.result.identifiedThesisIds.length) : undefined },
+              ]}
             />
           )}
-          <aside aria-label="Contexto da revisão" className="sticky top-[calc(var(--header-height)+16px)] max-h-[calc(100vh-var(--header-height)-32px)] overflow-y-auto">
-            <ReviewContext review={review} />
-          </aside>
-        </div>
-      )}
-    </PageContainer>
+        </PanelBody>
+      </Panel>
+    );
+  }
+  if (target.kind === "DOCUMENT_VERSION") {
+    return (
+      <Panel>
+        <PanelHeader
+          title={target.title}
+          description={`Versão ${target.versionNumber} · ${DOCUMENT_CATEGORY_LABEL[target.category as DocumentCategory] ?? target.category}`}
+          actions={
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Download className="size-3.5" aria-hidden />}
+              loading={busy}
+              onClick={async () => {
+                setBusy(true);
+                await docs.download(target.documentId, target.documentVersionId);
+                setBusy(false);
+              }}
+            >
+              Baixar esta versão
+            </Button>
+          }
+        />
+        <PanelBody>
+          <DefinitionGrid
+            columns={2}
+            items={[
+              { label: "Arquivo", value: target.originalFilename },
+              { label: "Origem", value: target.source === "AGENT" ? "Gerado por agente" : target.source },
+              { label: "Visibilidade", value: target.visibility === "PARTNER_VISIBLE" ? "Compartilhado com o parceiro" : "Somente interno" },
+              { label: "Enviado em", value: formatDateTime(target.createdAt) },
+            ]}
+          />
+        </PanelBody>
+      </Panel>
+    );
+  }
+  const entries = Object.entries(target.payload);
+  return (
+    <Panel>
+      <PanelHeader title={PROPOSAL_TYPE_LABEL[target.proposalType] ?? "Proposta do agente"} description={`Criada em ${formatDateTime(target.createdAt)}. Aprovar aplica a proposta pelo worker.`} />
+      <PanelBody>
+        {entries.length === 0 ? (
+          <EmptyState compact title="Proposta sem conteúdo." />
+        ) : (
+          <DefinitionGrid columns={2} items={entries.map(([key, value]) => ({ label: key, value: show(value), wide: true }))} />
+        )}
+      </PanelBody>
+    </Panel>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function Assignment({ review, editable }: { review: ReviewDetailDTO; editable: boolean }) {
+  const users = useDirectoryUserMap();
+  const lawyers = useLawyerOptions();
+  const actions = useReviewActions();
+  const [editing, setEditing] = useState(false);
+  const [assignee, setAssignee] = useState(review.assignedReviewerId ?? "");
+  const [priority, setPriority] = useState<Priority>(review.priority);
+  const [due, setDue] = useState(review.dueAt ? review.dueAt.slice(0, 10) : "");
+  const [saving, setSaving] = useState(false);
+  return (
+    <Panel>
+      <PanelHeader
+        title="Atribuição"
+        actions={
+          editable && !editing ? (
+            <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+              Alterar
+            </Button>
+          ) : undefined
+        }
+      />
+      <PanelBody className="space-y-3">
+        {!editing ? (
+          <DefinitionGrid
+            columns={2}
+            items={[
+              { label: "Responsável", value: review.assignedReviewerId ? (users.get(review.assignedReviewerId)?.name ?? "—") : "Sem responsável" },
+              { label: "Prioridade", value: PRIORITY_LABEL[review.priority] },
+              { label: "Prazo", value: review.dueAt ? formatDate(review.dueAt) : undefined },
+              { label: "Criada em", value: formatDateTime(review.createdAt) },
+            ]}
+          />
+        ) : (
+          <>
+            <Field label="Responsável" requirement="optional" hint={review.requiresAdmin ? "Proposta estrutural: só administrador." : "Advogado ou administrador."}>
+              {(p) => <Select {...p} placeholder="Sem responsável" options={lawyers} value={assignee} onChange={(e) => setAssignee(e.target.value)} />}
+            </Field>
+            <Field label="Prioridade" requirement="required">
+              {(p) => <Select {...p} options={PRIORITY_OPTIONS} value={priority} onChange={(e) => setPriority(e.target.value as Priority)} />}
+            </Field>
+            <Field label="Prazo" requirement="optional">
+              {(p) => <Input {...p} type="date" value={due} onChange={(e) => setDue(e.target.value)} />}
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                loading={saving}
+                onClick={async () => {
+                  setSaving(true);
+                  // Prazo do dia (fim do dia em São Paulo), sem hora escolhida.
+                  const ok = await actions.assign(review.id, { assignedReviewerId: assignee || null, priority, dueAt: due ? `${due}T23:59:59-03:00` : null });
+                  setSaving(false);
+                  if (ok) setEditing(false);
+                }}
+              >
+                Salvar
+              </Button>
+            </div>
+          </>
+        )}
+        {review.requiresAdmin && <Badge tone="gold">Decisão exclusiva de administrador</Badge>}
+      </PanelBody>
+    </Panel>
+  );
+}
+
+/** Reabrir: volta para a fila como "Reaberta"; a decisão anterior nunca é apagada. */
+function ReopenDialog({ review, onClose }: { review: ReviewDetailDTO; onClose: () => void }) {
+  const actions = useReviewActions();
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && !saving && onClose()}
+      title="Reabrir revisão"
+      description={
+        <>
+          A revisão volta para a fila como <strong>Reaberta</strong> e exigirá nova decisão. A decisão anterior ({DB_STATUS_LABEL[review.dbStatus].toLowerCase()}) continua
+          registrada no histórico e na auditoria. Efeitos já aplicados por ela não são desfeitos automaticamente.
+        </>
+      }
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button
+            icon={<RotateCcw className="size-4" aria-hidden />}
+            loading={saving}
+            onClick={async () => {
+              setSaving(true);
+              const ok = await actions.reopen(review.id, reason.trim() || undefined);
+              setSaving(false);
+              if (ok) onClose();
+            }}
+          >
+            Confirmar reabertura
+          </Button>
+        </>
+      }
+    >
+      <Field label="Motivo" requirement="optional" hint="Ex.: aprovada por engano; erro percebido depois; precisa de ajuste no conteúdo.">
+        {(a) => <Textarea {...a} rows={3} maxLength={5000} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />}
+      </Field>
+    </Dialog>
   );
 }

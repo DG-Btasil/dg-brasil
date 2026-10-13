@@ -31,6 +31,10 @@ import type { PartnerRequestListItem } from "@/server/domain/partner-requests/dt
 import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUser, useOrganizationName, useOrgDirectory, useOriginOptions } from "@/features/directory/directory-context";
 import { ProcessListTable } from "@/features/processes/components/process-list-table";
+import type { AnalysisDetailDTO, AnalysisListItem, TemplateFieldDTO } from "@/server/domain/analyses/dto";
+import type { ReviewListItem } from "@/server/domain/reviews/dto";
+import { AnalysisPanel } from "@/features/analyses/components/analysis-panel";
+import { isOpen, ReviewTable } from "@/features/reviews/components/review-table";
 import { useCaseActions } from "../use-case-actions";
 import { AcceptCaseDialog, AssignLawyerDialog, ChangeOriginDialog, EditCaseDialog, RejectCaseDialog } from "./case-dialogs";
 
@@ -40,9 +44,9 @@ type DialogKey = "accept" | "reject" | "origin" | "lawyer" | "edit";
 
 /**
  * Página do caso (equipe interna), com dados do servidor (getCaseAction):
- * visão geral, documentos/pendências e processos. Análise, revisões,
- * financeiro e atividade são conectados nas próximas fases; até lá, a aba diz
- * isso (nada de dado de demonstração).
+ * visão geral, documentos/pendências, análise e revisões (ADMIN/LAWYER) e
+ * processos. Financeiro e atividade são conectados nas próximas fases; até
+ * lá, a aba diz isso (nada de dado de demonstração).
  * Precisa estar dentro de <Suspense> (useUrlTab).
  */
 export function CaseDetail({
@@ -52,6 +56,8 @@ export function CaseDetail({
   documents,
   requirements,
   partnerRequests,
+  analysis,
+  reviews,
 }: {
   legalCase: CaseInternalDTO;
   catalog: CaseCatalogDTO;
@@ -60,6 +66,10 @@ export function CaseDetail({
   requirements: ActionResult<Page<RequirementDTO>>;
   /** Só quando o caso tem parceiro vinculado. */
   partnerRequests?: ActionResult<Page<PartnerRequestListItem>>;
+  /** Só ADMIN/LAWYER (analyses.start). */
+  analysis?: { list: ActionResult<Page<AnalysisListItem>>; current?: ActionResult<AnalysisDetailDTO>; fieldDefs: TemplateFieldDTO[] };
+  /** Só ADMIN/LAWYER (reviews.view). */
+  reviews?: ActionResult<Page<ReviewListItem>>;
 }) {
   const canFinance = usePermission("finance.view");
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
@@ -75,13 +85,15 @@ export function CaseDetail({
         count: documents.ok ? documents.data.total : undefined,
         attention: requirements.ok && requirements.data.items.some((r) => r.required && (r.status === "MISSING" || r.status === "REQUESTED" || r.status === "REJECTED")),
       },
-      { key: "analise", label: "Análise" },
-      { key: "revisoes", label: "Revisões" },
+      ...(analysis ? [{ key: "analise" as const, label: "Análise" }] : []),
+      ...(reviews
+        ? [{ key: "revisoes" as const, label: "Revisões", count: reviews.ok ? reviews.data.items.filter(isOpen).length || undefined : undefined, attention: reviews.ok && reviews.data.items.some(isOpen) }]
+        : []),
       { key: "processos", label: "Processos", count: processCount },
       ...(canFinance ? [{ key: "financeiro" as const, label: "Financeiro" }] : []),
       { key: "atividade", label: "Atividade" },
     ],
-    [processCount, canFinance, documents, requirements],
+    [processCount, canFinance, documents, requirements, analysis, reviews],
   );
   const close = (o: boolean) => !o && setDialog(null);
 
@@ -113,8 +125,10 @@ export function CaseDetail({
             )}
           </div>
         )}
-        {tab === "analise" && <PendingIntegration description="A análise jurídica do caso será conectada depois que o início da análise for atômico (análise + execução do agente)." />}
-        {tab === "revisoes" && <PendingIntegration description="As revisões do caso serão conectadas em uma próxima fase." />}
+        {tab === "analise" && analysis && (
+          <AnalysisPanel legalCaseId={legalCase.id} analyses={analysis.list} current={analysis.current} fieldDefs={analysis.fieldDefs} onGoToDocuments={() => setTab("documentos")} />
+        )}
+        {tab === "revisoes" && reviews && <CaseReviews reviews={reviews} />}
         {tab === "processos" && <CaseProcessesTab legalCase={legalCase} processes={processes} />}
         {tab === "financeiro" && canFinance && <PendingIntegration description="O financeiro do caso será conectado depois da revisão do ciclo de vida do acordo financeiro." />}
         {tab === "atividade" && <PendingIntegration description="A linha do tempo de auditoria será conectada em uma próxima fase." />}
@@ -125,6 +139,16 @@ export function CaseDetail({
       {dialog === "edit" && <EditCaseDialog legalCase={legalCase} catalog={catalog} open onOpenChange={close} />}
       {dialog === "origin" && <OriginDialog legalCase={legalCase} onOpenChange={close} />}
     </>
+  );
+}
+
+function CaseReviews({ reviews }: { reviews: ActionResult<Page<ReviewListItem>> }) {
+  if (!reviews.ok) return <ActionErrorState error={reviews} title="Não foi possível carregar as revisões do caso." />;
+  return (
+    <Panel>
+      <PanelHeader title="Revisões do caso" description="Material dos agentes e documentos aguardando ou com decisão humana." />
+      {reviews.data.items.length === 0 ? <EmptyState compact title="Nenhuma revisão neste caso." /> : <ReviewTable rows={reviews.data.items} />}
+    </Panel>
   );
 }
 

@@ -1,91 +1,55 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { CheckCircle2, SearchX } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { PRIORITIES, PRIORITY_LABEL, type Priority } from "@/lib/constants/status";
+import { pluralize } from "@/lib/formatting";
+import type { ActionResult } from "@/lib/actions/result";
+import { useServerList } from "@/lib/hooks/use-server-list";
 import { PageContainer } from "@/components/layout/guards";
+import { ActionErrorState } from "@/components/feedback/action-error";
+import { EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
+import { Checkbox, Select } from "@/components/ui/form";
+import { Pagination } from "@/components/ui/pagination";
 import { Panel } from "@/components/ui/panel";
 import { Tabs } from "@/components/ui/tabs";
-import { EmptyState } from "@/components/feedback/states";
-import { useOffice, useResponsibleOptions } from "@/features/offices/hooks";
-import { usePermission } from "@/features/auth/hooks";
-import { usePartnerOffices } from "@/features/partners/hooks";
-import { clientDisplayName } from "@/features/processes/utils";
-import { useAgentMap, useClientList, useProcessMap, useReviews } from "../hooks";
+import type { Page } from "@/server/core/pagination";
+import { listReviewsAction } from "@/server/domain/reviews/actions";
+import type { ReviewListItem } from "@/server/domain/reviews/dto";
 import {
-  compareReviewQueue,
-  countReviewFilters,
-  EMPTY_REVIEW_FILTERS,
-  filterReviews,
-  INTERNAL_ORIGIN,
-  matchesView,
-  QUEUE_VIEW_LABEL,
-  QUEUE_VIEWS,
-  type QueueView,
-  type ReviewFilters as Filters,
-} from "../utils";
-import { useLegalCases } from "@/features/cases/hooks";
-import { casePartnerId } from "@/lib/domain/legal-case";
-import { ReviewFilters } from "./review-filters";
-import { ReviewTable } from "./review-table";
+  DEFAULT_REVIEW_QUERY,
+  REVIEW_DB_STATUSES,
+  REVIEW_KIND_LABEL,
+  REVIEW_KINDS,
+  REVIEW_PAGE_SIZE,
+  REVIEW_VIEW_LABEL,
+  REVIEW_VIEWS,
+  reviewQueryToInput,
+  reviewQueryToSearchParams,
+  type ReviewListQuery,
+} from "../list-query";
+import { DB_STATUS_LABEL, ReviewTable } from "./review-table";
 
-export function ReviewQueue() {
-  const reviews = useReviews();
-  const agents = useAgentMap();
-  const processes = useProcessMap();
-  const clientList = useClientList();
-  const userOptions = useResponsibleOptions();
-  const office = useOffice();
-  const partners = usePartnerOffices();
-  const canPartners = usePermission("partners.view");
-  const partnerOptions = useMemo(
-    () => [
-      { value: INTERNAL_ORIGIN, label: `Interno / ${office.name}` },
-      ...partners.filter((p) => p.status === "ACTIVE").map((p) => ({ value: p.id, label: p.name })).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
-    ],
-    [office.name, partners],
-  );
-  const [view, setView] = useState<QueueView>("pendentes");
-  const [filters, setFilters] = useState<Filters>(EMPTY_REVIEW_FILTERS);
+const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }));
+const KIND_OPTIONS = REVIEW_KINDS.map((k) => ({ value: k, label: REVIEW_KIND_LABEL[k] }));
+const STATUS_OPTIONS = REVIEW_DB_STATUSES.map((s) => ({ value: s, label: DB_STATUS_LABEL[s] }));
 
-  const clients = useMemo(() => new Map(clientList.map((c) => [c.id, c])), [clientList]);
-  // Filtro de parceiro: revisão → caso → origem do caso.
-  const cases = useLegalCases();
-  const casePartners = useMemo(() => {
-    const map = new Map<string, string>();
-    cases.forEach((c) => {
-      const pid = casePartnerId(c, office.id);
-      if (pid) map.set(c.id, pid);
-    });
-    return map;
-  }, [cases, office.id]);
-
-  const visible = useMemo(() => {
-    const list = filterReviews(reviews, view, filters, casePartners);
-    return view === "decididas"
-      ? list.sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? ""))
-      : list.sort(compareReviewQueue);
-  }, [reviews, view, filters, casePartners]);
-
-  const tabItems = QUEUE_VIEWS.map((key) => ({
-    key,
-    label: QUEUE_VIEW_LABEL[key],
-    count: reviews.filter((r) => matchesView(r, key)).length,
-    attention: key === "pendentes" && reviews.some((r) => r.status === "URGENT"),
-  }));
-
-  const options = useMemo(() => {
-    const uniq = (ids: (string | undefined)[]) => [...new Set(ids.filter((v): v is string => Boolean(v)))];
-    const byLabel = (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label, "pt-BR");
-    return {
-      agents: uniq(reviews.map((r) => r.agentId)).map((id) => ({ value: id, label: agents.get(id)?.name ?? id })).sort(byLabel),
-      clients: uniq(reviews.map((r) => r.clientId)).map((id) => ({ value: id, label: clientDisplayName(clients.get(id)) })).sort(byLabel),
-      processes: uniq(reviews.map((r) => r.processId)).map((id) => ({ value: id, label: processes.get(id)?.title ?? id })).sort(byLabel),
-    };
-  }, [reviews, agents, clients, processes]);
-
-  const hasFilters = countReviewFilters(filters) > 0;
+/**
+ * Fila de revisões humanas (ADMIN e LAWYER) lida do servidor: visões, filtros
+ * e páginas no banco (RLS), estado na URL. "IA executa. Humano decide."
+ */
+export function ReviewQueue({ initialQuery, initialResult }: { initialQuery: ReviewListQuery; initialResult: ActionResult<Page<ReviewListItem>> }) {
+  const { query, setQuery, result, pending, retry } = useServerList({
+    initialQuery,
+    initialResult,
+    load: (q: ReviewListQuery) => listReviewsAction(reviewQueryToInput(q)),
+    toSearch: reviewQueryToSearchParams,
+  });
+  const page = result.ok ? result.data : undefined;
+  const filtered = !!query.priority || !!query.kind || !!query.status || query.unassigned;
+  const tabs = REVIEW_VIEWS.map((key) => ({ key, label: REVIEW_VIEW_LABEL[key] }));
 
   return (
     <PageContainer>
@@ -93,47 +57,77 @@ export function ReviewQueue() {
         title="Revisões"
         description="Tudo o que os agentes produzem passa por aqui antes de seguir. Nada vira ação externa sem a sua decisão."
       />
-      <Tabs items={tabItems} value={view} onChange={setView} label="Visões da fila de revisões" className="mb-4" />
+      <Tabs items={tabs} value={query.view} onChange={(view) => setQuery({ ...DEFAULT_REVIEW_QUERY, view })} label="Visões da fila de revisões" className="mb-4" />
       <Panel>
-        <ReviewFilters
-          filters={filters}
-          onChange={setFilters}
-          agentOptions={options.agents}
-          clientOptions={options.clients}
-          processOptions={options.processes}
-          userOptions={userOptions}
-          partnerOptions={canPartners ? partnerOptions : undefined}
-          showStatus={view !== "pendentes"}
-        />
-        {visible.length === 0 ? (
-          hasFilters ? (
-            <EmptyState
-              icon={SearchX}
-              title="Nenhuma revisão corresponde aos filtros."
-              action={
-                <Button variant="secondary" onClick={() => setFilters(EMPTY_REVIEW_FILTERS)}>
-                  Limpar filtros
-                </Button>
-              }
+        <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3" role="search" aria-label="Filtrar revisões">
+          <Select
+            aria-label="Prioridade"
+            placeholder="Todas as prioridades"
+            options={PRIORITY_OPTIONS}
+            value={query.priority}
+            onChange={(e) => setQuery({ ...query, priority: e.target.value as Priority | "", page: 1 })}
+            className="h-8 w-[180px] text-[12.5px]"
+          />
+          <Select
+            aria-label="Tipo"
+            placeholder="Todos os tipos"
+            options={KIND_OPTIONS}
+            value={query.kind}
+            onChange={(e) => setQuery({ ...query, kind: e.target.value as ReviewListQuery["kind"], page: 1 })}
+            className="h-8 w-[200px] text-[12.5px]"
+          />
+          {query.view === "todas" && (
+            <Select
+              aria-label="Situação"
+              placeholder="Todas as situações"
+              options={STATUS_OPTIONS}
+              value={query.status}
+              onChange={(e) => setQuery({ ...query, status: e.target.value as ReviewListQuery["status"], page: 1 })}
+              className="h-8 w-[200px] text-[12.5px]"
             />
-          ) : view === "pendentes" ? (
-            <EmptyState
-              icon={CheckCircle2}
-              title="Nenhuma revisão aguardando decisão."
-              description="Quando um agente concluir uma tarefa que exige confirmação, o material aparecerá aqui para você aprovar, pedir ajustes ou rejeitar."
-            />
-          ) : (
-            <EmptyState title="Nenhuma revisão nesta visão." />
-          )
-        ) : (
-          <>
-            <p className="border-b border-line px-5 py-2 text-[12px] text-muted" aria-live="polite">
-              {visible.length === 1 ? "1 revisão" : `${visible.length} revisões`}
-              {view === "pendentes" && " · urgentes e de maior prioridade primeiro, depois as mais antigas"}
+          )}
+          {query.view !== "minhas" && (
+            <Checkbox label="Sem responsável" checked={query.unassigned} onChange={(e) => setQuery({ ...query, unassigned: e.target.checked, page: 1 })} className="items-center" />
+          )}
+          {page && (
+            <p className="ml-auto text-[12.5px] text-muted" aria-live="polite">
+              {pluralize(page.total, "revisão", "revisões")}
+              {query.view !== "todas" && " · mais antigas primeiro"}
             </p>
-            <ReviewTable reviews={visible} agents={agents} clients={clients} processes={processes} />
-          </>
-        )}
+          )}
+        </div>
+        <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-60")}>
+          {!result.ok ? (
+            <ActionErrorState error={result} onRetry={retry} title="Não foi possível carregar as revisões." />
+          ) : !page ? (
+            <SkeletonRows rows={5} />
+          ) : page.items.length === 0 ? (
+            filtered ? (
+              <EmptyState
+                icon={SearchX}
+                title="Nenhuma revisão corresponde aos filtros."
+                action={
+                  <Button variant="secondary" onClick={() => setQuery({ ...DEFAULT_REVIEW_QUERY, view: query.view })}>
+                    Limpar filtros
+                  </Button>
+                }
+              />
+            ) : query.view === "todas" ? (
+              <EmptyState title="Nenhuma revisão registrada." />
+            ) : (
+              <EmptyState
+                icon={CheckCircle2}
+                title="Nenhuma revisão aguardando decisão."
+                description="Quando um agente concluir uma tarefa que exige confirmação, o material aparecerá aqui para você aprovar, pedir ajustes ou rejeitar."
+              />
+            )
+          ) : (
+            <>
+              <ReviewTable rows={page.items} />
+              <Pagination page={page.page} pageSize={REVIEW_PAGE_SIZE} total={page.total} disabled={pending} onPageChange={(p) => setQuery({ ...query, page: p })} noun={{ one: "revisão", many: "revisões" }} />
+            </>
+          )}
+        </div>
       </Panel>
     </PageContainer>
   );

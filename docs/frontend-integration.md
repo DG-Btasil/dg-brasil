@@ -19,7 +19,7 @@ retorno das operações.
 | C | Pendências documentais do caso | ✅ real | criar, solicitar, registrar recebimento (versão concreta), aprovar/rejeitar |
 | C | Documentos no Portal do Parceiro | ✅ real (D) | só PARTNER_VISIBLE; envio/nova versão em caso e processo; pendências documentais só leitura |
 | D | Parceiros (equipe interna), Solicitações, Portal do Parceiro | ✅ real | Início e Financeiro do portal ficam para H e F |
-| E | Revisões, Análises | ⏳ | Análise só depois de tornar atômico o início (análise + execução) |
+| E | Revisões, Análises | ✅ real | início/envio de análise atômico e idempotente (migration 029); decisão só por `decide_review` |
 | F | Financeiro | ⏳ | mutações só depois de revisar o ciclo de vida do acordo financeiro |
 | G | Execuções de agente / Agentes | ⏳ | paginar o read model antes |
 | H | Notificações, Auditoria, Home/painéis | ⏳ | painéis por último |
@@ -304,6 +304,52 @@ processo, contato, documento, resposta), as ações correspondentes do store e
 os diálogos do portal que só gravavam no mock. Restam no mock só os hooks do
 Início (H) e do Financeiro (F) do portal.
 
+## Fase E — Revisões e Análises
+
+**Auditoria do início da análise (antes de conectar).** O backend da 4.2
+criava a análise (insert sem chave) e, ao enviar, pedia a execução
+(`request_agent_run_once`) e DEPOIS ligava a análise — duas escritas. Falha
+entre elas deixava execução na fila sem análise ligada; clique duplo no
+início criava duas análises. **Migration 029** (`start_legal_analysis_once`,
+`send_legal_analysis_once`): análise + execução + entrada + fila + auditoria
+numa transação, idempotente (mecanismo da 027). O servidor confere antes
+(leitura) os documentos obrigatórios do modelo; o banco reconfere papel,
+caso, modelo ativo da área e agente, e decide o status (lock da linha).
+Nenhuma IA roda: "enviar" = enfileirar.
+
+**Revisões** (`/revisoes`, ADMIN/LAWYER): fila do servidor com visões
+(aguardando decisão, atribuídas a mim, todas), filtros (prioridade, tipo,
+situação, sem responsável) e páginas, estado na URL. A linha mostra só
+rótulos (modelo da análise, documento e versão, tipo da proposta, agente,
+caso e cliente — embeds de leitura sob RLS). A ficha lê o CONTEÚDO do alvo na
+hora (resultado da análise, versão do documento com download assinado da
+versão, proposta do agente), mostra o histórico de decisões e permite
+atribuir (responsável, prioridade, prazo). **Decidir é só pela RPC
+`decide_review`** (aprovar, pedir alterações, rejeitar — justificativa
+obrigatória nas duas últimas); proposta estrutural só ADMIN; reabrir (não
+para proposta de agente). Sem UI otimista.
+
+**Análises** (aba Análise do caso e `/casos/[id]/analise/nova`, ADMIN/
+LAWYER): assistente com os modelos ATIVOS da área do caso
+(`getAnalysisSetupAction`: campos e checklist do tipo de cliente, com o que
+já está no caso), campos validados contra a definição do modelo e
+"Enviar ao agente agora" (só com agente configurado e documentos
+obrigatórios presentes). A aba mostra a análise atual (documentos que
+faltam, resultado estruturado, link para a revisão), envio/reenvio atômico e
+o histórico. ASSISTANT não vê as abas Análise e Revisões (nem as lê).
+
+**Diferenças do Front V1:** sem edição do conteúdo dentro da revisão
+(editar manualmente / "editar com agente" / exportar versão) — o conteúdo é
+do alvo e o backend não tem essas operações; sem "interromper análise"
+(cancelar execução é operação de ADMIN em Agentes, Fase G); sem simulação de
+resultado do agente; sem navegação "próxima pendente". O modelo bancário do
+seed não tem agente configurado: a análise é criada e fica pendente até
+haver agente (configuração de agente fora do escopo da 4.3).
+
+**Mock removido:** repositórios `analyses` e `reviews`, as ações de análise e
+revisão do store e as telas do V1 que só gravavam no mock (editor, barra de
+decisão, contexto, painel de status, interrupção).
+
 ## Testes
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
@@ -325,6 +371,14 @@ Início (H) e do Financeiro (F) do portal.
   das listas sem CPF/CNPJ, rótulo simplificado → situações reais, entrada sem
   escritório, envio de caso → schema real com origem OWN_OFFICE/OWNER e
   cliente existente só com documento, processo do parceiro sem campo interno).
+- Fase E, unitários: `src/features/reviews/phase-e-ui.test.ts` (URL da fila,
+  entrada no schema real, rótulos sem conteúdo e com embed nulo, campos do
+  modelo → payload, chave de envio obrigatória, modelo → assistente).
+- Fase E, banco (PGlite): `supabase/tests/verificar.mjs`, seção `[029]`.
+- Fase E, integração: `tests/integration/frontend-analyses.int.test.ts`
+  (criar e enviar numa transação, repetição e corrida com a mesma chave,
+  falha no envio sem resto gravado, conflito de chave, reenvio recusado
+  com outra chave, papéis, assistente).
 - Fase B, integração: `tests/integration/frontend-cases-processes.int.test.ts`
   (caso idempotente, filtros e contagem, catálogo, isolamento, processo
   idempotente com próximo prazo, edição que limpa, ciclo do prazo,
@@ -492,3 +546,44 @@ PARTNER_USER (@dgbrasil.test, CPF 999…).
 - [ ] Parceiro A abrindo `/clientes|casos|processos/<id do parceiro B>` →
       "não encontrado".
 - [ ] Desligar a rede e mudar um filtro → erro com "Tentar novamente".
+
+## QA manual — Fase E (Supabase DEV, dados fictícios; nada executa IA)
+
+Prepare (service role, DEV): um agente fictício ATIVO com versão e um modelo
+de análise da área bancária com esse agente (o do seed fica sem agente).
+
+**ADMIN / LAWYER — análises**
+
+- [ ] Caso → Análise sem análises: estado vazio com "Nova análise".
+- [ ] Nova análise com o modelo SEM agente: "Enviar ao agente agora"
+      desabilitado; criar → aba Análise mostra "Pendente" e os documentos
+      que faltam.
+- [ ] Nova análise com o modelo COM agente e documentos completos: marcar
+      "Enviar ao agente agora", clique duplo em "Iniciar e enviar" → UMA
+      análise "Na fila do agente" e UMA execução (Agentes/execuções ou SQL).
+- [ ] Faltando documento obrigatório: o envio não é oferecido; depois de
+      enviar o documento ao caso, "Enviar ao agente" aparece e funciona.
+- [ ] Com análise na fila, "Nova análise" mostra "já possui uma análise em
+      andamento".
+- [ ] Campo obrigatório do modelo vazio → erro no campo; o servidor recusa
+      campo fora do modelo.
+
+**ADMIN / LAWYER — revisões**
+
+- [ ] `/revisoes`: visões, filtros e páginas; recarregar mantém tudo.
+- [ ] Abrir revisão de análise/documento/proposta: conteúdo do alvo; baixar
+      a versão do documento.
+- [ ] Atribuir responsável, prioridade e prazo; salvar muda depois da
+      resposta.
+- [ ] Aprovar (comentário opcional), pedir alterações e rejeitar
+      (justificativa obrigatória); a decisão aparece no histórico.
+- [ ] Reabrir revisão decidida (não aparece para proposta de agente).
+- [ ] LAWYER em proposta estrutural (alteração de agente/skill): só aviso
+      "Decisão do administrador"; ADMIN decide.
+- [ ] Caso → Revisões lista as revisões do caso.
+
+**ASSISTANT / parceiros**
+
+- [ ] ASSISTANT: sem abas Análise/Revisões no caso; `/revisoes` e
+      `/casos/<id>/analise/nova` → acesso negado.
+- [ ] Parceiro: nenhuma rota de revisão/análise acessível.

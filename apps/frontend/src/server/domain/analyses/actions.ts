@@ -2,7 +2,7 @@
 
 import { runAction } from "@/server/core/action";
 import * as service from "./service";
-import { analysisIdSchema, listAnalysesSchema, sendAnalysisToAgentSchema, startAnalysisSchema } from "./schemas";
+import { analysisIdSchema, analysisSetupSchema, listAnalysesSchema, sendAnalysisToAgentSchema, startAnalysisSchema } from "./schemas";
 
 /**
  * Server Actions de análise jurídica. Todas exigem `analyses.start` (ADMIN e
@@ -24,6 +24,17 @@ export async function getMissingRequirementsAction(input: unknown) {
     schema: analysisIdSchema,
     input,
     handler: (ctx, { id }) => service.getMissingRequirements(ctx, id),
+  });
+}
+
+/** Templates ativos da área do caso, com campos e checklist (assistente de nova análise). */
+export async function getAnalysisSetupAction(input: unknown) {
+  return runAction({
+    name: "analyses.setup",
+    permission: "analyses.start",
+    schema: analysisSetupSchema,
+    input,
+    handler: (ctx, { legalCaseId }) => service.getAnalysisSetup(ctx, legalCaseId),
   });
 }
 

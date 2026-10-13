@@ -253,7 +253,7 @@ forte/distribuído antes de expansão do produto.
 
 - Unitários (`npm test`): mapeamentos, schemas, tradução de erros, redação de
   logs, paginação, DTOs (o do parceiro não tem campo interno).
-- Banco (`supabase/: npm run verificar`): 432 verificações, inclusive as RPCs
+- Banco (`supabase/: npm run verificar`): 453 verificações, inclusive as RPCs
   da 025–028 (envio de caso do parceiro, gravação de cliente, busca,
   correlation ID, Storage autorizado, idempotência, divisão do parceiro,
   bloco societário de PJ).

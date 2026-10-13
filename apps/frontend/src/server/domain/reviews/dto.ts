@@ -17,6 +17,12 @@ export interface ReviewListItem {
   targetId: ID;
   /** Só quando o alvo é proposta de agente. */
   proposalType?: string;
+  /** O que está em revisão (template da análise, documento e versão, tipo da proposta). Só rótulo. */
+  subject: string;
+  /** Agente que gerou a proposta (quando houver). */
+  agentName?: string;
+  caseTitle?: string;
+  clientName?: string;
   /** Proposta que altera a configuração do DG Brasil: só ADMIN decide. */
   requiresAdmin: boolean;
   legalCaseId?: ID;

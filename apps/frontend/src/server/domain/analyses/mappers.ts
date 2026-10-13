@@ -2,7 +2,8 @@ import { analysisStatusFromDb, type DbAnalysisStatus } from "@/repositories/api/
 import type { DocumentCategory } from "@/lib/constants/status";
 import type { FieldErrors } from "@/server/core/errors";
 import type { AnalysisResult } from "@/types";
-import type { AnalysisDetailDTO, AnalysisListItem, MissingRequirementDTO } from "./dto";
+import type { AnalysisDetailDTO, AnalysisListItem, AnalysisTemplateSetupDTO, MissingRequirementDTO } from "./dto";
+import type { TemplateSetupRow } from "./repository";
 
 /**
  * Banco ↔ domínio da análise jurídica. Funções puras, testadas em
@@ -24,6 +25,7 @@ export interface AnalysisRow {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  analysis_templates?: { name: string } | { name: string }[] | null;
 }
 
 export interface AnalysisDetailRow extends AnalysisRow {
@@ -75,6 +77,23 @@ export function missingRequirements(
     .map((r) => ({ category: r.document_category, label: r.label, description: opt(r.description), required: r.required }));
 }
 
+/** Template → assistente: campos ordenados e checklist do tipo de cliente, com o que já está cumprido. */
+export function templateSetupFromRow(row: TemplateSetupRow, clientKind: "INDIVIDUAL" | "COMPANY", satisfied: ReadonlySet<DocumentCategory>): AnalysisTemplateSetupDTO {
+  return {
+    id: row.id,
+    name: row.name,
+    description: opt(row.description),
+    hasAgent: !!row.primary_agent_id,
+    fields: [...(row.analysis_template_fields ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((f) => ({ key: f.key, label: f.label, type: f.field_type, required: f.required, helpText: opt(f.help_text), options: opt(f.options) })),
+    requirements: [...(row.analysis_template_requirements ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .filter((r) => r.applies_to_client_kind === null || r.applies_to_client_kind === clientKind)
+      .map((r) => ({ category: r.document_category, label: r.label, description: opt(r.description), required: r.required, satisfied: satisfied.has(r.document_category) })),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Campos do template                                                  */
 /* ------------------------------------------------------------------ */
@@ -114,6 +133,7 @@ export function listItemFromRow(row: AnalysisRow): AnalysisListItem {
     id: row.id,
     legalCaseId: row.legal_case_id,
     templateId: row.analysis_template_id,
+    templateName: (Array.isArray(row.analysis_templates) ? row.analysis_templates[0] : row.analysis_templates)?.name ?? "",
     dbStatus: row.status,
     agentRunId: opt(row.agent_run_id),
     startedAt: opt(row.started_at),

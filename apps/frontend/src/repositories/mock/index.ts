@@ -4,12 +4,9 @@
  * contratos e trocar a exportação em `repositories/index.ts`.
  */
 import { JUDICIAL_PROVIDERS } from "@/services/judicial-integration";
-import { mockDocumentExportService } from "@/services/document-export";
-import { currentVersionNumber, isApprovedVersion } from "@/lib/domain/review-versions";
 import { useAppStore } from "@/store/app-store";
 import { selectScoped } from "@/store/scope";
 import type {
-  AnalysisRepository,
   ReferenceRepository,
   ClientRepository,
   DgRepository,
@@ -19,7 +16,6 @@ import type {
   NotificationRepository,
   OfficeRepository,
   PartnerRepository,
-  ReviewRepository,
   UserRepository,
 } from "../contracts";
 
@@ -44,45 +40,6 @@ export const mockUserRepository: UserRepository = {
 export const mockClientRepository: ClientRepository = {
   list: () => ok(data().clients),
   get: (id) => ok(data().clients.find((c) => c.id === id)),
-};
-
-export const mockAnalysisRepository: AnalysisRepository = {
-  listTemplates: () => ok(data().templates),
-  listByClient: (clientId) => ok(data().analyses.filter((a) => a.clientId === clientId)),
-  start: async (input) => state().startAnalysis(input),
-  sendToAgent: async (id) => state().sendAnalysisToAgent(id),
-  interrupt: async (id, reason) => state().interruptAnalysis(id, reason),
-  resume: async (id) => state().resumeAnalysis(id),
-  simulateAgentResult: async (id) => state().simulateAgentResult(id),
-};
-
-export const mockReviewRepository: ReviewRepository = {
-  list: () => ok(data().reviews),
-  get: (id) => ok(data().reviews.find((r) => r.id === id)),
-  decide: async (id, decision, comment) => state().decideReview(id, decision, comment),
-  editContent: async (id, content) => state().editReviewContent(id, content),
-  reopen: async (id, reason) => state().reopenReview(id, reason),
-  requestAgentEdit: async (id, instruction) => state().requestAgentEdit(id, instruction),
-  exportVersion: async (id, versionNumber, format) => {
-    const review = data().reviews.find((r) => r.id === id);
-    if (!review) throw new Error("Revisão não encontrada.");
-    const content =
-      versionNumber === currentVersionNumber(review) ? review.content : review.previousVersions?.find((v) => v.version === versionNumber)?.content;
-    if (!content) throw new Error("Versão não encontrada.");
-    const decisions = data().reviewDecisions.filter((d) => d.reviewId === id).sort((a, b) => b.at.localeCompare(a.at));
-    // O rascunho é decidido aqui (servidor, no produto), nunca pela tela.
-    const draft = !isApprovedVersion(review, decisions, versionNumber);
-    const file = await mockDocumentExportService.exportVersion({
-      title: review.title,
-      content,
-      versionNumber,
-      draft,
-      format,
-      footer: `${data().office.name} · ${review.title} · versão ${versionNumber}${draft ? " · rascunho" : " · aprovada"}`,
-    });
-    state().recordReviewDownload(id, versionNumber, format, draft);
-    return file;
-  },
 };
 
 export const mockNotificationRepository: NotificationRepository = {

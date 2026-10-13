@@ -11,7 +11,7 @@ import type { AnalysisDetailRow, AnalysisRow, TemplateFieldRow, TemplateRequirem
  * modelo de IA: a execução é pedida ao domínio de agentes.
  */
 
-const LIST_COLUMNS = "id, legal_case_id, analysis_template_id, status, agent_run_id, started_at, completed_at, created_at, updated_at";
+const LIST_COLUMNS = "id, legal_case_id, analysis_template_id, status, agent_run_id, started_at, completed_at, created_at, updated_at, analysis_templates(name)";
 const DETAIL_COLUMNS = `${LIST_COLUMNS}, summary, field_values, result_data, interruption_reason, started_by`;
 
 export async function list(
@@ -88,20 +88,62 @@ export async function latestReviewId(db: SupabaseClient, analysisId: string): Pr
   return data?.id ?? null;
 }
 
-export async function insert(db: SupabaseClient, row: Record<string, unknown>): Promise<void> {
-  unwrap(await db.from("legal_analyses").insert(row));
+export interface TemplateSetupRow {
+  id: string;
+  name: string;
+  description: string | null;
+  primary_agent_id: string | null;
+  analysis_template_fields: (TemplateFieldRow & { help_text: string | null; sort_order: number })[] | null;
+  analysis_template_requirements: TemplateRequirementRow[] | null;
 }
 
-/** Liga a execução pedida e passa para a fila — só se o status ainda permitir (corrida: um ganha). */
-export async function markQueued(db: SupabaseClient, id: string, agentRunId: string, userId: string, from: DbAnalysisStatus[]): Promise<number> {
-  const { error, count } = await db
-    .from("legal_analyses")
-    .update(
-      { status: "QUEUED", agent_run_id: agentRunId, started_by: userId, started_at: new Date().toISOString(), interruption_reason: null },
-      { count: "exact" },
-    )
-    .eq("id", id)
-    .in("status", from);
-  if (error) throw fromDbError(error);
-  return count ?? 0;
+/** Templates ATIVOS de uma área, com campos e checklist (catálogo: leitura de qualquer membro). */
+export async function listTemplates(db: SupabaseClient, legalAreaId: string): Promise<TemplateSetupRow[]> {
+  return (unwrap(
+    await db
+      .from("analysis_templates")
+      .select(
+        `id, name, description, primary_agent_id,
+         analysis_template_fields(key, label, field_type, required, options, help_text, sort_order),
+         analysis_template_requirements(document_category, label, description, required, applies_to_client_kind, sort_order)`,
+      )
+      .eq("legal_area_id", legalAreaId)
+      .eq("active", true)
+      .order("name"),
+  ) ?? []) as TemplateSetupRow[];
+}
+
+export interface AnalysisStartedRow {
+  analysis_id: string;
+  agent_run_id: string | null;
+  deduplicated: boolean;
+}
+
+/**
+ * Cria a análise e, com `send`, pede a execução e liga — numa transação,
+ * idempotente (public.start_legal_analysis_once, 029).
+ */
+export async function startOnce(
+  db: SupabaseClient,
+  input: { key: string; legalCaseId: string; templateId: string; fields: Record<string, string>; send: boolean; requestText: string | null; requestId: string },
+): Promise<AnalysisStartedRow> {
+  return unwrap(
+    await db.rpc("start_legal_analysis_once", {
+      p_key: input.key,
+      p_legal_case_id: input.legalCaseId,
+      p_template_id: input.templateId,
+      p_field_values: input.fields,
+      p_send: input.send,
+      p_request_text: input.requestText,
+      // Só o correlation ID (UUID, sem PII): liga a execução à requisição que a pediu.
+      p_parameters: { request_id: input.requestId },
+    }),
+  ) as AnalysisStartedRow;
+}
+
+/** Envia análise existente: execução + fila + QUEUED numa transação (public.send_legal_analysis_once, 029). */
+export async function sendOnce(db: SupabaseClient, key: string, analysisId: string, requestText: string | null, requestId: string): Promise<AnalysisStartedRow> {
+  return unwrap(
+    await db.rpc("send_legal_analysis_once", { p_key: key, p_analysis_id: analysisId, p_request_text: requestText, p_parameters: { request_id: requestId } }),
+  ) as AnalysisStartedRow;
 }

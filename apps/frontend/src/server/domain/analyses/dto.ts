@@ -11,6 +11,8 @@ export interface AnalysisListItem {
   id: ID;
   legalCaseId: ID;
   templateId: ID;
+  /** Nome do template (catálogo). */
+  templateName: string;
   /** Status canônico do banco (o do front depende dos documentos: ver o detalhe). */
   dbStatus: DbAnalysisStatus;
   agentRunId?: ID;
@@ -43,4 +45,37 @@ export interface AnalysisDetailDTO extends AnalysisListItem {
   requiredDocumentsComplete: boolean;
   /** Revisão humana mais recente desta análise. */
   reviewId?: ID;
+}
+
+/** Campo do template para o formulário (só definição; sem apresentação no banco). */
+export interface TemplateFieldDTO {
+  key: string;
+  label: string;
+  type: "text" | "textarea" | "number" | "currency" | "date" | "select" | "boolean";
+  required: boolean;
+  helpText?: string;
+  options?: { value: string; label: string }[];
+}
+
+/** Template ativo da área do caso, com o que falta de documento NESTE caso. */
+export interface AnalysisTemplateSetupDTO {
+  id: ID;
+  name: string;
+  description?: string;
+  /** Sem agente principal: dá para criar a análise, mas não enviar. */
+  hasAgent: boolean;
+  fields: TemplateFieldDTO[];
+  /** Checklist completo do template (para o tipo de cliente do caso). */
+  requirements: (MissingRequirementDTO & { satisfied: boolean })[];
+}
+
+export interface AnalysisSetupDTO {
+  templates: AnalysisTemplateSetupDTO[];
+}
+
+/** Resultado do início (029). `agentRunId` só quando já foi enviada. */
+export interface AnalysisStartedDTO {
+  id: ID;
+  agentRunId?: ID;
+  deduplicated: boolean;
 }

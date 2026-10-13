@@ -12,8 +12,17 @@ import type { AnalysisTargetRow, DocumentVersionTargetRow, ProposalTargetRow, Re
  * transação). A atualização direta cobre só as colunas com grant.
  */
 
+/**
+ * Colunas da revisão + rótulos de leitura do alvo e do caso (embeds; a RLS de
+ * cada tabela vale — o que o usuário não vê volta nulo). Só nomes/títulos:
+ * nenhum conteúdo revisado entra na listagem.
+ */
 const REVIEW_COLUMNS = `id, legal_case_id, legal_process_id, document_version_id, legal_analysis_id, agent_proposal_id,
-  status, priority, assigned_reviewer_id, due_at, created_at, updated_at, decided_at, agent_proposals(proposal_type)`;
+  status, priority, assigned_reviewer_id, due_at, created_at, updated_at, decided_at,
+  agent_proposals(proposal_type, agent_runs(agents(name))),
+  legal_analyses(analysis_templates(name)),
+  document_versions(version_number, documents(title)),
+  legal_cases(title, clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name)))`;
 
 export interface ReviewFilters {
   statuses?: DbReviewStatus[];

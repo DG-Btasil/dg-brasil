@@ -95,9 +95,15 @@ describe("campos do template", () => {
 
 describe("schemas", () => {
   it("início: cliente não vem do navegador; chave de campo no formato do banco", () => {
-    const parsed = startAnalysisSchema.parse({ legalCaseId: CASE, templateId: CASE, clientId: CASE, fields: { banco: "X" } });
+    const parsed = startAnalysisSchema.parse({ idempotencyKey: CASE, legalCaseId: CASE, templateId: CASE, clientId: CASE, fields: { banco: "X" } });
     expect(parsed).not.toHaveProperty("clientId");
-    expect(startAnalysisSchema.safeParse({ legalCaseId: CASE, templateId: CASE, fields: { "Banco X": "y" } }).success).toBe(false);
+    expect(parsed.send).toBe(false);
+    expect(startAnalysisSchema.safeParse({ idempotencyKey: CASE, legalCaseId: CASE, templateId: CASE, fields: { "Banco X": "y" } }).success).toBe(false);
+  });
+
+  it("início (029): sem chave de envio é recusado; enviar é opt-in explícito", () => {
+    expect(startAnalysisSchema.safeParse({ legalCaseId: CASE, templateId: CASE }).success).toBe(false);
+    expect(startAnalysisSchema.parse({ idempotencyKey: CASE, legalCaseId: CASE, templateId: CASE, send: true, requestText: "  Pedido  " })).toMatchObject({ send: true });
   });
 
   it("listagem: ordenação por whitelist", () => {

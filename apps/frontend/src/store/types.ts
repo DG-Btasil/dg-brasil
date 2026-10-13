@@ -2,13 +2,11 @@ import type { DataState } from "@/mocks";
 import type {
   DeadlineType,
   DocumentCategory,
-  ExportFormat,
   IntegrationStatus,
   NotificationType,
   PartnerOfficeStatus,
   PartnerRequestType,
   ReferenceMaterialType,
-  ReviewDecisionKind,
 } from "@/lib/constants/status";
 import type { LegalArea } from "@/lib/constants/legal";
 import type {
@@ -27,7 +25,6 @@ import type {
   PartnerOffice,
   PartnerRole,
   Process,
-  ReviewContent,
   Role,
   Skill,
 } from "@/types";
@@ -300,24 +297,8 @@ export interface ImportActions {
   importData: (plan: ImportPlan) => ImportResult;
 }
 
-export interface AnalysisActions {
-  startAnalysis: (input: StartAnalysisInput) => ID;
-  sendAnalysisToAgent: (analysisId: ID) => void;
-  simulateAgentResult: (analysisId: ID) => ID | null;
-  interruptAnalysis: (analysisId: ID, reason: string) => void;
-  resumeAnalysis: (analysisId: ID) => void;
-}
-
+/** Notificações do mock (até a Fase H). */
 export interface ReviewActions {
-  decideReview: (reviewId: ID, decision: ReviewDecisionKind, comment?: string) => void;
-  /** Edição manual: guarda a versão anterior e registra MANUAL_EDIT. */
-  editReviewContent: (reviewId: ID, content: ReviewContent) => void;
-  /** Advogado comanda o agente: nova versão (AGENT_EDIT) que continua aguardando decisão. */
-  requestAgentEdit: (reviewId: ID, instruction: string) => void;
-  /** Registra na auditoria o download de uma versão (rascunho ou aprovada). */
-  recordReviewDownload: (reviewId: ID, version: number, format: ExportFormat, draft: boolean) => void;
-  /** Reabre uma revisão decidida, preservando a decisão anterior no histórico. */
-  reopenReview: (reviewId: ID, reason?: string) => void;
   markNotificationRead: (id: ID) => void;
   markAllNotificationsRead: () => void;
 }
@@ -375,7 +356,6 @@ export interface ReferenceActions {
 export type AppActions = SessionActions &
   OfficeActions &
   ImportActions &
-  AnalysisActions &
   ReviewActions &
   FinanceActions &
   DgActions &
