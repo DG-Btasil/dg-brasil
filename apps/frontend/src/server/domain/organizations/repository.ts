@@ -160,6 +160,34 @@ export async function updatePartnerSettings(db: SupabaseClient, organizationId: 
 }
 
 /* ------------------------------------------------------------------ */
+/* Contadores por parceiro (listagem e ficha)                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Linhas mínimas para contar, por parceiro, casos, solicitações em aberto e
+ * clientes relacionados — três consultas para a página inteira (sem N+1).
+ * RLS da equipe interna; só colunas de vínculo/situação.
+ */
+export async function partnerActivityRows(db: SupabaseClient, ids: string[]) {
+  if (ids.length === 0) return { cases: [], requests: [], relationships: [] };
+  const list = ids.join(",");
+  const [cases, requests, relationships] = await Promise.all([
+    db
+      .from("legal_cases")
+      .select("origin_organization_id, partner_organization_id, status")
+      .is("deleted_at", null)
+      .or(`origin_organization_id.in.(${list}),partner_organization_id.in.(${list})`),
+    db.from("partner_requests").select("partner_organization_id, status").in("partner_organization_id", ids).in("status", ["OPEN", "ANSWERED"]),
+    db.from("client_organization_relationships").select("organization_id").in("organization_id", ids).eq("status", "ACTIVE"),
+  ]);
+  return {
+    cases: (unwrap(cases) ?? []) as { origin_organization_id: string; partner_organization_id: string | null; status: string }[],
+    requests: (unwrap(requests) ?? []) as { partner_organization_id: string; status: string }[],
+    relationships: (unwrap(relationships) ?? []) as { organization_id: string }[],
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Usuários (leitura)                                                  */
 /* ------------------------------------------------------------------ */
 

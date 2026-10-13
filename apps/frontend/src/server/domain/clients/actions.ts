@@ -9,6 +9,7 @@ import {
   createClientSchema,
   inactivateClientSchema,
   listClientsSchema,
+  listRelatedClientsSchema,
   lookupClientSchema,
   replaceCompanyPeopleSchema,
   updateClientBasicsSchema,
@@ -23,6 +24,10 @@ import {
 
 export async function listClientsAction(input: unknown) {
   return runAction({ name: "clients.list", schema: listClientsSchema, input, handler: service.listClients });
+}
+
+export async function listRelatedClientsAction(input: unknown) {
+  return runAction({ name: "clients.related", schema: listRelatedClientsSchema, input, handler: service.listRelatedClients });
 }
 
 export async function getClientAction(input: unknown) {

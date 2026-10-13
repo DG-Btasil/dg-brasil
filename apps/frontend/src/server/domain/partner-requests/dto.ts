@@ -11,6 +11,8 @@ import type { ID, ISODate, ISODateTime } from "@/types";
 export interface PartnerRequestListItem {
   id: ID;
   legalCaseId: ID;
+  /** Título do caso (quando visível a quem pergunta). */
+  caseTitle?: string;
   processId?: ID;
   type: PartnerRequestType;
   title: string;

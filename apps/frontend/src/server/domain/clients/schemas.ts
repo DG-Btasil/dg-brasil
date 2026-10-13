@@ -33,6 +33,10 @@ export type ListClientsInput = z.infer<typeof listClientsSchema>;
 
 export const clientIdSchema = z.object({ id: zUuid() });
 
+/** Clientes com relacionamento ATIVO com um escritório parceiro (ficha do parceiro, equipe interna). */
+export const listRelatedClientsSchema = pageInputSchema.extend({ organizationId: zUuid() });
+export type ListRelatedClientsInput = z.infer<typeof listRelatedClientsSchema>;
+
 const contactSchema = z
   .object({
     email: zEmailOptional(),

@@ -13,7 +13,7 @@ import {
   updatePayload,
 } from "./mappers";
 import * as repo from "./repository";
-import type { CreateClientInput, ListClientsInput, ReplaceCompanyPeopleInput, UpdateClientBasicsInput, UpdateClientInput } from "./schemas";
+import type { CreateClientInput, ListClientsInput, ListRelatedClientsInput, ReplaceCompanyPeopleInput, UpdateClientBasicsInput, UpdateClientInput } from "./schemas";
 
 /**
  * Regras de Cliente. Autorização contextual aqui; RLS e funções do banco
@@ -38,6 +38,18 @@ export async function listClients(ctx: ServiceContext, input: ListClientsInput):
     input,
     { column: input.column, ascending: input.ascending },
   );
+  return toPage(
+    rows.map((r) => listItemFromRow(r, ctx.session)),
+    total,
+    input,
+  );
+}
+
+/** Clientes relacionados a um escritório parceiro (equipe interna com partners.view). */
+export async function listRelatedClients(ctx: ServiceContext, input: ListRelatedClientsInput): Promise<Page<ClientListItem>> {
+  requireInternal(ctx);
+  requirePermission(ctx, "partners.view");
+  const { rows, total } = await repo.listRelatedDirectory(ctx.db, input.organizationId, input);
   return toPage(
     rows.map((r) => listItemFromRow(r, ctx.session)),
     total,

@@ -11,14 +11,15 @@ import { PageHeader } from "@/components/ui/display";
 import { Field, FormSection, Input, MaskedInput, Select, Textarea } from "@/components/ui/form";
 import { Panel } from "@/components/ui/panel";
 import { AddressFields } from "@/features/clients/components/form/address-fields";
-import type { PartnerOffice } from "@/types";
-import { usePartnerActions } from "../hooks";
+import type { Path, UseFormSetError } from "react-hook-form";
+import { mapFieldErrors, type ActionResult } from "@/lib/actions/result";
+import type { PartnerOfficeAdminDTO } from "@/server/domain/organizations/dto";
+import { usePartnerOfficeActions } from "../use-partner-office-actions";
+import { PARTNER_FIELD_MAP, partnerCreateInput, partnerPatch } from "../server-input";
 import {
   EMPTY_PARTNER_VALUES,
   partnerCreateSchema,
-  partnerCreateToInput,
   partnerDataSchema,
-  partnerDataToPatch,
   partnerToDataValues,
   type PartnerCreateValues,
   type PartnerDataValues,
@@ -47,7 +48,7 @@ function PartnerDataSections({ form }: { form: UseFormReturn<PartnerDataValues> 
           {(p) => <MaskedInput mask="cnpj" placeholder="00.000.000/0000-00" {...p} {...register("cnpj")} />}
         </Field>
       </FormSection>
-      <FormSection title="Responsável principal" description="Advogado(a) responsável pela parceria. Recebe o convite de acesso como administrador do parceiro.">
+      <FormSection title="Responsável principal" description="Advogado(a) responsável pela parceria (contato operacional).">
         <Field label="Nome" requirement="required" error={errors.responsibleName?.message}>
           {(p) => <Input {...p} {...register("responsibleName")} />}
         </Field>
@@ -76,15 +77,24 @@ function PartnerDataSections({ form }: { form: UseFormReturn<PartnerDataValues> 
   );
 }
 
+/** Erros de campo do servidor → campos do formulário de parceiro. */
+function applyErrors<V extends PartnerDataValues>(result: ActionResult<unknown>, setError: UseFormSetError<V>, strip?: string) {
+  if (result.ok) return;
+  Object.entries(mapFieldErrors(result.error.fieldErrors, PARTNER_FIELD_MAP, strip)).forEach(([name, message], i) =>
+    setError(name as Path<V>, { message }, { shouldFocus: i === 0 }),
+  );
+}
+
 /** Página: Parceiros → Adicionar parceiro. */
 export function PartnerCreate() {
   const router = useRouter();
-  const actions = usePartnerActions();
+  const actions = usePartnerOfficeActions();
   const form = useForm<PartnerCreateValues>({ resolver: zodResolver(partnerCreateSchema), defaultValues: EMPTY_PARTNER_VALUES });
 
   const onSubmit = form.handleSubmit(async (values) => {
-    const id = await actions.create(partnerCreateToInput(values));
-    if (id) router.push(`/parceiros/${id}`);
+    const result = await actions.create(partnerCreateInput(values));
+    if (result.ok) router.push(`/parceiros/${result.data.id}`);
+    else applyErrors(result, form.setError);
   });
 
   return (
@@ -92,7 +102,7 @@ export function PartnerCreate() {
       <PageHeader
         breadcrumbs={[{ label: "Parceiros", href: "/parceiros" }, { label: "Adicionar parceiro" }]}
         title="Adicionar parceiro"
-        description="Cadastre o escritório parceiro e a divisão padrão da parceria. O responsável recebe um convite de acesso ao portal do parceiro."
+        description="Cadastre o escritório parceiro e a divisão padrão da parceria. Depois, convide o responsável em Configurações → Equipe, escolhendo o escritório."
       />
       <FormProvider {...form}>
         <form onSubmit={onSubmit} noValidate>
@@ -124,12 +134,13 @@ export function PartnerCreate() {
 }
 
 /** Edição dos dados cadastrais (a divisão tem fluxo próprio). */
-export function PartnerEditDrawer({ partner, open, onOpenChange }: { partner: PartnerOffice; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const actions = usePartnerActions();
+export function PartnerEditDrawer({ partner, open, onOpenChange }: { partner: PartnerOfficeAdminDTO; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const actions = usePartnerOfficeActions();
   const form = useForm<PartnerDataValues>({ resolver: zodResolver(partnerDataSchema), defaultValues: partnerToDataValues(partner) });
   const onSubmit = form.handleSubmit(async (values) => {
-    const ok = await actions.update(partner.id, partnerDataToPatch(values));
-    if (ok !== null) onOpenChange(false);
+    const result = await actions.update(partner.id, partnerPatch(values));
+    if (result.ok) onOpenChange(false);
+    else applyErrors(result, form.setError, "patch.");
   });
   return (
     <Drawer

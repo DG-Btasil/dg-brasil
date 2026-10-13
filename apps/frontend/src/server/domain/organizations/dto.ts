@@ -79,6 +79,18 @@ export interface PartnerShareDTO {
   partnershipActive: boolean;
 }
 
+/** Contadores operacionais do parceiro (derivados, nunca gravados). */
+export interface PartnerStatsDTO {
+  /** Clientes com relacionamento ativo com o parceiro. */
+  clients: number;
+  /** Casos aguardando a equipe (enviados, aguardando documentos, prontos para análise). */
+  newCases: number;
+  /** Casos aceitos ou em andamento. */
+  activeCases: number;
+  /** Solicitações em aberto ou respondidas aguardando a equipe. */
+  openRequests: number;
+}
+
 /** Linha da listagem de parceiros (equipe interna). `share` só para ADMIN. */
 export interface PartnerListItem {
   id: ID;
@@ -88,6 +100,7 @@ export interface PartnerListItem {
   email?: string;
   status: PartnerOfficeStatus;
   share?: PartnerShareDTO;
+  stats?: PartnerStatsDTO;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }

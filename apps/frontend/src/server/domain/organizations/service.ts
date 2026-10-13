@@ -3,7 +3,7 @@ import { PARTNER_OFFICE_STATUS_TO_DB } from "@/repositories/api/db-mappings";
 import { isPartner, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { forbidden, invalidState, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
-import type { MyPartnerSettingsDTO, OrganizationUserDTO, OwnerOfficeDetailDTO, PartnerDetailDTO, PartnerListItem } from "./dto";
+import type { MyPartnerSettingsDTO, OrganizationUserDTO, OwnerOfficeDetailDTO, PartnerDetailDTO, PartnerListItem, PartnerStatsDTO } from "./dto";
 import {
   organizationPatchPayload,
   organizationUserFromRows,
@@ -95,11 +95,49 @@ export async function listPartners(ctx: ServiceContext, input: ListPartnersInput
   // Divisão padrão só para ADMIN (e só é lida para ele: LAWYER nem consulta a tabela).
   const settings = canManagePartners(ctx) ? await repo.getPartnerSettings(ctx.db, rows.map((r) => r.id)) : [];
   const byOrg = new Map(settings.map((s) => [s.organization_id, s]));
+  const stats = await partnerStats(
+    ctx,
+    rows.map((r) => r.id),
+  );
   return toPage(
-    rows.map((r) => partnerListItemFromRow(r, byOrg.get(r.id))),
+    rows.map((r) => ({ ...partnerListItemFromRow(r, byOrg.get(r.id)), stats: stats.get(r.id) })),
     total,
     input,
   );
+}
+
+const NEW_CASE_STATUSES = new Set(["SUBMITTED", "WAITING_DOCUMENTS", "READY_FOR_ANALYSIS", "ANALYZING", "WAITING_REVIEW"]);
+const ACTIVE_CASE_STATUSES = new Set(["ACCEPTED", "IN_PROGRESS"]);
+
+/** Contadores por parceiro (casos com origem OU acesso operacional do parceiro). */
+async function partnerStats(ctx: ServiceContext, ids: string[]): Promise<Map<string, PartnerStatsDTO>> {
+  const { cases, requests, relationships } = await repo.partnerActivityRows(ctx.db, ids);
+  const stats = new Map<string, PartnerStatsDTO>(ids.map((id) => [id, { clients: 0, newCases: 0, activeCases: 0, openRequests: 0 }]));
+  for (const c of cases) {
+    for (const id of new Set([c.origin_organization_id, c.partner_organization_id])) {
+      const s = id ? stats.get(id) : undefined;
+      if (!s) continue;
+      if (NEW_CASE_STATUSES.has(c.status)) s.newCases += 1;
+      if (ACTIVE_CASE_STATUSES.has(c.status)) s.activeCases += 1;
+    }
+  }
+  for (const r of requests) {
+    const s = stats.get(r.partner_organization_id);
+    if (s) s.openRequests += 1;
+  }
+  for (const r of relationships) {
+    const s = stats.get(r.organization_id);
+    if (s) s.clients += 1;
+  }
+  return stats;
+}
+
+/** Contadores do parceiro para a ficha (equipe interna). */
+export async function getPartnerStats(ctx: ServiceContext, id: string): Promise<PartnerStatsDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "partners.view");
+  if (!(await repo.getPartnerOrganization(ctx.db, id))) throw notFound("Parceiro não encontrado.");
+  return (await partnerStats(ctx, [id])).get(id) as PartnerStatsDTO;
 }
 
 /**

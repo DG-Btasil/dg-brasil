@@ -35,6 +35,8 @@ export interface PartnerRequestRow {
   updated_at: string;
   answered_at: string | null;
   resolved_at: string | null;
+  /** Título do caso (RLS de quem pergunta). */
+  legal_cases?: { title: string } | { title: string }[] | null;
 }
 
 export interface PartnerRequestMessageRow {
@@ -73,6 +75,7 @@ function baseFromRow(row: PartnerRequestRow): PartnerRequestListItem {
   return {
     id: row.id,
     legalCaseId: row.legal_case_id,
+    caseTitle: (Array.isArray(row.legal_cases) ? row.legal_cases[0] : row.legal_cases)?.title,
     processId: opt(row.legal_process_id),
     type: PARTNER_REQUEST_TYPE_FROM_DB[row.type],
     title: row.title,

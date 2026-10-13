@@ -1,67 +1,56 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Handshake, Plus, SearchX } from "lucide-react";
 import { PARTNER_OFFICE_STATUS_LABEL, PARTNER_OFFICE_STATUS_TONE, type PartnerOfficeStatus } from "@/lib/constants/status";
-import { formatEventTime, pluralize } from "@/lib/formatting";
+import { cn } from "@/lib/cn";
+import { formatCNPJ, pluralize } from "@/lib/formatting";
+import type { ActionResult } from "@/lib/actions/result";
+import { useDebouncedCallback, useServerList } from "@/lib/hooks/use-server-list";
 import { Can, PageContainer } from "@/components/layout/guards";
+import { ActionErrorState } from "@/components/feedback/action-error";
+import { EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
 import { SearchInput } from "@/components/ui/form";
+import { Pagination } from "@/components/ui/pagination";
 import { Panel } from "@/components/ui/panel";
-import { SortableTh, sortBy, Table, TBody, Td, Th, THead, Tr, type SortDirection } from "@/components/ui/table";
-import { EmptyState } from "@/components/feedback/states";
-import { cn } from "@/lib/cn";
-import { usePartnerRows, type PartnerRow } from "../hooks";
+import { SortableTh, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
+import type { Page } from "@/server/core/pagination";
+import { listPartnersAction } from "@/server/domain/organizations/actions";
+import type { PartnerListItem } from "@/server/domain/organizations/dto";
+import { usePermission } from "@/features/auth/hooks";
+import { DEFAULT_PARTNER_QUERY, PARTNER_PAGE_SIZE, partnerQueryToInput, partnerQueryToSearchParams, type PartnerListQuery } from "../list-query";
 
-type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE" | "PENDING";
-const STATUS_FILTERS: { key: StatusFilter; label: string; match: (s: PartnerOfficeStatus) => boolean }[] = [
-  { key: "ALL", label: "Todos", match: () => true },
-  { key: "ACTIVE", label: "Ativos", match: (s) => s === "ACTIVE" },
-  { key: "PENDING", label: "Pendentes", match: (s) => s === "PENDING_INVITE" },
-  { key: "INACTIVE", label: "Inativos", match: (s) => s === "INACTIVE" || s === "SUSPENDED" },
+const STATUS_FILTERS: { key: PartnerOfficeStatus | ""; label: string }[] = [
+  { key: "", label: "Todos" },
+  { key: "ACTIVE", label: "Ativos" },
+  { key: "PENDING_INVITE", label: "Pendentes" },
+  { key: "SUSPENDED", label: "Suspensos" },
+  { key: "INACTIVE", label: "Inativos" },
 ];
 
-type SortKey = "name" | "clients" | "processes" | "requests" | "activity";
-const GETTERS: Record<SortKey, (r: PartnerRow) => string | number | undefined> = {
-  name: (r) => r.partner.name,
-  clients: (r) => r.clients,
-  processes: (r) => r.activeProcesses,
-  requests: (r) => r.openRequests,
-  activity: (r) => r.lastActivityAt,
-};
+/** Escritórios parceiros (equipe interna), com busca, situação, ordem e páginas no servidor. */
+export function PartnerList({ initialQuery, initialResult }: { initialQuery: PartnerListQuery; initialResult: ActionResult<Page<PartnerListItem>> }) {
+  const { query, setQuery, result, pending, retry } = useServerList({
+    initialQuery,
+    initialResult,
+    load: (q: PartnerListQuery) => listPartnersAction(partnerQueryToInput(q)),
+    toSearch: partnerQueryToSearchParams,
+  });
+  const canFinance = usePermission("partners.finance.view");
+  const [search, setSearch] = useState(query.search);
+  const commitSearch = useDebouncedCallback((text: string) => setQuery({ ...query, search: text.trim(), page: 1 }));
+  const page = result.ok ? result.data : undefined;
+  const filtered = !!query.search || !!query.status;
 
-function normalize(v: string) {
-  return v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-}
-
-/** Lista de escritórios parceiros (ambiente interno). */
-export function PartnerList() {
-  const rows = usePartnerRows();
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("ALL");
-  const [sortKey, setSortKey] = useState<SortKey>("activity");
-  const [direction, setDirection] = useState<SortDirection>("desc");
-
-  const filtered = useMemo(() => {
-    const term = normalize(q.trim());
-    const matcher = STATUS_FILTERS.find((f) => f.key === status)!.match;
-    const list = rows.filter(
-      (r) => matcher(r.partner.status) && (!term || normalize(`${r.partner.name} ${r.partner.responsibleName}`).includes(term)),
-    );
-    return sortBy(list, GETTERS[sortKey], direction);
-  }, [rows, q, status, sortKey, direction]);
-
-  function onSort(key: SortKey) {
-    if (key === sortKey) setDirection((d) => (d === "asc" ? "desc" : "asc"));
-    else {
-      setSortKey(key);
-      setDirection(key === "name" ? "asc" : "desc");
-    }
+  function onSort(key: PartnerListQuery["sort"]) {
+    const direction = key === query.sort ? (query.direction === "asc" ? "desc" : "asc") : key === "name" ? "asc" : "desc";
+    setQuery({ ...query, sort: key, direction, page: 1 });
   }
-  const th = { currentKey: sortKey, direction, onSort };
+  const th = { currentKey: query.sort, direction: query.direction, onSort };
 
   const cta = (
     <Can permission="partners.manage">
@@ -75,94 +64,115 @@ export function PartnerList() {
     <PageContainer>
       <PageHeader
         title="Parceiros"
-        description="Escritórios que originam casos operados pela Bárbara Cardoso Advocacia. Cada parceiro enxerga apenas os próprios clientes e casos."
+        description="Escritórios que originam casos operados pelo escritório. Cada parceiro enxerga apenas os próprios clientes e casos."
         actions={cta}
       />
-      {rows.length === 0 ? (
+      {page && page.total === 0 && !filtered ? (
         <Panel>
           <EmptyState icon={Handshake} title="Nenhum parceiro cadastrado." description="Cadastre um escritório parceiro para que ele possa enviar clientes e casos." action={cta} />
         </Panel>
       ) : (
         <Panel>
-          <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3">
-            <SearchInput aria-label="Buscar parceiros" placeholder="Buscar por nome ou responsável" value={q} onChange={(e) => setQ(e.target.value)} className="w-[340px]" />
+          <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3" role="search" aria-label="Filtrar parceiros">
+            <SearchInput
+              aria-label="Buscar parceiros por nome ou CNPJ"
+              placeholder="Buscar por nome ou CNPJ"
+              value={search}
+              maxLength={120}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                commitSearch(e.target.value);
+              }}
+              className="w-[340px]"
+            />
             <div role="group" aria-label="Situação" className="flex rounded-md border border-line p-0.5">
               {STATUS_FILTERS.map((f) => (
                 <button
-                  key={f.key}
+                  key={f.key || "all"}
                   type="button"
-                  aria-pressed={status === f.key}
-                  onClick={() => setStatus(f.key)}
-                  className={cn("rounded-sm px-2.5 py-1 text-[12.5px]", status === f.key ? "bg-navy text-white" : "text-muted hover:text-foreground")}
+                  aria-pressed={query.status === f.key}
+                  onClick={() => setQuery({ ...query, status: f.key, page: 1 })}
+                  className={cn("rounded-sm px-2.5 py-1 text-[12.5px]", query.status === f.key ? "bg-navy text-white" : "text-muted hover:text-foreground")}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
-            <p className="ml-auto text-[12.5px] text-muted" aria-live="polite">
-              {pluralize(filtered.length, "parceiro", "parceiros")}
-            </p>
+            {page && (
+              <p className="ml-auto text-[12.5px] text-muted" aria-live="polite">
+                {pluralize(page.total, "parceiro", "parceiros")}
+              </p>
+            )}
           </div>
-          {filtered.length === 0 ? (
-            <EmptyState
-              icon={SearchX}
-              title="Nenhum parceiro corresponde aos filtros."
-              action={
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setQ("");
-                    setStatus("ALL");
-                  }}
-                >
-                  Limpar filtros
-                </Button>
-              }
-            />
-          ) : (
-            <Table caption="Escritórios parceiros">
-              <THead>
-                <tr>
-                  <SortableTh label="Escritório" sortKey="name" {...th} />
-                  <Th>Responsável</Th>
-                  <Th>Situação</Th>
-                  <SortableTh label="Clientes" sortKey="clients" {...th} className="text-right" />
-                  <SortableTh label="Processos ativos" sortKey="processes" {...th} className="text-right" />
-                  <SortableTh label="Pendências" sortKey="requests" {...th} className="text-right" />
-                  <SortableTh label="Última atividade" sortKey="activity" {...th} />
-                </tr>
-              </THead>
-              <TBody>
-                {filtered.map(({ partner, clients, activeProcesses, openRequests, newCases, lastActivityAt }) => (
-                  <Tr key={partner.id} className="hover:bg-navy-50/40">
-                    <Td>
-                      <Link href={`/parceiros/${partner.id}`} className="font-medium text-navy hover:underline underline-offset-2">
-                        {partner.name}
-                      </Link>
-                      {newCases > 0 && (
-                        <Badge tone="gold" className="ml-2">
-                          {pluralize(newCases, "caso novo", "casos novos")}
-                        </Badge>
-                      )}
-                    </Td>
-                    <Td className="text-[12.5px]">
-                      <div className="text-foreground">{partner.responsibleName}</div>
-                      <div className="text-[11.5px] text-muted">
-                        OAB/{partner.oabState} {partner.responsibleOab}
-                      </div>
-                    </Td>
-                    <Td>
-                      <StatusBadge status={partner.status} labels={PARTNER_OFFICE_STATUS_LABEL} tones={PARTNER_OFFICE_STATUS_TONE} />
-                    </Td>
-                    <Td className="text-right tabular">{clients}</Td>
-                    <Td className="text-right tabular">{activeProcesses}</Td>
-                    <Td className="text-right tabular">{openRequests ? <span className="font-medium text-warning">{openRequests}</span> : <span className="text-subtle">0</span>}</Td>
-                    <Td className="whitespace-nowrap text-[12px] text-muted tabular">{lastActivityAt ? formatEventTime(lastActivityAt) : "—"}</Td>
-                  </Tr>
-                ))}
-              </TBody>
-            </Table>
-          )}
+          <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-60")}>
+            {!result.ok ? (
+              <ActionErrorState error={result} onRetry={retry} title="Não foi possível carregar os parceiros." />
+            ) : !page ? (
+              <SkeletonRows rows={5} />
+            ) : page.items.length === 0 ? (
+              <EmptyState
+                icon={SearchX}
+                title="Nenhum parceiro corresponde aos filtros."
+                action={
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setSearch("");
+                      setQuery({ ...DEFAULT_PARTNER_QUERY, sort: query.sort, direction: query.direction });
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                }
+              />
+            ) : (
+              <>
+                <Table caption="Escritórios parceiros">
+                  <THead>
+                    <tr>
+                      <SortableTh label="Escritório" sortKey="name" {...th} />
+                      <Th>Contato</Th>
+                      <SortableTh label="Situação" sortKey="status" {...th} />
+                      {canFinance && <Th>Divisão padrão</Th>}
+                      <Th className="text-right">Clientes</Th>
+                      <Th className="text-right">Casos ativos</Th>
+                      <Th className="text-right">Pendências</Th>
+                    </tr>
+                  </THead>
+                  <TBody>
+                    {page.items.map((p) => (
+                      <Tr key={p.id} className="hover:bg-navy-50/40">
+                        <Td>
+                          <Link href={`/parceiros/${p.id}`} className="font-medium text-navy hover:underline underline-offset-2">
+                            {p.name}
+                          </Link>
+                          {!!p.stats?.newCases && (
+                            <Badge tone="gold" className="ml-2">
+                              {pluralize(p.stats.newCases, "caso novo", "casos novos")}
+                            </Badge>
+                          )}
+                          {p.cnpj && <div className="text-[11.5px] text-muted tabular">{formatCNPJ(p.cnpj)}</div>}
+                        </Td>
+                        <Td className="text-[12.5px] text-muted">{p.email ?? "—"}</Td>
+                        <Td>
+                          <StatusBadge status={p.status} labels={PARTNER_OFFICE_STATUS_LABEL} tones={PARTNER_OFFICE_STATUS_TONE} />
+                        </Td>
+                        {canFinance && (
+                          <Td className="whitespace-nowrap text-[12.5px] tabular">{p.share ? `${p.share.partnershipPercentage}% / ${p.share.ownerPercentage}%` : "—"}</Td>
+                        )}
+                        <Td className="text-right tabular">{p.stats?.clients ?? "—"}</Td>
+                        <Td className="text-right tabular">{p.stats?.activeCases ?? "—"}</Td>
+                        <Td className="text-right tabular">
+                          {p.stats?.openRequests ? <span className="font-medium text-warning">{p.stats.openRequests}</span> : <span className="text-subtle">0</span>}
+                        </Td>
+                      </Tr>
+                    ))}
+                  </TBody>
+                </Table>
+                <Pagination page={page.page} pageSize={PARTNER_PAGE_SIZE} total={page.total} disabled={pending} onPageChange={(n) => setQuery({ ...query, page: n })} noun={{ one: "parceiro", many: "parceiros" }} />
+              </>
+            )}
+          </div>
         </Panel>
       )}
     </PageContainer>

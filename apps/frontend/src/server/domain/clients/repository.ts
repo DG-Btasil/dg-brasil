@@ -63,6 +63,30 @@ export async function listDirectory(
   return { rows: (data ?? []) as ClientDirectoryRow[], total: count ?? 0 };
 }
 
+/**
+ * Página de clientes com relacionamento ATIVO com a organização: primeiro a
+ * página de relacionamentos, depois as linhas do diretório desses clientes
+ * (no máximo `pageSize` ids). RLS de quem pergunta nas duas consultas.
+ */
+export async function listRelatedDirectory(db: SupabaseClient, organizationId: string, page: PageInput): Promise<{ rows: ClientDirectoryRow[]; total: number }> {
+  const { from, to } = toRange(page);
+  const rel = await db
+    .from("client_organization_relationships")
+    .select("client_id", { count: "exact" })
+    .eq("organization_id", organizationId)
+    .eq("status", "ACTIVE")
+    .order("created_at", { ascending: false })
+    .order("client_id")
+    .range(from, to);
+  if (rel.error) throw fromDbError(rel.error);
+  const ids = ((rel.data ?? []) as { client_id: string }[]).map((r) => r.client_id);
+  if (ids.length === 0) return { rows: [], total: rel.count ?? 0 };
+  const { data, error } = await db.from("client_directory").select(DIRECTORY_COLUMNS).in("id", ids).is("deleted_at", null);
+  if (error) throw fromDbError(error);
+  const byId = new Map(((data ?? []) as ClientDirectoryRow[]).map((r) => [r.id, r]));
+  return { rows: ids.map((id) => byId.get(id)).filter((r): r is ClientDirectoryRow => !!r), total: rel.count ?? 0 };
+}
+
 export async function getDetail(db: SupabaseClient, id: string, scope: "INTERNAL" | "PARTNER"): Promise<ClientDetailRow | null> {
   const { data, error } = await db
     .from("clients")

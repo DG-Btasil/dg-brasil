@@ -1,23 +1,21 @@
 "use client";
 
-import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { PARTNER_REQUEST_TYPE_LABEL, PARTNER_REQUEST_TYPES } from "@/lib/constants/status";
 import { formatCurrency } from "@/lib/formatting";
 import { parseCurrencyInput, zCurrencyOptional } from "@/lib/validation";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Field, Input, Select, Textarea } from "@/components/ui/form";
-import type { ID, PartnerOffice, PartnershipAgreementView } from "@/types";
+import { Field, Input } from "@/components/ui/form";
+import type { PartnershipAgreementView } from "@/types";
+import type { PartnerOfficeAdminDTO } from "@/server/domain/organizations/dto";
+import { usePartnerOfficeActions } from "../use-partner-office-actions";
 import { usePartnerActions } from "../hooks";
 import {
   parsePercent,
-  partnerRequestSchema,
   shareSchema,
-  type PartnerRequestValues,
   type ShareFormValues,
 } from "../schemas";
 import { ShareFields } from "./share-fields";
@@ -25,25 +23,26 @@ import { ShareFields } from "./share-fields";
 /* ------------------------------------------------------------------ */
 
 /** Alteração da divisão padrão: explícita, auditada e só para novos casos. */
-export function ChangeShareDialog({ partner, open, onOpenChange }: { partner: PartnerOffice; open: boolean; onOpenChange: (o: boolean) => void }) {
-  const actions = usePartnerActions();
+export function ChangeShareDialog({ partner, open, onOpenChange }: { partner: PartnerOfficeAdminDTO; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const actions = usePartnerOfficeActions();
   const form = useForm<ShareFormValues>({
     resolver: zodResolver(shareSchema),
     defaultValues: { partnerPercentage: String(partner.partnershipPercentage), ownerPercentage: String(partner.ownerPercentage) },
   });
   const onSubmit = form.handleSubmit(async (v) => {
-    const ok = await actions.changeShare(partner.id, parsePercent(v.partnerPercentage), parsePercent(v.ownerPercentage));
-    if (ok !== null) onOpenChange(false);
+    const result = await actions.changeShare(partner.id, parsePercent(v.partnerPercentage), parsePercent(v.ownerPercentage));
+    if (result.ok) onOpenChange(false);
+    else if (result.error.fieldErrors) form.setError("ownerPercentage", { message: Object.values(result.error.fieldErrors)[0]?.[0] });
   });
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       title="Alterar divisão da parceria"
-      description={`${partner.name} · divisão atual: ${partner.partnershipPercentage}% parceiro / ${partner.ownerPercentage}% Bárbara Cardoso Advocacia.`}
+      description={`${partner.name} · divisão atual: ${partner.partnershipPercentage}% parceiro / ${partner.ownerPercentage}% escritório.`}
       footer={
         <>
-          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={form.formState.isSubmitting}>
             Cancelar
           </Button>
           <Button onClick={onSubmit} loading={form.formState.isSubmitting}>
@@ -65,95 +64,7 @@ export function ChangeShareDialog({ partner, open, onOpenChange }: { partner: Pa
 }
 
 /* ------------------------------------------------------------------ */
-
-const REQUEST_TYPE_OPTIONS = PARTNER_REQUEST_TYPES.map((t) => ({ value: t, label: PARTNER_REQUEST_TYPE_LABEL[t] }));
-
-/** Nova solicitação ao parceiro (documento, informação, correção…). */
-export function NewPartnerRequestDialog({
-  partnerOfficeId,
-  clientId,
-  legalCaseId,
-  processId,
-  clientOptions,
-  open,
-  onOpenChange,
-}: {
-  partnerOfficeId: ID;
-  clientId?: ID;
-  legalCaseId?: ID;
-  processId?: ID;
-  /** Quando não há cliente fixo, permite escolher entre os clientes do parceiro. */
-  clientOptions?: { value: ID; label: string }[];
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-}) {
-  const actions = usePartnerActions();
-  const [selectedClient, setSelectedClient] = useState("");
-  const form = useForm<PartnerRequestValues>({
-    resolver: zodResolver(partnerRequestSchema),
-    defaultValues: { type: "DOCUMENT_REQUEST", title: "", description: "", dueDate: "" },
-  });
-  const {
-    register,
-    formState: { errors },
-  } = form;
-  const onSubmit = form.handleSubmit(async (v) => {
-    const id = await actions.createRequest({
-      partnerOfficeId,
-      type: v.type,
-      title: v.title,
-      description: v.description,
-      dueDate: v.dueDate || undefined,
-      clientId: clientId ?? (selectedClient || undefined),
-      legalCaseId,
-      processId,
-    });
-    if (id) {
-      form.reset();
-      setSelectedClient("");
-      onOpenChange(false);
-    }
-  });
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Nova solicitação ao parceiro"
-      description="O parceiro é notificado e responde pelo portal, em Documentos e Pendências."
-      footer={
-        <>
-          <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={onSubmit} loading={form.formState.isSubmitting}>
-            Enviar solicitação
-          </Button>
-        </>
-      }
-    >
-      <form onSubmit={onSubmit} noValidate className="grid grid-cols-2 gap-x-5 gap-y-4">
-        <Field label="Tipo" requirement="required">
-          {(p) => <Select {...p} options={REQUEST_TYPE_OPTIONS} {...register("type")} />}
-        </Field>
-        <Field label="Prazo recomendado" requirement="optional">
-          {(p) => <Input {...p} type="date" {...register("dueDate")} />}
-        </Field>
-        {!clientId && clientOptions && (
-          <Field label="Cliente" requirement="optional" className="col-span-full">
-            {(p) => <Select {...p} placeholder="Sem cliente específico" options={clientOptions} value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)} />}
-          </Field>
-        )}
-        <Field label="Título" requirement="required" error={errors.title?.message} className="col-span-full">
-          {(p) => <Input {...p} placeholder="Ex.: Extrato bancário dos últimos 12 meses" {...register("title")} />}
-        </Field>
-        <Field label="Solicitação" requirement="required" error={errors.description?.message} className="col-span-full">
-          {(p) => <Textarea {...p} rows={3} placeholder="Descreva o que é necessário e por quê." {...register("description")} />}
-        </Field>
-      </form>
-    </Dialog>
-  );
-}
-
+/* Financeiro da parceria (demonstração até a Fase F)                  */
 /* ------------------------------------------------------------------ */
 
 const valuesSchema = z.object({ revenueBase: zCurrencyOptional(), realizedRevenue: zCurrencyOptional() });

@@ -11,6 +11,8 @@ import { listCaseProcessesAction } from "@/server/domain/processes/actions";
 import { listDocumentsAction } from "@/server/domain/documents/actions";
 import { listRequirementsAction } from "@/server/domain/documents/requirements/actions";
 import { documentListInput } from "@/features/documents/constants";
+import { requestListInput } from "@/features/partner-requests/query";
+import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 
 /**
  * Ficha do caso, lida no servidor a cada acesso (rota direta, nova aba e
@@ -24,16 +26,18 @@ async function InternalCase({ id }: { id: string }) {
     return <ActionErrorState error={result} title="Não foi possível abrir o caso." />;
   }
   if (result.data.surface !== "INTERNAL") return <CaseNotFound />;
-  const [catalog, processes, documents, requirements] = await Promise.all([
+  const withPartner = !!result.data.legalCase.partnerOrganizationId;
+  const [catalog, processes, documents, requirements, partnerRequests] = await Promise.all([
     getCaseCatalogAction(),
     listCaseProcessesAction({ caseId: id, pageSize: 50 }),
     listDocumentsAction(documentListInput({ legalCaseId: id })),
     listRequirementsAction({ legalCaseId: id, pageSize: 50 }),
+    withPartner ? listPartnerRequestsAction(requestListInput({ legalCaseId: id })) : Promise.resolve(undefined),
   ]);
   if (!catalog.ok) return <ActionErrorState error={catalog} title="Não foi possível abrir o caso." />;
   return (
     <Suspense fallback={<SkeletonRows rows={6} />}>
-      <CaseDetail legalCase={result.data.legalCase} catalog={catalog.data} processes={processes} documents={documents} requirements={requirements} />
+      <CaseDetail legalCase={result.data.legalCase} catalog={catalog.data} processes={processes} documents={documents} requirements={requirements} partnerRequests={partnerRequests} />
     </Suspense>
   );
 }

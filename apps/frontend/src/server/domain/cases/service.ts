@@ -136,6 +136,7 @@ export async function listCases(ctx: ServiceContext, input: ListCasesInput): Pro
       assignedLawyerId: partner ? undefined : input.assignedLawyerId,
       partnerOrganizationId: partner ? undefined : input.partnerOrganizationId,
       originOrganizationId: partner ? undefined : input.originOrganizationId,
+      relatedOrganizationId: partner ? undefined : input.relatedOrganizationId,
     },
     input,
     { column: input.column, ascending: input.ascending },

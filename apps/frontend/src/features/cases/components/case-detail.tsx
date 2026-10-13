@@ -26,6 +26,8 @@ import type { RequirementDTO } from "@/server/domain/documents/requirements/dto"
 import type { ProcessListItem } from "@/server/domain/processes/dto";
 import { DocumentsPanel } from "@/features/documents/components/documents-panel";
 import { RequirementsPanel } from "@/features/documents/components/requirements-panel";
+import { RequestsPanel } from "@/features/partner-requests/components/requests-panel";
+import type { PartnerRequestListItem } from "@/server/domain/partner-requests/dto";
 import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUser, useOrganizationName, useOrgDirectory, useOriginOptions } from "@/features/directory/directory-context";
 import { ProcessListTable } from "@/features/processes/components/process-list-table";
@@ -49,12 +51,15 @@ export function CaseDetail({
   processes,
   documents,
   requirements,
+  partnerRequests,
 }: {
   legalCase: CaseInternalDTO;
   catalog: CaseCatalogDTO;
   processes: ActionResult<Page<ProcessListItem>>;
   documents: ActionResult<Page<DocumentListItem>>;
   requirements: ActionResult<Page<RequirementDTO>>;
+  /** Só quando o caso tem parceiro vinculado. */
+  partnerRequests?: ActionResult<Page<PartnerRequestListItem>>;
 }) {
   const canFinance = usePermission("finance.view");
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
@@ -96,6 +101,16 @@ export function CaseDetail({
               description="Documentos ligados ao caso e aos processos dele. Documentos só do cadastro do cliente ficam na página do cliente."
               allowSharing={!!legalCase.partnerOrganizationId}
             />
+            {partnerRequests && (
+              <RequestsPanel
+                scope={{ legalCaseId: legalCase.id }}
+                initial={partnerRequests}
+                title="Solicitações ao parceiro"
+                description="Pendências deste caso enviadas ao escritório parceiro, com a conversa."
+                newRequest={{ legalCaseId: legalCase.id }}
+                showCase={false}
+              />
+            )}
           </div>
         )}
         {tab === "analise" && <PendingIntegration description="A análise jurídica do caso será conectada depois que o início da análise for atômico (análise + execução do agente)." />}

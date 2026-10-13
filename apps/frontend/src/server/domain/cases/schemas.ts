@@ -68,6 +68,8 @@ export const listCasesSchema = pageInputSchema
     originOrganizationId: zUuid().optional(),
     /** Criados a partir desta data (inclusive). */
     createdFrom: zIsoDate().optional(),
+    /** Só equipe interna: casos com ORIGEM ou ACESSO deste parceiro (ficha do parceiro). */
+    relatedOrganizationId: zUuid().optional(),
   })
   .and(sortSchema(CASE_SORT_FIELDS, "updatedAt"));
 export type ListCasesInput = z.infer<typeof listCasesSchema>;

@@ -40,6 +40,10 @@ export async function getPartnerAction(input: unknown) {
   return runAction({ name: "partners.get", schema: organizationIdSchema, input, handler: (ctx, { id }) => service.getPartner(ctx, id) });
 }
 
+export async function getPartnerStatsAction(input: unknown) {
+  return runAction({ name: "organizations.partner.stats", schema: organizationIdSchema, input, handler: (ctx, { id }) => service.getPartnerStats(ctx, id) });
+}
+
 export async function getMyPartnerOfficeAction(input?: unknown) {
   return runAction({ name: "partners.mine", permission: "partnerPortal.view", schema: noInput, input, handler: (ctx) => service.getMyPartnerOffice(ctx) });
 }

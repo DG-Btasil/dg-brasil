@@ -17,7 +17,7 @@ import type { PartnerRequestMessageRow, PartnerRequestRow } from "./mappers";
  */
 
 const REQUEST_COLUMNS =
-  "id, partner_organization_id, legal_case_id, legal_process_id, type, title, description, due_at, status, created_by, created_at, updated_at, answered_at, resolved_at";
+  "id, partner_organization_id, legal_case_id, legal_process_id, type, title, description, due_at, status, created_by, created_at, updated_at, answered_at, resolved_at, legal_cases(title)";
 
 export interface RequestFilters {
   status?: PartnerRequestStatus;

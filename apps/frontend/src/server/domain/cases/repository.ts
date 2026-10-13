@@ -108,6 +108,7 @@ export interface CaseFilters {
   legalAreaId?: string;
   originOrganizationId?: string;
   createdFrom?: string;
+  relatedOrganizationId?: string;
 }
 
 export async function listCases(
@@ -131,6 +132,9 @@ export async function listCases(
   if (filters.legalAreaId) query = query.eq("legal_area_id", filters.legalAreaId);
   if (filters.originOrganizationId) query = query.eq("origin_organization_id", filters.originOrganizationId);
   if (filters.createdFrom) query = query.gte("created_at", filters.createdFrom);
+  if (filters.relatedOrganizationId) {
+    query = query.or(`origin_organization_id.eq.${filters.relatedOrganizationId},partner_organization_id.eq.${filters.relatedOrganizationId}`);
+  }
   if (filters.clientId) query = query.eq("client_id", filters.clientId);
   if (filters.assignedLawyerId) query = query.eq("assigned_lawyer_id", filters.assignedLawyerId);
   if (filters.partnerOrganizationId) query = query.eq("partner_organization_id", filters.partnerOrganizationId);
