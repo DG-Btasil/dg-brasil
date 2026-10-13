@@ -121,13 +121,23 @@ export const createClientSchema = z.discriminatedUnion("kind", [
 ]);
 export type CreateClientInput = z.infer<typeof createClientSchema>;
 
-/** Edição interna (PATCH). CPF/CNPJ só ADMIN (o banco confere). */
+/**
+ * Edição interna (PATCH). CPF/CNPJ só ADMIN (o banco confere).
+ *
+ * Campos PF com formato (data de nascimento, gênero, estado civil, documento
+ * de identidade) têm TRÊS estados: ausente = não mexe; valor válido = grava;
+ * `null` = apaga (NULL no banco). String vazia não é aceita em nenhum deles.
+ */
 export const updateClientSchema = z.object({
   id: zUuid(),
   patch: z
     .object({
       document: zTaxId(),
       ...individualFields,
+      birthDate: zIsoDate().nullable(),
+      gender: individualFields.gender.unwrap().nullable(),
+      maritalStatus: individualFields.maritalStatus.unwrap().nullable(),
+      identityDocument: identitySchema.nullable(),
       ...companyFields,
       originOfficeId: zUuid(),
       responsibleUserId: zUuid().nullable(),

@@ -320,11 +320,20 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   document: "document",
 };
 
+/**
+ * Campos com três estados no PATCH: `undefined` = não mexe (a chave NÃO vai
+ * para o banco); `null` = apaga; valor = grava. Nos demais campos de texto,
+ * vazio (que o Zod transforma em undefined) continua significando "apagar".
+ */
+const EXPLICIT_NULL_FIELDS = new Set(["birthDate", "gender", "maritalStatus", "identityDocument"]);
+
 function copyFields(source: Record<string, unknown>, out: Json) {
   for (const [field, column] of Object.entries(FIELD_TO_COLUMN)) {
-    if (field in source) out[column] = source[field] ?? null;
+    if (!(field in source)) continue;
+    if (EXPLICIT_NULL_FIELDS.has(field) && source[field] === undefined) continue;
+    out[column] = source[field] ?? null;
   }
-  if ("identityDocument" in source) {
+  if ("identityDocument" in source && source.identityDocument !== undefined) {
     const id = source.identityDocument as { type: string; number: string; issuer?: string; state?: string } | null | undefined;
     out.identity_document = id ? { type: id.type, number: id.number, issuer: id.issuer ?? null, state: id.state ?? null } : null;
   }

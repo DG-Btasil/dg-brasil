@@ -75,8 +75,15 @@ migrado não tem mais escrita no mock.
   demonstração (fases C, B e H) — para clientes reais, ficam vazias até lá.
 - Edição: PATCH só com o que a tela edita; CPF/CNPJ só vai quando muda (só
   ADMIN corrige — a tela avisa no campo, o servidor recusa de todo modo).
-  Data de nascimento, gênero, estado civil e documento de identidade não são
-  apagáveis pela edição (o schema do servidor não aceita nulo nesses campos).
+  **PF — campos com três estados** (data de nascimento, gênero, estado civil,
+  documento de identidade): ausente = não mexe; valor = grava; `null` =
+  apaga (NULL no banco, nunca ""). A tela manda `null` quando o controle
+  fica vazio. Documento de identidade é um bloco: tipo e número andam juntos
+  (constraint `individual_client_details_identity_complete`); limpar tipo e
+  número apaga também emissor e UF. Sem migration: as colunas já eram
+  nuláveis e `save_client` já gravava NULL para chave presente com `null` —
+  faltava o schema do servidor aceitar `null` e o mapper distinguir
+  `undefined` de `null`.
 - **Representantes e sócios de PJ (migration 028).** Lacuna real da 025
   (`save_client` só os gravava no cadastro; sem DELETE). Agora:
   `replace_company_people(cliente, representantes, sócios)` — UMA operação
@@ -134,6 +141,9 @@ Marque cada item com os cinco papéis indicados.
       sistema.").
 - [ ] Editar: salvar volta para a ficha com os dados novos; apagar o nome
       social apaga de fato.
+- [ ] PF: apagar data de nascimento, gênero, estado civil e documento de
+      identidade e salvar; recarregar a ficha mostra os campos vazios.
+      Tipo de documento sem número (ou o contrário) é apontado no campo.
 - [ ] LAWYER/ASSISTANT alterando o CPF: aviso no campo, nada é salvo.
       ADMIN: corrige.
 - [ ] Inativar/reativar: a ficha muda depois da resposta; lista "Inativos"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { callAction, mapFieldErrors, NETWORK_ERROR_MESSAGE, referenceCode } from "@/lib/actions/result";
-import { companyPeoplePayload } from "@/server/domain/clients/mappers";
+import { companyPeoplePayload, updatePayload } from "@/server/domain/clients/mappers";
 import { createClientSchema, replaceCompanyPeopleSchema, updateClientSchema } from "@/server/domain/clients/schemas";
 import type { Client } from "@/types";
 import {
@@ -11,7 +11,7 @@ import {
   hasClientFilters,
   type ClientListQuery,
 } from "./list-query";
-import { companyPeopleSchema, emptyCompanyValues, emptyIndividualValues, fromAddress, newPartner, newRepresentative } from "./schemas";
+import { companyPeopleSchema, emptyCompanyValues, emptyIndividualValues, fromAddress, individualFormSchema, newPartner, newRepresentative } from "./schemas";
 import { CLIENT_FIELD_MAP, companyCreateInput, companyPatch, companyPeopleInput, countryCode, individualCreateInput, individualPatch } from "./server-input";
 
 const ORG = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
@@ -129,6 +129,55 @@ describe("edição de cliente — PATCH", () => {
     expect(patch).not.toHaveProperty("representatives");
     expect(patch).not.toHaveProperty("partners");
     expect(patch).not.toHaveProperty("document");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* PF: apagar data de nascimento, gênero, estado civil, documento       */
+/* ------------------------------------------------------------------ */
+
+describe("PF — três estados no PATCH: ausente / valor / null", () => {
+  const ID = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
+  const parse = (patch: Record<string, unknown>) => updateClientSchema.parse({ id: ID, patch }).patch;
+
+  it("schema do servidor: aceita null e valor; recusa string vazia", () => {
+    expect(parse({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null })).toEqual({
+      birthDate: null,
+      gender: null,
+      maritalStatus: null,
+      identityDocument: null,
+    });
+    expect(parse({ birthDate: "1990-01-02", gender: "FEMALE" })).toEqual({ birthDate: "1990-01-02", gender: "FEMALE" });
+    for (const bad of [{ birthDate: "" }, { gender: "" }, { maritalStatus: "" }, { identityDocument: { type: "RG", number: "" } }]) {
+      expect(updateClientSchema.safeParse({ id: ID, patch: bad }).success).toBe(false);
+    }
+  });
+
+  it("payload do banco: null → coluna null; ausente ou undefined → chave fora (não mexe); nunca \"\"", () => {
+    const cleared = updatePayload(parse({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null }));
+    expect(cleared).toEqual({ birth_date: null, gender: null, marital_status: null, identity_document: null });
+    const untouched = updatePayload({ profession: "Pedreiro", birthDate: undefined, gender: undefined, maritalStatus: undefined, identityDocument: undefined });
+    expect(untouched).toEqual({ profession: "Pedreiro" });
+    expect(JSON.stringify(cleared)).not.toContain('""');
+  });
+
+  it("formulário de edição: vazio na tela vira null; preenchido vira valor", () => {
+    const original = { id: "c1", kind: "INDIVIDUAL", cpf: "99900000191" } as unknown as Client;
+    const empty = individualPatch(pf(), original);
+    expect(empty).toMatchObject({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null });
+    const parsed = parse(empty);
+    expect([parsed.birthDate, parsed.gender, parsed.maritalStatus, parsed.identityDocument]).toEqual([null, null, null, null]);
+    const full = individualPatch(pf({ birthDate: "1975-06-07", gender: "MALE", maritalStatus: "SINGLE", idType: "RG", idNumber: "123", idIssuer: "SSP", idState: "sp" }), original);
+    expect(parse(full)).toMatchObject({ birthDate: "1975-06-07", gender: "MALE", maritalStatus: "SINGLE", identityDocument: { type: "RG", number: "123", issuer: "SSP", state: "SP" } });
+  });
+
+  it("documento de identidade é um bloco: tipo e número juntos", () => {
+    const ok = (o: Partial<ReturnType<typeof pf>>) => individualFormSchema.safeParse(pf(o)).success;
+    expect(ok({})).toBe(true);
+    expect(ok({ idType: "RG", idNumber: "1" })).toBe(true);
+    expect(ok({ idType: "RG" })).toBe(false);
+    expect(ok({ idNumber: "1" })).toBe(false);
+    expect(ok({ idIssuer: "SSP" })).toBe(false);
   });
 });
 

@@ -6,7 +6,7 @@ import { listOrganizationUsersSchema, listPartnersSchema } from "@/server/domain
 import { clientQueryToInput, DEFAULT_CLIENT_QUERY } from "@/features/clients/list-query";
 import { emptyIndividualValues } from "@/features/clients/schemas";
 import { individualCreateInput, individualPatch } from "@/features/clients/server-input";
-import { ctxFor, expectDomainError, fakeCpf, world } from "./support/world";
+import { ctxFor, dbFor, expectDomainError, fakeCpf, serviceDb, world } from "./support/world";
 
 /**
  * Etapa 4.3 — Fase A no Supabase DEV: o que a TELA de clientes gera (URL da
@@ -63,6 +63,75 @@ describe("Fase A — clientes pela UI", () => {
     expect(page.pageSize).toBe(25);
     const inactive = await clients.listClients(lawyer, listClientsSchema.parse(clientQueryToInput({ ...DEFAULT_CLIENT_QUERY, search: name, lifecycle: "inactive" })));
     expect(inactive.items.map((c) => c.id)).not.toContain(id);
+  });
+});
+
+describe("Fase A — PF: apagar data de nascimento, gênero, estado civil e documento", () => {
+  const columns = async (id: string) =>
+    (
+      await serviceDb()
+        .from("individual_client_details")
+        .select("birth_date, gender, marital_status, identity_document_type, identity_document_number, identity_document_issuer, identity_document_state, profession")
+        .eq("client_id", id)
+        .single()
+    ).data;
+
+  async function filledClient() {
+    const lawyer = await ctxFor("LAWYER");
+    const values = { ...form(fakeCpf(), "PF Limpeza UI"), birthDate: "1980-02-03", gender: "MALE" as const, maritalStatus: "SINGLE", idType: "RG", idNumber: "7654321", idIssuer: "SSP", idState: "SP" };
+    const { id } = await clients.createClient(lawyer, createClientSchema.parse(individualCreateInput(values)));
+    return { id, values };
+  }
+
+  it("valor existente → limpo na tela → NULL no banco → a ficha (releitura) volta vazia; preencher de novo funciona", async () => {
+    const { id, values } = await filledClient();
+    const lawyer = await ctxFor("LAWYER");
+    const detail = await clients.getClient(lawyer, id);
+    if (detail.surface !== "INTERNAL") throw new Error("ficha");
+    // Como a tela: os quatro controles esvaziados.
+    const cleared = { ...values, birthDate: "", gender: "" as const, maritalStatus: "", idType: "", idNumber: "", idIssuer: "", idState: "" };
+    await clients.updateClient(lawyer, updateClientSchema.parse({ id, patch: individualPatch(cleared, detail.client) }));
+    expect(await columns(id)).toMatchObject({
+      birth_date: null,
+      gender: null,
+      marital_status: null,
+      identity_document_type: null,
+      identity_document_number: null,
+      identity_document_issuer: null,
+      identity_document_state: null,
+    });
+    // "Recarregar a página": nova leitura pelo service mostra os campos vazios.
+    const reread = await clients.getClient(await ctxFor("LAWYER"), id);
+    if (reread.surface !== "INTERNAL" || reread.client.kind !== "INDIVIDUAL") throw new Error("ficha");
+    expect([reread.client.birthDate, reread.client.gender, reread.client.maritalStatus, reread.client.identityDocument]).toEqual([undefined, undefined, undefined, undefined]);
+
+    await clients.updateClient(lawyer, updateClientSchema.parse({ id, patch: individualPatch({ ...values, birthDate: "1981-04-05" }, reread.client) }));
+    expect(await columns(id)).toMatchObject({ birth_date: "1981-04-05", gender: "MALE", marital_status: "SINGLE", identity_document_number: "7654321" });
+  });
+
+  it("alterar outro campo sem enviar os quatro não apaga nenhum", async () => {
+    const { id } = await filledClient();
+    await clients.updateClient(await ctxFor("ASSISTANT"), updateClientSchema.parse({ id, patch: { profession: "Mestre de obras", birthDate: undefined } }));
+    expect(await columns(id)).toMatchObject({ birth_date: "1980-02-03", gender: "MALE", marital_status: "SINGLE", identity_document_type: "RG", profession: "Mestre de obras" });
+  });
+
+  it("parceiro continua sem editar dado de PF (service e RPC direta)", async () => {
+    const { id } = await filledClient();
+    await expectDomainError(clients.updateClient(await ctxFor("PARTNER_ADMIN_A"), updateClientSchema.parse({ id, patch: { birthDate: null } })), "FORBIDDEN");
+    const { error } = await dbFor("PARTNER_ADMIN_A").rpc("save_client", { p_id: id, p: { birth_date: null } });
+    expect(error).not.toBeNull();
+    expect((await columns(id))?.birth_date).toBe("1980-02-03");
+  });
+
+  it("auditoria da limpeza: campos alterados, sem data nem número do documento", async () => {
+    const { id } = await filledClient();
+    const ctx = await ctxFor("ADMIN");
+    await clients.updateClient(ctx, updateClientSchema.parse({ id, patch: { birthDate: null, identityDocument: null } }));
+    const { data } = await serviceDb().from("audit_events").select("action, actor_user_id, metadata").eq("entity_id", id).eq("request_id", ctx.requestId);
+    const event = data?.find((e) => e.action === "CLIENT_UPDATED" && (e.metadata as { table?: string }).table === "individual_client_details");
+    expect(event?.actor_user_id).toBe(world.users.ADMIN.id);
+    expect((event?.metadata as { fields: string[] }).fields).toEqual(expect.arrayContaining(["birth_date", "identity_document_number"]));
+    expect(JSON.stringify(data)).not.toMatch(/1980-02-03|7654321/);
   });
 });
 

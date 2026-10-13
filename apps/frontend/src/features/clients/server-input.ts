@@ -162,9 +162,10 @@ export function documentChanged(next: string, original: Client): boolean {
 }
 
 /**
- * Campos com formato (data, gênero, estado civil, documento de identidade)
- * só vão quando preenchidos: o PATCH não os apaga. Textos e contatos vazios
- * vão vazios e o servidor apaga.
+ * O formulário de edição mostra TODOS os campos: o que estiver vazio na tela
+ * é apagado. Campos com formato (data de nascimento, gênero, estado civil,
+ * documento de identidade) vão como `null` quando vazios — nunca "" —; textos
+ * e contatos vazios vão vazios e o servidor apaga.
  */
 export function individualPatch(v: IndividualFormValues, original: Client): Json {
   const patch: Json = {
@@ -180,12 +181,14 @@ export function individualPatch(v: IndividualFormValues, original: Client): Json
     notes: v.notes,
     legalSummary: v.legalSummary,
   };
+  // Vazio na tela = apagar (null). Documento de identidade é um bloco só:
+  // tipo + número juntos (o banco exige os dois ou nenhum).
+  patch.birthDate = filled(v.birthDate) ?? null;
+  patch.gender = filled(v.gender) ?? null;
+  patch.maritalStatus = filled(v.maritalStatus) ?? null;
+  patch.identityDocument = identityDocument(v) ?? null;
   const optional: Json = {
-    birthDate: filled(v.birthDate),
-    gender: filled(v.gender),
-    maritalStatus: filled(v.maritalStatus),
     stableUnion: stableUnion(v),
-    identityDocument: identityDocument(v),
     document: documentChange(v.cpf, original),
   };
   for (const [k, value] of Object.entries(optional)) if (value !== undefined) patch[k] = value;

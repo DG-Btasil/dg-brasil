@@ -2475,6 +2475,56 @@ await deveFalhar('a API não ganhou DELETE direto nas tabelas (só pela operaç�
 await deveFalhar('…nem em representantes', () =>
   como(ids.barbara, (tx) => tx.query(`delete from company_representatives where client_id = $1`, [ids.pj028])), /permission denied/)
 
+secao('Cliente PF: apagar data de nascimento, gênero, estado civil e documento de identidade [025, sem migration]')
+const pfCampos = (id) => um(db, `select birth_date::text, gender, marital_status, identity_document_type t, identity_document_number n,
+    identity_document_issuer i, identity_document_state::text uf, profession from individual_client_details where client_id = $1`, [id])
+await deve('cenário: PF com os quatro campos preenchidos', async () => {
+  ids.pfLimpa = await salvar(ids.ana, null, {
+    kind: 'INDIVIDUAL', document: '999.029.000-01', origin_organization_id: ids.owner, full_name: 'PF Limpeza',
+    birth_date: '1980-02-03', gender: 'MALE', marital_status: 'SINGLE', profession: 'Pedreiro',
+    identity_document: { type: 'RG', number: '7654321', issuer: 'SSP', state: 'SP' },
+  })
+  const r = await pfCampos(ids.pfLimpa)
+  igual([r.birth_date, r.gender, r.marital_status, r.t, r.n, r.uf], ['1980-02-03', 'MALE', 'SINGLE', 'RG', '7654321', 'SP'], 'preenchido')
+})
+await deve('chave ausente não mexe (outro campo alterado não apaga os quatro)', async () => {
+  await salvar(ids.lucas, ids.pfLimpa, { profession: 'Mestre de obras' })
+  const r = await pfCampos(ids.pfLimpa)
+  igual([r.birth_date, r.gender, r.marital_status, r.t, r.profession], ['1980-02-03', 'MALE', 'SINGLE', 'RG', 'Mestre de obras'], 'intacto')
+})
+await deve('null apaga cada um (NULL, nunca string vazia)', async () => {
+  await salvar(ids.lucas, ids.pfLimpa, { birth_date: null })
+  igual((await pfCampos(ids.pfLimpa)).birth_date, null, 'data')
+  await salvar(ids.lucas, ids.pfLimpa, { gender: null })
+  igual((await pfCampos(ids.pfLimpa)).gender, null, 'gênero')
+  await salvar(ids.ana, ids.pfLimpa, { marital_status: null })
+  igual((await pfCampos(ids.pfLimpa)).marital_status, null, 'estado civil')
+  await salvar(ids.barbara, ids.pfLimpa, { identity_document: null })
+  const r = await pfCampos(ids.pfLimpa)
+  igual([r.t, r.n, r.i, r.uf], [null, null, null, null], 'documento inteiro')
+  const vazios = await um(db, `select count(*)::int n from individual_client_details where client_id = $1
+    and ('' in (coalesce(gender, '-'), coalesce(marital_status, '-'), coalesce(identity_document_type, '-'), coalesce(identity_document_number, '-'))) `, [ids.pfLimpa])
+  igual(vazios.n, 0, 'string vazia')
+})
+await deve('preencher de novo depois de apagar funciona', async () => {
+  await salvar(ids.lucas, ids.pfLimpa, { birth_date: '1981-04-05', gender: 'OTHER', marital_status: 'MARRIED', identity_document: { type: 'CNH', number: '111222' } })
+  const r = await pfCampos(ids.pfLimpa)
+  igual([r.birth_date, r.gender, r.marital_status, r.t, r.n], ['1981-04-05', 'OTHER', 'MARRIED', 'CNH', '111222'], 'repreenchido')
+})
+await deveFalhar('documento pela metade (tipo sem número) é recusado', () =>
+  salvar(ids.lucas, ids.pfLimpa, { identity_document: { type: 'RG' } }), /identity_complete|violates/)
+await deveFalhar('parceiro não apaga dado de PF (só contato e endereço)', () =>
+  salvar(ids.almeidaAdm, ids.joao, { birth_date: null }), /só altera contato e endereço/)
+await deve('auditoria da limpeza: nomes de campo, sem data nem número de documento', async () => {
+  await salvar(ids.lucas, ids.pfLimpa, { birth_date: null, identity_document: null })
+  const ev = await linhas(db, `select metadata from audit_events where entity_id = $1 and action = 'CLIENT_UPDATED'
+    and metadata ->> 'table' = 'individual_client_details' order by created_at desc limit 1`, [ids.pfLimpa])
+  const fields = ev[0].metadata.fields
+  if (!fields.includes('birth_date') || !fields.includes('identity_document_number')) throw new Error(`campos: ${fields}`)
+  const tudo = JSON.stringify(await linhas(db, `select metadata from audit_events where entity_id = $1`, [ids.pfLimpa]))
+  if (/1981-04-05|1980-02-03|111222|7654321/.test(tudo)) throw new Error('PII na auditoria')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

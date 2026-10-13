@@ -17,7 +17,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As 19 migrations, na ordem da seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 425 verificações (inclusive Auth/MFA da 022, convite da 023, preferências da 024, backend de domínio da 025/026, idempotência da 027 e bloco societário de PJ da 028), com a RLS testada por papel |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 432 verificações (inclusive Auth/MFA da 022, convite da 023, preferências da 024, backend de domínio da 025/026, idempotência da 027 e bloco societário de PJ da 028), com a RLS testada por papel |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 

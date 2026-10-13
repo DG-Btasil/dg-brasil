@@ -6,7 +6,7 @@ import { FormProvider, useForm, type FieldValues, type UseFormSetError } from "r
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { companySchema, individualSchema, type CompanyFormValues, type IndividualFormValues } from "../../schemas";
+import { companySchema, individualFormSchema, type CompanyFormValues, type IndividualFormValues } from "../../schemas";
 import { AddressFields } from "./address-fields";
 import { CompanyContactFields, CompanyDataFields } from "./company-fields";
 import { IndividualContactFields, IndividualIdentificationFields } from "./individual-fields";
@@ -64,7 +64,7 @@ export function useSingleSubmit<V extends FieldValues>(onSubmit: ClientFormSubmi
 }
 
 export function IndividualForm({ defaultValues, submitLabel, onSubmit, onCancel }: FormProps<IndividualFormValues>) {
-  const methods = useForm<IndividualFormValues>({ resolver: zodResolver(individualSchema), defaultValues, shouldFocusError: true });
+  const methods = useForm<IndividualFormValues>({ resolver: zodResolver(individualFormSchema), defaultValues, shouldFocusError: true });
   const submit = useSingleSubmit(onSubmit, methods.setError);
   return (
     <FormProvider {...methods}>
