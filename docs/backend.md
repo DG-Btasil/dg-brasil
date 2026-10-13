@@ -57,7 +57,7 @@ parceria, ledger) **não** são reimplementadas em TypeScript.
 
 `src/server/core/errors.ts`: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`,
 `CONFLICT`, `VALIDATION`, `INVALID_STATE`, `DUPLICATE_CLIENT`,
-`BUSINESS_RULE`, `INTERNAL`. O navegador recebe:
+`BUSINESS_RULE`, `RATE_LIMITED` (≈ HTTP 429), `INTERNAL`. O navegador recebe:
 
 ```ts
 { ok: true, data, requestId } | { ok: false, error: { code, message, fieldErrors? }, requestId }
@@ -130,31 +130,110 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Análises | listar, ficha, iniciar, documentos que faltam, enviar ao agente | `legal_analyses` + `request_agent_run_once` |
 | Execuções de agente | pedir (idempotente), resumos, cancelar (ADMIN) | `request_agent_run_once` (026), `get_agent_run_summaries` |
 | Financeiro | modelos, acordos, obrigações, lançamentos (recebimento, ajuste, estorno — append-only), divisões (leitura), parcerias, repasses, visão do parceiro | ledger + views; chaves de idempotência e `create_partner_transfer` (026) |
-| Organizações | escritório proprietário, parceiros (listar, cadastrar atômico, editar, status, divisão padrão), usuários (leitura) | `create_partner_office` (026); gestão de equipe segue em `server/auth/team-actions.ts` |
+| Organizações | escritório proprietário, parceiros (listar, cadastrar atômico, editar, status, divisão padrão), usuários (leitura), divisão do próprio escritório (administrador do parceiro) | `create_partner_office` (026), `get_my_partner_settings` (027); gestão de equipe segue em `server/auth/team-actions.ts` |
 | Notificações | listar, contar não lidas, marcar lida(s) | RLS do próprio usuário (aal2) |
 | Auditoria | eventos e acessos a dado pessoal (ADMIN, paginado, metadata por whitelist, sem IP/navegador) | `audit_events`, `personal_data_access_events` |
 
 ## Idempotência
 
-Operações sensíveis recebem `idempotencyKey` (UUID gerado pelo navegador por
-formulário): lançamentos, obrigações, acordos, repasses e pedidos de execução
-de agente (índices únicos por autor, 026). Repetir devolve o mesmo registro
-com `deduplicated: true`. Upload: o id da versão é gerado no servidor e é a
-chave natural da confirmação. Resposta a solicitação: id da mensagem. Aceite de
-caso: update condicionado ao status + índice parcial do snapshot.
+**Contrato com a tela (vale para toda operação com `idempotencyKey`):** a chave
+é um UUID aleatório gerado UMA vez por **intenção de envio** (ao abrir/montar o
+formulário ou ao clicar em enviar pela primeira vez). Nova tentativa da mesma
+intenção — clique duplo, retry após timeout, reenvio por erro de rede — usa a
+**mesma** chave. Nova intenção (o usuário muda os dados, ou quer criar outro
+registro) = chave nova. Resposta com `deduplicated: true` = nada novo foi criado.
 
-## Lacunas conhecidas (próximas migrations)
+**Mecanismo genérico (027)** — `private.idempotency_operations`, fora da Data
+API (schema `private`, sem grant para ninguém; só as funções
+`private.idempotency_begin/complete` tocam a tabela):
 
-- Criação de caso e de processo não têm chave de idempotência; processo +
-  dados internos + prazo inicial ainda são escritas separadas.
-- Envio de análise ao agente: execução + vínculo à análise em duas escritas
-  (a chave torna a repetição segura; corrida com chaves diferentes pode deixar
-  execução órfã, cancelável pelo ADMIN). `legal_analyses` sem trigger de transição.
-- Acordo financeiro: sem `cancelled_at/by/reason` nem máquina de estados no banco
-  (hoje no service). Totais do parceiro somados no service.
-- `get_agent_run_summaries` sem paginação (limite até 50).
-- PARTNER_ADMIN não lê a própria divisão padrão; LAWYER não vê o advogado
-  responsável do parceiro (ambos ficam em `partner_office_settings`, só ADMIN).
+- escopo único: **usuário + operação + chave** (`actor_organization_id` fica
+  registrado para auditoria);
+- `request_hash` = SHA-256 de `chave | operação | pedido canônico (jsonb)`. A
+  própria chave entra como sal: o hash não permite testar CPFs fora daquela
+  linha. Nenhum dado de negócio fica em claro na tabela (a `response` guarda só
+  IDs e flags);
+- **mesma chave + mesmo pedido** → devolve o recurso já criado;
+  **mesma chave + pedido diferente** → `CONFLICT` ("Esta chave de envio já foi
+  usada com outros dados");
+- **atômico**: reivindicar a chave → criar o recurso → associar → responder,
+  numa só transação (funções `*_once`). Corrida com a mesma chave: o segundo
+  pedido espera o primeiro no índice único e devolve o mesmo recurso. Se a
+  criação falha, a reivindicação é desfeita junto (a mesma chave pode tentar de
+  novo);
+- retenção: uma linha por envio de criação, volume pequeno. Sem expurgo na V1;
+  a linha também é rastro de "quem criou, com qual envio". Reavaliar se o
+  volume crescer (expurgo de linhas com mais de N meses é seguro: chave velha
+  não é reenviada).
+
+| Operação | Função | Observação |
+|---|---|---|
+| Criar caso (interno) | `create_legal_case_once` | caso + notas internas atômicos; SECURITY INVOKER (RLS de `legal_cases` vale) |
+| Enviar caso (portal) | `partner_submit_case_once` | envolve `partner_submit_case` (025, inalterada); repete cliente + caso |
+| Criar processo (interno e portal) | `create_legal_process_once` | processo + dados internos + prazo inicial atômicos; não depende do CNJ; parceiro não grava campo interno nem chamando direto |
+| Lançamentos, obrigações, acordos, repasses, execução de agente | índices únicos por autor (026) | mesmo contrato da tela |
+
+Outros: upload (id da versão gerado no servidor é a chave natural da
+confirmação), resposta a solicitação (id da mensagem), aceite de caso (update
+condicionado ao status + índice parcial do snapshot).
+
+## Rate limit (consulta/cadastro por CPF/CNPJ do parceiro)
+
+**Decisão de produto V1: só na aplicação Next.js — best-effort
+application-level throttling, NÃO barreira de segurança absoluta.**
+
+- Onde: Server Action → `enforcePartnerTaxIdLimit` (`src/server/core/rate-limit.ts`)
+  → service. Aplica a `lookupClientDocumentAction` e `partnerSubmitCaseAction`
+  (as duas operações do parceiro que recebem CPF/CNPJ). Equipe interna não é
+  limitada aqui.
+- Algoritmo: janela deslizante de 60 s, em memória da instância.
+- Limites (env, com padrão): `PARTNER_TAX_ID_LIMIT_PER_USER` = **10/min por
+  usuário**; `PARTNER_TAX_ID_LIMIT_PER_ORGANIZATION` = **30/min por
+  escritório**. Os dois precisam ter folga para o uso consumir.
+- Chave: só IDs (`partner-tax-id:user:<id>`, `partner-tax-id:org:<id>`). O
+  CPF/CNPJ consultado nunca entra no limitador nem no log.
+- Excedeu: `RATE_LIMITED` (equivale a HTTP 429) — "Muitas consultas em pouco
+  tempo. Aguarde alguns instantes e tente novamente."
+- Sem Redis, KV, tabela, trigger ou contador no Postgres.
+
+**Risco residual ACEITO nesta V1:** em serverless/várias instâncias, cada
+instância conta separado; e, como não há limite no banco, um usuário
+autenticado tecnicamente sofisticado pode chamar `partner_lookup_client`
+direto pela API do Supabase e contornar esta camada. Aceito pelo contexto
+fechado (parceiros convidados e conhecidos, poucos usuários, não é SaaS
+aberto). As regras de privacidade continuam no banco: a consulta devolve só
+NOT_FOUND / ALREADY_RELATED / EXISTS — nunca escritório, caso, processo,
+responsável ou origem — e cada consulta de CPF existente fica auditada
+(`CLIENT_DUPLICATE_DETECTED`). **Reavaliar** antes de produto aberto, se o
+número de parceiros crescer muito, se houver abuso ou antes de exposição
+externa relevante.
+
+## Hardening pendente por domínio
+
+### Agents / Analysis
+Iniciar análise e pedir a execução do agente ainda são duas escritas (a chave
+de idempotência torna a repetição segura, mas uma corrida com chaves
+diferentes pode deixar execução órfã). **Antes de conectar a execução real do
+agente/Claude: tornar atômico** (função que trava a análise, chama
+`request_agent_run` e grava QUEUED + `agent_run_id` na mesma transação).
+`legal_analyses` também não tem trigger de transição de status.
+
+### Finance
+Acordo financeiro sem `cancelled_at/by/reason` nem máquina de estados no banco
+(hoje no service). Revisar ciclo de vida/cancelamento antes de considerar o
+financeiro pronto para produção. Totais do parceiro ainda somados no service.
+
+### Agent Runs
+`get_agent_run_summaries` sem paginação (limite até 50). Paginar antes de
+escala/produção.
+
+### Partner CPF/CNPJ lookup
+Rate limit atual é só na aplicação, best-effort (acima). Reavaliar limite
+forte/distribuído antes de expansão do produto.
+
+### Outros
+- LAWYER não vê o advogado responsável do parceiro (está em
+  `partner_office_settings`, só ADMIN).
 - Notificação ao parceiro quando uma solicitação é criada (exige RPC/trigger).
 - Busca: `*` digitado vira curinga do PostgREST (amplia o resultado, não
   injeta). Sem índice de trigram por enquanto.
@@ -163,18 +242,12 @@ caso: update condicionado ao status + índice parcial do snapshot.
 
 - Unitários (`npm test`): mapeamentos, schemas, tradução de erros, redação de
   logs, paginação, DTOs (o do parceiro não tem campo interno).
-- Banco (`supabase/: npm run verificar`): RPCs da 025 (envio de caso do
-  parceiro, gravação de cliente, busca, correlation ID).
+- Banco (`supabase/: npm run verificar`): 402 verificações, inclusive as RPCs
+  da 025–027 (envio de caso do parceiro, gravação de cliente, busca,
+  correlation ID, Storage autorizado, idempotência, divisão do parceiro).
 - Integração (`apps/frontend: npm run test:integration`) — **107/107 no
   Supabase DEV (2026-10-13)**, 11 domínios: services contra o
   **Supabase DEV** real (dados fictícios, `supabase/.env.real`,
   `DG_ENV=development`). O setup cria parceiros A e B e um usuário por papel
   com termos aceitos e **MFA TOTP real** (aal2); cada teste usa o service com o
   JWT do papel — RLS e funções do banco reais.
-
-## Proteção adicional futura (rate limit)
-
-Sem limitador genérico nesta etapa. Precisam de limite por usuário/IP antes de
-produção: consulta de CPF/CNPJ do parceiro (`partner_lookup_client` — revela
-existência), busca de clientes, preparação de upload, pedido de execução de
-agente. Recuperação de senha já é limitada pelo Supabase Auth.

@@ -61,6 +61,8 @@ export function fromDbError(error: DbErrorLike | null | undefined): DomainError 
     return new DomainError(isOurDbMessage(message) ? "INVALID_STATE" : "VALIDATION", isOurDbMessage(message) ? message : undefined, { technicalCode });
   }
   if (code === "23502") return new DomainError("VALIDATION", undefined, { technicalCode });
+  // Idempotência (027): o envio com a mesma chave ainda está em andamento.
+  if (code === "55P03") return new DomainError("CONFLICT", isOurDbMessage(message) ? message : undefined, { technicalCode });
   return new DomainError("INTERNAL", undefined, { technicalCode });
 }
 

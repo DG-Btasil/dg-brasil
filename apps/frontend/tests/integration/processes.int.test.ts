@@ -47,7 +47,7 @@ async function partnerACase(): Promise<{ caseId: string; clientId: string }> {
 }
 
 const newProcess = (legalCaseId: string, extra: Record<string, unknown> = {}) =>
-  createProcessSchema.parse({ legalCaseId, title: `Processo ${world.run}`, cnj: fakeCnj(), caseValue: 1234.56, ...extra });
+  createProcessSchema.parse({ idempotencyKey: randomUUID(), legalCaseId, title: `Processo ${world.run}`, cnj: fakeCnj(), caseValue: 1234.56, ...extra });
 
 describe("processos — equipe interna", () => {
   it("LAWYER cria com CNJ; ficha interna traz dados internos; CNJ duplicado → CONFLICT", async () => {
@@ -124,7 +124,7 @@ describe("processos — Portal do Parceiro (A × B)", () => {
     const pa = await ctxFor("PARTNER_ADMIN_A");
     const { id } = await processes.createPartnerProcess(
       pa,
-      createPartnerProcessSchema.parse({ legalCaseId: caseId, title: `Processo do parceiro ${world.run}`, cnj: fakeCnj(), caseValue: 500 }),
+      createPartnerProcessSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: `Processo do parceiro ${world.run}`, cnj: fakeCnj(), caseValue: 500 }),
     );
     const { data: stored } = await serviceDb().from("legal_processes").select("technical_origin, created_by, status").eq("id", id).single();
     expect(stored).toMatchObject({ technical_origin: "MANUAL", created_by: world.users.PARTNER_ADMIN_A.id });
@@ -152,7 +152,7 @@ describe("processos — Portal do Parceiro (A × B)", () => {
     const listB = await processes.listProcesses(b, listProcessesSchema.parse({ pageSize: 50, caseId }));
     expect(listB.items).toHaveLength(0);
     const pb = await ctxFor("PARTNER_ADMIN_B");
-    await expectDomainError(processes.createPartnerProcess(pb, createPartnerProcessSchema.parse({ legalCaseId: caseId, title: "Invasão" })), "NOT_FOUND");
+    await expectDomainError(processes.createPartnerProcess(pb, createPartnerProcessSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "Invasão" })), "NOT_FOUND");
     await expectDomainError(processes.addParty(pb, addPartySchema.parse({ processId: id, type: "OTHER", name: "Invasor" })), "NOT_FOUND");
   });
 
@@ -162,13 +162,13 @@ describe("processos — Portal do Parceiro (A × B)", () => {
     const ua = await ctxFor("PARTNER_USER_A");
     await expectDomainError(processes.getProcess(ua, id), "NOT_FOUND");
     await expectDomainError(processes.createProcess(await ctxFor("PARTNER_ADMIN_A"), newProcess(caseId)), "FORBIDDEN");
-    await expectDomainError(processes.createPartnerProcess(await ctxFor("PARTNER_ADMIN_A"), createPartnerProcessSchema.parse({ legalCaseId: caseId, title: "x" })), "NOT_FOUND");
+    await expectDomainError(processes.createPartnerProcess(await ctxFor("PARTNER_ADMIN_A"), createPartnerProcessSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "x" })), "NOT_FOUND");
   });
 
   it("partes: interno e parceiro A adicionam; só interno edita", async () => {
     const { caseId } = await partnerACase();
     const pa = await ctxFor("PARTNER_ADMIN_A");
-    const { id } = await processes.createPartnerProcess(pa, createPartnerProcessSchema.parse({ legalCaseId: caseId, title: "Processo partes" }));
+    const { id } = await processes.createPartnerProcess(pa, createPartnerProcessSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "Processo partes" }));
     const lawyer = await ctxFor("LAWYER");
     const { id: defendant } = await processes.addParty(lawyer, addPartySchema.parse({ processId: id, type: "DEFENDANT", name: "Banco Fictício S.A.", document: "99999999000199" }));
     await processes.addParty(pa, addPartySchema.parse({ processId: id, type: "PLAINTIFF", name: "Autor Fictício" }));
@@ -185,7 +185,7 @@ describe("movimentações", () => {
   it("interno registra nota MANUAL; parceiro não registra (nem oficial) e só vê as oficiais", async () => {
     const { caseId } = await partnerACase();
     const pa = await ctxFor("PARTNER_ADMIN_A");
-    const { id } = await processes.createPartnerProcess(pa, createPartnerProcessSchema.parse({ legalCaseId: caseId, title: "Processo movimentações" }));
+    const { id } = await processes.createPartnerProcess(pa, createPartnerProcessSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "Processo movimentações" }));
 
     const lawyer = await ctxFor("LAWYER");
     const { id: manualId } = await processes.createEvent(lawyer, createEventSchema.parse({ processId: id, title: "Ligação com o cliente", source: "JUDICIAL_INTEGRATION" }));

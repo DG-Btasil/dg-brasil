@@ -16,6 +16,7 @@ export const DOMAIN_ERROR_CODES = [
   "INVALID_STATE",
   "DUPLICATE_CLIENT",
   "BUSINESS_RULE",
+  "RATE_LIMITED",
   "INTERNAL",
 ] as const;
 export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number];
@@ -29,6 +30,8 @@ const DEFAULT_MESSAGE: Record<DomainErrorCode, string> = {
   INVALID_STATE: "Esta operação não é permitida no estado atual do registro.",
   DUPLICATE_CLIENT: "Cliente já cadastrado no sistema.",
   BUSINESS_RULE: "A operação não atende às regras do escritório.",
+  // Equivale a HTTP 429 (Server Actions não têm status HTTP próprio).
+  RATE_LIMITED: "Muitas consultas em pouco tempo. Aguarde alguns instantes e tente novamente.",
   INTERNAL: "Não foi possível concluir agora. Tente novamente em instantes.",
 };
 

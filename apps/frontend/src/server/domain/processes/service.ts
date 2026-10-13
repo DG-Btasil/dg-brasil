@@ -3,9 +3,8 @@ import { can } from "@/lib/permissions";
 import { isPartner, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { forbidden, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
-import * as deadlinesRepo from "./deadlines/repository";
 import { deadlineInsertRow } from "./deadlines/mappers";
-import type { ProcessDetailDTO, ProcessEventDTO, ProcessListItem, ProcessPartyDTO } from "./dto";
+import type { ProcessCreatedDTO, ProcessDetailDTO, ProcessEventDTO, ProcessListItem, ProcessPartyDTO } from "./dto";
 import {
   eventFromRow,
   internalDetailsPatch,
@@ -125,44 +124,64 @@ export async function getProcess(ctx: ServiceContext, id: string): Promise<Proce
  * Cadastro interno (ADMIN/LAWYER). Sem caso acessível não há processo (nunca
  * órfão). CNJ duplicado → CONFLICT amigável (unique legal_processes_cnj_key).
  */
-export async function createProcess(ctx: ServiceContext, input: CreateProcessInput): Promise<{ id: string }> {
+export async function createProcess(ctx: ServiceContext, input: CreateProcessInput): Promise<ProcessCreatedDTO> {
   requireInternal(ctx);
   requirePermission(ctx, "processes.edit");
   if (!(await repo.getCaseRef(ctx.db, input.legalCaseId))) throw notFound("Caso não encontrado.");
 
-  const id = randomUUID();
-  await repo.insertProcess(ctx.db, processInsertRow(id, { ...input, responsibleUserId: input.responsibleUserId ?? ctx.session.userId }, "INTERNAL"));
-  const details = internalDetailsRow(id, input);
-  if (details) await repo.upsertInternalDetails(ctx.db, details);
-  if (input.nextDeadline) {
-    const deadlineId = randomUUID();
-    await deadlinesRepo.insert(
-      ctx.db,
-      deadlineInsertRow(
-        deadlineId,
-        { legalCaseId: input.legalCaseId, processId: id, title: input.nextDeadline.title, type: input.nextDeadline.type, dueDate: input.nextDeadline.dueDate, priority: "NORMAL" },
-        input.responsibleUserId ?? ctx.session.userId,
-      ),
-    );
-    ctx.log.info("deadline.created", { deadlineId, processId: id, legalCaseId: input.legalCaseId });
-  }
-  ctx.log.info("process.created", { processId: id, legalCaseId: input.legalCaseId });
-  return { id };
+  const responsible = input.responsibleUserId ?? ctx.session.userId;
+  const process = withoutKeys(processInsertRow("", { ...input, responsibleUserId: responsible }, "INTERNAL"), "id", "technical_origin");
+  const details = internalDetailsRow("", input);
+  const deadline = input.nextDeadline
+    ? withoutKeys(
+        deadlineInsertRow(
+          "",
+          { legalCaseId: input.legalCaseId, title: input.nextDeadline.title, type: input.nextDeadline.type, dueDate: input.nextDeadline.dueDate, priority: "NORMAL" },
+          responsible,
+        ),
+        "id",
+        "legal_case_id",
+        "legal_process_id",
+        "source",
+      )
+    : null;
+  // Processo + dados internos + prazo inicial numa transação; a chave de envio
+  // faz a repetição devolver o mesmo processo (migration 027).
+  const r = await repo.createProcessOnce(ctx.db, input.idempotencyKey, process, details ? withoutKeys(details, "legal_process_id") : null, deadline);
+  ctx.log.info(r.deduplicated ? "process.create_replayed" : "process.created", {
+    processId: r.legal_process_id,
+    deadlineId: r.deadline_id ?? undefined,
+    legalCaseId: input.legalCaseId,
+    idempotencyKey: input.idempotencyKey,
+  });
+  return { id: r.legal_process_id, deduplicated: r.deduplicated };
 }
 
 /**
  * Portal do Parceiro: processo para um caso do PRÓPRIO escritório (RLS
  * legal_processes_insert_partner: origem MANUAL e caso acessível). Sem campo
- * interno (status, fase, responsável) — o banco aplica os defaults.
+ * interno (status, fase, responsável) — o banco aplica os defaults, mesmo se
+ * a função for chamada direto.
  */
-export async function createPartnerProcess(ctx: ServiceContext, input: CreatePartnerProcessInput): Promise<{ id: string }> {
+export async function createPartnerProcess(ctx: ServiceContext, input: CreatePartnerProcessInput): Promise<ProcessCreatedDTO> {
   if (!isPartner(ctx)) throw forbidden();
   requirePermission(ctx, "partnerPortal.processes.create");
   if (!(await repo.getCaseRef(ctx.db, input.legalCaseId))) throw notFound("Caso não encontrado.");
-  const id = randomUUID();
-  await repo.insertProcess(ctx.db, processInsertRow(id, input, "PARTNER"));
-  ctx.log.info("process.created", { processId: id, legalCaseId: input.legalCaseId });
-  return { id };
+  const process = withoutKeys(processInsertRow("", input, "PARTNER"), "id", "technical_origin");
+  const r = await repo.createProcessOnce(ctx.db, input.idempotencyKey, process, null, null);
+  ctx.log.info(r.deduplicated ? "process.create_replayed" : "process.created", {
+    processId: r.legal_process_id,
+    legalCaseId: input.legalCaseId,
+    idempotencyKey: input.idempotencyKey,
+  });
+  return { id: r.legal_process_id, deduplicated: r.deduplicated };
+}
+
+/** Copia sem as chaves geradas pelo banco (id, origem técnica...). */
+function withoutKeys<T extends Record<string, unknown>>(row: T, ...keys: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...row };
+  for (const k of keys) delete out[k];
+  return out;
 }
 
 /** Edição interna (ADMIN/LAWYER). O caso do processo não muda (trigger). */

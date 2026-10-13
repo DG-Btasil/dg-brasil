@@ -2187,6 +2187,120 @@ await deve('a view traz responsável e indica prazo de caso/processo excluído',
   igual(typeof r[0].scope_deleted, 'boolean', 'scope_deleted')
 })
 
+secao('Hardening: idempotência genérica — caso [027]')
+const caso027 = (title = 'Caso 027') => ({ client_id: ids.joao, legal_area_id: ids.banking, title, origin_organization_id: ids.owner, status: 'DRAFT' })
+const criarCaso = (uid, key, c, internal = null) => como(uid, async (tx) =>
+  (await um(tx, `select public.create_legal_case_once($1, $2, $3) r`, [key, JSON.stringify(c), internal && JSON.stringify(internal)])).r)
+await deve('mesma chave + mesmo pedido: um único caso; repetir (retry após timeout) devolve o original', async () => {
+  const k = randomUUID()
+  const a = await criarCaso(ids.lucas, k, caso027(), { internal_notes: 'nota' })
+  const b = await criarCaso(ids.lucas, k, caso027(), { internal_notes: 'nota' })
+  igual([a.deduplicated, b.deduplicated, b.legal_case_id], [false, true, a.legal_case_id], 'idempotência')
+  igual((await um(db, `select count(*)::int n from legal_cases where title = 'Caso 027'`)).n, 1, 'casos')
+  igual((await um(db, `select internal_notes from legal_case_internal_details where legal_case_id = $1`, [a.legal_case_id])).internal_notes, 'nota', 'nota interna na mesma transação')
+})
+await deveFalhar('mesma chave + pedido diferente: conflito (nunca reaproveita calado)', async () => {
+  const k = randomUUID()
+  await criarCaso(ids.lucas, k, caso027('Caso 027 A'))
+  await criarCaso(ids.lucas, k, caso027('Caso 027 B'))
+}, /já foi usada com outros dados/)
+await deve('chaves diferentes com dados idênticos: dois casos (registros legítimos parecidos)', async () => {
+  const a = await criarCaso(ids.lucas, randomUUID(), caso027('Caso 027 gêmeo'))
+  const b = await criarCaso(ids.lucas, randomUUID(), caso027('Caso 027 gêmeo'))
+  igual(a.legal_case_id === b.legal_case_id, false, 'ids distintos')
+})
+await deve('a mesma chave usada por outro usuário é outro escopo', async () => {
+  const k = randomUUID()
+  const a = await criarCaso(ids.lucas, k, caso027('Caso 027 escopo'))
+  const b = await criarCaso(ids.barbara, k, caso027('Caso 027 escopo'))
+  igual(a.legal_case_id === b.legal_case_id, false, 'por usuário')
+})
+await deve('falha na criação desfaz a chave (nova tentativa com a mesma chave funciona)', async () => {
+  const k = randomUUID()
+  await criarCaso(ids.lucas, k, { ...caso027(), title: '  ' }).then(() => { throw new Error('aceitou título vazio') }, () => {})
+  const r = await criarCaso(ids.lucas, k, { ...caso027(), title: '  ' }).catch((e) => e)
+  if (!(r instanceof Error)) throw new Error('aceitou')
+  if (/já foi usada|não terminou/.test(r.message)) throw new Error('chave ficou presa após falha')
+})
+await deveFalhar('a RLS de legal_cases continua valendo (parceiro não cria caso de cliente sem relacionamento)', () =>
+  criarCaso(ids.almeidaAdm, randomUUID(), { ...caso027(), client_id: ids.cli025, partner_organization_id: ids.almeida }), /row-level security/)
+await deve('portal: mesma chave devolve o mesmo envio (cliente + caso), sem duplicar', async () => {
+  const k = randomUUID()
+  const cli = { document: '999.027.000-01', kind: 'INDIVIDUAL', origin_organization_id: ids.almeida, full_name: 'Cliente 027' }
+  const kase = { legal_area_id: ids.banking, title: 'Caso portal 027', origin_organization_id: ids.almeida }
+  const enviar = () => como(ids.almeidaAdm, async (tx) => (await um(tx, `select public.partner_submit_case_once($1, $2, $3) r`, [k, JSON.stringify(cli), JSON.stringify(kase)])).r)
+  const a = await enviar()
+  const b = await enviar()
+  igual([a.deduplicated, b.deduplicated, b.legal_case_id, b.client_id], [false, true, a.legal_case_id, a.client_id], 'idempotência')
+  igual((await um(db, `select count(*)::int n from legal_cases where title = 'Caso portal 027'`)).n, 1, 'casos')
+})
+
+secao('Hardening: idempotência genérica — processo [027]')
+const cnj027 = (n) => { const base = `${String(n).padStart(7, '0')}`; const rest = '20268260100'; const dd = 98n - (BigInt(`${base}${rest}00`) % 97n); return `${base}${String(dd).padStart(2, '0')}${rest}` }
+const criarProc = (uid, key, p, internal = null, deadline = null) => como(uid, async (tx) =>
+  (await um(tx, `select public.create_legal_process_once($1, $2, $3, $4) r`, [key, JSON.stringify(p), internal && JSON.stringify(internal), deadline && JSON.stringify(deadline)])).r)
+await deve('processo + dados internos + prazo inicial numa transação; mesma chave devolve o mesmo', async () => {
+  const k = randomUUID()
+  const p = { legal_case_id: ids.casoA, title: 'Processo 027', cnj_number: cnj027(27001) }
+  const d = { title: 'Prazo inicial', due_at: '2026-12-01T23:59:59-03:00' }
+  const a = await criarProc(ids.lucas, k, p, { notes: 'nota do processo' }, d)
+  const b = await criarProc(ids.lucas, k, p, { notes: 'nota do processo' }, d)
+  igual([a.deduplicated, b.deduplicated, b.legal_process_id, b.deadline_id], [false, true, a.legal_process_id, a.deadline_id], 'idempotência')
+  igual((await um(db, `select count(*)::int n from legal_processes where title = 'Processo 027'`)).n, 1, 'processos')
+  igual((await um(db, `select notes from legal_process_internal_details where legal_process_id = $1`, [a.legal_process_id])).notes, 'nota do processo', 'internos')
+  igual((await um(db, `select count(*)::int n from deadlines where legal_process_id = $1`, [a.legal_process_id])).n, 1, 'prazo')
+})
+await deve('processo sem CNJ também é idempotente (não depende do CNJ)', async () => {
+  const k = randomUUID()
+  const a = await criarProc(ids.lucas, k, { legal_case_id: ids.casoA, title: 'Processo 027 sem CNJ' })
+  const b = await criarProc(ids.lucas, k, { legal_case_id: ids.casoA, title: 'Processo 027 sem CNJ' })
+  igual(b.legal_process_id, a.legal_process_id, 'mesmo processo')
+})
+await deveFalhar('mesma chave + processo diferente: conflito', async () => {
+  const k = randomUUID()
+  await criarProc(ids.lucas, k, { legal_case_id: ids.casoA, title: 'Processo 027 X' })
+  await criarProc(ids.lucas, k, { legal_case_id: ids.casoA, title: 'Processo 027 Y' })
+}, /já foi usada com outros dados/)
+await deve('falha no prazo inicial desfaz o processo (atômico)', async () => {
+  await criarProc(ids.lucas, randomUUID(), { legal_case_id: ids.casoA, title: 'Processo 027 atômico' }, null, { title: 'sem data' }).then(
+    () => { throw new Error('aceitou prazo sem data') }, () => {})
+  igual((await um(db, `select count(*)::int n from legal_processes where title = 'Processo 027 atômico'`)).n, 0, 'processo desfeito')
+})
+await deve('parceiro: campos internos ignorados mesmo chamando a RPC direto', async () => {
+  const r = await criarProc(ids.almeidaAdm, randomUUID(), { legal_case_id: ids.casoA, title: 'Processo 027 parceiro', status: 'ACTIVE', responsible_user_id: ids.lucas })
+  const p = await um(db, `select status, responsible_user_id, technical_origin from legal_processes where id = $1`, [r.legal_process_id])
+  igual([p.status, p.responsible_user_id, p.technical_origin], ['PREPARING', null, 'MANUAL'], 'defaults')
+})
+await deveFalhar('parceiro não cria processo em caso de outro parceiro', () =>
+  criarProc(ids.ferreiraAdm, randomUUID(), { legal_case_id: ids.casoA, title: 'X' }), /row-level security/)
+
+secao('Hardening: tabela de idempotência fora do alcance [027]')
+await deveFalhar('usuário logado não lê a tabela de idempotência', () => como(ids.barbara, (tx) =>
+  tx.query(`select 1 from private.idempotency_operations`)), /permission denied/)
+await deveFalhar('service role também não', () => comoServico((tx) =>
+  tx.query(`select 1 from private.idempotency_operations`)), /permission denied/)
+await deve('hash do pedido não contém o CPF em claro', async () => {
+  const r = await um(db, `select request_hash from private.idempotency_operations where operation = 'partner_case.submit' order by created_at desc limit 1`)
+  if (!/^[0-9a-f]{64}$/.test(r.request_hash) || r.request_hash.includes('99902700001')) throw new Error('hash inesperado')
+})
+
+secao('Hardening: divisão do parceiro [027]')
+await deve('PARTNER_ADMIN A lê a própria divisão (só os campos permitidos)', () => como(ids.almeidaAdm, async (tx) => {
+  const r = (await um(tx, `select public.get_my_partner_settings() r`)).r
+  igual(Object.keys(r).sort(), ['activated_at', 'organization_id', 'organization_name', 'owner_percentage', 'partner_percentage'], 'campos')
+  igual(r.organization_id, ids.almeida, 'organização')
+}))
+await deve('PARTNER_ADMIN B lê a de B (nunca a de A)', () => como(ids.ferreiraAdm, async (tx) =>
+  igual((await um(tx, `select public.get_my_partner_settings() r`)).r.organization_id, ids.ferreira, 'organização')))
+await deveFalhar('PARTNER_USER não lê (financeiro)', () => como(ids.almeidaUsr, (tx) =>
+  tx.query(`select public.get_my_partner_settings()`)), /administrador do parceiro/)
+await deveFalhar('equipe interna usa o fluxo interno, não esta RPC', () => como(ids.barbara, (tx) =>
+  tx.query(`select public.get_my_partner_settings()`)), /administrador do parceiro/)
+await deveFalhar('parceiro continua sem SELECT em partner_office_settings', async () => {
+  const r = await como(ids.almeidaAdm, (tx) => linhas(tx, `select 1 from partner_office_settings`))
+  if (r.length === 0) throw new Error('vazio (esperado)')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

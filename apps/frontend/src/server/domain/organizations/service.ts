@@ -3,7 +3,7 @@ import { PARTNER_OFFICE_STATUS_TO_DB } from "@/repositories/api/db-mappings";
 import { isPartner, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { forbidden, invalidState, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
-import type { OrganizationUserDTO, OwnerOfficeDetailDTO, PartnerDetailDTO, PartnerListItem } from "./dto";
+import type { MyPartnerSettingsDTO, OrganizationUserDTO, OwnerOfficeDetailDTO, PartnerDetailDTO, PartnerListItem } from "./dto";
 import {
   organizationPatchPayload,
   organizationUserFromRows,
@@ -223,4 +223,23 @@ export async function listOrganizationUsers(ctx: ServiceContext, input: ListOrga
     total,
     input,
   );
+}
+
+/**
+ * Administrador do parceiro: divisão padrão do próprio escritório. O banco
+ * deriva o escritório da sessão (sem parâmetro → sem IDOR) e recusa
+ * PARTNER_USER (financeiro). Interno usa getPartner/listPartners.
+ */
+export async function getMyPartnerSettings(ctx: ServiceContext): Promise<MyPartnerSettingsDTO> {
+  if (!isPartner(ctx)) throw forbidden();
+  requirePermission(ctx, "partnerPortal.finance.view");
+  const row = await repo.getMyPartnerSettings(ctx.db);
+  if (!row) throw notFound("Configuração do escritório não encontrada.");
+  return {
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    partnerPercentage: Number(row.partner_percentage),
+    ownerPercentage: Number(row.owner_percentage),
+    activatedAt: row.activated_at,
+  };
 }

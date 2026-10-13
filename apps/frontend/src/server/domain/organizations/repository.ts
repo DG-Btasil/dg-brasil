@@ -186,3 +186,16 @@ export async function getProfiles(db: SupabaseClient, ids: string[]): Promise<Pr
   if (ids.length === 0) return [];
   return (unwrap(await db.from("profiles").select("id, full_name, preferred_name, job_title, oab_number, oab_state, active").in("id", ids)) ?? []) as ProfileRow[];
 }
+
+/** Divisão do próprio escritório (o banco deriva o escritório da sessão; não há parâmetro). */
+export async function getMyPartnerSettings(db: SupabaseClient): Promise<{
+  organization_id: string;
+  organization_name: string;
+  partner_percentage: number | string;
+  owner_percentage: number | string;
+  activated_at: string | null;
+} | null> {
+  const { data, error } = await db.rpc("get_my_partner_settings");
+  if (error) throw fromOrganizationDbError(error);
+  return data as never;
+}

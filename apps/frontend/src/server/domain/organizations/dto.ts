@@ -115,3 +115,16 @@ export interface OrganizationUserDTO {
   active: boolean;
   joinedAt?: ISODateTime;
 }
+
+/**
+ * Divisão padrão do PRÓPRIO escritório, para o administrador do parceiro
+ * (public.get_my_partner_settings, 027). Só estes campos: nada de notas,
+ * responsável interno, configuração técnica ou dado de outro parceiro.
+ */
+export interface MyPartnerSettingsDTO {
+  organizationId: string;
+  organizationName: string;
+  partnerPercentage: number;
+  ownerPercentage: number;
+  activatedAt: string | null;
+}

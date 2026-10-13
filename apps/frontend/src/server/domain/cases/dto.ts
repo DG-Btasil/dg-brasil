@@ -71,6 +71,8 @@ export type CaseDetailDTO = { surface: "INTERNAL"; legalCase: CaseInternalDTO } 
 
 export interface CaseCreatedDTO {
   id: ID;
+  /** true = repetição de um envio já concluído (mesma chave): nada novo foi criado. */
+  deduplicated: boolean;
 }
 
 /** Envio do parceiro: cliente usado (novo ou canônico existente) + caso criado. */
@@ -79,6 +81,8 @@ export interface PartnerCaseSubmittedDTO {
   legalCaseId: ID;
   /** true = o CPF/CNPJ já existia; o cadastro canônico foi usado sem alteração. */
   clientExisted: boolean;
+  /** true = repetição de um envio já concluído (mesma chave). */
+  deduplicated: boolean;
 }
 
 /** Aceite/rejeição idempotentes: o segundo clique não muda nada. */

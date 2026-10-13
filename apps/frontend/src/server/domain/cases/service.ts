@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { explicitPartnerLink } from "@/lib/domain/legal-case";
 import {
   isPartner,
@@ -168,16 +167,18 @@ export async function createCase(ctx: ServiceContext, input: CreateCaseInput): P
   requirePermission(ctx, "cases.edit");
   const catalog = await resolveCatalog(ctx, input);
   if (!catalog.legalAreaId) throw validation({ area: ["Informe a área jurídica."] });
-  const id = randomUUID();
   // Usuário interno pertence ao escritório proprietário: a sessão é a fonte.
   const partnerOrganizationId = explicitPartnerLink(input.originOrganizationId, ctx.session.organizationId, input.linkPartner);
-  await repo.insertCase(
-    ctx.db,
-    createPayload(input, { id, legalAreaId: catalog.legalAreaId, caseTypeId: catalog.caseTypeId ?? null, partnerOrganizationId }),
-  );
-  if (input.notes) await repo.upsertInternalDetails(ctx.db, id, { internal_notes: input.notes });
-  ctx.log.info("case.created", { legalCaseId: id, clientId: input.clientId, partnerLinked: partnerOrganizationId !== null });
-  return { id };
+  // O id é gerado pelo banco: a chave de envio representa a tentativa, não os dados.
+  const payload = createPayload(input, { id: "", legalAreaId: catalog.legalAreaId, caseTypeId: catalog.caseTypeId ?? null, partnerOrganizationId });
+  delete payload.id;
+  const r = await repo.createCaseOnce(ctx.db, input.idempotencyKey, payload, input.notes ?? null);
+  ctx.log.info(r.deduplicated ? "case.create_replayed" : "case.created", {
+    legalCaseId: r.legal_case_id,
+    idempotencyKey: input.idempotencyKey,
+    partnerLinked: partnerOrganizationId !== null,
+  });
+  return { id: r.legal_case_id, deduplicated: r.deduplicated };
 }
 
 /**
@@ -197,8 +198,9 @@ export async function partnerSubmitCase(ctx: ServiceContext, input: PartnerSubmi
   const catalog = await resolveCatalog(ctx, input.case);
   if (!catalog.legalAreaId) throw validation({ area: ["Informe a área jurídica."] });
 
-  const result = await repo.partnerSubmit(
+  const result = await repo.partnerSubmitOnce(
     ctx.db,
+    input.idempotencyKey,
     partnerSubmitPayload(input, {
       clientOriginId: originId(input.client.origin),
       caseOriginId: originId(input.case.origin),
@@ -206,8 +208,12 @@ export async function partnerSubmitCase(ctx: ServiceContext, input: PartnerSubmi
       caseTypeId: catalog.caseTypeId ?? null,
     }),
   );
-  ctx.log.info("case.partner_submitted", { legalCaseId: result.legal_case_id, clientId: result.client_id, clientExisted: result.client_existed });
-  return { clientId: result.client_id, legalCaseId: result.legal_case_id, clientExisted: result.client_existed };
+  ctx.log.info(result.deduplicated ? "case.partner_submit_replayed" : "case.partner_submitted", {
+    legalCaseId: result.legal_case_id,
+    clientId: result.client_id,
+    idempotencyKey: input.idempotencyKey,
+  });
+  return { clientId: result.client_id, legalCaseId: result.legal_case_id, clientExisted: result.client_existed, deduplicated: result.deduplicated };
 }
 
 /**

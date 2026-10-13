@@ -63,3 +63,13 @@ export async function changePartnerShareAction(input: unknown) {
 export async function listOrganizationUsersAction(input: unknown) {
   return runAction({ name: "organizations.users.list", schema: listOrganizationUsersSchema, input, handler: service.listOrganizationUsers });
 }
+
+export async function getMyPartnerSettingsAction(input?: unknown) {
+  return runAction({
+    name: "partners.my_settings",
+    permission: "partnerPortal.finance.view",
+    schema: noInput,
+    input,
+    handler: (ctx) => service.getMyPartnerSettings(ctx),
+  });
+}

@@ -1,6 +1,7 @@
 "use server";
 
 import { runAction } from "@/server/core/action";
+import { enforcePartnerTaxIdLimit } from "@/server/core/rate-limit";
 import * as service from "./service";
 import {
   acceptCaseSchema,
@@ -43,7 +44,11 @@ export async function partnerSubmitCaseAction(input: unknown) {
     permission: "partnerPortal.cases.create",
     schema: partnerSubmitCaseSchema,
     input,
-    handler: service.partnerSubmitCase,
+    // Cadastro por CPF/CNPJ do parceiro: mesmo limite da consulta (best-effort, na aplicação).
+    handler: (ctx, data) => {
+      enforcePartnerTaxIdLimit(ctx);
+      return service.partnerSubmitCase(ctx, data);
+    },
   });
 }
 

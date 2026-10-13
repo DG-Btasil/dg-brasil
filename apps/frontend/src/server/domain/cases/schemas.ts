@@ -74,6 +74,11 @@ export const caseIdSchema = z.object({ id: zUuid() });
 
 export const createCaseSchema = z
   .object({
+    /**
+     * Chave de envio (UUID) gerada pela tela UMA vez por intenção de envio;
+     * nova tentativa da mesma intenção reutiliza a mesma chave (migration 027).
+     */
+    idempotencyKey: zUuid(),
     clientId: zUuid(),
     ...catalogFields,
     title: zText(200, "Informe o título do caso."),
@@ -206,6 +211,11 @@ export const partnerClientSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const partnerSubmitCaseSchema = z.object({
+  /**
+   * Chave de envio (UUID) gerada pela tela UMA vez por intenção de envio;
+   * nova tentativa da mesma intenção reutiliza a mesma chave (migration 027).
+   */
+  idempotencyKey: zUuid(),
   client: partnerClientSchema,
   case: z
     .object({

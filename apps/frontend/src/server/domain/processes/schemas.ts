@@ -93,6 +93,11 @@ const nextDeadlineSchema = z.object({
 
 /** Cadastro interno (ADMIN/LAWYER). Processo SEMPRE pertence a um caso. */
 export const createProcessSchema = z.object({
+  /**
+   * Chave de envio (UUID) gerada pela tela UMA vez por intenção de envio;
+   * nova tentativa da mesma intenção reutiliza a mesma chave (migration 027).
+   */
+  idempotencyKey: zUuid(),
   legalCaseId: zUuid(),
   ...sharedFields,
   ...internalFields,
@@ -102,7 +107,12 @@ export const createProcessSchema = z.object({
 export type CreateProcessInput = z.infer<typeof createProcessSchema>;
 
 /** Portal do Parceiro: processo para um caso do próprio escritório. Sem campo interno. */
-export const createPartnerProcessSchema = z.object({ legalCaseId: zUuid(), ...sharedFields });
+export const createPartnerProcessSchema = z.object({
+  /** Chave de envio (UUID) — uma por intenção de envio; retry reutiliza (migration 027). */
+  idempotencyKey: zUuid(),
+  legalCaseId: zUuid(),
+  ...sharedFields,
+});
 export type CreatePartnerProcessInput = z.infer<typeof createPartnerProcessSchema>;
 
 /** Edição interna (PATCH): chave ausente = não mexe; null/"" = limpa. O caso não muda. */

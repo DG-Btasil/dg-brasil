@@ -25,7 +25,7 @@ async function newClient(): Promise<string> {
 /** Caso interno (rascunho por padrão, origem = proprietário, sem parceiro). */
 async function newCase(role: WorldRole, over: Record<string, unknown> = {}): Promise<string> {
   const clientId = (over.clientId as string | undefined) ?? (await newClient());
-  const input = createCaseSchema.parse({ area: "BANKING", title: `Caso ${world.run}`, originOrganizationId: world.owner, ...over, clientId });
+  const input = createCaseSchema.parse({ idempotencyKey: randomUUID(), area: "BANKING", title: `Caso ${world.run}`, originOrganizationId: world.owner, ...over, clientId });
   return (await cases.createCase(await ctxFor(role), input)).id;
 }
 
@@ -33,7 +33,7 @@ async function newCase(role: WorldRole, over: Record<string, unknown> = {}): Pro
 async function partnerCase(role: WorldRole, origin: "OWN_OFFICE" | "OWNER" = "OWN_OFFICE", title = `Caso parceiro ${world.run}`) {
   return cases.partnerSubmitCase(
     await ctxFor(role),
-    partnerSubmitCaseSchema.parse({
+    partnerSubmitCaseSchema.parse({ idempotencyKey: randomUUID(),
       client: { kind: "INDIVIDUAL", document: fakeCpf(), fullName: "Cliente do Parceiro" },
       case: { area: "BANKING", title, origin, summary: "Resumo enviado pelo parceiro" },
     }),
@@ -308,7 +308,7 @@ describe("casos — Portal do Parceiro (A × B)", () => {
     await expectDomainError(partnerCase("LAWYER"), "FORBIDDEN");
     const clientId = (await partnerCase("PARTNER_ADMIN_A")).clientId;
     await expectDomainError(
-      cases.createCase(await ctxFor("PARTNER_ADMIN_A"), createCaseSchema.parse({ clientId, area: "BANKING", title: "X", originOrganizationId: world.partnerA })),
+      cases.createCase(await ctxFor("PARTNER_ADMIN_A"), createCaseSchema.parse({ idempotencyKey: randomUUID(), clientId, area: "BANKING", title: "X", originOrganizationId: world.partnerA })),
       "FORBIDDEN",
     );
   });

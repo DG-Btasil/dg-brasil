@@ -174,6 +174,32 @@ export async function ownerOrganizationId(db: SupabaseClient): Promise<string> {
 /* ------------------------------------------------------------------ */
 
 /** Inserção interna, sem RETURNING (o id vem do servidor). */
+/** Criação idempotente e atômica (caso + notas internas) — public.create_legal_case_once (027). */
+export async function createCaseOnce(
+  db: SupabaseClient,
+  key: string,
+  payload: Record<string, unknown>,
+  internalNotes: string | null,
+): Promise<{ legal_case_id: string; deduplicated: boolean }> {
+  return unwrapCase(
+    await db.rpc("create_legal_case_once", { p_key: key, p_case: payload, p_internal: internalNotes ? { internal_notes: internalNotes } : null }),
+  ) as { legal_case_id: string; deduplicated: boolean };
+}
+
+/** Envio do portal, idempotente — public.partner_submit_case_once (027, envolve a 025). */
+export async function partnerSubmitOnce(
+  db: SupabaseClient,
+  key: string,
+  payload: { p_client: Record<string, unknown>; p_case: Record<string, unknown> },
+): Promise<{ client_id: string; legal_case_id: string; client_existed: boolean; deduplicated: boolean }> {
+  return unwrapCase(await db.rpc("partner_submit_case_once", { p_key: key, ...payload })) as {
+    client_id: string;
+    legal_case_id: string;
+    client_existed: boolean;
+    deduplicated: boolean;
+  };
+}
+
 export async function insertCase(db: SupabaseClient, payload: Record<string, unknown>): Promise<void> {
   const { error } = await db.from("legal_cases").insert(payload);
   if (error) throw caseDbError(error);

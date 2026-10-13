@@ -103,3 +103,9 @@ export interface ProcessEventDTO {
   externalProvider?: string;
   createdAt: ISODateTime;
 }
+
+/** Resultado da criação. `deduplicated` = repetição de um envio já concluído (mesma chave). */
+export interface ProcessCreatedDTO {
+  id: ID;
+  deduplicated: boolean;
+}

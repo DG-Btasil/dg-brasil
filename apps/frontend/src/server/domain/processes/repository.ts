@@ -102,6 +102,24 @@ export async function getCaseRef(db: SupabaseClient, caseId: string): Promise<{ 
 }
 
 /** Inserção SEM RETURNING (o id vem do servidor) — mesmo caminho para interno e parceiro. */
+/**
+ * Criação idempotente e ATÔMICA (processo + dados internos + prazo inicial) —
+ * public.create_legal_process_once (027). RLS de legal_processes vale (invoker).
+ */
+export async function createProcessOnce(
+  db: SupabaseClient,
+  key: string,
+  process: Record<string, unknown>,
+  internal: Record<string, unknown> | null,
+  deadline: Record<string, unknown> | null,
+): Promise<{ legal_process_id: string; deadline_id: string | null; deduplicated: boolean }> {
+  return unwrap(await db.rpc("create_legal_process_once", { p_key: key, p_process: process, p_internal: internal, p_deadline: deadline })) as {
+    legal_process_id: string;
+    deadline_id: string | null;
+    deduplicated: boolean;
+  };
+}
+
 export async function insertProcess(db: SupabaseClient, row: Record<string, unknown>): Promise<void> {
   unwrap(await db.from("legal_processes").insert(row));
 }

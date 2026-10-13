@@ -10,6 +10,8 @@ import {
   type CaseRow,
 } from "./mappers";
 import { caseDbError, likePattern } from "./repository";
+const KEY = "11111111-1111-4111-8111-111111111111";
+
 import {
   acceptCaseSchema,
   changeOriginSchema,
@@ -139,7 +141,7 @@ describe("mapeamento banco → domínio", () => {
 
 describe("domínio → banco", () => {
   it("criação: rascunho por padrão, enviado com submit; vínculo de parceiro só o resolvido", () => {
-    const input = createCaseSchema.parse({ clientId: CLIENT, area: "banking", title: " Caso ", originOrganizationId: PARTNER_A });
+    const input = createCaseSchema.parse({ idempotencyKey: KEY, clientId: CLIENT, area: "banking", title: " Caso ", originOrganizationId: PARTNER_A });
     const draft = createPayload(input, { id: "k1", legalAreaId: AREA, caseTypeId: null, partnerOrganizationId: null });
     expect(draft).toMatchObject({ id: "k1", status: "DRAFT", title: "Caso", origin_organization_id: PARTNER_A, partner_organization_id: null, assigned_lawyer_id: null });
     // Nada de autoria nem nota interna no payload de legal_cases.
@@ -157,7 +159,7 @@ describe("domínio → banco", () => {
   });
 
   it("envio do parceiro: payload da RPC com origens resolvidas e endereço no formato do banco", () => {
-    const input = partnerSubmitCaseSchema.parse({
+    const input = partnerSubmitCaseSchema.parse({ idempotencyKey: KEY,
       client: { kind: "INDIVIDUAL", document: "999.000.111-22", fullName: "Maria", address: { zipCode: "01001-000", district: "Centro", state: "sp" } },
       case: { area: "BANKING", title: "Caso", origin: "OWNER" },
     });
@@ -177,11 +179,11 @@ describe("domínio → banco", () => {
 
 describe("schemas", () => {
   it("criação exige área (código OU id) e não aceita os dois", () => {
-    expect(createCaseSchema.safeParse({ clientId: CLIENT, title: "T", originOrganizationId: OWNER }).success).toBe(false);
-    expect(createCaseSchema.safeParse({ clientId: CLIENT, title: "T", originOrganizationId: OWNER, area: "BANKING", legalAreaId: AREA }).success).toBe(false);
-    expect(createCaseSchema.safeParse({ clientId: CLIENT, title: "T", originOrganizationId: OWNER, legalAreaId: AREA }).success).toBe(true);
-    expect(createCaseSchema.safeParse({ clientId: CLIENT, title: "T", originOrganizationId: OWNER, area: "bancário!" }).success).toBe(false);
-    const parsed = createCaseSchema.parse({ clientId: CLIENT, title: "T", originOrganizationId: OWNER, area: "BANKING" });
+    expect(createCaseSchema.safeParse({ idempotencyKey: KEY, clientId: CLIENT, title: "T", originOrganizationId: OWNER }).success).toBe(false);
+    expect(createCaseSchema.safeParse({ idempotencyKey: KEY, clientId: CLIENT, title: "T", originOrganizationId: OWNER, area: "BANKING", legalAreaId: AREA }).success).toBe(false);
+    expect(createCaseSchema.safeParse({ idempotencyKey: KEY, clientId: CLIENT, title: "T", originOrganizationId: OWNER, legalAreaId: AREA }).success).toBe(true);
+    expect(createCaseSchema.safeParse({ idempotencyKey: KEY, clientId: CLIENT, title: "T", originOrganizationId: OWNER, area: "bancário!" }).success).toBe(false);
+    const parsed = createCaseSchema.parse({ idempotencyKey: KEY, clientId: CLIENT, title: "T", originOrganizationId: OWNER, area: "BANKING" });
     expect(parsed).toMatchObject({ submit: false, linkPartner: false });
   });
 
@@ -208,12 +210,12 @@ describe("schemas", () => {
   });
 
   it("parceiro escolhe origem só entre o próprio escritório e o proprietário (sem id no input)", () => {
-    const parsed = partnerSubmitCaseSchema.parse({ client: { kind: "COMPANY", document: "99900011122233" }, case: { area: "BANKING", title: "T" } });
+    const parsed = partnerSubmitCaseSchema.parse({ idempotencyKey: KEY, client: { kind: "COMPANY", document: "99900011122233" }, case: { area: "BANKING", title: "T" } });
     expect(parsed.client.origin).toBe("OWN_OFFICE");
     expect(parsed.case.origin).toBe("OWN_OFFICE");
-    expect(partnerSubmitCaseSchema.safeParse({ client: { kind: "INDIVIDUAL", document: "99900011122" }, case: { area: "BANKING", title: "T", origin: PARTNER_A } }).success).toBe(false);
+    expect(partnerSubmitCaseSchema.safeParse({ idempotencyKey: KEY, client: { kind: "INDIVIDUAL", document: "99900011122" }, case: { area: "BANKING", title: "T", origin: PARTNER_A } }).success).toBe(false);
     // CPF em cliente PJ: recusado.
-    expect(partnerSubmitCaseSchema.safeParse({ client: { kind: "COMPANY", document: "99900011122" }, case: { area: "BANKING", title: "T" } }).success).toBe(false);
+    expect(partnerSubmitCaseSchema.safeParse({ idempotencyKey: KEY, client: { kind: "COMPANY", document: "99900011122" }, case: { area: "BANKING", title: "T" } }).success).toBe(false);
   });
 
   it("troca de origem e exceção de status", () => {

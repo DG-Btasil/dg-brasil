@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { runAction } from "@/server/core/action";
+import { enforcePartnerTaxIdLimit } from "@/server/core/rate-limit";
 import * as service from "./service";
 import {
   clientIdSchema,
@@ -28,7 +29,16 @@ export async function getClientAction(input: unknown) {
 }
 
 export async function lookupClientDocumentAction(input: unknown) {
-  return runAction({ name: "clients.lookup", schema: lookupClientSchema, input, handler: (ctx, { document }) => service.lookupClientDocument(ctx, document) });
+  return runAction({
+    name: "clients.lookup",
+    schema: lookupClientSchema,
+    input,
+    // Parceiro: limite de taxa ANTES do service (best-effort, na aplicação — ver core/rate-limit.ts).
+    handler: (ctx, { document }) => {
+      enforcePartnerTaxIdLimit(ctx);
+      return service.lookupClientDocument(ctx, document);
+    },
+  });
 }
 
 export async function createClientAction(input: unknown) {

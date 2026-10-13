@@ -47,6 +47,9 @@ qualquer dado real.
   como segunda barreira), Zod, erros normalizados, paginação, DTO por
   superfície, correlation ID na auditoria; Storage por signed URL autorizada
   pelo banco. Migrations 025–026. Ver [docs/backend.md](docs/backend.md).
+- **4.2.1** — hardening antes da 4.3: idempotência genérica na criação de caso
+  e processo, divisão do próprio escritório para o administrador do parceiro,
+  rate limit best-effort na aplicação para CPF/CNPJ do parceiro (migration 027).
 - **4.3** — telas trocam os mocks pelas Server Actions, domínio a domínio.
 
 ### Etapa 5 — Front-end conectado

@@ -15,6 +15,8 @@ import {
   type ProcessRow,
 } from "./mappers";
 import { likePattern, processColumns, searchTarget } from "./repository";
+const KEY = "11111111-1111-4111-8111-111111111111";
+
 import {
   addPartySchema,
   createEventSchema,
@@ -61,26 +63,26 @@ const row = (over: Partial<ProcessRow> = {}): ProcessRow => ({
 
 describe("schemas — CNJ e cadastro", () => {
   it("CNJ com máscara vira 20 dígitos; tamanho errado é recusado; vazio é ausente", () => {
-    const ok = createProcessSchema.parse({ legalCaseId: CASE, title: "P", cnj: "0001234-03.2026.8.26.0100" });
+    const ok = createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", cnj: "0001234-03.2026.8.26.0100" });
     expect(ok.cnj).toBe(CNJ);
-    expect(createProcessSchema.safeParse({ legalCaseId: CASE, title: "P", cnj: "1234-56.2026" }).success).toBe(false);
-    expect(createProcessSchema.safeParse({ legalCaseId: CASE, title: "P", cnj: "000123403202682601000" }).success).toBe(false);
-    expect(createProcessSchema.parse({ legalCaseId: CASE, title: "P", cnj: "  " }).cnj).toBeUndefined();
+    expect(createProcessSchema.safeParse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", cnj: "1234-56.2026" }).success).toBe(false);
+    expect(createProcessSchema.safeParse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", cnj: "000123403202682601000" }).success).toBe(false);
+    expect(createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", cnj: "  " }).cnj).toBeUndefined();
   });
 
   it("processo sem caso não passa (nunca órfão)", () => {
-    expect(createProcessSchema.safeParse({ title: "P" }).success).toBe(false);
-    expect(createPartnerProcessSchema.safeParse({ title: "P", legalCaseId: "x" }).success).toBe(false);
+    expect(createProcessSchema.safeParse({ idempotencyKey: KEY, title: "P" }).success).toBe(false);
+    expect(createPartnerProcessSchema.safeParse({ idempotencyKey: KEY, title: "P", legalCaseId: "x" }).success).toBe(false);
   });
 
   it("valor da causa: não negativo e no máximo 2 casas", () => {
-    expect(createProcessSchema.safeParse({ legalCaseId: CASE, title: "P", caseValue: -1 }).success).toBe(false);
-    expect(createProcessSchema.safeParse({ legalCaseId: CASE, title: "P", caseValue: 10.123 }).success).toBe(false);
-    expect(createProcessSchema.parse({ legalCaseId: CASE, title: "P", caseValue: 10.12 }).caseValue).toBe(10.12);
+    expect(createProcessSchema.safeParse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", caseValue: -1 }).success).toBe(false);
+    expect(createProcessSchema.safeParse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", caseValue: 10.123 }).success).toBe(false);
+    expect(createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", caseValue: 10.12 }).caseValue).toBe(10.12);
   });
 
   it("parceiro não informa campo interno: status, responsável e notas são descartados", () => {
-    const parsed = createPartnerProcessSchema.parse({ legalCaseId: CASE, title: "P", status: "CLOSED", responsibleUserId: USER, notes: "x", summary: "y" });
+    const parsed = createPartnerProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", status: "CLOSED", responsibleUserId: USER, notes: "x", summary: "y" });
     expect(parsed).not.toHaveProperty("status");
     expect(parsed).not.toHaveProperty("responsibleUserId");
     expect(parsed).not.toHaveProperty("notes");
@@ -188,7 +190,7 @@ describe("mapeamento banco → domínio", () => {
 
 describe("mapeamento domínio → banco", () => {
   it("cadastro interno: colunas do banco, origem MANUAL, sem chave vazia nem campo interno", () => {
-    const input = createProcessSchema.parse({ legalCaseId: CASE, title: "P", cnj: CNJ, unit: "Vara", actionType: "Classe", clientPole: "PASSIVE", status: "FILED", summary: "s", notes: "n" });
+    const input = createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", cnj: CNJ, unit: "Vara", actionType: "Classe", clientPole: "PASSIVE", status: "FILED", summary: "s", notes: "n" });
     const out = processInsertRow(PROC, { ...input, responsibleUserId: USER }, "INTERNAL");
     expect(out).toEqual({
       id: PROC,
