@@ -5,12 +5,12 @@ import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import { useClientAnalyses } from "@/features/analyses/hooks";
 import { useClientCases } from "@/features/cases/hooks";
-import { useClient, useClientDocuments, useClientProcesses } from "../../hooks";
+import type { Client } from "@/types";
+import { useClientDocuments, useClientProcesses } from "../../hooks";
 import { documentProgress } from "../../utils";
 import { ActivityTab } from "./activity-tab";
 import { CasesTab } from "./cases-tab";
 import { ClientHeader } from "./client-header";
-import { ClientNotFound } from "./client-not-found";
 import { DocumentsTab } from "./documents/documents-tab";
 import { OverviewTab } from "./overview/overview-tab";
 import { ProcessesTab } from "./processes-tab";
@@ -18,9 +18,14 @@ import { ProcessesTab } from "./processes-tab";
 const TAB_KEYS = ["visao-geral", "documentos", "casos", "processos", "atividade"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
-/** Página do cliente. Precisa estar dentro de <Suspense> (useUrlTab). */
-export function ClientDetail({ id }: { id: string }) {
-  const client = useClient(id);
+/**
+ * Página do cliente. O cadastro vem do servidor (getClientAction, com o
+ * registro LGPD de acesso); as abas de documentos, casos, processos e
+ * atividade ainda leem os módulos de demonstração até as fases C/B/H.
+ * Precisa estar dentro de <Suspense> (useUrlTab).
+ */
+export function ClientDetail({ client }: { client: Client }) {
+  const id = client.id;
   const documents = useClientDocuments(id);
   const analyses = useClientAnalyses(id);
   const processes = useClientProcesses(id);
@@ -38,8 +43,6 @@ export function ClientDetail({ id }: { id: string }) {
     ],
     [documents.length, progress.pending, cases.length, processes.length],
   );
-
-  if (!client) return <ClientNotFound />;
 
   return (
     <>

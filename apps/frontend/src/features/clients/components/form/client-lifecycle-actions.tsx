@@ -9,14 +9,14 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { Panel } from "@/components/ui/panel";
 import { Callout } from "@/components/feedback/states";
-import { formatDateTime, pluralize } from "@/lib/formatting";
+import { formatDateTime } from "@/lib/formatting";
 import {
   CLIENT_INACTIVATION_REASONS,
   CLIENT_INACTIVATION_REASON_LABEL,
   type Client,
   type ClientInactivationReason,
 } from "@/types";
-import { useClientLifecycleActions, useClientProcesses } from "../../hooks";
+import { useClientLifecycleActions } from "../../hooks";
 import { clientDisplayName } from "../../utils";
 
 const CONFIRM_WORD = "EXCLUIR";
@@ -107,7 +107,6 @@ function DeleteDialog({
 }) {
   const router = useRouter();
   const { remove } = useClientLifecycleActions();
-  const processes = useClientProcesses(client.id);
   const [typed, setTyped] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -149,27 +148,10 @@ function DeleteDialog({
           <strong>Inativar</strong>: o cadastro continua no histórico e
           pesquisável.
         </p>
-        {processes.length > 0 ? (
-          <Callout
-            tone="warning"
-            title={`${pluralize(processes.length, "processo vinculado", "processos vinculados")} — não serão excluídos`}
-          >
-            <p>
-              Cliente e processo são independentes. Os processos abaixo
-              continuam no sistema com o alerta “Cliente associado removido —
-              revisão necessária” até que outro cliente seja vinculado.
-            </p>
-            <ul className="mt-1.5 list-disc pl-4">
-              {processes.map((p) => (
-                <li key={p.id}>{p.title}</li>
-              ))}
-            </ul>
-          </Callout>
-        ) : (
-          <Callout tone="neutral">
-            Nenhum processo está vinculado a este cliente.
-          </Callout>
-        )}
+        <Callout tone="warning" title="Processos vinculados não são excluídos">
+          Cliente e processo são independentes. Se houver processos deste cliente, eles continuam no sistema com o alerta “Cliente
+          associado removido — revisão necessária” até que outro cliente seja vinculado.
+        </Callout>
         <Field
           label={`Para confirmar, digite ${CONFIRM_WORD}`}
           requirement="required"
@@ -194,6 +176,7 @@ function DeleteDialog({
  */
 export function ClientLifecycleActions({ client }: { client: Client }) {
   const { reactivate } = useClientLifecycleActions();
+  const [reactivating, setReactivating] = useState(false);
   const [dialog, setDialog] = useState<"inactivate" | "delete" | null>(null);
   const inactive = client.status === "INACTIVE";
 
@@ -214,7 +197,12 @@ export function ClientLifecycleActions({ client }: { client: Client }) {
           <Button
             variant="secondary"
             icon={<UserCheck className="size-4" aria-hidden />}
-            onClick={() => reactivate(client)}
+            loading={reactivating}
+            onClick={async () => {
+              setReactivating(true);
+              await reactivate(client);
+              setReactivating(false);
+            }}
           >
             Reativar cliente
           </Button>

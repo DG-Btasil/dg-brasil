@@ -48,11 +48,6 @@ export const mockUserRepository: UserRepository = {
 export const mockClientRepository: ClientRepository = {
   list: () => ok(data().clients),
   get: (id) => ok(data().clients.find((c) => c.id === id)),
-  create: async (input) => state().createClient(input),
-  update: async (id, patch) => state().updateClient(id, patch),
-  inactivate: async (id, input) => state().inactivateClient(id, input),
-  reactivate: async (id) => state().reactivateClient(id),
-  remove: async (id) => state().deleteClient(id),
 };
 
 export const mockDocumentRepository: DocumentRepository = {

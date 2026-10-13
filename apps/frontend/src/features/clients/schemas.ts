@@ -1,9 +1,8 @@
 import { z } from "zod";
-import { GENDERS, type Gender, type IdDocumentType, type MaritalStatus } from "@/lib/constants/legal";
+import { GENDERS } from "@/lib/constants/legal";
 import { isCnpjFormat, isCpfFormat, msg, zCepOptional, zCnpj, zCpf, zPhone, zPhoneOptional, zRequired } from "@/lib/validation";
 import { createId } from "@/lib/ids";
-import type { NewCompanyClientInput, NewIndividualClientInput } from "@/store/types";
-import type { Address, CompanyClient, Contact, IndividualClient } from "@/types";
+import type { Address, CompanyClient, IndividualClient } from "@/types";
 
 /*
  * Os formulários trabalham só com strings (valores de inputs); a conversão
@@ -123,11 +122,9 @@ export function toAddress(a: AddressFormValues): Address | undefined {
 
 export function fromAddress(a: Address | undefined): AddressFormValues {
   if (!a) return EMPTY_ADDRESS;
-  return { ...a, complement: a.complement ?? "", country: a.country || "Brasil" };
-}
-
-function contact(email: string, phone: string, secondaryPhone?: string, website?: string): Contact {
-  return { email: opt(email), phone: opt(phone), secondaryPhone: opt(secondaryPhone), website: opt(website) };
+  // O banco guarda o código ISO ("BR"); o formulário mostra o nome.
+  const country = !a.country || a.country.toUpperCase() === "BR" ? "Brasil" : a.country;
+  return { ...a, complement: a.complement ?? "", country };
 }
 
 export function emptyIndividualValues(responsibleUserId = "", originOfficeId = ""): IndividualFormValues {
@@ -138,32 +135,6 @@ export function emptyIndividualValues(responsibleUserId = "", originOfficeId = "
   };
 }
 
-export function individualToInput(v: IndividualFormValues): Omit<NewIndividualClientInput, "status"> {
-  const marital = (opt(v.maritalStatus) as MaritalStatus | undefined) ?? undefined;
-  return {
-    kind: "INDIVIDUAL",
-    fullName: v.fullName,
-    socialName: opt(v.socialName),
-    cpf: v.cpf,
-    identityDocument:
-      v.idType && v.idNumber
-        ? { type: v.idType as IdDocumentType, number: v.idNumber, issuer: opt(v.idIssuer), state: opt(v.idState) }
-        : undefined,
-    birthDate: opt(v.birthDate),
-    nationality: opt(v.nationality),
-    birthplace: opt(v.birthplace),
-    gender: (v.gender || undefined) as Gender | undefined,
-    maritalStatus: marital,
-    stableUnion: marital === "MARRIED" || !v.stableUnion ? undefined : v.stableUnion === "yes",
-    profession: opt(v.profession),
-    contact: contact(v.email, v.phone, v.secondaryPhone),
-    address: toAddress(v.address),
-    responsibleUserId: v.responsibleUserId,
-    originOfficeId: v.originOfficeId,
-    legalSummary: opt(v.legalSummary),
-    notes: opt(v.notes),
-  };
-}
 
 export function individualToValues(c: IndividualClient): IndividualFormValues {
   return {
@@ -208,38 +179,6 @@ export function emptyCompanyValues(responsibleUserId = "", originOfficeId = ""):
   };
 }
 
-export function companyToInput(v: CompanyFormValues): Omit<NewCompanyClientInput, "status"> {
-  const cnaes = v.secondaryCnaes.split(/\n|;/).map((s) => s.trim()).filter(Boolean);
-  return {
-    kind: "COMPANY",
-    legalName: v.legalName,
-    tradeName: opt(v.tradeName),
-    cnpj: v.cnpj,
-    registrationStatus: opt(v.registrationStatus),
-    openingDate: opt(v.openingDate),
-    legalNature: opt(v.legalNature),
-    mainCnae: opt(v.mainCnae),
-    secondaryCnaes: cnaes.length ? cnaes : undefined,
-    contact: contact(v.email, v.phone, undefined, v.website),
-    address: toAddress(v.address),
-    representatives: v.representatives.map((r) => ({
-      id: r.id, name: r.name, cpf: r.cpf, role: r.role, email: opt(r.email), phone: opt(r.phone), isPrimary: r.isPrimary,
-    })),
-    partners: v.partners
-      .filter((p) => p.name.trim())
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        document: p.document,
-        qualification: p.qualification,
-        sharePercent: p.sharePercent ? Number(p.sharePercent.replace(",", ".")) : undefined,
-      })),
-    responsibleUserId: v.responsibleUserId,
-    originOfficeId: v.originOfficeId,
-    legalSummary: opt(v.legalSummary),
-    notes: opt(v.notes),
-  };
-}
 
 export function companyToValues(c: CompanyClient): CompanyFormValues {
   return {

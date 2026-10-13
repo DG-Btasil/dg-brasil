@@ -8,15 +8,14 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Avatar, Breadcrumbs } from "@/components/ui/display";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatEventTime } from "@/lib/formatting";
-import { useUser } from "@/features/offices/hooks";
-import { useClientOriginName } from "../../hooks";
+import { useDirectoryUser, useOrganizationName } from "@/features/directory/directory-context";
 import { CLIENT_INACTIVATION_REASON_LABEL, type Client } from "@/types";
 import { clientDisplayName, clientDocumentLabel, clientSecondaryName, clientShortName, formatClientDocument, maskClientDocument } from "../../utils";
 import { DocumentAddDialog } from "./documents/document-add-dialog";
 import { MaskedIdentifier } from "./masked-identifier";
 
 export function ClientHeader({ client }: { client: Client }) {
-  const responsible = useUser(client.responsibleUserId);
+  const responsible = useDirectoryUser(client.responsibleUserId);
   const [addOpen, setAddOpen] = useState(false);
   const secondary = clientSecondaryName(client);
 
@@ -86,7 +85,7 @@ export function ClientHeader({ client }: { client: Client }) {
 
 /** Origem do cliente, discreta. Histórica: não define a origem dos processos. */
 function ClientCreatedBy({ client }: { client: Client }) {
-  const name = useClientOriginName(client);
+  const name = useOrganizationName(client.originOfficeId);
   if (!name) return null;
   return (
     <span className="text-muted">

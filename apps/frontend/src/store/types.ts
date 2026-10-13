@@ -380,12 +380,6 @@ export interface OfficeActions {
 }
 
 export interface ClientActions {
-  createClient: (input: NewClientInput) => ID;
-  updateClient: (id: ID, patch: ClientPatch) => void;
-  inactivateClient: (id: ID, input: InactivateClientInput) => void;
-  reactivateClient: (id: ID) => void;
-  /** Exclui o cliente SEM excluir processos: eles ficam com vínculo pendente. */
-  deleteClient: (id: ID) => DeleteClientResult;
   addDocument: (input: NewDocumentInput) => ID;
   updateDocumentStatus: (id: ID, status: DocumentStatus, notes?: string) => void;
 }

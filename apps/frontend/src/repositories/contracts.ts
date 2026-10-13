@@ -52,7 +52,6 @@ import type {
   NewLegalCaseInput,
   NewReferenceInput,
   ClientLookupResult,
-  ClientPatch,
   NewPartnerOfficeInput,
   NewPartnerRequestInput,
   PartnerCaseInput,
@@ -62,17 +61,14 @@ import type {
   PartnerOfficePatch,
   PartnerProcessInput,
   PartnershipValuesInput,
-  DeleteClientResult,
   ImportPlan,
   ImportResult,
-  InactivateClientInput,
   JudicialSourceConfigInput,
   NewAgentInput,
   NewSkillInput,
   NewThesisInput,
   RegisterPaymentInput,
   NewAgreementInput,
-  NewClientInput,
   NewDeadlineInput,
   NewDocumentInput,
   NewFeeModelInput,
@@ -96,16 +92,13 @@ export interface UserRepository {
   savePreferences(userId: ID, prefs: UserPreferences): Promise<void>;
 }
 
+/**
+ * Clientes dos módulos de demonstração (somente leitura). Cadastro, edição,
+ * inativação e exclusão são reais desde a Etapa 4.3 (server/domain/clients).
+ */
 export interface ClientRepository {
   list(): Promise<Client[]>;
   get(id: ID): Promise<Client | undefined>;
-  create(input: NewClientInput): Promise<ID>;
-  update(id: ID, patch: ClientPatch): Promise<void>;
-  /** Preferível à exclusão: o cliente sai da operação mas continua no histórico e pesquisável. */
-  inactivate(id: ID, input: InactivateClientInput): Promise<void>;
-  reactivate(id: ID): Promise<void>;
-  /** Não exclui processos: eles ficam com vínculo pendente e geram alerta de integridade. */
-  remove(id: ID): Promise<DeleteClientResult>;
 }
 
 export interface DocumentRepository {

@@ -10,10 +10,9 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { GENDER_LABEL, GENDER_NOT_INFORMED, ID_DOCUMENT_TYPE_LABEL, MARITAL_STATUS_LABEL } from "@/lib/constants/legal";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatDate, formatDateTime } from "@/lib/formatting";
-import { useUser } from "@/features/offices/hooks";
+import { useDirectoryUser, useOrganizationName } from "@/features/directory/directory-context";
 import type { Client, CompanyClient, IndividualClient } from "@/types";
-import { useClientOriginName } from "../../../hooks";
-import { clientDocumentLabel, maskClientDocument } from "../../../utils";
+import { clientDocumentLabel, countryLabel, maskClientDocument } from "../../../utils";
 
 export function Block({ title, clientId, children, editable = true }: { title: string; clientId: string; children: ReactNode; editable?: boolean }) {
   return (
@@ -105,7 +104,7 @@ export function AddressBlock({ client }: { client: Client }) {
             { label: "Bairro", value: a.district },
             { label: "Município/UF", value: [a.city, a.state].filter(Boolean).join("/") || undefined },
             { label: "CEP", value: a.zipCode ? <span className="tabular">{a.zipCode}</span> : undefined },
-            { label: "País", value: a.country },
+            { label: "País", value: countryLabel(a.country) },
           ]}
         />
       ) : (
@@ -116,8 +115,8 @@ export function AddressBlock({ client }: { client: Client }) {
 }
 
 export function ResponsibleBlock({ client }: { client: Client }) {
-  const user = useUser(client.responsibleUserId);
-  const origin = useClientOriginName(client);
+  const user = useDirectoryUser(client.responsibleUserId);
+  const origin = useOrganizationName(client.originOfficeId);
   return (
     <Block title="Responsável e status" clientId={client.id}>
       <DefinitionGrid

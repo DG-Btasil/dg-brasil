@@ -2,8 +2,7 @@
 
 import { useFormContext, useWatch } from "react-hook-form";
 import { Field, FormSection, Select, Textarea } from "@/components/ui/form";
-import { useResponsibleOptions } from "@/features/offices/hooks";
-import { useClientOriginOptions } from "../../hooks";
+import { useOriginOptions, useResponsibleUserOptions } from "@/features/directory/directory-context";
 
 interface InternalValues {
   responsibleUserId: string;
@@ -14,14 +13,14 @@ interface InternalValues {
 
 /** Responsável e observações internas (comum a PF e PJ). */
 export function InternalFields() {
-  const options = useResponsibleOptions();
+  const options = useResponsibleUserOptions();
   const {
     register,
     control,
     formState: { errors },
   } = useFormContext<InternalValues>();
   const origin = useWatch({ control, name: "originOfficeId" });
-  const originOptions = useClientOriginOptions(origin);
+  const originOptions = useOriginOptions(origin);
   return (
     <FormSection title="Informações adicionais" description="Uso interno do escritório. Não aparecem para o cliente.">
       <Field label="Responsável" requirement="required" error={errors.responsibleUserId?.message}>

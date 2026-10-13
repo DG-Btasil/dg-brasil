@@ -48,3 +48,9 @@ export function documentProgress(documents: ClientDocument[]): DocumentProgress 
   const received = documents.filter(isDocumentSatisfied).length;
   return { received, total: documents.length, pending: documents.length - received };
 }
+
+/** País do endereço: o banco guarda o código ISO ("BR"); a tela mostra o nome. */
+export function countryLabel(country: string | undefined): string | undefined {
+  if (!country) return undefined;
+  return country.toUpperCase() === "BR" ? "Brasil" : country;
+}

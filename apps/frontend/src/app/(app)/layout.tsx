@@ -1,7 +1,9 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { AuthProvider } from "@/features/auth/session-context";
+import { OrgDirectoryProvider } from "@/features/directory/directory-context";
 import { ProductTourStateProvider } from "@/features/tour/product-tour-state";
 import { requireAppSession, toClientSession } from "@/server/auth/session";
+import { loadOrgDirectory } from "@/server/directory";
 import { getProductTourCompletedAt } from "@/server/onboarding";
 
 /**
@@ -14,12 +16,14 @@ import { getProductTourCompletedAt } from "@/server/onboarding";
  */
 export default async function AuthenticatedLayout({ children }: LayoutProps<"/">) {
   const session = await requireAppSession();
-  const tourCompletedAt = await getProductTourCompletedAt();
+  const [tourCompletedAt, directory] = await Promise.all([getProductTourCompletedAt(), loadOrgDirectory()]);
   return (
     <AuthProvider session={toClientSession(session)}>
-      <ProductTourStateProvider initialCompletedAt={tourCompletedAt}>
-        <AppShell>{children}</AppShell>
-      </ProductTourStateProvider>
+      <OrgDirectoryProvider directory={directory}>
+        <ProductTourStateProvider initialCompletedAt={tourCompletedAt}>
+          <AppShell>{children}</AppShell>
+        </ProductTourStateProvider>
+      </OrgDirectoryProvider>
     </AuthProvider>
   );
 }

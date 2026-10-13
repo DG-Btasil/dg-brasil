@@ -1,8 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FormProvider, useForm } from "react-hook-form";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
+import { FormProvider, useForm, useFormContext, type FieldValues, type UseFormSetError } from "react-hook-form";
+import { z } from "zod";
+import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { companySchema, individualSchema, type CompanyFormValues, type IndividualFormValues } from "../../schemas";
@@ -13,10 +15,13 @@ import { InternalFields } from "./internal-fields";
 import { PartnersFields } from "./partners-fields";
 import { RepresentativesFields } from "./representatives-fields";
 
-interface FormProps<V> {
+/** O formulário entrega `setError` para os erros de campo vindos do servidor. */
+export type ClientFormSubmit<V extends FieldValues> = (values: V, helpers: { setError: UseFormSetError<V> }) => Promise<void>;
+
+interface FormProps<V extends FieldValues> {
   defaultValues: V;
   submitLabel: string;
-  onSubmit: (values: V) => Promise<void>;
+  onSubmit: ClientFormSubmit<V>;
   onCancel: () => void;
 }
 
@@ -30,7 +35,7 @@ function StickyFooter({ submitLabel, submitting, onCancel }: { submitLabel: stri
         Campos obrigatórios. Dados opcionais podem ser completados depois.
       </p>
       <div className="flex items-center gap-2">
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel} disabled={submitting}>
           Cancelar
         </Button>
         <Button type="submit" loading={submitting}>
@@ -45,11 +50,26 @@ function FormFrame({ children }: { children: ReactNode }) {
   return <Panel className="px-6">{children}</Panel>;
 }
 
+/** Um envio por vez: o segundo clique durante o envio é ignorado (além do botão desabilitado). */
+function useSingleSubmit<V extends FieldValues>(onSubmit: ClientFormSubmit<V>, setError: UseFormSetError<V>) {
+  const busy = useRef(false);
+  return async (values: V) => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      await onSubmit(values, { setError });
+    } finally {
+      busy.current = false;
+    }
+  };
+}
+
 export function IndividualForm({ defaultValues, submitLabel, onSubmit, onCancel }: FormProps<IndividualFormValues>) {
   const methods = useForm<IndividualFormValues>({ resolver: zodResolver(individualSchema), defaultValues, shouldFocusError: true });
+  const submit = useSingleSubmit(onSubmit, methods.setError);
   return (
     <FormProvider {...methods}>
-      <form noValidate onSubmit={methods.handleSubmit(onSubmit)} aria-label="Cadastro de pessoa física">
+      <form noValidate onSubmit={methods.handleSubmit(submit)} aria-label="Cadastro de pessoa física">
         <FormFrame>
           <IndividualIdentificationFields />
           <IndividualContactFields />
@@ -62,21 +82,60 @@ export function IndividualForm({ defaultValues, submitLabel, onSubmit, onCancel 
   );
 }
 
-export function CompanyForm({ defaultValues, submitLabel, onSubmit, onCancel }: FormProps<CompanyFormValues>) {
-  const methods = useForm<CompanyFormValues>({ resolver: zodResolver(companySchema), defaultValues, shouldFocusError: true });
+/** Na edição, representantes e sócios só são exibidos (o banco ainda não os altera). */
+const companyEditSchema = companySchema.extend({ representatives: z.array(z.any()), partners: z.array(z.any()) });
+
+export function CompanyForm({ defaultValues, submitLabel, onSubmit, onCancel, mode = "create" }: FormProps<CompanyFormValues> & { mode?: "create" | "edit" }) {
+  const methods = useForm<CompanyFormValues>({
+    resolver: zodResolver(mode === "edit" ? (companyEditSchema as unknown as typeof companySchema) : companySchema),
+    defaultValues,
+    shouldFocusError: true,
+  });
+  const submit = useSingleSubmit(onSubmit, methods.setError);
   return (
     <FormProvider {...methods}>
-      <form noValidate onSubmit={methods.handleSubmit(onSubmit)} aria-label="Cadastro de pessoa jurídica">
+      <form noValidate onSubmit={methods.handleSubmit(submit)} aria-label="Cadastro de pessoa jurídica">
         <FormFrame>
           <CompanyDataFields />
           <CompanyContactFields />
           <AddressFields description="Endereço da sede. Recomendado para qualificação e citações." />
-          <RepresentativesFields />
-          <PartnersFields />
+          {mode === "create" ? (
+            <>
+              <RepresentativesFields />
+              <PartnersFields />
+            </>
+          ) : (
+            <CompanyPeopleReadOnly />
+          )}
           <InternalFields />
           <StickyFooter submitLabel={submitLabel} submitting={methods.formState.isSubmitting} onCancel={onCancel} />
         </FormFrame>
       </form>
     </FormProvider>
+  );
+}
+
+function CompanyPeopleReadOnly() {
+  const { getValues } = useFormContext<CompanyFormValues>();
+  const representatives = getValues("representatives").filter((r) => r.name);
+  const partners = getValues("partners").filter((p) => p.name);
+  return (
+    <section className="grid grid-cols-[240px_minmax(0,1fr)] gap-8 border-b border-line py-7">
+      <div>
+        <h3 className="text-[13.5px] font-semibold text-foreground">Representação e quadro societário</h3>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">Informados no cadastro da empresa.</p>
+      </div>
+      <div className="space-y-3 text-[13px]">
+        <p>
+          <span className="text-subtle">Representantes: </span>
+          {representatives.length ? representatives.map((r) => `${r.name}${r.isPrimary ? " (principal)" : ""}`).join(", ") : "nenhum informado"}
+        </p>
+        <p>
+          <span className="text-subtle">Sócios: </span>
+          {partners.length ? partners.map((p) => p.name).join(", ") : "nenhum informado"}
+        </p>
+        <Callout tone="neutral">A alteração de representantes e sócios ainda não está disponível nesta tela.</Callout>
+      </div>
+    </section>
   );
 }

@@ -1,36 +1,50 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { FieldValues, Path, UseFormSetError } from "react-hook-form";
+import { Can } from "@/components/layout/guards";
 import { PageHeader } from "@/components/ui/display";
-import { repositories } from "@/repositories";
+import { callAction } from "@/lib/actions/result";
+import { updateClientAction } from "@/server/domain/clients/actions";
 import { useToast } from "@/store/ui-store";
-import { useClient, useDefaultClientOrigin } from "../../hooks";
-import { companyToInput, companyToValues, individualToInput, individualToValues } from "../../schemas";
+import { useRole } from "@/features/auth/hooks";
+import type { Client } from "@/types";
+import { companyToValues, individualToValues } from "../../schemas";
+import { CLIENT_FIELD_MAP, COMPANY_FIELD_MAP, companyPatch, documentChanged, individualPatch } from "../../server-input";
 import { clientShortName } from "../../utils";
-import { ClientNotFound } from "../detail/client-not-found";
+import { useClientFormResult } from "./client-create";
 import { CompanyForm, IndividualForm } from "./client-forms";
 import { ClientLifecycleActions } from "./client-lifecycle-actions";
-import { Can } from "@/components/layout/guards";
 
-export function ClientEdit({ id }: { id: string }) {
+const DOCUMENT_ADMIN_ONLY = "Só o administrador pode corrigir o CPF/CNPJ.";
+
+/** Edição do cadastro (dados vindos do servidor; grava pelo updateClientAction). */
+export function ClientEdit({ client }: { client: Client }) {
   const router = useRouter();
   const toast = useToast();
-  const client = useClient(id);
-  const defaultOrigin = useDefaultClientOrigin();
-  if (!client) return <ClientNotFound />;
+  const role = useRole();
+  const handle = useClientFormResult();
+  const id = client.id;
 
   const back = () => router.push(`/clientes/${id}`);
-  async function save(run: () => Promise<void>) {
-    try {
-      await run();
-      await done();
-    } catch (error) {
-      toast({ tone: "danger", title: "Não foi possível salvar.", description: error instanceof Error ? error.message : undefined });
+
+  async function save<V extends FieldValues>(
+    patch: Record<string, unknown>,
+    setError: UseFormSetError<V>,
+    documentField: Path<V>,
+    document: string,
+    fieldMap: Record<string, string>,
+  ) {
+    // UX: o servidor recusa de qualquer forma; aqui o aviso aparece no campo.
+    if (documentChanged(document, client) && role !== "ADMIN") {
+      setError(documentField, { message: DOCUMENT_ADMIN_ONLY }, { shouldFocus: true });
+      return;
     }
-  }
-  async function done() {
-    toast({ tone: "success", title: "Cadastro atualizado", description: "As alterações foram salvas." });
-    back();
+    const result = await callAction(() => updateClientAction({ id, patch }));
+    if (handle(result, setError, { fieldMap, documentField, strip: "patch.", title: "Não foi possível salvar." })) {
+      toast({ tone: "success", title: "Cadastro atualizado", description: "As alterações foram salvas." });
+      back();
+    }
   }
 
   return (
@@ -46,17 +60,18 @@ export function ClientEdit({ id }: { id: string }) {
       />
       {client.kind === "INDIVIDUAL" ? (
         <IndividualForm
-          defaultValues={{ ...individualToValues(client), originOfficeId: client.originOfficeId ?? defaultOrigin }}
+          defaultValues={individualToValues(client)}
           submitLabel="Salvar alterações"
           onCancel={back}
-          onSubmit={(values) => save(() => repositories.clients.update(id, individualToInput(values)))}
+          onSubmit={(values, { setError }) => save(individualPatch(values, client), setError, "cpf", values.cpf, CLIENT_FIELD_MAP)}
         />
       ) : (
         <CompanyForm
-          defaultValues={{ ...companyToValues(client), originOfficeId: client.originOfficeId ?? defaultOrigin }}
+          mode="edit"
+          defaultValues={companyToValues(client)}
           submitLabel="Salvar alterações"
           onCancel={back}
-          onSubmit={(values) => save(() => repositories.clients.update(id, companyToInput(values)))}
+          onSubmit={(values, { setError }) => save(companyPatch(values, client), setError, "cnpj", values.cnpj, COMPANY_FIELD_MAP)}
         />
       )}
       <Can permission="clients.edit">

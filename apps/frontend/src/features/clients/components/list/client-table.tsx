@@ -2,25 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, CircleAlert } from "lucide-react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/display";
 import { SortableTh, Table, TBody, Td, Th, THead, Tr, type SortDirection } from "@/components/ui/table";
-import {
-  ANALYSIS_STATUS_LABEL,
-  ANALYSIS_STATUS_TONE,
-  CLIENT_KIND_LABEL,
-  CLIENT_KIND_SHORT,
-  CLIENT_STATUS_LABEL,
-  CLIENT_STATUS_TONE,
-} from "@/lib/constants/status";
+import { CLIENT_KIND_LABEL, CLIENT_KIND_SHORT, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { cn } from "@/lib/cn";
-import { formatEventTime } from "@/lib/formatting";
-import type { ID, User } from "@/types";
-import type { ClientRow } from "../../hooks";
-import { clientDisplayName, clientSecondaryName, maskClientDocument } from "../../utils";
-
-export type ClientSortKey = "name" | "status" | "updated" | "processes";
+import type { DirectoryUser } from "@/lib/directory/types";
+import { formatEventTime, maskCNPJ, maskCPF } from "@/lib/formatting";
+import type { ClientListItem } from "@/server/domain/clients/dto";
+import type { ID } from "@/types";
+import type { ClientSortField } from "../../list-query";
 
 export function ClientTable({
   rows,
@@ -30,13 +21,13 @@ export function ClientTable({
   onSort,
   originNames,
 }: {
-  rows: ClientRow[];
-  userMap: Map<ID, User>;
+  rows: ClientListItem[];
+  userMap: Map<ID, DirectoryUser>;
   /** Nomes dos escritórios de origem; ausente = coluna oculta. */
   originNames?: Map<ID, string>;
-  sortKey: ClientSortKey | null;
+  sortKey: ClientSortField;
   direction: SortDirection;
-  onSort: (key: ClientSortKey) => void;
+  onSort: (key: ClientSortField) => void;
 }) {
   const router = useRouter();
   const sortProps = { currentKey: sortKey, direction, onSort };
@@ -49,18 +40,15 @@ export function ClientTable({
           <Th>CPF/CNPJ</Th>
           <Th>Responsável</Th>
           {originNames && <Th>Origem</Th>}
-          <SortableTh label="Status" sortKey="status" {...sortProps} />
-          <Th>Análise jurídica</Th>
-          <SortableTh label="Processos ativos" sortKey="processes" {...sortProps} />
-          <Th>Documentos</Th>
-          <SortableTh label="Atualizado" sortKey="updated" {...sortProps} />
+          <Th>Status</Th>
+          <SortableTh label="Cadastrado" sortKey="createdAt" {...sortProps} />
+          <SortableTh label="Atualizado" sortKey="updatedAt" {...sortProps} />
         </tr>
       </THead>
       <TBody>
-        {rows.map(({ client, analysisStatus, activeProcesses, documents }) => {
+        {rows.map((client) => {
           const href = `/clientes/${client.id}`;
-          const secondary = clientSecondaryName(client);
-          const responsible = userMap.get(client.responsibleUserId);
+          const responsible = client.responsibleUserId ? userMap.get(client.responsibleUserId) : undefined;
           return (
             <Tr key={client.id} interactive onClick={() => router.push(href)}>
               <Td className="max-w-[320px]">
@@ -72,16 +60,16 @@ export function ClientTable({
                     client.status === "INACTIVE" ? "text-muted" : "text-foreground",
                   )}
                 >
-                  {clientDisplayName(client)}
+                  {client.name}
                 </Link>
-                {secondary && <span className="block truncate text-[12px] text-muted">{secondary}</span>}
+                {client.tradeName && <span className="block truncate text-[12px] text-muted">{client.tradeName}</span>}
               </Td>
               <Td>
                 <abbr title={CLIENT_KIND_LABEL[client.kind]} className="no-underline">
                   <Badge tone="neutral">{CLIENT_KIND_SHORT[client.kind]}</Badge>
                 </abbr>
               </Td>
-              <Td className="whitespace-nowrap tabular text-muted">{maskClientDocument(client)}</Td>
+              <Td className="whitespace-nowrap tabular text-muted">{client.kind === "INDIVIDUAL" ? maskCPF(client.document) : maskCNPJ(client.document)}</Td>
               <Td>
                 {responsible ? (
                   <span className="inline-flex items-center gap-2 whitespace-nowrap">
@@ -94,42 +82,13 @@ export function ClientTable({
               </Td>
               {originNames && (
                 <Td className="max-w-[160px] truncate whitespace-nowrap text-[12.5px] text-muted">
-                  {(client.originOfficeId && originNames.get(client.originOfficeId)) ?? "—"}
+                  {(client.originOrganizationId && originNames.get(client.originOrganizationId)) ?? "—"}
                 </Td>
               )}
               <Td>
                 <StatusBadge status={client.status} labels={CLIENT_STATUS_LABEL} tones={CLIENT_STATUS_TONE} />
               </Td>
-              <Td>
-                {analysisStatus ? (
-                  <StatusBadge status={analysisStatus} labels={ANALYSIS_STATUS_LABEL} tones={ANALYSIS_STATUS_TONE} />
-                ) : (
-                  <span className="text-[12.5px] text-muted">{ANALYSIS_STATUS_LABEL.NOT_STARTED}</span>
-                )}
-              </Td>
-              <Td className="tabular">{activeProcesses}</Td>
-              <Td>
-                {documents.total === 0 ? (
-                  <span className="text-[12.5px] text-subtle">Nenhum</span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px]">
-                    <span className="tabular font-medium">
-                      {documents.received}/{documents.total}
-                    </span>
-                    {documents.pending > 0 ? (
-                      <span className="inline-flex items-center gap-1 text-warning">
-                        <CircleAlert className="size-3.5" aria-hidden />
-                        {documents.pending === 1 ? "1 pendente" : `${documents.pending} pendentes`}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-success">
-                        <CheckCircle2 className="size-3.5" aria-hidden />
-                        Completo
-                      </span>
-                    )}
-                  </span>
-                )}
-              </Td>
+              <Td className="whitespace-nowrap text-[12.5px] text-muted">{formatEventTime(client.createdAt)}</Td>
               <Td className="whitespace-nowrap text-[12.5px] text-muted">{formatEventTime(client.updatedAt)}</Td>
             </Tr>
           );

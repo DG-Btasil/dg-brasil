@@ -1,14 +1,14 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
-import type { AnalysisStatus } from "@/lib/constants/status";
-import { repositories } from "@/repositories";
+import { callAction } from "@/lib/actions/result";
+import { useActionFeedback } from "@/lib/actions/use-action-feedback";
+import { inactivateClientAction, reactivateClientAction, removeClientAction } from "@/server/domain/clients/actions";
 import { useScopedStore } from "@/store/scope";
 import type { InactivateClientInput } from "@/store/types";
 import { useToast } from "@/store/ui-store";
 import type { AuditEvent, Client, ClientDocument, Deadline, ID, Process } from "@/types";
-import { sortAnalysesByRecent } from "@/features/analyses/utils";
-import { documentProgress, type DocumentProgress } from "./utils";
 import { useCurrentPartnerOfficeId, useRole } from "@/features/auth/hooks";
 import { defaultClientOrigin, getAllowedClientOrigins, originOfficeName, type ClientOriginOption, type OriginContext } from "@/lib/permissions/client-origin";
 
@@ -62,100 +62,65 @@ export function useClientActivity(clientId: ID): AuditEvent[] {
   }, [auditEvents, documents, analyses, clientId]);
 }
 
-/** Ações de ciclo de vida do cliente (inativar, reativar, excluir), com feedback. */
+/**
+ * Ações de ciclo de vida do cliente (inativar, reativar, excluir) no BACKEND,
+ * com feedback. Banco primeiro: a tela só muda depois da resposta, recarregando
+ * os dados do servidor (sem atualização otimista).
+ */
 export function useClientLifecycleActions() {
   const toast = useToast();
+  const failed = useActionFeedback();
+  const router = useRouter();
 
   const inactivate = useCallback(
     async (client: Client, input: InactivateClientInput): Promise<boolean> => {
-      try {
-        await repositories.clients.inactivate(client.id, input);
-        toast({ tone: "success", title: "Cliente inativado", description: "Continua pesquisável e com todo o histórico preservado." });
-        return true;
-      } catch {
-        toast({ tone: "danger", title: "Não foi possível inativar o cliente." });
+      const result = await callAction(() => inactivateClientAction({ id: client.id, reason: input.reason, note: input.note ?? "" }));
+      if (!result.ok) {
+        failed(result, "Não foi possível inativar o cliente.");
         return false;
       }
+      toast({ tone: "success", title: "Cliente inativado", description: "Continua pesquisável e com todo o histórico preservado." });
+      router.refresh();
+      return true;
     },
-    [toast],
+    [toast, failed, router],
   );
 
   const reactivate = useCallback(
     async (client: Client): Promise<boolean> => {
-      try {
-        await repositories.clients.reactivate(client.id);
-        toast({ tone: "success", title: "Cliente reativado" });
-        return true;
-      } catch {
-        toast({ tone: "danger", title: "Não foi possível reativar o cliente." });
+      const result = await callAction(() => reactivateClientAction({ id: client.id }));
+      if (!result.ok) {
+        failed(result, "Não foi possível reativar o cliente.");
         return false;
       }
+      toast({ tone: "success", title: "Cliente reativado" });
+      router.refresh();
+      return true;
     },
-    [toast],
+    [toast, failed, router],
   );
 
   const remove = useCallback(
     async (client: Client): Promise<boolean> => {
-      try {
-        const { affectedProcessIds } = await repositories.clients.remove(client.id);
-        toast({
-          tone: "warning",
-          title: "Cliente excluído",
-          description: affectedProcessIds.length
-            ? `${affectedProcessIds.length === 1 ? "1 processo foi mantido" : `${affectedProcessIds.length} processos foram mantidos`} com vínculo pendente. Veja os alertas.`
-            : "Nenhum processo estava vinculado.",
-        });
-        return true;
-      } catch {
-        toast({ tone: "danger", title: "Não foi possível excluir o cliente." });
+      const result = await callAction(() => removeClientAction({ id: client.id }));
+      if (!result.ok) {
+        failed(result, "Não foi possível excluir o cliente.");
         return false;
       }
+      const affected = result.data.affectedProcessIds.length;
+      toast({
+        tone: "warning",
+        title: "Cliente excluído",
+        description: affected
+          ? `${affected === 1 ? "1 processo foi mantido" : `${affected} processos foram mantidos`} com vínculo pendente. Veja os alertas.`
+          : "Nenhum processo estava vinculado.",
+      });
+      return true;
     },
-    [toast],
+    [toast, failed],
   );
 
   return { inactivate, reactivate, remove };
-}
-
-export interface ClientRow {
-  client: Client;
-  analysisStatus: AnalysisStatus | undefined;
-  activeProcesses: number;
-  documents: DocumentProgress;
-  /** Parceiros com vínculo ativo com o cliente (visão interna). */
-  partnerOfficeIds: ID[];
-}
-
-/** Linhas da listagem de clientes, com os agregados de cada um. */
-export function useClientRows(): ClientRow[] {
-  const clients = useClients();
-  const documents = useScopedStore((s) => s.documents);
-  const analyses = useScopedStore((s) => s.analyses);
-  const processes = useScopedStore((s) => s.processes);
-  const relationships = useScopedStore((s) => s.clientRelationships);
-  return useMemo(() => {
-    const partnersBy = new Map<ID, ID[]>();
-    relationships
-      .filter((r) => r.officeType === "PARTNER" && r.partnerOfficeId && r.status === "ACTIVE")
-      .forEach((r) => partnersBy.set(r.clientId, [...(partnersBy.get(r.clientId) ?? []), r.partnerOfficeId as ID]));
-    const docsBy = new Map<ID, ClientDocument[]>();
-    documents.forEach((d) => docsBy.set(d.clientId, [...(docsBy.get(d.clientId) ?? []), d]));
-    const latest = new Map<ID, AnalysisStatus>();
-    sortAnalysesByRecent(analyses).forEach((a) => {
-      if (!latest.has(a.clientId)) latest.set(a.clientId, a.status);
-    });
-    const activeCount = new Map<ID, number>();
-    processes
-      .filter((p) => p.status !== "CLOSED")
-      .forEach((p) => activeCount.set(p.clientId, (activeCount.get(p.clientId) ?? 0) + 1));
-    return clients.map((client) => ({
-      client,
-      analysisStatus: latest.get(client.id),
-      activeProcesses: activeCount.get(client.id) ?? 0,
-      documents: documentProgress(docsBy.get(client.id) ?? []),
-      partnerOfficeIds: partnersBy.get(client.id) ?? [],
-    }));
-  }, [clients, documents, analyses, processes, relationships]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -189,10 +154,4 @@ export function useClientOriginOptions(current?: ID): ClientOriginOption[] {
 
 export function useDefaultClientOrigin(): ID {
   return defaultClientOrigin(useClientOriginContext());
-}
-
-/** Nome do escritório de origem de um cliente (ou undefined se não visível). */
-export function useClientOriginName(client: Client | undefined): string | undefined {
-  const ctx = useClientOriginContext();
-  return originOfficeName(client?.originOfficeId, ctx.owner, ctx.partners);
 }
