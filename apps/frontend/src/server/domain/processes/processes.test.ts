@@ -29,7 +29,7 @@ const CASE = "00000000-0000-4000-8000-0000000000c1";
 const CLIENT = "00000000-0000-4000-8000-0000000000a1";
 const USER = "00000000-0000-4000-8000-0000000000b1";
 const PROC = "00000000-0000-4000-8000-0000000000d1";
-const CNJ = "00012345620268260100";
+const CNJ = "00012340320268260100";
 
 const row = (over: Partial<ProcessRow> = {}): ProcessRow => ({
   id: PROC,
@@ -61,10 +61,10 @@ const row = (over: Partial<ProcessRow> = {}): ProcessRow => ({
 
 describe("schemas — CNJ e cadastro", () => {
   it("CNJ com máscara vira 20 dígitos; tamanho errado é recusado; vazio é ausente", () => {
-    const ok = createProcessSchema.parse({ legalCaseId: CASE, title: "P", cnj: "0001234-56.2026.8.26.0100" });
+    const ok = createProcessSchema.parse({ legalCaseId: CASE, title: "P", cnj: "0001234-03.2026.8.26.0100" });
     expect(ok.cnj).toBe(CNJ);
     expect(createProcessSchema.safeParse({ legalCaseId: CASE, title: "P", cnj: "1234-56.2026" }).success).toBe(false);
-    expect(createProcessSchema.safeParse({ legalCaseId: CASE, title: "P", cnj: "000123456202682601000" }).success).toBe(false);
+    expect(createProcessSchema.safeParse({ legalCaseId: CASE, title: "P", cnj: "000123403202682601000" }).success).toBe(false);
     expect(createProcessSchema.parse({ legalCaseId: CASE, title: "P", cnj: "  " }).cnj).toBeUndefined();
   });
 

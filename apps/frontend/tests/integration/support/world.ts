@@ -19,6 +19,17 @@ export function fakeCpf(): string {
   seq = (seq + 1) % 1e8;
   return `999${String(seq).padStart(8, "0")}`;
 }
+/**
+ * CNJ fictício VÁLIDO (dígito verificador correto): NNNNNNN-DD.2026.8.26.OOOO.
+ * CNJ é único no banco inteiro e o DEV acumula rodadas: número e origem variam.
+ */
+export function fakeCnj(): string {
+  seq = (seq + 1) % 1e7;
+  const n = String(seq).padStart(7, "0");
+  const rest = `2026826${String(Math.floor(Math.random() * 1e4)).padStart(4, "0")}`;
+  const dd = 98n - (BigInt(`${n}${rest}00`) % 97n);
+  return `${n}${String(dd).padStart(2, "0")}${rest}`;
+}
 export function fakeCnpj(): string {
   seq = (seq + 1) % 1e8;
   return `999${String(seq).padStart(11, "0")}`;

@@ -85,8 +85,10 @@ describe("validação de entrada", () => {
     expect(zCpf().parse("999.000.111-22")).toBe("99900011122");
     expect(zCpf().safeParse("111.111.111-11").success).toBe(false);
     expect(zTaxId().parse("99.900.011/1222-33")).toBe("99900011122233");
-    expect(zCnj().parse("0001234-56.2026.8.26.0100")).toBe("00012345620268260100");
+    expect(zCnj().parse("0001234-03.2026.8.26.0100")).toBe("00012340320268260100");
     expect(zCnj().safeParse("123").success).toBe(false);
+    // Dígito verificador errado (mesma regra do domínio cnj_digits do banco).
+    expect(zCnj().safeParse("0001234-56.2026.8.26.0100").success).toBe(false);
   });
   it("dinheiro: não negativo, 2 casas", () => {
     expect(zMoney().parse(10.5)).toBe(10.5);

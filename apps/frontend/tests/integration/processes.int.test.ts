@@ -6,20 +6,13 @@ import * as processes from "@/server/domain/processes/service";
 import * as deadlines from "@/server/domain/processes/deadlines/service";
 import { addPartySchema, createEventSchema, createPartnerProcessSchema, createProcessSchema, listEventsSchema, listPartiesSchema, listProcessesSchema } from "@/server/domain/processes/schemas";
 import { createDeadlineSchema, listDeadlinesSchema, listOverdueSchema, listUpcomingSchema } from "@/server/domain/processes/deadlines/schemas";
-import { ctxFor, expectDomainError, fakeCpf, serviceDb, world } from "./support/world";
+import { ctxFor, expectDomainError, fakeCnj, fakeCpf, serviceDb, world } from "./support/world";
 
 /**
  * Processos, partes, movimentações e prazos no Supabase DEV real: CNJ único,
  * ASSISTANT só leitura, isolamento parceiro A × B (IDOR), movimentação oficial
  * nunca digitada, prazo vencido derivado (view deadline_status).
  */
-
-/** CNJ fictício único por execução (20 dígitos: 9 + epoch ms + sequência). */
-let cnjSeq = Math.floor(Math.random() * 1e5);
-function fakeCnj(): string {
-  cnjSeq = (cnjSeq + 1) % 1e6;
-  return `9${Date.now()}${String(cnjSeq).padStart(6, "0")}`.slice(0, 20);
-}
 
 /** Caso interno (cliente do proprietário), criado pelo caminho real do LAWYER. */
 async function internalCase(): Promise<{ caseId: string; clientId: string }> {

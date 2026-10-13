@@ -178,8 +178,9 @@ export function eventFromRow(row: EventRow, surface: "INTERNAL" | "PARTNER"): Pr
     occurredAt: row.occurred_at,
     source: row.source,
     important: row.important,
-    externalProvider: surface === "INTERNAL" ? opt(row.external_provider) : undefined,
     createdAt: row.created_at,
+    // Parceiro não recebe nem a chave (o DTO não carrega dado de integração).
+    ...(surface === "INTERNAL" && row.external_provider ? { externalProvider: row.external_provider } : {}),
   };
 }
 

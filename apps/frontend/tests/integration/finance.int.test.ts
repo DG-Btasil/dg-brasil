@@ -94,7 +94,7 @@ describe("financeiro — ADMIN", () => {
     const inverse = await finance.listAllocations(admin, listAllocationsSchema.parse({ receiptId: reversal.receiptId }));
     expect(inverse.items[0]).toMatchObject({ reversesAllocationId: division.id, partnerAmount: -division.partnerAmount, baseAmount: -400.01 });
     // Estornar de novo o que já foi estornado: recusado.
-    await expectDomainError(finance.registerReversal(admin, registerReversalSchema.parse({ idempotencyKey: key(), originalReceiptId: first.receiptId, amount: 1 })), "BUSINESS_RULE");
+    await expectDomainError(finance.registerReversal(admin, registerReversalSchema.parse({ idempotencyKey: key(), originalReceiptId: first.receiptId, amount: 1 })), "INVALID_STATE");
 
     // Quitar o saldo (sem valor) e depois ajuste para menos, com justificativa.
     const settle = await finance.registerReceipt(admin, registerReceiptSchema.parse({ idempotencyKey: key(), paymentId }));

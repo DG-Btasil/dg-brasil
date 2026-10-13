@@ -36,13 +36,24 @@ export const zTaxId = () =>
     .transform(digits)
     .refine((d) => (d.length === 11 || d.length === 14) && !allSame(d), "Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).");
 
-/** Número CNJ → 20 dígitos (aceita máscara NNNNNNN-DD.AAAA.J.TR.OOOO). */
+/**
+ * Dígito verificador do CNJ (Res. CNJ 65/2008, módulo 97) — a mesma conta de
+ * private.is_valid_cnj, que o banco aplica no domínio cnj_digits.
+ */
+export function isValidCnj(d: string): boolean {
+  if (!/^\d{20}$/.test(d)) return false;
+  const base = BigInt(`${d.slice(0, 7)}${d.slice(9, 20)}00`);
+  return 98n - (base % 97n) === BigInt(d.slice(7, 9));
+}
+
+/** Número CNJ → 20 dígitos (aceita máscara NNNNNNN-DD.AAAA.J.TR.OOOO), com dígito verificador. */
 export const zCnj = () =>
   z
     .string()
     .trim()
     .transform(digits)
-    .refine((d) => d.length === 20, "Número CNJ deve ter 20 dígitos.");
+    .refine((d) => d.length === 20, "Número CNJ deve ter 20 dígitos.")
+    .refine(isValidCnj, "Número CNJ inválido (confira o dígito verificador).");
 
 export const zCep = () =>
   z
