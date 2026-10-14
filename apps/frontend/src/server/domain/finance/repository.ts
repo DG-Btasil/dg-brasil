@@ -3,6 +3,7 @@ import { fromDbError, unwrap, type DbErrorLike } from "@/server/core/db-errors";
 import { conflict, notFound } from "@/server/core/errors";
 import { toRange, type PageInput } from "@/server/core/pagination";
 import type {
+  AgreementListRow,
   AgreementRow,
   AllocationBalanceRow,
   AllocationRow,
@@ -44,7 +45,7 @@ const ALLOCATION_COLUMNS =
 const PARTNERSHIP_COLUMNS =
   "id, legal_case_id, partner_organization_id, partner_percentage, owner_percentage, effective_at, created_by, created_at, cancelled_at, cancelled_by, cancellation_reason";
 /** Parceiro: só o que o DTO dele tem. */
-const PARTNERSHIP_PARTNER_COLUMNS = "id, legal_case_id, partner_percentage, effective_at, cancelled_at";
+const PARTNERSHIP_PARTNER_COLUMNS = "id, legal_case_id, partner_percentage, effective_at, cancelled_at, legal_cases(title)";
 const TRANSFER_COLUMNS =
   "id, partner_organization_id, amount, status, paid_at, reference, registered_by, cancelled_at, cancellation_reason, created_at, updated_at";
 const TRANSFER_PARTNER_COLUMNS = "id, amount, status, paid_at, reference, cancelled_at, created_at";
@@ -181,6 +182,81 @@ export async function listAgreements(
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);
   if (error) throw financeError(error);
   return { rows: (data ?? []) as AgreementRow[], total: count ?? 0 };
+}
+
+/** Acordos com rótulos do caso (título, cliente, origem) e do modelo — embeds de leitura sob RLS. */
+const AGREEMENT_LIST_COLUMNS = `${AGREEMENT_COLUMNS}, fee_models(name),
+  legal_cases(title, origin_organization_id, clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name)))`;
+
+export async function listAgreementRows(
+  db: SupabaseClient,
+  filters: { legalCaseId?: string; status?: string },
+  page: PageInput,
+  sort: { column: string; ascending: boolean },
+): Promise<{ rows: AgreementListRow[]; total: number }> {
+  let query = db.from("financial_agreements").select(AGREEMENT_LIST_COLUMNS, { count: "exact" });
+  if (filters.legalCaseId) query = query.eq("legal_case_id", filters.legalCaseId);
+  if (filters.status) query = query.eq("status", filters.status);
+  const { from, to } = toRange(page);
+  const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);
+  if (error) throw financeError(error);
+  return { rows: (data ?? []) as unknown as AgreementListRow[], total: count ?? 0 };
+}
+
+/** Saldos (view payment_balances) das obrigações destes acordos — uma página de acordos por vez. */
+export async function balancesOfAgreements(db: SupabaseClient, agreementIds: string[]): Promise<PaymentBalanceRow[]> {
+  if (agreementIds.length === 0) return [];
+  const rows: PaymentBalanceRow[] = [];
+  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
+    const data = check(
+      await db.from("payment_balances").select(BALANCE_COLUMNS).in("financial_agreement_id", agreementIds).order("payment_id").range(from, from + CHUNK - 1),
+    ) as PaymentBalanceRow[] | null;
+    rows.push(...(data ?? []));
+    if (!data || data.length < CHUNK) break;
+  }
+  return rows;
+}
+
+type BalanceTotalsRow = Pick<PaymentBalanceRow, "amount" | "received_amount" | "balance" | "status">;
+
+/** Todos os saldos (para a visão geral), em lotes, até o teto. `truncated` = passou do teto. */
+export async function allBalances(db: SupabaseClient): Promise<{ rows: BalanceTotalsRow[]; truncated: boolean }> {
+  const rows: BalanceTotalsRow[] = [];
+  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
+    const data = check(await db.from("payment_balances").select("amount, received_amount, balance, status").order("payment_id").range(from, from + CHUNK - 1)) as BalanceTotalsRow[] | null;
+    rows.push(...(data ?? []));
+    if (!data || data.length < CHUNK) return { rows, truncated: false };
+  }
+  return { rows, truncated: true };
+}
+
+type ReceiptMonthRow = { amount: number | string; occurred_at: string };
+
+/** Lançamentos do ledger desde `fromIso` (valor com sinal e data), em lotes, até o teto. */
+export async function receiptsSince(db: SupabaseClient, fromIso: string): Promise<{ rows: ReceiptMonthRow[]; truncated: boolean }> {
+  const rows: ReceiptMonthRow[] = [];
+  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
+    const data = check(
+      await db.from("payment_receipts").select("amount, occurred_at").gte("occurred_at", fromIso).order("sequence").range(from, from + CHUNK - 1),
+    ) as ReceiptMonthRow[] | null;
+    rows.push(...(data ?? []));
+    if (!data || data.length < CHUNK) return { rows, truncated: false };
+  }
+  return { rows, truncated: true };
+}
+
+const AGREEMENT_STATUS_LIST = ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"] as const;
+
+/** Quantidade de acordos por situação (contagens no banco). */
+export async function countAgreementsByStatus(db: SupabaseClient): Promise<Record<(typeof AGREEMENT_STATUS_LIST)[number], number>> {
+  const counts = await Promise.all(
+    AGREEMENT_STATUS_LIST.map(async (status) => {
+      const { error, count } = await db.from("financial_agreements").select("id", { count: "exact", head: true }).eq("status", status);
+      if (error) throw financeError(error);
+      return count ?? 0;
+    }),
+  );
+  return { DRAFT: counts[0], ACTIVE: counts[1], COMPLETED: counts[2], CANCELLED: counts[3] };
 }
 
 export async function getAgreement(db: SupabaseClient, id: string): Promise<AgreementRow | null> {

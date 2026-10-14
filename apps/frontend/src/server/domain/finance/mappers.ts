@@ -3,10 +3,12 @@ import { paymentStatusFromDb, type DbPaymentStatus } from "@/repositories/api/db
 import type { ID } from "@/types";
 import type {
   AgreementDbStatus,
+  AgreementListItemDTO,
   AllocationDTO,
   CasePartnershipInternalDTO,
   CasePartnershipPartnerDTO,
   FeeModelDTO,
+  FinanceTotals,
   FinancialAgreementDTO,
   PartnerAgreementShareDTO,
   PartnerShareTotals,
@@ -154,7 +156,24 @@ export interface PartnershipRow {
 }
 
 /** Colunas do snapshot que o parceiro pode receber (consulta já não pede as outras). */
-export type PartnershipPartnerRow = Pick<PartnershipRow, "id" | "legal_case_id" | "partner_percentage" | "effective_at" | "cancelled_at">;
+export type PartnershipPartnerRow = Pick<PartnershipRow, "id" | "legal_case_id" | "partner_percentage" | "effective_at" | "cancelled_at"> & {
+  legal_cases?: { title: string } | { title: string }[] | null;
+};
+
+type Many<T> = T | T[] | null;
+const first = <T>(v: Many<T> | undefined): T | undefined => (Array.isArray(v) ? v[0] : (v ?? undefined));
+
+/** Acordo + rótulos do caso e do modelo (embeds de leitura). */
+interface CaseEmbed {
+  title: string;
+  origin_organization_id: string;
+  clients?: Many<{ individual_client_details?: Many<{ full_name: string }>; company_client_details?: Many<{ legal_name: string }> }>;
+}
+
+export interface AgreementListRow extends AgreementRow {
+  fee_models?: Many<{ name: string }>;
+  legal_cases?: Many<CaseEmbed>;
+}
 
 export interface TransferRow {
   id: string;
@@ -373,12 +392,88 @@ export function agreementShareFromRows(agreement: PartnershipPartnerRow, balance
   return {
     agreementId: agreement.id,
     legalCaseId: agreement.legal_case_id,
+    caseTitle: first(agreement.legal_cases)?.title,
     partnerPercentage: money(agreement.partner_percentage),
     effectiveAt: agreement.effective_at,
     status: agreement.cancelled_at ? "CANCELLED" : "ACTIVE",
     cancelledAt: opt(agreement.cancelled_at),
     ...shareTotals(own),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Totais (somados no servidor sobre o que o banco derivou)            */
+/* ------------------------------------------------------------------ */
+
+const OPEN_STATUSES = new Set(["PENDING", "PARTIAL", "OVERDUE"]);
+
+/** Totais de obrigações a partir da view payment_balances. Centavos inteiros: sem erro de ponto flutuante. */
+export function balanceTotals(rows: Pick<PaymentBalanceRow, "amount" | "received_amount" | "balance" | "status">[]): FinanceTotals {
+  let contracted = 0;
+  let received = 0;
+  let outstanding = 0;
+  let overdue = 0;
+  let open = 0;
+  for (const r of rows) {
+    received += toCents(r.received_amount);
+    if (r.status === "CANCELLED") continue;
+    contracted += toCents(r.amount);
+    if (OPEN_STATUSES.has(r.status)) {
+      outstanding += toCents(r.balance);
+      open += 1;
+      if (r.status === "OVERDUE") overdue += toCents(r.balance);
+    }
+  }
+  return { contracted: fromCents(contracted), received: fromCents(received), outstanding: fromCents(outstanding), overdue: fromCents(overdue), openPayments: open };
+}
+
+function clientNameOf(c: CaseEmbed): string {
+  const client = first(c.clients);
+  return first(client?.individual_client_details)?.full_name ?? first(client?.company_client_details)?.legal_name ?? "";
+}
+
+export function agreementListItemFromRows(row: AgreementListRow, balances: PaymentBalanceRow[]): AgreementListItemDTO {
+  const own = balances.filter((b) => b.financial_agreement_id === row.id);
+  const legalCase = first(row.legal_cases);
+  const nextDueDate = own
+    .filter((b) => OPEN_STATUSES.has(b.status) && b.due_date)
+    .map((b) => b.due_date as string)
+    .sort()[0];
+  return {
+    ...agreementFromRow(row),
+    caseTitle: legalCase?.title ?? "",
+    clientName: legalCase ? clientNameOf(legalCase) : "",
+    caseOriginOrganizationId: legalCase?.origin_organization_id,
+    feeModelName: first(row.fee_models)?.name,
+    totals: balanceTotals(own),
+    nextDueDate,
+  };
+}
+
+const MONTH_SP = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" });
+
+/** "2026-10" no fuso de São Paulo. */
+export function monthKey(iso: string): string {
+  return MONTH_SP.format(new Date(iso)).slice(0, 7);
+}
+
+/** Últimos `count` meses (inclusive o de `now`), do mais antigo ao atual. */
+export function lastMonths(now: Date, count = 12): string[] {
+  const [y, m] = monthKey(now.toISOString()).split("-").map(Number);
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(Date.UTC(y, m - 1 - (count - 1 - i), 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
+/** Recebido LÍQUIDO por mês (entradas − estornos ± ajustes), pelos lançamentos do ledger. */
+export function monthlyNet(receipts: { amount: Numeric; occurred_at: string }[], months: string[]): { month: string; amount: number }[] {
+  const byMonth = new Map(months.map((m) => [m, 0]));
+  for (const r of receipts) {
+    const key = monthKey(r.occurred_at);
+    if (byMonth.has(key)) byMonth.set(key, (byMonth.get(key) ?? 0) + toCents(r.amount));
+  }
+  return months.map((month) => ({ month, amount: fromCents(byMonth.get(month) ?? 0) }));
 }
 
 /* ------------------------------------------------------------------ */

@@ -11,25 +11,18 @@
  * parceiro recebe apenas os registros da própria relação (ver
  * `lib/permissions/partner-scope.ts` e docs/BACKEND_HANDOFF.md).
  */
-import type { IntegrationStatus, PartnerOfficeStatus } from "@/lib/constants/status";
+import type { IntegrationStatus } from "@/lib/constants/status";
 import type {
   AgentTask,
   Agent,
   ChangeHistoryEntry,
   Client,
-  FeeModel,
-  FinancialAgreement,
   ID,
   Integration,
   JudicialSourceState,
   LegalThesis,
   Notification,
   Office,
-  PartnerOffice,
-  PartnerRequest,
-  PartnerRole,
-  Payment,
-  CasePartnershipAgreement,
   ReferenceMaterial,
   Role,
   Skill,
@@ -38,19 +31,12 @@ import type {
 import type { JudicialSyncResult } from "@/services/judicial-integration";
 import type {
   NewReferenceInput,
-  NewPartnerOfficeInput,
-  NewPartnerRequestInput,
-  PartnerOfficePatch,
-  PartnershipValuesInput,
   ImportPlan,
   ImportResult,
   JudicialSourceConfigInput,
   NewAgentInput,
   NewSkillInput,
   NewThesisInput,
-  RegisterPaymentInput,
-  NewAgreementInput,
-  NewFeeModelInput,
   SkillChangeProposal,
   UserPreferences,
 } from "@/store/types";
@@ -84,19 +70,6 @@ export interface NotificationRepository {
   markAllRead(): Promise<void>;
 }
 
-export interface FinanceRepository {
-  listFeeModels(): Promise<FeeModel[]>;
-  createFeeModel(input: NewFeeModelInput): Promise<ID>;
-  updateFeeModel(id: ID, patch: Partial<NewFeeModelInput>): Promise<void>;
-  listAgreements(): Promise<FinancialAgreement[]>;
-  createAgreement(input: NewAgreementInput): Promise<ID>;
-  listPayments(agreementId?: ID): Promise<Payment[]>;
-  registerPayment(paymentId: ID, input?: RegisterPaymentInput): Promise<void>;
-  updatePaymentAmount(paymentId: ID, paidAmount: number): Promise<void>;
-  reversePayment(paymentId: ID): Promise<void>;
-  updatePaymentDueDate(paymentId: ID, dueDate: string): Promise<void>;
-}
-
 export interface DgRepository {
   listAgents(): Promise<Agent[]>;
   createAgent(input: NewAgentInput): Promise<ID>;
@@ -126,28 +99,6 @@ export interface IntegrationRepository {
 export interface ImportRepository {
   /** Aplica um plano já validado (dry run feito na interface). */
   run(plan: ImportPlan): Promise<ImportResult>;
-}
-
-/** Escritórios parceiros, vista do escritório proprietário (e leitura própria do parceiro). */
-export interface PartnerRepository {
-  list(): Promise<PartnerOffice[]>;
-  get(id: ID): Promise<PartnerOffice | undefined>;
-  create(input: NewPartnerOfficeInput): Promise<ID>;
-  update(id: ID, patch: PartnerOfficePatch): Promise<void>;
-  setStatus(id: ID, status: PartnerOfficeStatus): Promise<void>;
-  /** Altera a divisão PADRÃO. Acordos de casos existentes não mudam (snapshot). */
-  changeShare(id: ID, partnerPercentage: number, ownerPercentage: number): Promise<void>;
-  inviteUser(partnerOfficeId: ID, input: { name: string; email: string; role: PartnerRole }): Promise<string>;
-  setUserStatus(userId: ID, status: "ACTIVE" | "DISABLED"): Promise<void>;
-  changeUserRole(userId: ID, role: PartnerRole): Promise<void>;
-  listRequests(): Promise<PartnerRequest[]>;
-  createRequest(input: NewPartnerRequestInput): Promise<ID>;
-  resolveRequest(id: ID, resolution: "RESOLVED" | "CANCELLED"): Promise<void>;
-  /** Torna PARTNER_VISIBLE um documento (já aprovado) de caso de parceiro. */
-  shareDocument(documentId: ID): Promise<void>;
-  listAgreements(): Promise<CasePartnershipAgreement[]>;
-  updateAgreementValues(id: ID, input: PartnershipValuesInput): Promise<void>;
-  registerPayout(id: ID, amount: number, note?: string): Promise<void>;
 }
 
 /**

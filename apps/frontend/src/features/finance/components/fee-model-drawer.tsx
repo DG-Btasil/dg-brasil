@@ -1,100 +1,109 @@
 "use client";
 
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
+import { BILLING_MOMENTS, BILLING_MOMENT_LABEL, type BillingMoment } from "@/lib/constants/status";
+import { mapFieldErrors } from "@/lib/actions/result";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/dialog";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
-import { BILLING_MOMENTS, BILLING_MOMENT_LABEL } from "@/lib/constants/status";
-import { LEGAL_AREAS, LEGAL_AREA_LABEL } from "@/lib/constants/legal";
-import type { FeeModel } from "@/types";
-import { useFinanceActions } from "../hooks";
-import { feeModelSchema, feeModelToForm, formToFeeModelInput, type FeeModelFormValues } from "../schemas";
+import type { FeeModelDTO } from "@/server/domain/finance/dto";
+import { feeModelCreateInput, feeModelPatch, feeModelToValues, type FeeModelValues, type FeeTermsValues } from "../server-input";
+import { useFinanceActions } from "../use-finance-actions";
 
-const FORM_ID = "fee-model-form";
+const TERM_FIELDS: { key: keyof FeeTermsValues; label: string; placeholder: string; numeric?: boolean }[] = [
+  { key: "upfrontFee", label: "Entrada (R$)", placeholder: "0,00" },
+  { key: "fixedFee", label: "Valor fixo (R$)", placeholder: "0,00" },
+  { key: "installments", label: "Parcelamento (nº de parcelas)", placeholder: "1", numeric: true },
+  { key: "monthlyFee", label: "Mensalidade (R$)", placeholder: "0,00" },
+  { key: "successFeePercent", label: "Percentual de êxito (%)", placeholder: "0" },
+];
 
-/** Criação/edição de modelo de honorários. `model` indefinido = novo. */
-export function FeeModelDrawer({ open, model, onOpenChange }: { open: boolean; model?: FeeModel; onOpenChange: (open: boolean) => void }) {
-  const { saveFeeModel } = useFinanceActions();
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<FeeModelFormValues>({ resolver: zodResolver(feeModelSchema), defaultValues: feeModelToForm(model) });
+/** Criação/edição de modelo de honorários (createFeeModelAction / updateFeeModelAction). `model` indefinido = novo. */
+export function FeeModelDrawer({
+  model,
+  areas,
+  onClose,
+  onSaved,
+}: {
+  model?: FeeModelDTO;
+  areas: { value: string; label: string }[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const actions = useFinanceActions(onSaved);
+  const [values, setValues] = useState<FeeModelValues>(() => feeModelToValues(model));
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const set = <K extends keyof FeeModelValues>(key: K, value: FeeModelValues[K]) => setValues((v) => ({ ...v, [key]: value }));
 
-  // Recarrega os valores ao abrir para outro modelo (sincroniza com sistema externo: o formulário).
-  useEffect(() => {
-    if (open) reset(feeModelToForm(model));
-  }, [open, model, reset]);
-
-  async function onSubmit(values: FeeModelFormValues) {
-    const ok = await saveFeeModel(formToFeeModelInput(values), model?.id);
-    if (ok) onOpenChange(false);
+  async function save() {
+    if (!values.name.trim()) {
+      setErrors({ name: "Informe o nome do modelo." });
+      return;
+    }
+    setSaving(true);
+    const r = model ? await actions.updateFeeModel(model.id, feeModelPatch(values)) : await actions.createFeeModel(feeModelCreateInput(values));
+    setSaving(false);
+    if (r.ok) onClose();
+    else setErrors(mapFieldErrors(r.error.fieldErrors, {}, model ? "patch." : undefined));
   }
 
   return (
     <Drawer
-      open={open}
-      onOpenChange={onOpenChange}
+      open
+      onOpenChange={(o) => !o && !saving && onClose()}
       width={620}
       title={model ? "Editar modelo de honorários" : "Novo modelo de honorários"}
-      description="Os valores do modelo preenchem novos contratos e podem ser personalizados por cliente."
+      description="Os valores do modelo preenchem novos contratos e podem ser personalizados por caso. Contratos já criados não mudam."
       footer={
         <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button type="submit" form={FORM_ID} loading={isSubmitting}>
+          <Button loading={saving} onClick={save}>
             {model ? "Salvar alterações" : "Criar modelo"}
           </Button>
         </>
       }
     >
-      <form id={FORM_ID} onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
+      <div className="space-y-5">
         <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-          <Field label="Nome" requirement="required" error={errors.name?.message} className="col-span-2">
-            {(p) => <Input {...p} placeholder="Ex.: Bancário — Modelo A" {...register("name")} />}
+          <Field label="Nome" requirement="required" error={errors.name} className="col-span-2">
+            {(p) => <Input {...p} maxLength={120} placeholder="Ex.: Bancário — Modelo A" value={values.name} onChange={(e) => set("name", e.target.value)} />}
           </Field>
-          <Field label="Descrição" requirement="optional" className="col-span-2">
-            {(p) => <Textarea {...p} rows={2} {...register("description")} />}
+          <Field label="Descrição" requirement="optional" className="col-span-2" error={errors.description}>
+            {(p) => <Textarea {...p} rows={2} maxLength={1000} value={values.description} onChange={(e) => set("description", e.target.value)} />}
           </Field>
-          <Field label="Área" requirement="optional">
-            {(p) => <Select {...p} placeholder="Todas as áreas" options={LEGAL_AREAS.map((a) => ({ value: a, label: LEGAL_AREA_LABEL[a] }))} {...register("area")} />}
+          <Field label="Área" requirement="optional" error={errors.legalAreaId}>
+            {(p) => <Select {...p} placeholder="Todas as áreas" options={areas} value={values.legalAreaId} onChange={(e) => set("legalAreaId", e.target.value)} />}
           </Field>
-          <Field label="Momento da cobrança" requirement="required" error={errors.billingMoment?.message}>
-            {(p) => <Select {...p} options={BILLING_MOMENTS.map((m) => ({ value: m, label: BILLING_MOMENT_LABEL[m] }))} {...register("billingMoment")} />}
+          <Field label="Momento da cobrança" requirement="required" error={errors.billingMoment}>
+            {(p) => (
+              <Select
+                {...p}
+                options={BILLING_MOMENTS.map((m) => ({ value: m, label: BILLING_MOMENT_LABEL[m] }))}
+                value={values.billingMoment}
+                onChange={(e) => set("billingMoment", e.target.value as BillingMoment)}
+              />
+            )}
           </Field>
         </div>
-
         <fieldset className="rounded-md border border-line px-4 pb-4 pt-2">
           <legend className="px-1 text-[12.5px] font-semibold text-foreground">Valores</legend>
           <p className="mb-3 text-[12px] text-muted">Preencha apenas o que se aplica. Valores monetários no formato 1.500,00.</p>
           <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-            <Field label="Entrada (R$)" requirement="optional" error={errors.upfrontFee?.message}>
-              {(p) => <Input {...p} inputMode="decimal" placeholder="0,00" {...register("upfrontFee")} />}
-            </Field>
-            <Field label="Valor fixo (R$)" requirement="optional" error={errors.fixedFee?.message}>
-              {(p) => <Input {...p} inputMode="decimal" placeholder="0,00" {...register("fixedFee")} />}
-            </Field>
-            <Field label="Parcelamento (nº de parcelas)" requirement="optional" error={errors.installments?.message}>
-              {(p) => <Input {...p} inputMode="numeric" placeholder="1" {...register("installments")} />}
-            </Field>
-            <Field label="Mensalidade (R$)" requirement="optional" error={errors.monthlyFee?.message}>
-              {(p) => <Input {...p} inputMode="decimal" placeholder="0,00" {...register("monthlyFee")} />}
-            </Field>
-            <Field label="Percentual de êxito (%)" requirement="optional" hint="Entre 0 e 100" error={errors.successFeePercent?.message}>
-              {(p) => <Input {...p} inputMode="decimal" placeholder="0" {...register("successFeePercent")} />}
-            </Field>
+            {TERM_FIELDS.map((f) => (
+              <Field key={f.key} label={f.label} requirement="optional" error={errors[f.key]}>
+                {(p) => <Input {...p} inputMode={f.numeric ? "numeric" : "decimal"} placeholder={f.placeholder} value={values[f.key]} onChange={(e) => set(f.key, e.target.value)} />}
+              </Field>
+            ))}
           </div>
         </fieldset>
-
-        <Field label="Observações" requirement="optional">
-          {(p) => <Textarea {...p} rows={3} placeholder="Condições de negociação, exceções aceitas…" {...register("notes")} />}
+        <Field label="Observações" requirement="optional" error={errors.notes}>
+          {(p) => <Textarea {...p} rows={3} maxLength={2000} placeholder="Condições de negociação, exceções aceitas…" value={values.notes} onChange={(e) => set("notes", e.target.value)} />}
         </Field>
-        <Checkbox label="Modelo ativo" description="Modelos inativos não aparecem na criação de novos contratos." {...register("active")} />
-      </form>
+        <Checkbox label="Modelo ativo" description="Modelos inativos não aparecem na criação de novos contratos." checked={values.active} onChange={(e) => set("active", e.target.checked)} />
+      </div>
     </Drawer>
   );
 }

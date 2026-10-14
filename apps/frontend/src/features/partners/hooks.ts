@@ -1,12 +1,9 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import { OPEN_REVIEW_STATUSES, type PartnerOfficeStatus } from "@/lib/constants/status";
+import { useMemo } from "react";
+import { OPEN_REVIEW_STATUSES } from "@/lib/constants/status";
 import { partnershipView, summarizePartnerFinance } from "@/lib/domain/partnership";
-import { repositories } from "@/repositories";
 import { useScopedStore } from "@/store/scope";
-import type { NewPartnerOfficeInput, NewPartnerRequestInput, PartnerOfficePatch, PartnershipValuesInput } from "@/store/types";
-import { useToast } from "@/store/ui-store";
 import type {
   AuditEvent,
   Client,
@@ -15,7 +12,6 @@ import type {
   PartnerFinancialSummary,
   PartnerOffice,
   PartnerRequest,
-  PartnerRole,
   PartnershipAgreementView,
   Process,
   User,
@@ -23,9 +19,9 @@ import type {
 import { clientDisplayName } from "@/features/processes/utils";
 
 /*
- * Hooks de parceria. Leem SEMPRE o estado recortado (useScopedStore): a
- * mesma chamada devolve tudo para a equipe interna e apenas a relação do
- * próprio escritório para um usuário parceiro.
+ * Hooks MOCK de parceria que restam: leitura para o Início (interno e do
+ * portal), que é a Fase H. Parceiros, solicitações e financeiro da parceria
+ * já leem e gravam no servidor (Fases D e F).
  */
 
 /* ------------------------------------------------------------------ */
@@ -204,54 +200,4 @@ export function useOpenInternalReviews(legalCaseId: ID): number {
     () => reviews.filter((r) => r.legalCaseId === legalCaseId && OPEN_REVIEW_STATUSES.includes(r.status)).length + signals.filter((s) => s.legalCaseId === legalCaseId).length,
     [reviews, signals, legalCaseId],
   );
-}
-
-/* ------------------------------------------------------------------ */
-/* Ações (escritório proprietário)                                     */
-/* ------------------------------------------------------------------ */
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
-export function usePartnerActions() {
-  const toast = useToast();
-
-  const run = useCallback(
-    async <T>(fn: () => Promise<T>, success: { title: string; description?: string }, failure: string): Promise<T | null> => {
-      try {
-        const result = await fn();
-        toast({ tone: "success", ...success });
-        return result;
-      } catch (error) {
-        toast({ tone: "danger", title: failure, description: errorMessage(error, "") || undefined });
-        return null;
-      }
-    },
-    [toast],
-  );
-
-  return {
-    create: (input: NewPartnerOfficeInput) =>
-      run(() => repositories.partners.create(input), { title: "Parceiro cadastrado", description: "Convite enviado ao responsável (simulado)." }, "Não foi possível cadastrar o parceiro."),
-    update: (id: ID, patch: PartnerOfficePatch) => run(() => repositories.partners.update(id, patch), { title: "Dados do parceiro atualizados" }, "Não foi possível salvar."),
-    setStatus: (id: ID, status: PartnerOfficeStatus) => run(() => repositories.partners.setStatus(id, status), { title: "Situação do parceiro atualizada" }, "Não foi possível alterar a situação."),
-    changeShare: (id: ID, partner: number, owner: number) =>
-      run(() => repositories.partners.changeShare(id, partner, owner), { title: "Divisão atualizada", description: "Vale para novos casos. Casos existentes mantêm o acordo original." }, "Não foi possível alterar a divisão."),
-    inviteUser: (partnerOfficeId: ID, input: { name: string; email: string; role: PartnerRole }) =>
-      run(() => repositories.partners.inviteUser(partnerOfficeId, input), { title: "Convite enviado", description: `${input.name} (${input.email}) — envio simulado.` }, "Não foi possível convidar."),
-    setUserStatus: (userId: ID, status: "ACTIVE" | "DISABLED") =>
-      run(() => repositories.partners.setUserStatus(userId, status), { title: status === "DISABLED" ? "Usuário inativado" : "Usuário reativado" }, "Não foi possível alterar o usuário."),
-    changeUserRole: (userId: ID, role: PartnerRole) => run(() => repositories.partners.changeUserRole(userId, role), { title: "Papel alterado" }, "Não foi possível alterar o papel."),
-    createRequest: (input: NewPartnerRequestInput) =>
-      run(() => repositories.partners.createRequest(input), { title: "Solicitação enviada ao parceiro", description: input.title }, "Não foi possível criar a solicitação."),
-    resolveRequest: (id: ID, resolution: "RESOLVED" | "CANCELLED") =>
-      run(() => repositories.partners.resolveRequest(id, resolution), { title: resolution === "RESOLVED" ? "Solicitação resolvida" : "Solicitação cancelada" }, "Não foi possível atualizar a solicitação."),
-    shareDocument: (documentId: ID) =>
-      run(() => repositories.partners.shareDocument(documentId), { title: "Documento disponibilizado ao parceiro" }, "Não foi possível disponibilizar o documento."),
-    updateValues: (agreementId: ID, input: PartnershipValuesInput) =>
-      run(() => repositories.partners.updateAgreementValues(agreementId, input), { title: "Valores da parceria atualizados" }, "Não foi possível salvar os valores."),
-    registerPayout: (agreementId: ID, amount: number, note?: string) =>
-      run(() => repositories.partners.registerPayout(agreementId, amount, note), { title: "Repasse registrado", description: "Registro interno — nenhuma transferência é feita pelo sistema." }, "Não foi possível registrar o repasse."),
-  };
 }

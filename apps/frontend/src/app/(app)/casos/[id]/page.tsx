@@ -18,6 +18,8 @@ import { can } from "@/lib/permissions";
 import { requireAppSession } from "@/server/auth/session";
 import { getAnalysisAction, getAnalysisSetupAction, listAnalysesAction } from "@/server/domain/analyses/actions";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
+import { DEFAULT_AGREEMENT_QUERY, agreementQueryToInput } from "@/features/finance/list-query";
+import { listAgreementRowsAction, listCasePartnershipsAction } from "@/server/domain/finance/actions";
 
 /**
  * Ficha do caso, lida no servidor a cada acesso (rota direta, nova aba e
@@ -36,7 +38,8 @@ async function InternalCase({ id }: { id: string }) {
   // Análises e revisões: só ADMIN/LAWYER (ASSISTANT não tem as abas nem a leitura).
   const canAnalyses = can(session.role, "analyses.start");
   const canReviews = can(session.role, "reviews.view");
-  const [catalog, processes, documents, requirements, partnerRequests, analyses, reviews] = await Promise.all([
+  const canFinance = can(session.role, "finance.view");
+  const [catalog, processes, documents, requirements, partnerRequests, analyses, reviews, finance] = await Promise.all([
     getCaseCatalogAction(),
     listCaseProcessesAction({ caseId: id, pageSize: 50 }),
     listDocumentsAction(documentListInput({ legalCaseId: id })),
@@ -44,6 +47,9 @@ async function InternalCase({ id }: { id: string }) {
     withPartner ? listPartnerRequestsAction(requestListInput({ legalCaseId: id })) : Promise.resolve(undefined),
     canAnalyses ? listAnalysesAction({ legalCaseId: id, pageSize: 50 }) : Promise.resolve(undefined),
     canReviews ? listReviewsAction({ legalCaseId: id, pageSize: 50 }) : Promise.resolve(undefined),
+    canFinance
+      ? Promise.all([listAgreementRowsAction(agreementQueryToInput(DEFAULT_AGREEMENT_QUERY, { legalCaseId: id })), listCasePartnershipsAction({ legalCaseId: id })])
+      : Promise.resolve(undefined),
   ]);
   if (!catalog.ok) return <ActionErrorState error={catalog} title="Não foi possível abrir o caso." />;
   // Análise atual: a em curso, ou a mais recente; com os rótulos dos campos do modelo.
@@ -61,6 +67,7 @@ async function InternalCase({ id }: { id: string }) {
         partnerRequests={partnerRequests}
         analysis={analyses ? { list: analyses, current, fieldDefs } : undefined}
         reviews={reviews}
+        finance={finance ? { agreements: finance[0], partnerships: finance[1] } : undefined}
       />
     </Suspense>
   );

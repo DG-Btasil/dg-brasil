@@ -4,11 +4,10 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { createSeedData } from "@/mocks";
 import { createImportSlice } from "./slices/data-import";
-import { createDgSlice, createFinanceSlice } from "./slices/finance-dg";
+import { createDgSlice } from "./slices/finance-dg";
 import { createReviewSlice } from "./slices/processes-reviews";
 import { nowISO } from "@/lib/clock";
 import { syncCaseStatuses } from "@/lib/domain/legal-case";
-import { createPartnerSlice } from "./slices/partners";
 import { createReferenceSlice } from "./slices/references";
 import { createOfficeSlice, createSessionSlice, initialSession } from "./slices/session-office";
 import type { SetState } from "./helpers";
@@ -63,9 +62,7 @@ export const useAppStore = create<AppStore>()(
         ...createOfficeSlice(set, get),
         ...createImportSlice(set, get),
         ...createReviewSlice(set, get),
-        ...createFinanceSlice(set, get),
         ...createDgSlice(set, get),
-        ...createPartnerSlice(set, get),
         ...createReferenceSlice(set, get),
       };
     },

@@ -6,12 +6,10 @@ import {
   mockReferenceRepository,
   mockClientRepository,
   mockDgRepository,
-  mockFinanceRepository,
   mockImportRepository,
   mockIntegrationRepository,
   mockNotificationRepository,
   mockOfficeRepository,
-  mockPartnerRepository,
   mockUserRepository,
 } from "./mock";
 
@@ -20,12 +18,10 @@ export const repositories = {
   users: mockUserRepository,
   clients: mockClientRepository,
   notifications: mockNotificationRepository,
-  finance: mockFinanceRepository,
   dg: mockDgRepository,
   integrations: mockIntegrationRepository,
   imports: mockImportRepository,
   references: mockReferenceRepository,
-  partners: mockPartnerRepository,
 } as const;
 
 export type Repositories = typeof repositories;

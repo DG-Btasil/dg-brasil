@@ -10,12 +10,10 @@ import type {
   ReferenceRepository,
   ClientRepository,
   DgRepository,
-  FinanceRepository,
   ImportRepository,
   IntegrationRepository,
   NotificationRepository,
   OfficeRepository,
-  PartnerRepository,
   UserRepository,
 } from "../contracts";
 
@@ -46,19 +44,6 @@ export const mockNotificationRepository: NotificationRepository = {
   list: () => ok(data().notifications),
   markRead: async (id) => state().markNotificationRead(id),
   markAllRead: async () => state().markAllNotificationsRead(),
-};
-
-export const mockFinanceRepository: FinanceRepository = {
-  listFeeModels: () => ok(data().feeModels),
-  createFeeModel: async (input) => state().createFeeModel(input),
-  updateFeeModel: async (id, patch) => state().updateFeeModel(id, patch),
-  listAgreements: () => ok(data().agreements),
-  createAgreement: async (input) => state().createAgreement(input),
-  listPayments: (agreementId) => ok(data().payments.filter((p) => !agreementId || p.agreementId === agreementId)),
-  registerPayment: async (id, input) => state().registerPayment(id, input),
-  updatePaymentAmount: async (id, paidAmount) => state().updatePaymentAmount(id, paidAmount),
-  reversePayment: async (id) => state().reversePayment(id),
-  updatePaymentDueDate: async (id, dueDate) => state().updatePaymentDueDate(id, dueDate),
 };
 
 export const mockDgRepository: DgRepository = {
@@ -93,25 +78,6 @@ export const mockIntegrationRepository: IntegrationRepository = {
 
 export const mockImportRepository: ImportRepository = {
   run: async (plan) => state().importData(plan),
-};
-
-export const mockPartnerRepository: PartnerRepository = {
-  list: () => ok(data().partnerOffices),
-  get: (id) => ok(data().partnerOffices.find((p) => p.id === id)),
-  create: async (input) => state().createPartnerOffice(input),
-  update: async (id, patch) => state().updatePartnerOffice(id, patch),
-  setStatus: async (id, status) => state().setPartnerOfficeStatus(id, status),
-  changeShare: async (id, partnerPercentage, ownerPercentage) => state().changePartnerShare(id, partnerPercentage, ownerPercentage),
-  inviteUser: async (partnerOfficeId, input) => state().invitePartnerUser(partnerOfficeId, input),
-  setUserStatus: async (userId, status) => state().setPartnerUserStatus(userId, status),
-  changeUserRole: async (userId, role) => state().changePartnerUserRole(userId, role),
-  listRequests: () => ok(data().partnerRequests),
-  createRequest: async (input) => state().createPartnerRequest(input),
-  resolveRequest: async (id, resolution) => state().resolvePartnerRequest(id, resolution),
-  shareDocument: async (documentId) => state().shareDocumentWithPartner(documentId),
-  listAgreements: () => ok(data().partnershipAgreements),
-  updateAgreementValues: async (id, input) => state().updatePartnershipValues(id, input),
-  registerPayout: async (id, amount, note) => state().registerPartnerPayout(id, amount, note),
 };
 
 export const mockReferenceRepository: ReferenceRepository = {

@@ -7,6 +7,8 @@ import { CLIENT_KIND_SHORT, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE, PARTNER_OFF
 import { formatCNPJ, formatDate, formatPhone, maskCNPJ, maskCPF } from "@/lib/formatting";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
+import type { PartnerAgreementShareDTO, PartnerFinanceDTO, TransferListItemDTO } from "@/server/domain/finance/dto";
+import { PartnerShareView } from "@/features/finance/components/partner-share";
 import type { ActionResult } from "@/lib/actions/result";
 import { Can, PageContainer } from "@/components/layout/guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -48,7 +50,7 @@ type PageResult<T> = ActionResult<Page<T>>;
 /**
  * Ficha do escritório parceiro (equipe interna), com dados do servidor.
  * ADMIN vê divisão, responsável e notas internas; LAWYER, só o cadastro.
- * Financeiro e atividade entram nas fases F e H.
+ * Financeiro (ADMIN) lido do servidor; atividade entra na fase H.
  */
 export function PartnerDetail({
   detail,
@@ -58,6 +60,7 @@ export function PartnerDetail({
   cases,
   processes,
   requests,
+  finance,
 }: {
   detail: PartnerDetailDTO;
   stats: ActionResult<PartnerStatsDTO>;
@@ -66,6 +69,12 @@ export function PartnerDetail({
   cases: PageResult<CaseListItem>;
   processes: PageResult<ProcessListItem>;
   requests: PageResult<PartnerRequestListItem>;
+  /** Só ADMIN (partners.finance.view + finance.view). */
+  finance?: {
+    summary: ActionResult<PartnerFinanceDTO>;
+    shares: ActionResult<Page<PartnerAgreementShareDTO>>;
+    transfers: ActionResult<Page<TransferListItemDTO>>;
+  };
 }) {
   const can = useCan();
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
@@ -124,7 +133,14 @@ export function PartnerDetail({
         {active === "clientes" && <ClientsTab clients={clients} partnerId={partner.id} />}
         {active === "casos" && <CasesTab cases={cases} />}
         {active === "processos" && <ProcessesTab processes={processes} />}
-        {active === "financeiro" && <PendingIntegration description="O financeiro da parceria será conectado depois da revisão do ciclo de vida do acordo financeiro." />}
+        {active === "financeiro" && finance && (
+          <PartnerShareView
+            summary={finance.summary}
+            shares={finance.shares}
+            transfers={finance.transfers}
+            manage={can("finance.manage") ? { partnerOrganizationId: partner.id } : undefined}
+          />
+        )}
         {active === "atividade" && <PendingIntegration description="A linha do tempo de auditoria do parceiro será conectada em uma próxima fase." />}
       </TabPanel>
 

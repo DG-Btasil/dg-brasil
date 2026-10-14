@@ -2,9 +2,11 @@ import { isPartner, requireInternal, requirePermission, type ServiceContext } fr
 import { businessRule, DomainError, forbidden, invalidState, notFound, validation } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
 import type {
+  AgreementListItemDTO,
   AllocationDTO,
   CasePartnershipDTO,
   FeeModelDTO,
+  FinanceSummaryDTO,
   FinancialAgreementDTO,
   PartnerAgreementShareDTO,
   PartnerFinanceDTO,
@@ -17,6 +19,10 @@ import type {
 import {
   agreementFromRow,
   agreementInsert,
+  agreementListItemFromRows,
+  balanceTotals,
+  lastMonths,
+  monthlyNet,
   agreementShareFromRows,
   agreementUpdate,
   allocationFromRow,
@@ -187,6 +193,47 @@ export async function createAgreement(ctx: ServiceContext, input: CreateAgreemen
   const result = await repo.insertIdempotent(ctx.db, "financial_agreements", agreementInsert(terms, actorId), actorId, input.idempotencyKey);
   if (!result.deduplicated) ctx.log.info("finance.agreement.created", { agreementId: result.id, legalCaseId: input.legalCaseId });
   return result;
+}
+
+/** Lista de acordos com rótulos do caso e totais do ledger (somados no servidor, por página). */
+export async function listAgreementRows(ctx: ServiceContext, input: ListAgreementsInput): Promise<Page<AgreementListItemDTO>> {
+  requireFinance(ctx, "finance.view");
+  const { rows, total } = await repo.listAgreementRows(ctx.db, { legalCaseId: input.legalCaseId, status: input.status }, input, {
+    column: input.column,
+    ascending: input.ascending,
+  });
+  const balances = await repo.balancesOfAgreements(
+    ctx.db,
+    rows.map((r) => r.id),
+  );
+  return toPage(
+    rows.map((r) => agreementListItemFromRows(r, balances)),
+    total,
+    input,
+  );
+}
+
+/**
+ * Visão geral (ADMIN): totais das obrigações, acordos por situação e recebido
+ * líquido por mês — tudo somado no SERVIDOR sobre o que o banco derivou (view
+ * payment_balances e ledger). O navegador não recebe as listas inteiras.
+ */
+export async function getFinanceSummary(ctx: ServiceContext, now = new Date()): Promise<FinanceSummaryDTO> {
+  requireFinance(ctx, "finance.view");
+  const months = lastMonths(now, 12);
+  const [balances, byStatus, receipts] = await Promise.all([
+    repo.allBalances(ctx.db),
+    repo.countAgreementsByStatus(ctx.db),
+    // Início do mês mais antigo, com um dia de folga para o fuso (o agrupamento é em São Paulo).
+    repo.receiptsSince(ctx.db, new Date(Date.parse(`${months[0]}-01T00:00:00Z`) - 86_400_000).toISOString()),
+  ]);
+  if (balances.truncated || receipts.truncated) ctx.log.warn("finance.summary_truncated", {});
+  return {
+    totals: balanceTotals(balances.rows),
+    agreementsByStatus: byStatus,
+    monthly: monthlyNet(receipts.rows, months),
+    truncated: balances.truncated || receipts.truncated,
+  };
 }
 
 /** Termos só mudam em rascunho. Acordo ativo/encerrado é histórico de negócio. */

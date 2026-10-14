@@ -12,6 +12,9 @@ import { listRelatedClientsAction } from "@/server/domain/clients/actions";
 import { getPartnerAction, getPartnerStatsAction, listOrganizationUsersAction } from "@/server/domain/organizations/actions";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 import { listProcessesAction } from "@/server/domain/processes/actions";
+import { getPartnerFinanceAction, listPartnerAgreementSharesAction, listTransfersAction } from "@/server/domain/finance/actions";
+import { can } from "@/lib/permissions";
+import { requireAppSession } from "@/server/auth/session";
 
 function PartnerNotFound() {
   return (
@@ -44,15 +47,35 @@ async function Partner({ id }: { id: string }) {
     );
   }
   if (detail.data.access === "PARTNER") return <PartnerNotFound />;
-  const [stats, users, clients, cases, processes, requests] = await Promise.all([
+  const session = await requireAppSession();
+  const canFinance = can(session.role, "partners.finance.view") && can(session.role, "finance.view");
+  const [stats, users, clients, cases, processes, requests, finance] = await Promise.all([
     getPartnerStatsAction({ id }),
     listOrganizationUsersAction({ organizationId: id, pageSize: 50 }),
     listRelatedClientsAction({ organizationId: id, pageSize: 50 }),
     listCasesAction({ relatedOrganizationId: id, pageSize: 50 }),
     listProcessesAction({ caseOriginOrganizationId: id, pageSize: 50 }),
     listPartnerRequestsAction(requestListInput({ partnerOrganizationId: id })),
+    canFinance
+      ? Promise.all([
+          getPartnerFinanceAction({ partnerOrganizationId: id }),
+          listPartnerAgreementSharesAction({ partnerOrganizationId: id, pageSize: 50 }),
+          listTransfersAction({ partnerOrganizationId: id, pageSize: 50 }),
+        ])
+      : Promise.resolve(undefined),
   ]);
-  return <PartnerDetail detail={detail.data} stats={stats} users={users} clients={clients} cases={cases} processes={processes} requests={requests} />;
+  return (
+    <PartnerDetail
+      detail={detail.data}
+      stats={stats}
+      users={users}
+      clients={clients}
+      cases={cases}
+      processes={processes}
+      requests={requests}
+      finance={finance ? { summary: finance[0], shares: finance[1], transfers: finance[2] } : undefined}
+    />
+  );
 }
 
 export default async function PartnerDetailPage({ params }: PageProps<"/parceiros/[id]">) {

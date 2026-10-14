@@ -2649,6 +2649,83 @@ await deve('auditoria na mesma transação: ANALYSIS_STARTED com a execução e 
     if (/Texto sigiloso/.test(tudo)) throw new Error('texto do pedido na auditoria')
   }))
 
+secao('Acordo financeiro: ciclo de vida garantido no banco [030]')
+const novoCaso030 = async (titulo) => (await um(db, `insert into legal_cases (client_id, legal_area_id, title, origin_organization_id, created_by_organization_id)
+  values ($1, $2, $3, $4, $4) returning id`, [ids.joao, ids.banking, titulo, ids.owner])).id
+const acordo030 = (uid, caso, status = 'DRAFT', termos = {}) => como(uid, async (tx) =>
+  (await um(tx, `insert into financial_agreements (legal_case_id, status, fixed_fee, notes) values ($1, $2, $3, $4) returning id`,
+    [caso, status, termos.fixed_fee ?? 1000, termos.notes ?? null])).id)
+const situacao030 = (uid, id, status) => como(uid, (tx) => tx.query(`update financial_agreements set status = $2 where id = $1`, [id, status]))
+const obrigacao030 = (uid, acordo, valor = 500) => como(uid, async (tx) =>
+  (await um(tx, `insert into payments (financial_agreement_id, amount, payment_type) values ($1, $2, 'OTHER') returning id`, [acordo, valor])).id)
+const entrada030 = (uid, pagamento, valor, kind = 'RECEIPT', original = null, notes = null) => como(uid, async (tx) =>
+  (await um(tx, `insert into payment_receipts (payment_id, kind, amount, original_receipt_id, notes) values ($1, $2, $3, $4, $5) returning id`,
+    [pagamento, kind, valor, original, notes])).id)
+await deve('rascunho: termos mudam; ativar; depois os termos ficam congelados (observação ainda muda)', async () => {
+  ids.caso030 = await novoCaso030('Caso 030')
+  ids.fa030 = await acordo030(ids.barbara, ids.caso030)
+  await como(ids.barbara, (tx) => tx.query(`update financial_agreements set fixed_fee = 1500, installments = 3 where id = $1`, [ids.fa030]))
+  await situacao030(ids.barbara, ids.fa030, 'ACTIVE')
+  await como(ids.barbara, (tx) => tx.query(`update financial_agreements set notes = 'Observação nova' where id = $1`, [ids.fa030]))
+  const a = await um(db, `select status, fixed_fee::text f, installments, notes from financial_agreements where id = $1`, [ids.fa030])
+  igual([a.status, a.f, a.installments, a.notes], ['ACTIVE', '1500.00', 3, 'Observação nova'], 'acordo')
+})
+await deveFalhar('termos de acordo ATIVO não mudam', () =>
+  como(ids.barbara, (tx) => tx.query(`update financial_agreements set fixed_fee = 9999 where id = $1`, [ids.fa030])), /Só o rascunho/)
+await deveFalhar('acordo não muda de caso', () =>
+  como(ids.barbara, (tx) => tx.query(`update financial_agreements set legal_case_id = $2 where id = $1`, [ids.fa030, ids.casoI])), /não muda de caso/)
+await deveFalhar('ATIVO não volta para rascunho', () => situacao030(ids.barbara, ids.fa030, 'DRAFT'), /não é permitida/)
+await deveFalhar('acordo não nasce concluído', async () => acordo030(ids.barbara, await novoCaso030('Caso 030 concluído'), 'COMPLETED'), /rascunho ou ativo/)
+await deve('LAWYER não opera acordo: a RLS nem mostra a linha (0 alteradas, nenhuma mensagem de regra)', async () => {
+  const r = await como(ids.lucas, (tx) => tx.query(`update financial_agreements set status = 'COMPLETED' where id = $1`, [ids.fa030]))
+  igual(r.affectedRows ?? 0, 0, 'linhas alteradas')
+  igual((await um(db, `select status from financial_agreements where id = $1`, [ids.fa030])).status, 'ACTIVE', 'intacto')
+})
+await deve('concluir com obrigação em aberto é recusado; quitada, conclui; depois é histórico', async () => {
+  const p = await obrigacao030(ids.barbara, ids.fa030, 800)
+  let msg = ''
+  try { await situacao030(ids.barbara, ids.fa030, 'COMPLETED') } catch (e) { msg = e.message }
+  if (!/obrigações em aberto/.test(msg)) throw new Error(`esperava recusa, veio "${msg}"`)
+  if (/800/.test(msg)) throw new Error('valor na mensagem de erro')
+  await entrada030(ids.barbara, p, 800)
+  await situacao030(ids.barbara, ids.fa030, 'COMPLETED')
+  igual((await um(db, `select status from financial_agreements where id = $1`, [ids.fa030])).status, 'COMPLETED', 'concluído')
+  ids.p030 = p
+})
+await deveFalhar('acordo concluído não muda (nem observação)', () =>
+  como(ids.barbara, (tx) => tx.query(`update financial_agreements set notes = 'x' where id = $1`, [ids.fa030])), /histórico/)
+await deveFalhar('acordo concluído não recebe obrigação nova', () => obrigacao030(ids.barbara, ids.fa030), /não recebe nem altera obrigações/)
+await deveFalhar('obrigação de acordo concluído não muda', () =>
+  como(ids.barbara, (tx) => tx.query(`update payments set description = 'x' where id = $1`, [ids.p030])), /não recebe nem altera obrigações/)
+await deve('estorno (correção) vale mesmo com o acordo concluído', async () => {
+  const original = (await um(db, `select id from payment_receipts where payment_id = $1 and kind = 'RECEIPT'`, [ids.p030])).id
+  await entrada030(ids.barbara, ids.p030, -100, 'REVERSAL', original)
+  igual((await um(db, `select sum(amount)::text s from payment_receipts where payment_id = $1`, [ids.p030])).s, '700.00', 'líquido')
+})
+await deveFalhar('…mas entrada nova em acordo concluído é recusada', () => entrada030(ids.barbara, ids.p030, 100), /Ative o acordo/)
+await deve('rascunho: aceita obrigação, recusa entrada; cancelar com obrigação aberta é recusado; cancelada a obrigação, cancela', async () => {
+  const fa = await acordo030(ids.barbara, await novoCaso030('Caso 030 rascunho'))
+  const p = await obrigacao030(ids.barbara, fa, 300)
+  let msg = ''
+  try { await entrada030(ids.barbara, p, 300) } catch (e) { msg = e.message }
+  if (!/Ative o acordo/.test(msg)) throw new Error(`esperava recusa da entrada, veio "${msg}"`)
+  msg = ''
+  try { await situacao030(ids.barbara, fa, 'CANCELLED') } catch (e) { msg = e.message }
+  if (!/obrigações em aberto/.test(msg)) throw new Error(`esperava recusa do cancelamento, veio "${msg}"`)
+  await como(ids.barbara, (tx) => tx.query(`update payments set cancelled_at = now(), cancellation_reason = 'Lançada por engano' where id = $1`, [p]))
+  await situacao030(ids.barbara, fa, 'CANCELLED')
+  igual((await um(db, `select status from financial_agreements where id = $1`, [fa])).status, 'CANCELLED', 'cancelado')
+})
+await deveFalhar('cancelado não volta a ativo', async () => {
+  const fa = await acordo030(ids.barbara, await novoCaso030('Caso 030 cancelado'))
+  await situacao030(ids.barbara, fa, 'CANCELLED')
+  await situacao030(ids.barbara, fa, 'ACTIVE')
+}, /histórico/)
+await deve('auditoria: mudança de situação do acordo fica registrada (sem valores)', async () => {
+  const ev = await linhas(db, `select action, metadata from audit_events where entity_id = $1 order by created_at`, [ids.fa030])
+  if (ev.length < 3) throw new Error(`eventos: ${ev.length}`)
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

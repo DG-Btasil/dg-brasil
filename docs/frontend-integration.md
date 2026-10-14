@@ -20,7 +20,7 @@ retorno das operações.
 | C | Documentos no Portal do Parceiro | ✅ real (D) | só PARTNER_VISIBLE; envio/nova versão em caso e processo; pendências documentais só leitura |
 | D | Parceiros (equipe interna), Solicitações, Portal do Parceiro | ✅ real | Início e Financeiro do portal ficam para H e F |
 | E | Revisões, Análises | ✅ real | início/envio de análise atômico e idempotente (migration 029); decisão só por `decide_review` |
-| F | Financeiro | ⏳ | mutações só depois de revisar o ciclo de vida do acordo financeiro |
+| F | Financeiro | ✅ real | ciclo de vida do acordo garantido no banco (migration 030); totais somados no servidor; ledger append-only |
 | G | Execuções de agente / Agentes | ⏳ | paginar o read model antes |
 | H | Notificações, Auditoria, Home/painéis | ⏳ | painéis por último |
 
@@ -350,6 +350,65 @@ haver agente (configuração de agente fora do escopo da 4.3).
 revisão do store e as telas do V1 que só gravavam no mock (editor, barra de
 decisão, contexto, painel de status, interrupção).
 
+## Fase F — Financeiro
+
+**Auditoria do ciclo de vida do acordo (antes de conectar as mutações).**
+`financial_agreements` não tinha guarda no banco: transições de situação,
+termos congelados fora do rascunho e "nenhuma obrigação em aberto ao
+concluir/cancelar" existiam só no TypeScript, com janela de corrida entre
+conferir e gravar; obrigação nova e recebimento também só conferiam a
+situação do acordo no TypeScript. **Migration 030** coloca essas regras no
+banco (ver `supabase/README.md`), com locks que serializam obrigação/entrada
+com a conclusão do acordo. Estorno e ajuste para menos continuam valendo em
+qualquer situação (correção). Histórico: os triggers de auditoria já
+registravam acordo, obrigação e lançamento.
+
+**Visão geral** (`/financeiro`, ADMIN): totais (em aberto, recebido,
+contratado, em atraso, contratos por situação) e recebido líquido por mês
+(12 meses, fuso de São Paulo) **somados no servidor** sobre a view
+`payment_balances` e o ledger (`getFinanceSummaryAction`) — o navegador não
+recebe listas inteiras nem faz conta de divisão. Teto de leitura com aviso
+"Totais parciais" se ultrapassado.
+
+**Contratos** (lista paginada no servidor, filtro por situação na URL;
+`listAgreementRowsAction` traz caso, cliente, modelo e totais do ledger por
+página). Gaveta do contrato: termos, obrigações com situação derivada
+(`listPaymentsAction`) e lançamentos (`listReceiptsAction`); ações:
+ativar/concluir/cancelar o acordo, nova obrigação, corrigir obrigação
+(nunca o recebido), cancelar obrigação (motivo), registrar recebimento
+(vazio = quitar o saldo), ajuste (justificativa) e estorno. **Lançamentos
+nunca se editam** (ledger append-only). Toda mutação com chave de
+idempotência por intenção; sem UI otimista. Valores em BRL; moeda sempre do
+acordo.
+
+**Novo contrato** (`/financeiro/contratos/novo`, aceita `?caso=`): caso por
+busca no servidor, modelo de honorários (o servidor copia os termos quando
+não personalizados), rascunho ou "ativar agora". As obrigações (parcelas)
+são registradas na gaveta — o gerador de cronograma do V1 (várias gravações
+sem transação) não foi mantido.
+
+**Caso → Financeiro** (ADMIN): contratos do caso + histórico da parceria
+(snapshot congelado no aceite). **Parceiro → Financeiro** (ADMIN): totais da
+participação, participação por caso e repasses (registrar — o banco escolhe
+as divisões, 026 —, marcar pago, cancelar). **Portal → Financeiro** (só
+PARTNER_ADMIN): a MESMA visão, só leitura, só o próprio escritório (o
+escritório vem da sessão; DTO do parceiro sem receita do escritório).
+PARTNER_USER não tem financeiro (rota bloqueada). **Configurações → Modelos
+de honorários**: lista, criação e edição reais.
+
+**Diferenças do Front V1:** sem gráfico "contratado por modelo" e sem
+"êxito previsto" (estimativa sobre valor da causa não é dado do ledger);
+sem filtro de origem na visão geral (a participação por parceiro fica na
+ficha do parceiro); sem "valores da parceria" editáveis (o snapshot é
+imutável; mudar a divisão padrão vale para casos novos); a aba Financeiro
+do caso no portal não existe (a participação por caso está em
+`/financeiro`).
+
+**Mock removido:** repositórios `finance` e `partners`, ações do store de
+financeiro e de parceiros, hooks e cálculos de financeiro no navegador
+(totais, cronograma, divisão) e os diálogos mock de "valores da parceria" e
+"repasse".
+
 ## Testes
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
@@ -379,6 +438,14 @@ decisão, contexto, painel de status, interrupção).
   (criar e enviar numa transação, repetição e corrida com a mesma chave,
   falha no envio sem resto gravado, conflito de chave, reenvio recusado
   com outra chave, papéis, assistente).
+- Fase F, unitários: `src/features/finance/phase-f-ui.test.ts` (totais em
+  centavos, recebido por mês no fuso de SP, linha da lista, formulários →
+  schemas reais, URL da lista).
+- Fase F, banco (PGlite): `supabase/tests/verificar.mjs`, seção `[030]`.
+- Fase F, integração: `tests/integration/frontend-finance.int.test.ts`
+  (ciclo de vida pelo service e direto no banco com o JWT do ADMIN,
+  concluído sem obrigação/entrada e com estorno, histórico imutável,
+  lista e visão geral, papéis sem acesso).
 - Fase B, integração: `tests/integration/frontend-cases-processes.int.test.ts`
   (caso idempotente, filtros e contagem, catálogo, isolamento, processo
   idempotente com próximo prazo, edição que limpa, ciclo do prazo,
@@ -587,3 +654,44 @@ de análise da área bancária com esse agente (o do seed fica sem agente).
 - [ ] ASSISTANT: sem abas Análise/Revisões no caso; `/revisoes` e
       `/casos/<id>/analise/nova` → acesso negado.
 - [ ] Parceiro: nenhuma rota de revisão/análise acessível.
+
+## QA manual — Fase F (Supabase DEV, valores fictícios)
+
+**ADMIN**
+
+- [ ] `/financeiro`: totais e gráfico mensal; contratos paginados; filtro de
+      situação vai para a URL e sobrevive ao recarregar.
+- [ ] Novo contrato (com modelo e sem modelo; "Ativar agora" marcado e
+      desmarcado). Clique duplo em "Criar contrato" → um contrato só. Segundo
+      contrato ATIVO no mesmo caso → "Este caso já tem um acordo financeiro
+      ativo."
+- [ ] Gaveta: nova obrigação; registrar recebimento parcial e "quitar" (valor
+      em branco); estornar parte; ajuste para menos com justificativa. A
+      situação da obrigação muda (A vencer → Parcial → Recebida) depois da
+      resposta.
+- [ ] Concluir com obrigação em aberto → recusado com mensagem; quitada →
+      conclui. Concluído: sem "Nova obrigação" nem "Registrar recebimento";
+      estorno continua disponível.
+- [ ] Cancelar obrigação (motivo obrigatório); com recebimento → pede
+      estorno antes.
+- [ ] Caso → Financeiro: contratos do caso e parceria (caso de origem
+      parceira mostra o percentual congelado).
+- [ ] Parceiro → Financeiro: participação, por caso e repasses; registrar
+      repasse maior que o disponível → recusado; marcar pago; cancelar
+      (motivo).
+- [ ] Configurações → Modelos de honorários: criar, editar, inativar.
+
+**LAWYER / ASSISTANT**
+
+- [ ] Sem item Financeiro; `/financeiro` → acesso negado; sem aba Financeiro
+      no caso.
+
+**PARTNER_ADMIN**
+
+- [ ] `/financeiro`: só a participação do próprio escritório (sem receita do
+      escritório, sem outros parceiros); repasses só leitura.
+
+**PARTNER_USER**
+
+- [ ] `/financeiro` → acesso negado.
+

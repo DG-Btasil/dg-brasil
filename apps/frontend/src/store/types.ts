@@ -4,7 +4,6 @@ import type {
   DocumentCategory,
   IntegrationStatus,
   NotificationType,
-  PartnerOfficeStatus,
   PartnerRequestType,
   ReferenceMaterialType,
 } from "@/lib/constants/status";
@@ -23,7 +22,6 @@ import type {
   Office,
   ReferenceMaterial,
   PartnerOffice,
-  PartnerRole,
   Process,
   Role,
   Skill,
@@ -303,19 +301,6 @@ export interface ReviewActions {
   markAllNotificationsRead: () => void;
 }
 
-export interface FinanceActions {
-  createFeeModel: (input: NewFeeModelInput) => ID;
-  updateFeeModel: (id: ID, patch: Partial<NewFeeModelInput>) => void;
-  createAgreement: (input: NewAgreementInput) => ID;
-  /** Registra recebimento (total ou parcial). O status é recalculado, não gravado. */
-  registerPayment: (paymentId: ID, input?: RegisterPaymentInput) => void;
-  /** Corrige o total recebido de uma parcela. */
-  updatePaymentAmount: (paymentId: ID, paidAmount: number) => void;
-  /** Estorna todos os recebimentos da parcela. */
-  reversePayment: (paymentId: ID) => void;
-  updatePaymentDueDate: (paymentId: ID, dueDate: string) => void;
-}
-
 export interface DgActions {
   createAgent: (input: NewAgentInput) => ID;
   updateAgent: (id: ID, patch: Partial<Pick<Agent, "status" | "autonomy" | "rules" | "skillIds" | "thesisIds" | "description">>) => void;
@@ -330,25 +315,6 @@ export interface DgActions {
   recordJudicialSync: (id: ID, result: { syncedAt: string; newItems: number; latestItemAt?: string }) => void;
 }
 
-export interface PartnerActions {
-  /* Escritório proprietário */
-  createPartnerOffice: (input: NewPartnerOfficeInput) => ID;
-  updatePartnerOffice: (id: ID, patch: PartnerOfficePatch) => void;
-  setPartnerOfficeStatus: (id: ID, status: PartnerOfficeStatus) => void;
-  /** Muda a divisão PADRÃO. Vale só para novos casos; acordos existentes não mudam. */
-  changePartnerShare: (id: ID, partnerPercentage: number, ownerPercentage: number) => void;
-  shareDocumentWithPartner: (documentId: ID) => void;
-  createPartnerRequest: (input: NewPartnerRequestInput) => ID;
-  resolvePartnerRequest: (id: ID, resolution: "RESOLVED" | "CANCELLED") => void;
-  updatePartnershipValues: (agreementId: ID, input: PartnershipValuesInput) => void;
-  registerPartnerPayout: (agreementId: ID, amount: number, note?: string) => void;
-  /* Proprietário (qualquer parceiro) ou Partner Admin (somente o próprio escritório) */
-  invitePartnerUser: (partnerOfficeId: ID, input: { name: string; email: string; role: PartnerRole }) => string;
-  setPartnerUserStatus: (userId: ID, status: "ACTIVE" | "DISABLED") => void;
-  changePartnerUserRole: (userId: ID, role: PartnerRole) => void;
-}
-
-
 export interface ReferenceActions {
   createReference: (input: NewReferenceInput) => ID;
 }
@@ -357,9 +323,7 @@ export type AppActions = SessionActions &
   OfficeActions &
   ImportActions &
   ReviewActions &
-  FinanceActions &
   DgActions &
-  PartnerActions &
   ReferenceActions;
 
 export type AppStore = AppState & AppActions;

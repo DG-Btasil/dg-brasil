@@ -58,6 +58,16 @@ export async function listAgreementsAction(input: unknown) {
   return runAction({ name: "finance.agreements.list", permission: "finance.view", schema: listAgreementsSchema, input, handler: service.listAgreements });
 }
 
+/** Lista de acordos com rótulos do caso e totais do ledger (ADMIN). */
+export async function listAgreementRowsAction(input: unknown) {
+  return runAction({ name: "finance.agreements.rows", permission: "finance.view", schema: listAgreementsSchema, input, handler: service.listAgreementRows });
+}
+
+/** Visão geral agregada no servidor (ADMIN). */
+export async function getFinanceSummaryAction(input?: unknown) {
+  return runAction({ name: "finance.summary", permission: "finance.view", schema: z.unknown(), input, handler: (ctx) => service.getFinanceSummary(ctx) });
+}
+
 export async function getAgreementAction(input: unknown) {
   return runAction({ name: "finance.agreements.get", permission: "finance.view", schema: idSchema, input, handler: (ctx, { id }) => service.getAgreement(ctx, id) });
 }

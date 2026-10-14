@@ -62,6 +62,38 @@ export interface FinancialAgreementDTO {
   updatedAt: ISODateTime;
 }
 
+/** Totais de obrigações, todos derivados do ledger (view payment_balances), somados no servidor. */
+export interface FinanceTotals {
+  /** Soma das obrigações não canceladas. */
+  contracted: number;
+  received: number;
+  /** Saldo das obrigações em aberto (pendente, parcial, vencida). */
+  outstanding: number;
+  /** Parte do saldo em aberto já vencida. */
+  overdue: number;
+  openPayments: number;
+}
+
+/** Linha da lista de acordos: acordo + rótulos do caso + totais do ledger. */
+export interface AgreementListItemDTO extends FinancialAgreementDTO {
+  caseTitle: string;
+  clientName: string;
+  caseOriginOrganizationId?: ID;
+  feeModelName?: string;
+  totals: FinanceTotals;
+  /** Próximo vencimento em aberto. */
+  nextDueDate?: ISODate;
+}
+
+/** Visão geral do financeiro (ADMIN). Agregado no servidor; `truncated` = passou do teto de leitura. */
+export interface FinanceSummaryDTO {
+  totals: FinanceTotals;
+  agreementsByStatus: Record<AgreementDbStatus, number>;
+  /** Recebido líquido por mês (America/Sao_Paulo), últimos 12 meses, do mais antigo ao atual. */
+  monthly: { month: string; amount: number }[];
+  truncated: boolean;
+}
+
 /** Obrigação + situação derivada do ledger. `receivedAmount` é SEMPRE derivado. */
 export interface PaymentDTO {
   id: ID;
@@ -216,6 +248,8 @@ export interface PartnerFinanceDTO {
 export interface PartnerAgreementShareDTO extends PartnerShareTotals {
   agreementId: ID;
   legalCaseId: ID;
+  /** Título do caso, quando o parceiro tem acesso operacional a ele (RLS). */
+  caseTitle?: string;
   partnerPercentage: number;
   effectiveAt: ISODateTime;
   status: "ACTIVE" | "CANCELLED";

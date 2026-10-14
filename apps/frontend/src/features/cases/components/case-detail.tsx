@@ -34,6 +34,8 @@ import { ProcessListTable } from "@/features/processes/components/process-list-t
 import type { AnalysisDetailDTO, AnalysisListItem, TemplateFieldDTO } from "@/server/domain/analyses/dto";
 import type { ReviewListItem } from "@/server/domain/reviews/dto";
 import { AnalysisPanel } from "@/features/analyses/components/analysis-panel";
+import { CaseFinancePanel } from "@/features/finance/components/case-finance-panel";
+import type { AgreementListItemDTO, CasePartnershipDTO } from "@/server/domain/finance/dto";
 import { isOpen, ReviewTable } from "@/features/reviews/components/review-table";
 import { useCaseActions } from "../use-case-actions";
 import { AcceptCaseDialog, AssignLawyerDialog, ChangeOriginDialog, EditCaseDialog, RejectCaseDialog } from "./case-dialogs";
@@ -44,9 +46,9 @@ type DialogKey = "accept" | "reject" | "origin" | "lawyer" | "edit";
 
 /**
  * Página do caso (equipe interna), com dados do servidor (getCaseAction):
- * visão geral, documentos/pendências, análise e revisões (ADMIN/LAWYER) e
- * processos. Financeiro e atividade são conectados nas próximas fases; até
- * lá, a aba diz isso (nada de dado de demonstração).
+ * visão geral, documentos/pendências, análise e revisões (ADMIN/LAWYER),
+ * processos e financeiro (ADMIN). Atividade é conectada na Fase H; até lá, a
+ * aba diz isso (nada de dado de demonstração).
  * Precisa estar dentro de <Suspense> (useUrlTab).
  */
 export function CaseDetail({
@@ -58,6 +60,7 @@ export function CaseDetail({
   partnerRequests,
   analysis,
   reviews,
+  finance,
 }: {
   legalCase: CaseInternalDTO;
   catalog: CaseCatalogDTO;
@@ -70,6 +73,8 @@ export function CaseDetail({
   analysis?: { list: ActionResult<Page<AnalysisListItem>>; current?: ActionResult<AnalysisDetailDTO>; fieldDefs: TemplateFieldDTO[] };
   /** Só ADMIN/LAWYER (reviews.view). */
   reviews?: ActionResult<Page<ReviewListItem>>;
+  /** Só ADMIN (finance.view). */
+  finance?: { agreements: ActionResult<Page<AgreementListItemDTO>>; partnerships: ActionResult<CasePartnershipDTO> };
 }) {
   const canFinance = usePermission("finance.view");
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
@@ -130,7 +135,7 @@ export function CaseDetail({
         )}
         {tab === "revisoes" && reviews && <CaseReviews reviews={reviews} />}
         {tab === "processos" && <CaseProcessesTab legalCase={legalCase} processes={processes} />}
-        {tab === "financeiro" && canFinance && <PendingIntegration description="O financeiro do caso será conectado depois da revisão do ciclo de vida do acordo financeiro." />}
+        {tab === "financeiro" && canFinance && finance && <CaseFinancePanel legalCaseId={legalCase.id} agreements={finance.agreements} partnerships={finance.partnerships} />}
         {tab === "atividade" && <PendingIntegration description="A linha do tempo de auditoria será conectada em uma próxima fase." />}
       </TabPanel>
       {dialog === "accept" && <AcceptCaseDialog legalCase={legalCase} open onOpenChange={close} />}

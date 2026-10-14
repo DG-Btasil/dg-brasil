@@ -1,181 +1,182 @@
 "use client";
 
-import { useMemo, type ChangeEvent } from "react";
-import { useForm, useWatch } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useCallback, useState } from "react";
 import { PencilLine, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { todayISO } from "@/lib/clock";
 import { BILLING_MOMENT_LABEL } from "@/lib/constants/status";
-import type { ID } from "@/types";
-import { useCaseValue, useClientCasesForFinance, useClientOptions, useFeeModels, useFinanceActions } from "../hooks";
-import { agreementSchema, feeModelToFeeFields, formToFeeValues, type AgreementFormValues } from "../schemas";
-import { caseLabel } from "../utils";
-import { FeeValuesFields } from "./fee-values-fields";
-import { SchedulePreview } from "./schedule-preview";
+import { callAction, mapFieldErrors } from "@/lib/actions/result";
+import { useActionFeedback } from "@/lib/actions/use-action-feedback";
+import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
+import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { listCasesAction } from "@/server/domain/cases/actions";
+import { createAgreementAction } from "@/server/domain/finance/actions";
+import type { FeeModelDTO } from "@/server/domain/finance/dto";
+import { useToast } from "@/store/ui-store";
+import { agreementCreateInput, feeTermsFromModel, type AgreementValues, type FeeTermsValues } from "../server-input";
 
-interface AgreementFormProps {
-  /** Cliente fixo (ex.: aba Financeiro do caso). */
-  fixedClientId?: ID;
-  /** Caso fixo (ex.: aba Financeiro do caso). */
-  fixedCaseId?: ID;
-  defaultClientId?: ID;
-  defaultCaseId?: ID;
-  onCreated?: (id: ID) => void;
-  onCancel?: () => void;
-  submitLabel?: string;
-}
+const TERM_FIELDS: { key: keyof FeeTermsValues; label: string; placeholder: string; numeric?: boolean }[] = [
+  { key: "upfrontFee", label: "Entrada (R$)", placeholder: "0,00" },
+  { key: "fixedFee", label: "Valor fixo (R$)", placeholder: "0,00" },
+  { key: "installments", label: "Nº de parcelas do valor fixo", placeholder: "1", numeric: true },
+  { key: "monthlyFee", label: "Mensalidade (R$)", placeholder: "0,00" },
+  { key: "successFeePercent", label: "Percentual de êxito (%)", placeholder: "0" },
+];
+
+const FIELD_MAP: Record<string, string> = { legalCaseId: "legalCaseId" };
 
 /**
- * Contrato de honorários. O modelo escolhido preenche os valores (somente
- * leitura); "Personalizar para este cliente" libera a edição. Nenhuma regra
- * de cobrança é imposta: cada escritório define seus próprios modelos.
+ * Contrato de honorários de um CASO (createAgreementAction, chave por
+ * intenção). O modelo preenche os termos; "Personalizar" libera a edição. Sem
+ * termos e com modelo, o SERVIDOR copia os termos do modelo. As obrigações
+ * (parcelas) são registradas depois, na gaveta do contrato.
  */
-export function AgreementForm({ fixedClientId, fixedCaseId, defaultClientId, defaultCaseId, onCreated, onCancel, submitLabel = "Criar contrato" }: AgreementFormProps) {
-  const feeModels = useFeeModels();
-  const clientOptions = useClientOptions();
-  const { createAgreement } = useFinanceActions();
+export function AgreementForm({
+  feeModels,
+  defaultCase,
+  onCreated,
+  onCancel,
+}: {
+  feeModels: FeeModelDTO[];
+  defaultCase?: PickerOption;
+  onCreated: (legalCaseId: string) => void;
+  onCancel: () => void;
+}) {
+  const toast = useToast();
+  const failed = useActionFeedback();
+  const idempotency = useIdempotencyKey();
+  const [legalCase, setLegalCase] = useState<PickerOption | null>(defaultCase ?? null);
+  const [values, setValues] = useState<AgreementValues>({ feeModelId: "", startDate: todayISO(), notes: "", activate: false, ...feeTermsFromModel(undefined) });
+  const [customized, setCustomized] = useState(true);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const model = feeModels.find((m) => m.id === values.feeModelId);
+  const readOnly = !!model && !customized;
+  const set = <K extends keyof AgreementValues>(key: K, value: AgreementValues[K]) => setValues((v) => ({ ...v, [key]: value }));
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    control,
-    formState: { errors, isSubmitting },
-  } = useForm<AgreementFormValues>({
-    resolver: zodResolver(agreementSchema),
-    defaultValues: {
-      clientId: fixedClientId ?? defaultClientId ?? "",
-      legalCaseId: fixedCaseId ?? defaultCaseId ?? "",
-      feeModelId: "",
-      customized: true,
-      ...feeModelToFeeFields(undefined),
-      startDate: todayISO(),
-      notes: "",
-    },
-  });
-
-  const values = useWatch({ control });
-  const clientCases = useClientCasesForFinance(values.clientId);
-  const caseValue = useCaseValue(values.legalCaseId);
-  const selectedModel = feeModels.find((m) => m.id === values.feeModelId);
-  const readOnly = Boolean(selectedModel) && !values.customized;
-
-  const modelOptions = useMemo(
-    () => feeModels.filter((m) => m.active || m.id === values.feeModelId).map((m) => ({ value: m.id, label: m.name })),
-    [feeModels, values.feeModelId],
-  );
+  const searchCases = useCallback(async (q: string): Promise<{ ok: true; options: PickerOption[] } | { ok: false; message: string }> => {
+    const r = await callAction(() => listCasesAction({ q: q.trim() || undefined, pageSize: 10, sortBy: "updatedAt", sortDirection: "desc" }));
+    if (!r.ok) return { ok: false, message: r.error.message };
+    return { ok: true, options: r.data.items.map((c) => ({ id: c.id, label: c.title, description: c.clientName })) };
+  }, []);
 
   function applyModel(id: string) {
-    const model = feeModels.find((m) => m.id === id);
-    const fields = feeModelToFeeFields(model);
-    (Object.keys(fields) as (keyof typeof fields)[]).forEach((key) => setValue(key, fields[key], { shouldValidate: true }));
-    setValue("customized", !model);
+    const m = feeModels.find((x) => x.id === id);
+    setValues((v) => ({ ...v, feeModelId: id, ...feeTermsFromModel(m) }));
+    setCustomized(!m);
   }
 
-  async function onSubmit(data: AgreementFormValues) {
-    const fee = formToFeeValues(data);
-    const id = await createAgreement({
-      clientId: data.clientId,
-      legalCaseId: data.legalCaseId,
-      feeModelId: data.feeModelId || undefined,
-      customized: data.customized,
-      upfrontFee: fee.upfrontFee,
-      fixedFee: fee.fixedFee,
-      installments: fee.fixedFee > 0 ? fee.installments : 0,
-      monthlyFee: fee.monthlyFee,
-      successFeePercent: fee.successFeePercent,
-      startDate: data.startDate,
-      notes: data.notes || undefined,
-    });
-    if (id) onCreated?.(id);
+  async function submit() {
+    if (!legalCase) {
+      setErrors({ legalCaseId: "Selecione o caso." });
+      return;
+    }
+    const payload = agreementCreateInput(legalCase.id, values);
+    setSaving(true);
+    const result = await callAction(() => createAgreementAction({ ...payload, idempotencyKey: idempotency.keyFor(payload) }));
+    setSaving(false);
+    if (!result.ok) {
+      const fields = mapFieldErrors(result.error.fieldErrors, FIELD_MAP);
+      setErrors(fields);
+      if (Object.keys(fields).length === 0) failed(result, "Não foi possível criar o contrato.");
+      return;
+    }
+    idempotency.reset();
+    toast({ tone: "success", title: values.activate ? "Contrato criado e ativado" : "Contrato criado em rascunho", description: "Registre as obrigações na gaveta do contrato." });
+    onCreated(legalCase.id);
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
-      {!fixedClientId && (
-        <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-          <Field label="Cliente" requirement="required" error={errors.clientId?.message}>
-            {(p) => (
-              <Select
-                {...p}
-                placeholder="Selecione o cliente"
-                options={clientOptions}
-                {...register("clientId", { onChange: () => setValue("legalCaseId", "") })}
-              />
-            )}
-          </Field>
-          <Field label="Caso" requirement="required" error={errors.legalCaseId?.message} hint="O contrato pertence ao caso e abrange todos os processos dele.">
-            {(p) => (
-              <Select
-                {...p}
-                disabled={!values.clientId}
-                placeholder={values.clientId ? "Selecione o caso" : "Selecione o cliente primeiro"}
-                options={clientCases.map((c) => ({ value: c.id, label: caseLabel(c) }))}
-                {...register("legalCaseId")}
-              />
-            )}
-          </Field>
-        </div>
-      )}
-
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-          <Field
-            label="Modelo de Honorários"
-            requirement="recommended"
-            hint={selectedModel ? BILLING_MOMENT_LABEL[selectedModel.billingMoment] : "Sem modelo, os valores são definidos manualmente."}
-          >
-            {(p) => (
-              <Select
-                {...p}
-                placeholder="Sem modelo — definir valores manualmente"
-                options={modelOptions}
-                {...register("feeModelId", { onChange: (e: ChangeEvent<HTMLSelectElement>) => applyModel(e.target.value) })}
-              />
-            )}
-          </Field>
-          <div className="flex items-end gap-2 pb-[1px]">
-            {selectedModel && !values.customized && (
-              <Button variant="secondary" icon={<PencilLine className="size-4" aria-hidden />} onClick={() => setValue("customized", true)}>
-                Personalizar para este cliente
-              </Button>
-            )}
-            {selectedModel && values.customized && (
-              <>
-                <Badge tone="gold">Personalizado</Badge>
-                <Button variant="ghost" size="sm" icon={<RotateCcw className="size-3.5" aria-hidden />} onClick={() => applyModel(selectedModel.id)}>
-                  Restaurar valores do modelo
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-        {selectedModel?.description && <p className="text-[12.5px] text-muted">{selectedModel.description}</p>}
-        <FeeValuesFields register={register} errors={errors} readOnly={readOnly} />
-      </div>
-
-      <div className="grid grid-cols-3 gap-x-5 gap-y-4">
-        <Field label="Data de início" requirement="required" error={errors.startDate?.message}>
-          {(p) => <Input {...p} type="date" {...register("startDate")} />}
+    <form
+      noValidate
+      className="space-y-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <div className="grid grid-cols-2 gap-x-5 gap-y-4">
+        <Field label="Caso" requirement="required" error={errors.legalCaseId} hint="O contrato pertence ao caso e abrange todos os processos dele.">
+          {(p) => (
+            <AsyncPicker
+              {...p}
+              value={legalCase}
+              onChange={(o) => {
+                setLegalCase(o);
+                setErrors((e) => ({ ...e, legalCaseId: "" }));
+              }}
+              search={searchCases}
+              placeholder="Buscar caso pelo título"
+            />
+          )}
         </Field>
-        <Field label="Observações" requirement="optional" className="col-span-2">
-          {(p) => <Textarea {...p} rows={2} placeholder="Condições negociadas, forma de pagamento…" {...register("notes")} />}
+        <Field label="Modelo de honorários" requirement="recommended" hint={model ? BILLING_MOMENT_LABEL[model.billingMoment] : "Sem modelo, os valores são definidos manualmente."} error={errors.feeModelId}>
+          {(p) => (
+            <Select
+              {...p}
+              placeholder="Sem modelo — definir valores manualmente"
+              options={feeModels.filter((m) => m.active).map((m) => ({ value: m.id, label: m.name }))}
+              value={values.feeModelId}
+              onChange={(e) => applyModel(e.target.value)}
+            />
+          )}
         </Field>
       </div>
-
-      <SchedulePreview values={formToFeeValues(values)} startDate={values.startDate ?? ""} caseValue={caseValue} />
-
-      <div className="flex items-center justify-end gap-2">
-        {onCancel && (
-          <Button variant="ghost" onClick={onCancel}>
-            Cancelar
+      <div className="flex items-center gap-2">
+        {model && !customized && (
+          <Button variant="secondary" icon={<PencilLine className="size-4" aria-hidden />} onClick={() => setCustomized(true)}>
+            Personalizar para este caso
           </Button>
         )}
-        <Button type="submit" loading={isSubmitting}>
-          {submitLabel}
+        {model && customized && (
+          <>
+            <Badge tone="gold">Personalizado</Badge>
+            <Button variant="ghost" size="sm" icon={<RotateCcw className="size-3.5" aria-hidden />} onClick={() => applyModel(model.id)}>
+              Restaurar valores do modelo
+            </Button>
+          </>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-x-5 gap-y-4">
+        {TERM_FIELDS.map((f) => (
+          <Field key={f.key} label={f.label} requirement="optional" hint={readOnly ? "Definido pelo modelo" : undefined} error={errors[f.key]}>
+            {(p) => (
+              <Input
+                {...p}
+                inputMode={f.numeric ? "numeric" : "decimal"}
+                placeholder={f.placeholder}
+                readOnly={readOnly}
+                aria-readonly={readOnly || undefined}
+                className={readOnly ? "bg-surface-muted text-muted" : undefined}
+                value={values[f.key]}
+                onChange={(e) => set(f.key, e.target.value)}
+              />
+            )}
+          </Field>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-x-5 gap-y-4">
+        <Field label="Data de início" requirement="optional" error={errors.startDate}>
+          {(p) => <Input {...p} type="date" value={values.startDate} onChange={(e) => set("startDate", e.target.value)} />}
+        </Field>
+        <Field label="Observações" requirement="optional" className="col-span-2" error={errors.notes}>
+          {(p) => <Textarea {...p} rows={2} maxLength={2000} placeholder="Condições negociadas, forma de pagamento…" value={values.notes} onChange={(e) => set("notes", e.target.value)} />}
+        </Field>
+      </div>
+      <Checkbox
+        label="Ativar agora"
+        description="Ativo recebe lançamentos e congela os termos. Um contrato ativo por caso. Sem marcar, nasce em rascunho."
+        checked={values.activate}
+        onChange={(e) => set("activate", e.target.checked)}
+      />
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button type="submit" loading={saving}>
+          Criar contrato
         </Button>
       </div>
     </form>

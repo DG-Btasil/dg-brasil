@@ -1,163 +1,156 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useState } from "react";
 import { ChevronRight, FileSignature, Plus } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { formatCurrency, formatDate, pluralize } from "@/lib/formatting";
+import type { ActionResult } from "@/lib/actions/result";
+import { useServerList } from "@/lib/hooks/use-server-list";
+import { Can } from "@/components/layout/guards";
+import { ActionErrorState } from "@/components/feedback/action-error";
+import { EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
-import { SearchInput, Select } from "@/components/ui/form";
+import { Select } from "@/components/ui/form";
+import { Pagination } from "@/components/ui/pagination";
 import { Panel, PanelHeader } from "@/components/ui/panel";
-import { SortableTh, TBody, THead, Table, Td, Th, Tr, sortBy, type SortDirection } from "@/components/ui/table";
-import { EmptyState } from "@/components/feedback/states";
-import { AGREEMENT_STATUSES, AGREEMENT_STATUS_LABEL, AGREEMENT_STATUS_TONE, type AgreementStatus } from "@/lib/constants/status";
-import { formatCurrency, formatDate } from "@/lib/formatting";
-import type { FeeModel } from "@/types";
-import type { AgreementRow } from "../utils";
+import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
+import type { Page } from "@/server/core/pagination";
+import { listAgreementRowsAction } from "@/server/domain/finance/actions";
+import type { AgreementListItemDTO } from "@/server/domain/finance/dto";
+import { AGREEMENT_DB_STATUSES } from "@/server/domain/finance/schemas";
+import { AGREEMENT_DB_STATUS_LABEL, AGREEMENT_DB_STATUS_TONE } from "../labels";
+import { AGREEMENT_PAGE_SIZE, agreementQueryToInput, agreementQueryToSearchParams, type AgreementListQuery } from "../list-query";
 import { AgreementDrawer } from "./agreement-drawer";
-import { FeeModelCell, CaseCell } from "./agreement-summary";
 
-type SortKey = "client" | "total" | "received" | "pending" | "next";
-const NO_MODEL = "__none__";
+const STATUS_OPTIONS = AGREEMENT_DB_STATUSES.map((s) => ({ value: s, label: AGREEMENT_DB_STATUS_LABEL[s] }));
 
-export function AgreementsTable({ rows, feeModels }: { rows: AgreementRow[]; feeModels: FeeModel[] }) {
-  const [status, setStatus] = useState<AgreementStatus | "">("");
-  const [model, setModel] = useState("");
-  const [query, setQuery] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey | null>("next");
-  const [direction, setDirection] = useState<SortDirection>("asc");
+/**
+ * Acordos de honorários (ADMIN) lidos do servidor: situação e páginas no
+ * banco; contratado/recebido/em aberto vêm do ledger, somados no servidor.
+ * Clique abre a gaveta com obrigações e lançamentos.
+ */
+export function AgreementsPanel({
+  initialQuery,
+  initialResult,
+  legalCaseId,
+  syncUrl = false,
+  title = "Contratos de honorários",
+  description = "Clique em um contrato para ver as obrigações e registrar recebimentos.",
+}: {
+  initialQuery: AgreementListQuery;
+  initialResult: ActionResult<Page<AgreementListItemDTO>>;
+  /** Escopo de um caso (aba Financeiro do caso). */
+  legalCaseId?: string;
+  syncUrl?: boolean;
+  title?: string;
+  description?: string;
+}) {
+  const scope = legalCaseId ? { legalCaseId } : {};
+  const { query, setQuery, result, pending, retry } = useServerList({
+    initialQuery,
+    initialResult,
+    load: (q: AgreementListQuery) => listAgreementRowsAction(agreementQueryToInput(q, scope)),
+    toSearch: syncUrl ? agreementQueryToSearchParams : undefined,
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = rows.filter((r) => {
-      if (status && r.agreement.status !== status) return false;
-      if (model === NO_MODEL && r.agreement.feeModelId) return false;
-      if (model && model !== NO_MODEL && r.agreement.feeModelId !== model) return false;
-      if (!q) return true;
-      return [r.clientName, r.legalCase?.title, r.feeModel?.name].some((v) => v?.toLowerCase().includes(q));
-    });
-    if (!sortKey) return list;
-    const getter: Record<SortKey, (r: AgreementRow) => string | number | undefined> = {
-      client: (r) => r.clientName,
-      total: (r) => r.agreement.totalContracted,
-      received: (r) => r.received,
-      pending: (r) => r.outstandingBalance,
-      next: (r) => r.nextDueDate,
-    };
-    return sortBy(list, getter[sortKey], direction);
-  }, [rows, status, model, query, sortKey, direction]);
-
-  const selected = useMemo(() => rows.find((r) => r.agreement.id === selectedId) ?? null, [rows, selectedId]);
-
-  function onSort(key: SortKey) {
-    if (key === sortKey) setDirection((d) => (d === "asc" ? "desc" : "asc"));
-    else {
-      setSortKey(key);
-      setDirection("asc");
-    }
-  }
-
-  const modelOptions = [...feeModels.map((m) => ({ value: m.id, label: m.name })), { value: NO_MODEL, label: "Sem modelo (valores próprios)" }];
-  const sortProps = { currentKey: sortKey, direction, onSort };
+  const page = result.ok ? result.data : undefined;
+  // Sempre a linha ATUAL da página (recarregada do servidor depois de cada mudança).
+  const selected = page?.items.find((r) => r.id === selectedId) ?? null;
+  const newHref = legalCaseId ? `/financeiro/contratos/novo?caso=${legalCaseId}` : "/financeiro/contratos/novo";
+  const cta = (
+    <Can permission="finance.manage">
+      <ButtonLink href={newHref} size="sm" icon={<Plus className="size-4" aria-hidden />}>
+        Novo contrato de honorários
+      </ButtonLink>
+    </Can>
+  );
 
   return (
     <Panel>
       <PanelHeader
-        title="Contratos de honorários"
-        description="Clique em um contrato para ver o cronograma e registrar pagamentos."
-        actions={<span className="text-[12px] text-muted tabular">{filtered.length} de {rows.length}</span>}
-      />
-      {rows.length === 0 ? (
-        <EmptyState
-          icon={FileSignature}
-          title="Nenhum contrato de honorários registrado."
-          description="Associe um modelo de honorários a um caso para gerar o cronograma de pagamentos."
-          action={
-            <ButtonLink href="/financeiro/contratos/novo" icon={<Plus className="size-4" aria-hidden />}>
-              Novo contrato de honorários
-            </ButtonLink>
-          }
-        />
-      ) : (
-        <>
-          <div className="flex flex-wrap items-end gap-3 border-b border-line px-5 py-3">
-            <label className="w-[280px]">
-              <span className="sr-only">Buscar por cliente, caso ou modelo</span>
-              <SearchInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar cliente, caso ou modelo" />
-            </label>
-            <label className="w-[180px]">
-              <span className="sr-only">Filtrar por status</span>
-              <Select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as AgreementStatus | "")}
-                placeholder="Todos os status"
-                options={AGREEMENT_STATUSES.map((s) => ({ value: s, label: AGREEMENT_STATUS_LABEL[s] }))}
-              />
-            </label>
-            <label className="w-[240px]">
-              <span className="sr-only">Filtrar por modelo de honorários</span>
-              <Select value={model} onChange={(e) => setModel(e.target.value)} placeholder="Todos os modelos" options={modelOptions} />
-            </label>
+        title={title}
+        description={description}
+        actions={
+          <div className="flex items-center gap-2">
+            <Select
+              aria-label="Situação do contrato"
+              placeholder="Todas as situações"
+              options={STATUS_OPTIONS}
+              value={query.status}
+              onChange={(e) => setQuery({ status: e.target.value as AgreementListQuery["status"], page: 1 })}
+              className="h-8 w-[180px] text-[12.5px]"
+            />
+            {cta}
           </div>
-          {filtered.length === 0 ? (
-            <EmptyState compact title="Nenhum contrato corresponde aos filtros." description="Ajuste a busca ou limpe os filtros de status e modelo." />
+        }
+      />
+      <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-60")}>
+        {!result.ok ? (
+          <ActionErrorState error={result} onRetry={retry} title="Não foi possível carregar os contratos." />
+        ) : !page ? (
+          <SkeletonRows rows={4} />
+        ) : page.items.length === 0 ? (
+          query.status ? (
+            <EmptyState compact title="Nenhum contrato nesta situação." />
           ) : (
-            <Table caption="Contratos de honorários">
+            <EmptyState icon={FileSignature} title="Nenhum contrato de honorários registrado." description="Crie o contrato do caso e registre as obrigações." action={cta} />
+          )
+        ) : (
+          <>
+            <p className="border-b border-line px-5 py-2 text-[12px] text-muted" aria-live="polite">
+              {pluralize(page.total, "contrato", "contratos")}
+            </p>
+            <Table caption={title}>
               <THead>
                 <tr>
-                  <SortableTh label="Cliente" sortKey="client" {...sortProps} />
-                  <Th>Caso</Th>
-                  <Th>Modelo de honorários</Th>
-                  <SortableTh label="Contratado" sortKey="total" className="text-right" {...sortProps} />
-                  <SortableTh label="Recebido" sortKey="received" className="text-right" {...sortProps} />
-                  <SortableTh label="Pendente" sortKey="pending" className="text-right" {...sortProps} />
-                  <SortableTh label="Próx. vencimento" sortKey="next" {...sortProps} />
-                  <Th>Status</Th>
+                  {!legalCaseId && <Th>Cliente / caso</Th>}
+                  <Th>Modelo</Th>
+                  <Th className="text-right">Contratado</Th>
+                  <Th className="text-right">Recebido</Th>
+                  <Th className="text-right">Em aberto</Th>
+                  <Th>Próx. vencimento</Th>
+                  <Th>Situação</Th>
                   <Th>
                     <span className="sr-only">Abrir</span>
                   </Th>
                 </tr>
               </THead>
               <TBody>
-                {filtered.map((r) => (
-                  <Tr key={r.agreement.id} interactive onClick={() => setSelectedId(r.agreement.id)}>
-                    <Td className="font-medium text-foreground">{r.clientName}</Td>
-                    <Td className="max-w-[240px] truncate" onClick={(e) => e.stopPropagation()}>
-                      <CaseCell row={r} />
-                    </Td>
-                    <Td>
-                      <FeeModelCell row={r} />
-                    </Td>
-                    <Td className="text-right tabular">{formatCurrency(r.agreement.totalContracted)}</Td>
-                    <Td className="text-right tabular">{formatCurrency(r.received)}</Td>
+                {page.items.map((r) => (
+                  <Tr key={r.id} interactive onClick={() => setSelectedId(r.id)}>
+                    {!legalCaseId && (
+                      <Td className="max-w-[280px]">
+                        <span className="block truncate font-medium text-foreground">{r.clientName || "—"}</span>
+                        <Link href={`/casos/${r.legalCaseId}`} onClick={(e) => e.stopPropagation()} className="block truncate text-[12px] text-navy hover:underline underline-offset-2">
+                          {r.caseTitle || "Abrir caso"}
+                        </Link>
+                      </Td>
+                    )}
+                    <Td className="text-[12.5px]">{r.feeModelName ?? <span className="text-subtle">Valores próprios</span>}</Td>
+                    <Td className="text-right tabular">{formatCurrency(r.totals.contracted)}</Td>
+                    <Td className="text-right tabular">{formatCurrency(r.totals.received)}</Td>
                     <Td className="text-right tabular">
-                      {formatCurrency(r.outstandingBalance)}
-                      {r.overdueAmount > 0 && <span className="block text-[11.5px] text-danger">{formatCurrency(r.overdueAmount)} em atraso</span>}
+                      {formatCurrency(r.totals.outstanding)}
+                      {r.totals.overdue > 0 && <span className="block text-[11.5px] text-danger">{formatCurrency(r.totals.overdue)} em atraso</span>}
                     </Td>
                     <Td className="tabular text-muted">{r.nextDueDate ? formatDate(r.nextDueDate) : "—"}</Td>
                     <Td>
-                      <StatusBadge status={r.agreement.status} labels={AGREEMENT_STATUS_LABEL} tones={AGREEMENT_STATUS_TONE} />
+                      <StatusBadge status={r.status} labels={AGREEMENT_DB_STATUS_LABEL} tones={AGREEMENT_DB_STATUS_TONE} />
                     </Td>
                     <Td className="text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedId(r.agreement.id);
-                        }}
-                        aria-label={`Ver cronograma do contrato de ${r.clientName}`}
-                        className="rounded-md p-1 text-subtle hover:bg-surface-sunken hover:text-foreground"
-                      >
-                        <ChevronRight className="size-4" aria-hidden />
-                      </button>
+                      <ChevronRight className="inline size-4 text-subtle" aria-hidden />
                     </Td>
                   </Tr>
                 ))}
               </TBody>
             </Table>
-          )}
-        </>
-      )}
-      <AgreementDrawer row={selected} onOpenChange={(open) => !open && setSelectedId(null)} />
+            <Pagination page={page.page} pageSize={AGREEMENT_PAGE_SIZE} total={page.total} disabled={pending} onPageChange={(p) => setQuery({ ...query, page: p })} noun={{ one: "contrato", many: "contratos" }} />
+          </>
+        )}
+      </div>
+      {selected && <AgreementDrawer agreement={selected} onClose={() => setSelectedId(null)} />}
     </Panel>
   );
 }
