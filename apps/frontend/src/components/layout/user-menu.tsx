@@ -7,7 +7,7 @@ import { Compass, LogOut, RotateCcw, Settings, UserRound } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
-import { useCurrentUser, useIsPartner, usePermission, useSessionActions } from "@/features/auth/hooks";
+import { useIsPartner, usePermission, useSessionActions } from "@/features/auth/hooks";
 import { useClientSession } from "@/features/auth/session-context";
 import { signOut } from "@/server/auth/actions";
 import { useToast, useUiStore } from "@/store/ui-store";
@@ -19,8 +19,9 @@ import { Dialog } from "@/components/ui/dialog";
 export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
 
 export function UserMenu() {
-  const user = useCurrentUser();
   const session = useClientSession();
+  // Identidade SEMPRE da sessão validada no servidor (nunca de persona de demonstração).
+  const user = session ? { name: session.fullName, displayName: session.displayName, email: session.email, role: session.role } : undefined;
   const router = useRouter();
   const toast = useToast();
   const startTour = useUiStore((s) => s.startTour);

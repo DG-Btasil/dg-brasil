@@ -128,6 +128,15 @@ export interface ProcessEventDTO {
   createdAt: ISODateTime;
 }
 
+/** Contadores da carteira de processos (equipe interna), contados no banco. */
+export interface ProcessSummaryDTO {
+  active: number;
+  /** Processos com prazo em aberto vencendo em até 5 dias (inclui vencidos). */
+  dueSoon: number;
+  agent: number;
+  imported: number;
+}
+
 /** Resultado da criação. `deduplicated` = repetição de um envio já concluído (mesma chave). */
 export interface ProcessCreatedDTO {
   id: ID;

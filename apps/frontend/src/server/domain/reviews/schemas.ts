@@ -21,6 +21,7 @@ export const listReviewsSchema = pageInputSchema
     /** "me" = atribuídas a mim; "unassigned" = sem responsável; ou o id do revisor. */
     assignee: z.union([z.literal("me"), z.literal("unassigned"), zUuid()]).optional(),
     legalCaseId: zUuid().optional(),
+    processId: zUuid().optional(),
     targetKind: z.enum(REVIEW_TARGET_KINDS).optional(),
   })
   .and(sortSchema(REVIEW_SORT_FIELDS, "createdAt"));

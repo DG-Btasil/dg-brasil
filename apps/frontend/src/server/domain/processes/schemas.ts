@@ -33,6 +33,9 @@ export const PROCESS_SORT_FIELDS = {
   distributionDate: "distribution_date",
 } as const;
 
+export const PROCESS_DEADLINE_FILTERS = ["OVERDUE", "NEXT_5_DAYS"] as const;
+export type ProcessDeadlineFilter = (typeof PROCESS_DEADLINE_FILTERS)[number];
+
 export const listProcessesSchema = pageInputSchema
   .extend({
     /** CNJ (só dígitos, prefixo, com ou sem máscara) ou trecho do título. */
@@ -49,6 +52,8 @@ export const listProcessesSchema = pageInputSchema
     technicalOrigin: z.enum(PROCESS_ORIGINS).optional(),
     /** Origem comercial do CASO do processo. Só equipe interna. */
     caseOriginOrganizationId: zUuid().optional(),
+    /** Só equipe interna: com prazo em aberto vencido, ou vencendo em até 5 dias (inclui vencidos). */
+    deadline: z.enum(PROCESS_DEADLINE_FILTERS).optional(),
   })
   .and(sortSchema(PROCESS_SORT_FIELDS, "updatedAt"));
 export type ListProcessesInput = z.infer<typeof listProcessesSchema>;

@@ -58,7 +58,12 @@ export interface ProcessFilters {
   court?: string;
   technicalOrigin?: string;
   caseOriginOrganizationId?: string;
+  /** Prazo em ABERTO vencendo antes deste instante (ISO). Só equipe interna (RLS de prazos). */
+  openDeadlineBefore?: string;
 }
+
+/** Embed obrigatório (inner join) dos prazos em aberto: só processos com prazo que casa no filtro. */
+const OPEN_DEADLINE_EMBED = "deadlines!deadlines_process_fkey!inner(id)";
 
 export async function listProcesses(
   db: SupabaseClient,
@@ -67,7 +72,11 @@ export async function listProcesses(
   page: PageInput,
   sort: { column: string; ascending: boolean },
 ): Promise<{ rows: ProcessRow[]; total: number }> {
-  let query = db.from("legal_processes").select(columns, { count: "exact" }).is("deleted_at", null);
+  let query = db
+    .from("legal_processes")
+    .select(filters.openDeadlineBefore ? `${columns}, ${OPEN_DEADLINE_EMBED}` : columns, { count: "exact" })
+    .is("deleted_at", null);
+  if (filters.openDeadlineBefore) query = query.eq("deadlines.status", "OPEN").lt("deadlines.due_at", filters.openDeadlineBefore);
   const target = filters.q ? searchTarget(filters.q) : null;
   if (target?.kind === "cnj") query = query.like("cnj_number", `${target.digits}%`);
   if (target?.kind === "title") query = query.ilike("title", likePattern(target.text));
@@ -83,6 +92,20 @@ export async function listProcesses(
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);
   if (error) throw fromDbError(error);
   return { rows: (data ?? []) as unknown as ProcessRow[], total: count ?? 0 };
+}
+
+/** Contagem de processos (não excluídos) com filtros simples — só o total, nenhuma linha. */
+export async function countProcesses(
+  db: SupabaseClient,
+  filters: { notStatuses?: string[]; technicalOrigins?: string[]; openDeadlineBefore?: string },
+): Promise<number> {
+  let query = db.from("legal_processes").select(filters.openDeadlineBefore ? `id, ${OPEN_DEADLINE_EMBED}` : "id", { count: "exact", head: true }).is("deleted_at", null);
+  if (filters.notStatuses) query = query.not("status", "in", `(${filters.notStatuses.join(",")})`);
+  if (filters.technicalOrigins) query = query.in("technical_origin", filters.technicalOrigins);
+  if (filters.openDeadlineBefore) query = query.eq("deadlines.status", "OPEN").lt("deadlines.due_at", filters.openDeadlineBefore);
+  const { error, count } = await query;
+  if (error) throw fromDbError(error);
+  return count ?? 0;
 }
 
 /**

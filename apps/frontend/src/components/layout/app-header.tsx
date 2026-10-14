@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Settings } from "lucide-react";
-import { useCurrentPartnerOffice, usePermission } from "@/features/auth/hooks";
+import { usePermission } from "@/features/auth/hooks";
+import { useClientSession } from "@/features/auth/session-context";
 import { HomeMenu } from "@/components/navigation/home-menu";
 import { NotificationCenter } from "./notification-center";
 import { DEMO_MODE, UserMenu } from "./user-menu";
@@ -11,7 +12,8 @@ import { Wordmark } from "./wordmark";
 /** Header global persistente. Navegação no topo — sem sidebar. */
 export function AppHeader() {
   const canSettings = usePermission("settings.view");
-  const partnerOffice = useCurrentPartnerOffice();
+  const session = useClientSession();
+  const partnerOffice = session?.surface === "PARTNER" ? { name: session.organizationName } : undefined;
   return (
     <header className="sticky top-0 z-40 h-[var(--header-height)] bg-navy text-white shadow-[0_1px_0_rgb(0_0_0/0.2)]">
       <div className="mx-auto grid h-full max-w-[1600px] grid-cols-[1fr_auto_1fr] items-center px-8">

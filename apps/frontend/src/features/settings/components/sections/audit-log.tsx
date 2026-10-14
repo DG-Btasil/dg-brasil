@@ -1,103 +1,139 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { History } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { formatDateTime, pluralize } from "@/lib/formatting";
+import { callAction, type ActionResult } from "@/lib/actions/result";
+import { ActionErrorState } from "@/components/feedback/action-error";
+import { EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { SearchInput, Select } from "@/components/ui/form";
+import { Input, Select } from "@/components/ui/form";
+import { Pagination } from "@/components/ui/pagination";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
-import { EmptyState } from "@/components/feedback/states";
-import { useAuditEvents } from "@/features/offices/hooks";
-import { formatDateTime } from "@/lib/formatting";
-import { AUDIT_ACTIONS, AUDIT_ACTION_LABEL, type AuditAction } from "@/types/audit";
-import type { ActorType } from "@/types";
+import type { Page } from "@/server/core/pagination";
+import { listAuditEventsAction } from "@/server/domain/audit/actions";
+import type { AuditEventDTO } from "@/server/domain/audit/dto";
+import { ACTOR_TYPE_LABEL, AUDIT_ACTION_LABEL, actionLabel, eventDetail } from "@/features/audit/humanize";
 
-const PAGE = 25;
-const ACTOR_LABEL: Record<ActorType, string> = { USER: "Pessoa", AGENT: "Agente", SYSTEM: "Sistema" };
+const PAGE_SIZE = 25;
+const ACTION_OPTIONS = Object.entries(AUDIT_ACTION_LABEL)
+  .map(([value, label]) => ({ value, label }))
+  .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+const ACTOR_OPTIONS = (Object.keys(ACTOR_TYPE_LABEL) as AuditEventDTO["actorType"][]).map((value) => ({ value, label: ACTOR_TYPE_LABEL[value] }));
 
+interface Filters {
+  action: string;
+  actorType: string;
+  from: string;
+  to: string;
+  page: number;
+}
+
+/** Período do formulário (datas locais) → limites ISO no fuso de São Paulo. */
+const fromIso = (d: string) => (d ? `${d}T00:00:00-03:00` : undefined);
+const toIso = (d: string) => (d ? `${d}T23:59:59-03:00` : undefined);
+
+/**
+ * Registro de auditoria do escritório (ADMIN, `audit.view`): a trilha do
+ * BANCO, paginada e filtrada no servidor (ação, tipo de ator, período). Sem
+ * IP, user agent nem texto livre — só o que a metadata sanitizada traz.
+ */
 export function AuditLog() {
-  const events = useAuditEvents();
-  const [action, setAction] = useState<AuditAction | "">("");
-  const [query, setQuery] = useState("");
-  const [limit, setLimit] = useState(PAGE);
+  const [filters, setFilters] = useState<Filters>({ action: "", actorType: "", from: "", to: "", page: 1 });
+  const [result, setResult] = useState<ActionResult<Page<AuditEventDTO>> | null>(null);
+  const [pending, setPending] = useState(true);
+  const seq = useRef(0);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return [...events]
-      .sort((a, b) => b.at.localeCompare(a.at))
-      .filter((e) => (!action || e.action === action) && (!q || e.description.toLowerCase().includes(q) || e.actor.name.toLowerCase().includes(q)));
-  }, [events, action, query]);
+  useEffect(() => {
+    const id = ++seq.current;
+    callAction(() =>
+      listAuditEventsAction({
+        action: filters.action || undefined,
+        actorType: filters.actorType || undefined,
+        from: fromIso(filters.from),
+        to: toIso(filters.to),
+        page: filters.page,
+        pageSize: PAGE_SIZE,
+        sortBy: "createdAt",
+        sortDirection: "desc",
+      }),
+    ).then((r) => {
+      // Resposta de uma consulta antiga nunca sobrescreve a mais nova.
+      if (id !== seq.current) return;
+      setResult(r);
+      setPending(false);
+    });
+  }, [filters]);
+
+  // "Carregando" começa no evento (não no efeito); o efeito só busca.
+  const set = (patch: Partial<Filters>) => {
+    setPending(true);
+    setFilters((f) => ({ ...f, ...patch, page: patch.page ?? 1 }));
+  };
+  const page = result?.ok ? result.data : undefined;
 
   return (
     <Panel>
       <PanelHeader
         title="Registro de auditoria"
-        description="Ações relevantes feitas por pessoas, agentes e pelo sistema."
-        actions={<span className="text-[12px] text-muted tabular">{filtered.length} eventos</span>}
+        description="Ações relevantes feitas por pessoas, agentes e pelo sistema, registradas pelo banco."
+        actions={page ? <span className="text-[12px] text-muted tabular">{pluralize(page.total, "evento", "eventos")}</span> : undefined}
       />
-      <div className="flex flex-wrap items-end gap-3 border-b border-line px-5 py-3">
-        <label className="w-[280px]">
-          <span className="sr-only">Buscar na auditoria</span>
-          <SearchInput
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setLimit(PAGE);
-            }}
-            placeholder="Buscar por descrição ou responsável"
-          />
+      <div className="flex flex-wrap items-end gap-3 border-b border-line px-5 py-3" role="search" aria-label="Filtrar auditoria">
+        <Select aria-label="Ação" placeholder="Todas as ações" options={ACTION_OPTIONS} value={filters.action} onChange={(e) => set({ action: e.target.value })} className="h-8 w-[260px] text-[12.5px]" />
+        <Select aria-label="Tipo de responsável" placeholder="Todos" options={ACTOR_OPTIONS} value={filters.actorType} onChange={(e) => set({ actorType: e.target.value })} className="h-8 w-[160px] text-[12.5px]" />
+        <label className="flex items-center gap-2 text-[12.5px] text-muted">
+          De
+          <Input type="date" aria-label="Data inicial" value={filters.from} onChange={(e) => set({ from: e.target.value })} className="h-8 w-[150px]" />
         </label>
-        <label className="w-[260px]">
-          <span className="sr-only">Filtrar por ação</span>
-          <Select
-            value={action}
-            onChange={(e) => {
-              setAction(e.target.value as AuditAction | "");
-              setLimit(PAGE);
-            }}
-            placeholder="Todas as ações"
-            options={AUDIT_ACTIONS.map((a) => ({ value: a, label: AUDIT_ACTION_LABEL[a] }))}
-          />
+        <label className="flex items-center gap-2 text-[12.5px] text-muted">
+          Até
+          <Input type="date" aria-label="Data final" value={filters.to} onChange={(e) => set({ to: e.target.value })} className="h-8 w-[150px]" />
         </label>
       </div>
-      {filtered.length === 0 ? (
-        <EmptyState compact title="Nenhum evento encontrado." description="Ajuste a busca ou o filtro de ação." />
-      ) : (
-        <>
-          <Table caption="Registro de auditoria">
-            <THead>
-              <tr>
-                <Th className="w-[160px]">Data</Th>
-                <Th className="w-[200px]">Responsável</Th>
-                <Th className="w-[220px]">Ação</Th>
-                <Th>Descrição</Th>
-              </tr>
-            </THead>
-            <TBody>
-              {filtered.slice(0, limit).map((e) => (
-                <Tr key={e.id}>
-                  <Td className="tabular text-muted">{formatDateTime(e.at)}</Td>
-                  <Td>
-                    <span className="text-foreground">{e.actor.name}</span>
-                    <span className="ml-1.5 text-[11.5px] text-subtle">{ACTOR_LABEL[e.actor.type]}</span>
-                  </Td>
-                  <Td>
-                    <Badge tone="navy">{AUDIT_ACTION_LABEL[e.action]}</Badge>
-                  </Td>
-                  <Td className="text-muted">{e.description}</Td>
-                </Tr>
-              ))}
-            </TBody>
-          </Table>
-          {filtered.length > limit && (
-            <div className="flex justify-center border-t border-line py-3">
-              <Button variant="ghost" size="sm" onClick={() => setLimit((l) => l + PAGE)}>
-                Mostrar mais {Math.min(PAGE, filtered.length - limit)} eventos
-              </Button>
-            </div>
-          )}
-        </>
-      )}
+      <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-60")}>
+        {!result ? (
+          <SkeletonRows rows={5} />
+        ) : !result.ok ? (
+          <ActionErrorState error={result} onRetry={() => set({ page: filters.page })} title="Não foi possível carregar a auditoria." />
+        ) : !page || page.items.length === 0 ? (
+          <EmptyState compact icon={History} title="Nenhum evento encontrado." description="Ajuste os filtros de ação, responsável ou período." />
+        ) : (
+          <>
+            <Table caption="Registro de auditoria">
+              <THead>
+                <tr>
+                  <Th className="w-[160px]">Data</Th>
+                  <Th className="w-[220px]">Responsável</Th>
+                  <Th className="w-[240px]">Ação</Th>
+                  <Th>Detalhe</Th>
+                </tr>
+              </THead>
+              <TBody>
+                {page.items.map((e) => (
+                  <Tr key={e.id}>
+                    <Td className="tabular text-muted">{formatDateTime(e.at)}</Td>
+                    <Td>
+                      <span className="text-foreground">{e.actorName ?? "—"}</span>
+                      <span className="ml-1.5 text-[11.5px] text-subtle">{ACTOR_TYPE_LABEL[e.actorType]}</span>
+                    </Td>
+                    <Td>
+                      <Badge tone="navy">{actionLabel(e.action)}</Badge>
+                    </Td>
+                    <Td className="text-muted">
+                      {eventDetail(e) ?? "—"}
+                      {e.metadataOmitted && <span className="block text-[11.5px] text-subtle">Detalhes em texto livre omitidos</span>}
+                    </Td>
+                  </Tr>
+                ))}
+              </TBody>
+            </Table>
+            <Pagination page={page.page} pageSize={PAGE_SIZE} total={page.total} disabled={pending} onPageChange={(p) => set({ page: p })} noun={{ one: "evento", many: "eventos" }} />
+          </>
+        )}
+      </div>
     </Panel>
   );
 }

@@ -11,6 +11,10 @@ import { getClientAction } from "@/server/domain/clients/actions";
 import { listProcessesAction } from "@/server/domain/processes/actions";
 import { listDocumentsAction } from "@/server/domain/documents/actions";
 import { documentListInput } from "@/features/documents/constants";
+import { auditTimelineInput } from "@/features/audit/query";
+import { can } from "@/lib/permissions";
+import { requireAppSession } from "@/server/auth/session";
+import { listAuditEventsAction } from "@/server/domain/audit/actions";
 
 /**
  * Ficha do cliente, lida no servidor a cada acesso (rota direta, nova aba e
@@ -24,14 +28,16 @@ async function InternalClient({ id }: { id: string }) {
     return <ActionErrorState error={result} title="Não foi possível abrir o cliente." />;
   }
   if (result.data.surface !== "INTERNAL") return <ClientNotFound />;
-  const [cases, processes, documents] = await Promise.all([
+  const session = await requireAppSession();
+  const [cases, processes, documents, activity] = await Promise.all([
     listCasesAction({ clientId: id, pageSize: 50 }),
     listProcessesAction({ clientId: id, pageSize: 50 }),
     listDocumentsAction(documentListInput({ clientId: id })),
+    can(session.role, "audit.view") ? listAuditEventsAction(auditTimelineInput(id)) : Promise.resolve(undefined),
   ]);
   return (
     <Suspense fallback={<SkeletonRows rows={6} />}>
-      <ClientDetail client={result.data.client} cases={cases} processes={processes} documents={documents} />
+      <ClientDetail client={result.data.client} cases={cases} processes={processes} documents={documents} activity={activity} />
     </Suspense>
   );
 }

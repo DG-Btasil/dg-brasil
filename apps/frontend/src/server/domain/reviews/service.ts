@@ -53,7 +53,7 @@ export async function listReviews(ctx: ServiceContext, input: ListReviewsInput):
           : undefined;
   const { rows, total } = await repo.list(
     ctx.db,
-    { statuses: statusFilterToDb(input.status), priority: input.priority, assignee, legalCaseId: input.legalCaseId, targetKind: input.targetKind },
+    { statuses: statusFilterToDb(input.status), priority: input.priority, assignee, legalCaseId: input.legalCaseId, processId: input.processId, targetKind: input.targetKind },
     input,
     { column: input.column, ascending: input.ascending },
   );

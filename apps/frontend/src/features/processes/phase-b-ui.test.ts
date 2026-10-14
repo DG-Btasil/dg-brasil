@@ -54,7 +54,7 @@ describe("lista de casos — URL e entrada da action", () => {
 
 describe("lista de processos — URL e entrada da action", () => {
   it("ida e volta pela URL", () => {
-    const q: ProcessListQuery = { search: "Revisional", status: "ACTIVE", phase: "EVIDENCE", court: "TJSP", responsible: UUID_A, clientId: UUID_B, origin: "MANUAL", caseOrigin: UUID_A, sort: "cnj", direction: "asc", page: 3 };
+    const q: ProcessListQuery = { search: "Revisional", status: "ACTIVE", phase: "EVIDENCE", court: "TJSP", responsible: UUID_A, clientId: UUID_B, origin: "MANUAL", caseOrigin: UUID_A, deadline: "OVERDUE", sort: "cnj", direction: "asc", page: 3 };
     expect(processQueryFromSearchParams(Object.fromEntries(processQueryToSearchParams(q)))).toEqual(q);
   });
   it("CNJ/CPF digitado não vai para a URL; tribunal fora da lista é ignorado", () => {

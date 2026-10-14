@@ -11,7 +11,6 @@ import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import type { ActionResult } from "@/lib/actions/result";
 import { Can } from "@/components/layout/guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
-import { PendingIntegration } from "@/components/feedback/pending-integration";
 import { Callout, EmptyState } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -38,6 +37,8 @@ import { AgentRunsPanel } from "@/features/agent-runs/components/agent-runs-pane
 import { DEFAULT_AGENT_RUN_QUERY } from "@/features/agent-runs/list-query";
 import type { AgentRunSummaryDTO } from "@/server/domain/agents/dto";
 import { CaseFinancePanel } from "@/features/finance/components/case-finance-panel";
+import { AuditTimeline } from "@/features/audit/components/audit-timeline";
+import type { AuditEventDTO } from "@/server/domain/audit/dto";
 import type { AgreementListItemDTO, CasePartnershipDTO } from "@/server/domain/finance/dto";
 import { isOpen, ReviewTable } from "@/features/reviews/components/review-table";
 import { useCaseActions } from "../use-case-actions";
@@ -50,8 +51,7 @@ type DialogKey = "accept" | "reject" | "origin" | "lawyer" | "edit";
 /**
  * Página do caso (equipe interna), com dados do servidor (getCaseAction):
  * visão geral, documentos/pendências, análise e revisões (ADMIN/LAWYER),
- * processos e financeiro (ADMIN). Atividade é conectada na Fase H; até lá, a
- * aba diz isso (nada de dado de demonstração).
+ * processos, financeiro e atividade (ADMIN).
  * Precisa estar dentro de <Suspense> (useUrlTab).
  */
 export function CaseDetail({
@@ -64,6 +64,7 @@ export function CaseDetail({
   analysis,
   reviews,
   finance,
+  activity,
 }: {
   legalCase: CaseInternalDTO;
   catalog: CaseCatalogDTO;
@@ -83,6 +84,8 @@ export function CaseDetail({
   reviews?: ActionResult<Page<ReviewListItem>>;
   /** Só ADMIN (finance.view). */
   finance?: { agreements: ActionResult<Page<AgreementListItemDTO>>; partnerships: ActionResult<CasePartnershipDTO> };
+  /** Só ADMIN (audit.view). */
+  activity?: ActionResult<Page<AuditEventDTO>>;
 }) {
   const canFinance = usePermission("finance.view");
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
@@ -104,9 +107,9 @@ export function CaseDetail({
         : []),
       { key: "processos", label: "Processos", count: processCount },
       ...(canFinance ? [{ key: "financeiro" as const, label: "Financeiro" }] : []),
-      { key: "atividade", label: "Atividade" },
+      ...(activity ? [{ key: "atividade" as const, label: "Atividade" }] : []),
     ],
-    [processCount, canFinance, documents, requirements, analysis, reviews],
+    [processCount, canFinance, documents, requirements, analysis, reviews, activity],
   );
   const close = (o: boolean) => !o && setDialog(null);
 
@@ -153,7 +156,7 @@ export function CaseDetail({
         {tab === "revisoes" && reviews && <CaseReviews reviews={reviews} />}
         {tab === "processos" && <CaseProcessesTab legalCase={legalCase} processes={processes} />}
         {tab === "financeiro" && canFinance && finance && <CaseFinancePanel legalCaseId={legalCase.id} agreements={finance.agreements} partnerships={finance.partnerships} />}
-        {tab === "atividade" && <PendingIntegration description="A linha do tempo de auditoria será conectada em uma próxima fase." />}
+        {tab === "atividade" && activity && <AuditTimeline entityId={legalCase.id} initial={activity} description="Registro de auditoria do caso." />}
       </TabPanel>
       {dialog === "accept" && <AcceptCaseDialog legalCase={legalCase} open onOpenChange={close} />}
       {dialog === "reject" && <RejectCaseDialog legalCase={legalCase} open onOpenChange={close} />}

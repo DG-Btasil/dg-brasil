@@ -29,6 +29,7 @@ export interface ReviewFilters {
   priority?: Priority;
   assignee?: { kind: "user"; id: string } | { kind: "unassigned" };
   legalCaseId?: string;
+  processId?: string;
   targetKind?: "DOCUMENT_VERSION" | "ANALYSIS" | "AGENT_PROPOSAL";
 }
 
@@ -46,6 +47,7 @@ export async function list(
   if (filters.assignee?.kind === "user") query = query.eq("assigned_reviewer_id", filters.assignee.id);
   if (filters.assignee?.kind === "unassigned") query = query.is("assigned_reviewer_id", null);
   if (filters.legalCaseId) query = query.eq("legal_case_id", filters.legalCaseId);
+  if (filters.processId) query = query.eq("legal_process_id", filters.processId);
   if (filters.targetKind) query = query.not(TARGET_COLUMN[filters.targetKind], "is", null);
   const { from, to } = toRange(page);
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);

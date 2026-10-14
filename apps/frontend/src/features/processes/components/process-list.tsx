@@ -13,6 +13,8 @@ import { EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
+import type { ProcessSummaryDTO } from "@/server/domain/processes/dto";
+import { ProcessSummaryStrip } from "./process-summary-strip";
 import { SearchInput, Select } from "@/components/ui/form";
 import { Pagination } from "@/components/ui/pagination";
 import { Panel } from "@/components/ui/panel";
@@ -36,10 +38,13 @@ export function ProcessList({
   initialQuery,
   initialResult,
   initialClientLabel,
+  summary,
 }: {
   initialQuery: ProcessListQuery;
   initialResult: ActionResult<Page<ProcessListItem>>;
   initialClientLabel?: string;
+  /** Contadores da carteira (equipe interna), contados no servidor. */
+  summary?: ActionResult<ProcessSummaryDTO>;
 }) {
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
@@ -82,6 +87,7 @@ export function ProcessList({
   return (
     <PageContainer>
       <PageHeader title="Processos" description="Carteira processual do escritório: prazos, fases e origem de cada processo." actions={cta} />
+      {summary?.ok && <ProcessSummaryStrip summary={summary.data} onDueSoon={() => setQuery({ ...query, deadline: "NEXT_5_DAYS", page: 1 })} />}
       {page && page.total === 0 && active === 0 && query.page === 1 ? (
         <Panel>
           <EmptyState
@@ -132,6 +138,15 @@ export function ProcessList({
               <FilterSelect label="Tribunal" value={query.court} options={opts(COURTS)} onChange={(v) => set("court", v)} />
               <FilterSelect label="Status" value={query.status} options={opts(PROCESS_STATUSES, PROCESS_STATUS_LABEL)} onChange={(v) => set("status", v as ProcessListQuery["status"])} />
               <FilterSelect label="Fase" value={query.phase} options={opts(PROCESS_PHASES, PROCESS_PHASE_LABEL)} onChange={(v) => set("phase", v as ProcessListQuery["phase"])} />
+              <FilterSelect
+                label="Prazo"
+                value={query.deadline}
+                options={[
+                  { value: "OVERDUE", label: "Vencidos" },
+                  { value: "NEXT_5_DAYS", label: "Em até 5 dias (inclui vencidos)" },
+                ]}
+                onChange={(v) => set("deadline", v as ProcessListQuery["deadline"])}
+              />
               <FilterSelect label="Origem do cadastro" value={query.origin} options={opts(PROCESS_ORIGINS, PROCESS_ORIGIN_LABEL)} onChange={(v) => set("origin", v as ProcessListQuery["origin"])} />
               {canPartners && <FilterSelect label="Origem do caso: todas" value={query.caseOrigin} options={caseOriginOptions} onChange={(v) => set("caseOrigin", v)} />}
             </div>

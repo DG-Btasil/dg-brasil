@@ -5,7 +5,6 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { createSeedData } from "@/mocks";
 import { createImportSlice } from "./slices/data-import";
 import { createDgSlice } from "./slices/finance-dg";
-import { createReviewSlice } from "./slices/processes-reviews";
 import { nowISO } from "@/lib/clock";
 import { syncCaseStatuses } from "@/lib/domain/legal-case";
 import { createReferenceSlice } from "./slices/references";
@@ -61,7 +60,6 @@ export const useAppStore = create<AppStore>()(
         ...createSessionSlice(set, get),
         ...createOfficeSlice(set, get),
         ...createImportSlice(set, get),
-        ...createReviewSlice(set, get),
         ...createDgSlice(set, get),
         ...createReferenceSlice(set, get),
       };

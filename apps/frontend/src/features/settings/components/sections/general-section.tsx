@@ -6,14 +6,39 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { NotAvailable } from "@/components/ui/tooltip";
 import { Callout } from "@/components/feedback/states";
 import { usePermission } from "@/features/auth/hooks";
-import { useOffice } from "@/features/offices/hooks";
+import { useCallback, useEffect, useState } from "react";
+import { callAction, type ActionResult } from "@/lib/actions/result";
+import { ActionErrorState } from "@/components/feedback/action-error";
+import { SkeletonRows } from "@/components/feedback/states";
+import { getOwnerOfficeAction } from "@/server/domain/organizations/actions";
+import type { OwnerOfficeDetailDTO } from "@/server/domain/organizations/dto";
+import { officeFromDto } from "../../office-input";
 import { maskCNPJ } from "@/lib/formatting";
 import type { Office } from "@/types";
 import { SectionHeader } from "../section-header";
 import { OfficeForm } from "./office-form";
 
+/** Geral: dados do escritório lidos e gravados no servidor (escritório da sessão). */
 export function GeneralSection() {
-  const office = useOffice();
+  const [result, setResult] = useState<ActionResult<OwnerOfficeDetailDTO> | null>(null);
+  const [version, setVersion] = useState(0);
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
+  useEffect(() => {
+    let alive = true;
+    callAction(() => getOwnerOfficeAction()).then((r) => {
+      if (alive) setResult(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [version]);
+  if (!result) return <SkeletonRows rows={6} />;
+  if (!result.ok) return <ActionErrorState error={result} onRetry={reload} title="Não foi possível carregar os dados do escritório." />;
+  if (result.data.surface !== "INTERNAL") return null;
+  return <General office={officeFromDto(result.data.office)} onSaved={reload} />;
+}
+
+function General({ office, onSaved }: { office: Office; onSaved: () => void }) {
   const canEdit = usePermission("settings.office.edit");
   return (
     <div className="space-y-6">
@@ -22,7 +47,7 @@ export function GeneralSection() {
         <PanelHeader title="Dados do escritório" description={canEdit ? "Alterações ficam registradas na auditoria." : undefined} />
         <PanelBody className="px-6 py-0">
           {canEdit ? (
-            <OfficeForm key={office.updatedAt} office={office} />
+            <OfficeForm key={office.updatedAt} office={office} onSaved={onSaved} />
           ) : (
             <div className="space-y-4 py-5">
               <Callout tone="neutral" title="Somente leitura">

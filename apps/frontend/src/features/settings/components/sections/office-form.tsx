@@ -7,24 +7,39 @@ import { Field, FormSection, Input, MaskedInput, Select, Textarea } from "@/comp
 import { cn } from "@/lib/cn";
 import { BRAZILIAN_STATES } from "@/lib/constants/legal";
 import type { Office } from "@/types";
-import { useSettingsActions } from "../../hooks";
-import { formToOfficePatch, officeSchema, officeToForm, type OfficeFormOutput, type OfficeFormValues } from "../../schemas";
+import { callAction, mapFieldErrors } from "@/lib/actions/result";
+import { useActionFeedback } from "@/lib/actions/use-action-feedback";
+import { updateOwnerOfficeAction } from "@/server/domain/organizations/actions";
+import { useToast } from "@/store/ui-store";
+import { officePatchToServer } from "../../office-input";
+import { officeSchema, officeToForm, type OfficeFormOutput, type OfficeFormValues } from "../../schemas";
 
 const UF_OPTIONS = BRAZILIAN_STATES.map((s) => ({ value: s, label: s }));
 
-export function OfficeForm({ office }: { office: Office }) {
-  const { saveOffice } = useSettingsActions();
+/** Dados do escritório (updateOwnerOfficeAction, ADMIN). A tela atualiza depois da resposta. */
+export function OfficeForm({ office, onSaved }: { office: Office; onSaved: () => void }) {
+  const toast = useToast();
+  const failed = useActionFeedback();
   const {
     register,
     handleSubmit,
     control,
     reset,
+    setError,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<OfficeFormValues, unknown, OfficeFormOutput>({ resolver: zodResolver(officeSchema), defaultValues: officeToForm(office) });
 
   async function onSubmit(values: OfficeFormOutput) {
-    const ok = await saveOffice(formToOfficePatch(values));
-    if (ok) reset(values);
+    const result = await callAction(() => updateOwnerOfficeAction(officePatchToServer(values)));
+    if (!result.ok) {
+      const fields = mapFieldErrors(result.error.fieldErrors, { "address.zipCode": "zipCode", "address.state": "state", "oab.number": "oab", "oab.state": "oab" });
+      for (const [path, message] of Object.entries(fields)) setError(path as keyof OfficeFormValues, { message });
+      if (Object.keys(fields).length === 0) failed(result, "Não foi possível salvar os dados do escritório.");
+      return;
+    }
+    toast({ tone: "success", title: "Dados do escritório salvos" });
+    reset(values);
+    onSaved();
   }
 
   return (

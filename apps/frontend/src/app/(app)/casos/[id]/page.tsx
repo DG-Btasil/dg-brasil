@@ -20,6 +20,8 @@ import { getAnalysisAction, getAnalysisSetupAction, listAnalysesAction } from "@
 import { listReviewsAction } from "@/server/domain/reviews/actions";
 import { DEFAULT_AGENT_RUN_QUERY, agentRunQueryToInput } from "@/features/agent-runs/list-query";
 import { listAgentRunsAction } from "@/server/domain/agents/actions";
+import { auditTimelineInput } from "@/features/audit/query";
+import { listAuditEventsAction } from "@/server/domain/audit/actions";
 import { DEFAULT_AGREEMENT_QUERY, agreementQueryToInput } from "@/features/finance/list-query";
 import { listAgreementRowsAction, listCasePartnershipsAction } from "@/server/domain/finance/actions";
 
@@ -41,7 +43,8 @@ async function InternalCase({ id }: { id: string }) {
   const canAnalyses = can(session.role, "analyses.start");
   const canReviews = can(session.role, "reviews.view");
   const canFinance = can(session.role, "finance.view");
-  const [catalog, processes, documents, requirements, partnerRequests, analyses, reviews, finance] = await Promise.all([
+  const canAudit = can(session.role, "audit.view");
+  const [catalog, processes, documents, requirements, partnerRequests, analyses, reviews, finance, activity] = await Promise.all([
     getCaseCatalogAction(),
     listCaseProcessesAction({ caseId: id, pageSize: 50 }),
     listDocumentsAction(documentListInput({ legalCaseId: id })),
@@ -52,6 +55,7 @@ async function InternalCase({ id }: { id: string }) {
     canFinance
       ? Promise.all([listAgreementRowsAction(agreementQueryToInput(DEFAULT_AGREEMENT_QUERY, { legalCaseId: id })), listCasePartnershipsAction({ legalCaseId: id })])
       : Promise.resolve(undefined),
+    canAudit ? listAuditEventsAction(auditTimelineInput(id)) : Promise.resolve(undefined),
   ]);
   if (!catalog.ok) return <ActionErrorState error={catalog} title="Não foi possível abrir o caso." />;
   // Análise atual: a em curso, ou a mais recente; com os rótulos dos campos do modelo.
@@ -71,6 +75,7 @@ async function InternalCase({ id }: { id: string }) {
         analysis={analyses && runs ? { list: analyses, current, fieldDefs, runs } : undefined}
         reviews={reviews}
         finance={finance ? { agreements: finance[0], partnerships: finance[1] } : undefined}
+        activity={activity}
       />
     </Suspense>
   );

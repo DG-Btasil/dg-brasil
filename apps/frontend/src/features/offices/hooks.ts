@@ -44,18 +44,6 @@ export function useResponsibleOptions(): { value: ID; label: string }[] {
   );
 }
 
-export function useInvitations() {
-  return useScopedStore((s) => s.invitations);
-}
-
-export function useUserSessions() {
-  return useScopedStore((s) => s.sessions);
-}
-
-export function useAuditEvents() {
-  return useScopedStore((s) => s.auditEvents);
-}
-
 export function usePreferences() {
   return useAppStore((s) => s.preferences);
 }

@@ -4,20 +4,14 @@
  */
 import {
   mockReferenceRepository,
-  mockClientRepository,
   mockDgRepository,
   mockImportRepository,
   mockIntegrationRepository,
-  mockNotificationRepository,
-  mockOfficeRepository,
   mockUserRepository,
 } from "./mock";
 
 export const repositories = {
-  office: mockOfficeRepository,
   users: mockUserRepository,
-  clients: mockClientRepository,
-  notifications: mockNotificationRepository,
   dg: mockDgRepository,
   integrations: mockIntegrationRepository,
   imports: mockImportRepository,

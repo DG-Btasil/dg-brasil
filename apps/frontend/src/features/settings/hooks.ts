@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { useCan, useCurrentUser } from "@/features/auth/hooks";
+import { useCan } from "@/features/auth/hooks";
+import { useClientSession } from "@/features/auth/session-context";
 import { usePreferences } from "@/features/offices/hooks";
 import { NOTIFICATION_TYPES } from "@/lib/constants/status";
 import type { Permission } from "@/lib/permissions";
 import { repositories } from "@/repositories";
 import type { UserPreferences } from "@/store/types";
 import { useToast } from "@/store/ui-store";
-import type { ID, Office, Role } from "@/types";
+import type { ID } from "@/types";
 
 export const SETTINGS_SECTIONS = ["geral", "equipe", "integracoes", "ia", "honorarios", "notificacoes", "seguranca"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
@@ -38,56 +39,17 @@ export function defaultPreferences(): UserPreferences {
 
 /** Preferências salvas do usuário atual, ou os padrões. */
 export function useMyPreferences(): { userId: ID | undefined; preferences: UserPreferences; saved: boolean } {
-  const user = useCurrentUser();
+  const userId = useClientSession()?.userId;
   const all = usePreferences();
   return useMemo(() => {
-    const saved = user ? all[user.id] : undefined;
-    return { userId: user?.id, preferences: saved ?? defaultPreferences(), saved: Boolean(saved) };
-  }, [user, all]);
+    const saved = userId ? all[userId] : undefined;
+    return { userId, preferences: saved ?? defaultPreferences(), saved: Boolean(saved) };
+  }, [userId, all]);
 }
 
+/** Preferências de notificação (demonstração: o envio de e-mail/SMTP está fora desta etapa). */
 export function useSettingsActions() {
   const toast = useToast();
-
-  const saveOffice = useCallback(
-    async (patch: Partial<Omit<Office, "id" | "onboarding">>) => {
-      try {
-        await repositories.office.update(patch);
-        toast({ tone: "success", title: "Dados do escritório salvos" });
-        return true;
-      } catch {
-        toast({ tone: "danger", title: "Não foi possível salvar os dados do escritório." });
-        return false;
-      }
-    },
-    [toast],
-  );
-
-  const invite = useCallback(
-    async (input: { name: string; email: string; role: Role }): Promise<string | null> => {
-      try {
-        const token = await repositories.users.invite(input);
-        toast({ tone: "success", title: "Convite criado", description: `${input.name} · ${input.email}` });
-        return token;
-      } catch {
-        toast({ tone: "danger", title: "Não foi possível criar o convite." });
-        return null;
-      }
-    },
-    [toast],
-  );
-
-  const changeRole = useCallback(
-    async (userId: ID, role: Role, name: string) => {
-      try {
-        await repositories.users.changeRole(userId, role);
-        toast({ tone: "success", title: "Papel alterado", description: name });
-      } catch {
-        toast({ tone: "danger", title: "Não foi possível alterar o papel." });
-      }
-    },
-    [toast],
-  );
 
   const savePreferences = useCallback(
     async (userId: ID, prefs: UserPreferences) => {
@@ -101,5 +63,5 @@ export function useSettingsActions() {
     [toast],
   );
 
-  return { saveOffice, invite, changeRole, savePreferences };
+  return { savePreferences };
 }

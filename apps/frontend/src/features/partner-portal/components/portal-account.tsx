@@ -1,97 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
-import { Bell } from "lucide-react";
-import { NOTIFICATION_SEVERITY_TONE, NOTIFICATION_TYPE_LABEL } from "@/lib/constants/status";
-import { formatCNPJ, formatDate, formatEventTime, formatPhone } from "@/lib/formatting";
+import { formatCNPJ, formatDate, formatPhone } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { ROLE_LABEL } from "@/lib/permissions";
-import { cn } from "@/lib/cn";
 import { Can, PageContainer } from "@/components/layout/guards";
-import { NOTIFICATION_TYPE_ICON } from "@/components/layout/notification-center";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Avatar, PageHeader } from "@/components/ui/display";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
-import { TONE_BORDER_LEFT } from "@/components/ui/tone";
-import { EmptyState } from "@/components/feedback/states";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import type { MyPartnerSettingsDTO, PartnerDetailDTO } from "@/server/domain/organizations/dto";
 import { useClientSession } from "@/features/auth/session-context";
-import { useNotificationActions, useVisibleNotifications } from "@/features/notifications/hooks";
 import { UsersPanel } from "./portal-users";
-
-/** Notificações do portal (somente as endereçadas ao próprio parceiro). */
-export function PortalNotifications() {
-  const notifications = useVisibleNotifications();
-  const { markRead, markAllRead } = useNotificationActions();
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const list = unreadOnly ? notifications.filter((n) => !n.read) : notifications;
-  const unread = notifications.filter((n) => !n.read).length;
-  return (
-    <PageContainer>
-      <PageHeader
-        title="Notificações"
-        description="Solicitações, documentos aprovados, andamento e repasses dos seus casos."
-        actions={
-          unread > 0 && (
-            <Button variant="secondary" onClick={markAllRead}>
-              Marcar todas como lidas
-            </Button>
-          )
-        }
-      />
-      <Panel>
-        <div className="flex items-center gap-2 border-b border-line px-5 py-3">
-          {[false, true].map((flag) => (
-            <button
-              key={String(flag)}
-              type="button"
-              aria-pressed={unreadOnly === flag}
-              onClick={() => setUnreadOnly(flag)}
-              className={cn("rounded-sm px-2.5 py-1 text-[12.5px]", unreadOnly === flag ? "bg-navy text-white" : "text-muted hover:text-foreground")}
-            >
-              {flag ? `Não lidas (${unread})` : "Todas"}
-            </button>
-          ))}
-        </div>
-        {list.length === 0 ? (
-          <EmptyState compact icon={Bell} title="Nenhuma notificação." />
-        ) : (
-          <ul className="divide-y divide-line">
-            {list.map((n) => {
-              const Icon = NOTIFICATION_TYPE_ICON[n.type];
-              return (
-                <li key={n.id} className={cn("flex gap-3 border-l-2 px-5 py-3", n.read ? "border-l-transparent" : TONE_BORDER_LEFT[NOTIFICATION_SEVERITY_TONE[n.severity]])}>
-                  <Icon className={cn("mt-0.5 size-4 shrink-0", n.read ? "text-subtle" : "text-navy-700")} aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <p className={cn("text-[13px]", n.read ? "text-muted" : "font-semibold text-foreground")}>{n.title}</p>
-                      <span className="shrink-0 text-[11.5px] text-subtle">{formatEventTime(n.at)}</span>
-                    </div>
-                    <p className="mt-0.5 text-[12.5px] text-muted">{n.description}</p>
-                    <div className="mt-1.5 flex items-center gap-3">
-                      <Badge tone="neutral">{NOTIFICATION_TYPE_LABEL[n.type]}</Badge>
-                      {!n.read && (
-                        <button type="button" onClick={() => markRead(n.id)} className="text-[12px] text-muted hover:text-foreground">
-                          Marcar como lida
-                        </button>
-                      )}
-                      <Link href={n.cta.href} onClick={() => markRead(n.id)} className="text-[12px] font-semibold text-navy-700 hover:underline underline-offset-2">
-                        {n.cta.label}
-                      </Link>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Panel>
-    </PageContainer>
-  );
-}
 
 /**
  * Minha Conta: dados da SESSÃO real (nunca do mock), o cadastro do próprio

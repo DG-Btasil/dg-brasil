@@ -1,6 +1,7 @@
 import { COURTS } from "@/lib/constants/legal";
 import { PROCESS_ORIGINS, PROCESS_PHASES, PROCESS_STATUSES, type ProcessOrigin, type ProcessPhase, type ProcessStatus } from "@/lib/constants/status";
 import type { ProcessSortField } from "./components/process-list-table";
+import type { ProcessDeadlineFilter } from "@/server/domain/processes/schemas";
 
 /**
  * Estado da lista de processos ↔ URL ↔ entrada de `listProcessesAction`.
@@ -16,6 +17,8 @@ export interface ProcessListQuery {
   clientId: string;
   origin: ProcessOrigin | "";
   caseOrigin: string;
+  /** Prazo em aberto: vencido ou em até 5 dias (inclui vencidos). Só equipe interna. */
+  deadline: ProcessDeadlineFilter | "";
   sort: ProcessSortField;
   direction: "asc" | "desc";
   page: number;
@@ -32,12 +35,14 @@ export const DEFAULT_PROCESS_QUERY: ProcessListQuery = {
   clientId: "",
   origin: "",
   caseOrigin: "",
+  deadline: "",
   sort: "updatedAt",
   direction: "desc",
   page: 1,
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEADLINE_PARAM: Record<ProcessDeadlineFilter, string> = { OVERDUE: "vencidos", NEXT_5_DAYS: "5dias" };
 const SORT_PARAM: Record<ProcessSortField, string> = { updatedAt: "atualizado", createdAt: "cadastro", title: "titulo", cnj: "cnj", distributionDate: "distribuicao" };
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 const oneOf = <T extends string>(values: readonly T[], v: string): T | "" => ((values as readonly string[]).includes(v) ? (v as T) : "");
@@ -58,6 +63,7 @@ export function processQueryFromSearchParams(params: Record<string, string | str
     clientId: uuid(first(params.cliente)),
     origin: oneOf(PROCESS_ORIGINS, first(params.cadastro)),
     caseOrigin: uuid(first(params.origem)),
+    deadline: (Object.keys(DEADLINE_PARAM) as ProcessDeadlineFilter[]).find((k) => DEADLINE_PARAM[k] === first(params.prazo)) ?? "",
     sort,
     direction: dir === "asc" || dir === "desc" ? dir : sort === "title" || sort === "cnj" ? "asc" : "desc",
     page: Number.isFinite(page) && page >= 1 && page <= 10_000 ? page : 1,
@@ -74,6 +80,7 @@ export function processQueryToSearchParams(q: ProcessListQuery): URLSearchParams
   if (q.clientId) p.set("cliente", q.clientId);
   if (q.origin) p.set("cadastro", q.origin);
   if (q.caseOrigin) p.set("origem", q.caseOrigin);
+  if (q.deadline) p.set("prazo", DEADLINE_PARAM[q.deadline]);
   if (q.sort !== DEFAULT_PROCESS_QUERY.sort || q.direction !== DEFAULT_PROCESS_QUERY.direction) {
     p.set("ordem", SORT_PARAM[q.sort]);
     p.set("dir", q.direction);
@@ -95,11 +102,12 @@ export function processQueryToInput(q: ProcessListQuery): Record<string, unknown
     clientId: q.clientId || undefined,
     technicalOrigin: q.origin || undefined,
     caseOriginOrganizationId: q.caseOrigin || undefined,
+    deadline: q.deadline || undefined,
     sortBy: q.sort,
     sortDirection: q.direction,
   };
 }
 
 export function countProcessFilters(q: ProcessListQuery): number {
-  return [q.search, q.status, q.phase, q.court, q.responsible, q.clientId, q.origin, q.caseOrigin].filter(Boolean).length;
+  return [q.search, q.status, q.phase, q.court, q.responsible, q.clientId, q.origin, q.caseOrigin, q.deadline].filter(Boolean).length;
 }

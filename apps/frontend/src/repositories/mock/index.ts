@@ -8,12 +8,9 @@ import { useAppStore } from "@/store/app-store";
 import { selectScoped } from "@/store/scope";
 import type {
   ReferenceRepository,
-  ClientRepository,
   DgRepository,
   ImportRepository,
   IntegrationRepository,
-  NotificationRepository,
-  OfficeRepository,
   UserRepository,
 } from "../contracts";
 
@@ -22,28 +19,12 @@ const state = () => useAppStore.getState();
 const data = () => selectScoped(useAppStore.getState());
 const ok = <T>(value: T) => Promise.resolve(value);
 
-export const mockOfficeRepository: OfficeRepository = {
-  get: () => ok(data().office),
-  update: async (patch) => state().updateOffice(patch),
-};
-
 export const mockUserRepository: UserRepository = {
   list: () => ok(data().users),
   invite: async (input) => state().inviteUser(input),
   acceptInvitation: async (token, name) => state().acceptInvitation(token, name),
   changeRole: async (userId, role) => state().changeUserRole(userId, role),
   savePreferences: async (userId, prefs) => state().updateUserPreferences(userId, prefs),
-};
-
-export const mockClientRepository: ClientRepository = {
-  list: () => ok(data().clients),
-  get: (id) => ok(data().clients.find((c) => c.id === id)),
-};
-
-export const mockNotificationRepository: NotificationRepository = {
-  list: () => ok(data().notifications),
-  markRead: async (id) => state().markNotificationRead(id),
-  markAllRead: async () => state().markAllNotificationsRead(),
 };
 
 export const mockDgRepository: DgRepository = {

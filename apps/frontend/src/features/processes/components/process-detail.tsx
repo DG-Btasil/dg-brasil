@@ -8,7 +8,6 @@ import { deadlineUrgency } from "@/lib/formatting";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import type { ActionResult } from "@/lib/actions/result";
 import { Can, PageContainer } from "@/components/layout/guards";
-import { PendingIntegration } from "@/components/feedback/pending-integration";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
@@ -17,6 +16,14 @@ import type { Page } from "@/server/core/pagination";
 import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
 import type { DocumentListItem } from "@/server/domain/documents/dto";
 import { DocumentsPanel } from "@/features/documents/components/documents-panel";
+import { ActionErrorState } from "@/components/feedback/action-error";
+import { EmptyState } from "@/components/feedback/states";
+import { Panel, PanelHeader } from "@/components/ui/panel";
+import { AgreementsPanel } from "@/features/finance/components/agreements-table";
+import { DEFAULT_AGREEMENT_QUERY } from "@/features/finance/list-query";
+import { ReviewTable } from "@/features/reviews/components/review-table";
+import type { AgreementListItemDTO } from "@/server/domain/finance/dto";
+import type { ReviewListItem } from "@/server/domain/reviews/dto";
 import type { ProcessEventDTO, ProcessInternalDTO, ProcessPartyDTO } from "@/server/domain/processes/dto";
 import { useCan } from "@/features/auth/hooks";
 import { CaseOriginLabel } from "@/features/cases/components/case-detail";
@@ -45,12 +52,18 @@ export function ProcessDetail({
   events,
   deadlines,
   documents,
+  reviews,
+  agreements,
 }: {
   process: ProcessInternalDTO;
   parties: ActionResult<Page<ProcessPartyDTO>>;
   events: ActionResult<Page<ProcessEventDTO>>;
   deadlines: ActionResult<Page<DeadlineDTO>>;
   documents: ActionResult<Page<DocumentListItem>>;
+  /** Só ADMIN/LAWYER (reviews.view). */
+  reviews?: ActionResult<Page<ReviewListItem>>;
+  /** Só ADMIN (finance.view): contratos do CASO do processo. */
+  agreements?: ActionResult<Page<AgreementListItemDTO>>;
 }) {
   const responsible = useDirectoryUser(process.responsibleUserId);
   const can = useCan();
@@ -135,8 +148,27 @@ export function ProcessDetail({
           />
         )}
         {active === "prazos" && <DeadlinesTab deadlines={deadlines} onAdd={() => setDialog({ kind: "deadline" })} onEdit={(deadline) => setDialog({ kind: "deadline", deadline })} />}
-        {active === "revisoes" && <PendingIntegration description="As revisões do processo serão conectadas em uma próxima fase." />}
-        {active === "financeiro" && <PendingIntegration description="O financeiro pertence ao caso e será conectado depois da revisão do ciclo de vida do acordo financeiro." />}
+        {active === "revisoes" && reviews && (
+          <Panel>
+            <PanelHeader title="Revisões do processo" description="Material dos agentes e documentos deste processo aguardando ou com decisão humana." />
+            {!reviews.ok ? (
+              <ActionErrorState error={reviews} title="Não foi possível carregar as revisões." />
+            ) : reviews.data.items.length === 0 ? (
+              <EmptyState compact title="Nenhuma revisão neste processo." />
+            ) : (
+              <ReviewTable rows={reviews.data.items} />
+            )}
+          </Panel>
+        )}
+        {active === "financeiro" && agreements && (
+          <AgreementsPanel
+            legalCaseId={process.legalCaseId}
+            initialQuery={DEFAULT_AGREEMENT_QUERY}
+            initialResult={agreements}
+            title="Contratos de honorários do caso"
+            description="O financeiro pertence ao caso: estes contratos abrangem todos os processos dele."
+          />
+        )}
       </TabPanel>
 
       {dialog?.kind === "delete" && <DeleteProcessDialog process={process} openDeadlines={openDeadlines.length} onClose={close} />}

@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { runAction } from "@/server/core/action";
 import * as service from "./service";
 import {
@@ -24,6 +25,11 @@ import {
 
 export async function listProcessesAction(input: unknown) {
   return runAction({ name: "processes.list", permission: "processes.view", schema: listProcessesSchema, input, handler: service.listProcesses });
+}
+
+/** Contadores da carteira (equipe interna). */
+export async function getProcessSummaryAction(input?: unknown) {
+  return runAction({ name: "processes.summary", permission: "processes.view", schema: z.unknown(), input, handler: (ctx) => service.getProcessSummary(ctx) });
 }
 
 export async function listCaseProcessesAction(input: unknown) {

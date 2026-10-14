@@ -13,6 +13,11 @@ import { listDeadlinesAction } from "@/server/domain/processes/deadlines/actions
 import { listDocumentsAction } from "@/server/domain/documents/actions";
 import { documentListInput } from "@/features/documents/constants";
 import { requestListInput } from "@/features/partner-requests/query";
+import { DEFAULT_AGREEMENT_QUERY, agreementQueryToInput } from "@/features/finance/list-query";
+import { can } from "@/lib/permissions";
+import { requireAppSession } from "@/server/auth/session";
+import { listAgreementRowsAction } from "@/server/domain/finance/actions";
+import { listReviewsAction } from "@/server/domain/reviews/actions";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 
 const fallback = (
@@ -55,15 +60,18 @@ async function InternalProcess({ id }: { id: string }) {
     );
   }
   if (result.data.surface !== "INTERNAL") return <ProcessNotFound />;
-  const [parties, events, deadlines, documents] = await Promise.all([
+  const session = await requireAppSession();
+  const [parties, events, deadlines, documents, reviews, agreements] = await Promise.all([
     listProcessPartiesAction({ processId: id, pageSize: 50 }),
     listProcessEventsAction({ processId: id, pageSize: 50 }),
     listDeadlinesAction({ processId: id, pageSize: 50 }),
     listDocumentsAction(documentListInput({ legalProcessId: id })),
+    can(session.role, "reviews.view") ? listReviewsAction({ processId: id, pageSize: 50 }) : Promise.resolve(undefined),
+    can(session.role, "finance.view") ? listAgreementRowsAction(agreementQueryToInput(DEFAULT_AGREEMENT_QUERY, { legalCaseId: result.data.process.legalCaseId })) : Promise.resolve(undefined),
   ]);
   return (
     <Suspense fallback={fallback}>
-      <ProcessDetail process={result.data.process} parties={parties} events={events} deadlines={deadlines} documents={documents} />
+      <ProcessDetail process={result.data.process} parties={parties} events={events} deadlines={deadlines} documents={documents} reviews={reviews} agreements={agreements} />
     </Suspense>
   );
 }

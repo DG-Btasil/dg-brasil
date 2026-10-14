@@ -16,13 +16,10 @@ import type {
   AgentTask,
   Agent,
   ChangeHistoryEntry,
-  Client,
   ID,
   Integration,
   JudicialSourceState,
   LegalThesis,
-  Notification,
-  Office,
   ReferenceMaterial,
   Role,
   Skill,
@@ -41,33 +38,12 @@ import type {
   UserPreferences,
 } from "@/store/types";
 
-/** Escritório proprietário único (Bárbara Cardoso Advocacia). Não há criação de escritórios. */
-export interface OfficeRepository {
-  get(): Promise<Office>;
-  update(patch: Partial<Omit<Office, "id">>): Promise<void>;
-}
-
 export interface UserRepository {
   list(): Promise<User[]>;
   invite(input: { name: string; email: string; role: Role }): Promise<string>;
   acceptInvitation(token: string, name: string): Promise<boolean>;
   changeRole(userId: ID, role: Role): Promise<void>;
   savePreferences(userId: ID, prefs: UserPreferences): Promise<void>;
-}
-
-/**
- * Clientes dos módulos de demonstração (somente leitura). Cadastro, edição,
- * inativação e exclusão são reais desde a Etapa 4.3 (server/domain/clients).
- */
-export interface ClientRepository {
-  list(): Promise<Client[]>;
-  get(id: ID): Promise<Client | undefined>;
-}
-
-export interface NotificationRepository {
-  list(): Promise<Notification[]>;
-  markRead(id: ID): Promise<void>;
-  markAllRead(): Promise<void>;
 }
 
 export interface DgRepository {

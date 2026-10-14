@@ -295,12 +295,6 @@ export interface ImportActions {
   importData: (plan: ImportPlan) => ImportResult;
 }
 
-/** Notificações do mock (até a Fase H). */
-export interface ReviewActions {
-  markNotificationRead: (id: ID) => void;
-  markAllNotificationsRead: () => void;
-}
-
 export interface DgActions {
   createAgent: (input: NewAgentInput) => ID;
   updateAgent: (id: ID, patch: Partial<Pick<Agent, "status" | "autonomy" | "rules" | "skillIds" | "thesisIds" | "description">>) => void;
@@ -322,7 +316,6 @@ export interface ReferenceActions {
 export type AppActions = SessionActions &
   OfficeActions &
   ImportActions &
-  ReviewActions &
   DgActions &
   ReferenceActions;
 

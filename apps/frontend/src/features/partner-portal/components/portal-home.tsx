@@ -1,52 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { Bell, Briefcase, CheckCircle2, CircleAlert, FileClock, FileWarning, FolderPlus, Hourglass, Info } from "lucide-react";
+import { Briefcase, CheckCircle2, FolderPlus, Hourglass, Inbox, Info } from "lucide-react";
 import { now } from "@/lib/clock";
+import { LEGAL_CASE_STATUS_TONE, PARTNER_CASE_STATUS_LABEL, PARTNER_REQUEST_TYPE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
 import { formatCurrency, formatEventTime, greeting } from "@/lib/formatting";
-import { cn } from "@/lib/cn";
 import { Can } from "@/components/layout/guards";
-import { ButtonLink } from "@/components/ui/button";
-import { PageHeader, Stat, Timeline } from "@/components/ui/display";
-import { Panel, PanelHeader } from "@/components/ui/panel";
+import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState } from "@/components/feedback/states";
-import { useCurrentPartnerOffice, useCurrentUser } from "@/features/auth/hooks";
-import { usePartnerFinancialSummary } from "@/features/partners/hooks";
-import { ACCEPTED_CASE_STATUSES, IN_ANALYSIS_CASE_STATUSES } from "@/lib/constants/status";
-import { useLegalCases } from "@/features/cases/hooks";
-import { usePortalAttention, usePortalProcesses, usePortalRequests, usePortalUpdates } from "../hooks";
+import { StatusBadge } from "@/components/ui/badge";
+import { ButtonLink } from "@/components/ui/button";
+import { PageHeader, Stat } from "@/components/ui/display";
+import { Panel, PanelHeader } from "@/components/ui/panel";
+import type { PartnerHomeData } from "@/features/home/load";
 
-const TONE_ICON = { warning: FileWarning, orange: CircleAlert, info: Info } as const;
-const TONE_CLASS = { warning: "text-warning", orange: "text-orange", info: "text-info" } as const;
-
-/** Início do Portal do Parceiro. */
-export function PortalHome() {
-  const user = useCurrentUser();
-  const office = useCurrentPartnerOffice();
-  const cases = useLegalCases();
-  const processes = usePortalProcesses();
-  const requests = usePortalRequests();
-  const attention = usePortalAttention();
-  const updates = usePortalUpdates(8);
-
-  const kpis = useMemo(
-    () => ({
-      inAnalysis: cases.filter((c) => IN_ANALYSIS_CASE_STATUSES.includes(c.status)).length,
-      accepted: cases.filter((c) => ACCEPTED_CASE_STATUSES.includes(c.status) && c.status !== "ARCHIVED").length,
-      activeProcesses: processes.filter((p) => p.status !== "CLOSED").length,
-      pendingDocs: requests.filter((r) => r.status === "OPEN" && r.type === "DOCUMENT_REQUEST").length,
-      recentUpdates: updates.filter((u) => now().getTime() - new Date(u.at).getTime() < 7 * 86_400_000).length,
-    }),
-    [cases, processes, requests, updates],
-  );
-
+/**
+ * Início do Portal do Parceiro, com dados do SERVIDOR (RLS recorta ao
+ * escritório da sessão): casos em análise e ativos, solicitações abertas,
+ * casos e processos recentes e — só PARTNER_ADMIN — a participação.
+ */
+export function PortalHome({ data }: { data: PartnerHomeData }) {
+  const open = data.openRequests.ok ? data.openRequests.data.total : undefined;
   return (
     <>
       <PageHeader
         serif
-        eyebrow={office?.name}
-        title={`${greeting(now())}, ${user?.displayName ?? ""}`}
+        eyebrow={data.officeName}
+        title={`${greeting(now())}, ${data.firstName}`}
         description="Acompanhe os casos do seu escritório com a Bárbara Cardoso Advocacia."
         actions={
           <Can permission="partnerPortal.cases.create">
@@ -57,76 +37,106 @@ export function PortalHome() {
         }
       />
 
-      <div className="grid grid-cols-5 gap-4">
-        <Stat label="Casos em análise" value={kpis.inAnalysis} icon={Hourglass} href="/casos" />
-        <Stat label="Casos aceitos" value={kpis.accepted} icon={CheckCircle2} href="/casos" />
-        <Stat label="Processos ativos" value={kpis.activeProcesses} icon={Briefcase} href="/processos" />
-        <Stat label="Documentos pendentes" value={kpis.pendingDocs} icon={FileClock} tone={kpis.pendingDocs ? "warning" : "neutral"} href="/pendencias" />
-        <Stat label="Atualizações recentes" value={kpis.recentUpdates} icon={Bell} hint="Últimos 7 dias" href="/notificacoes" />
+      <div className="grid grid-cols-3 gap-4">
+        <Stat label="Casos em análise" value={data.inAnalysis ?? "—"} icon={Hourglass} href="/casos?situacao=Em%20an%C3%A1lise" />
+        <Stat label="Casos aceitos e em andamento" value={data.activeCases ?? "—"} icon={CheckCircle2} href="/casos" />
+        <Stat label="Solicitações abertas" value={open ?? "—"} icon={Inbox} tone={open ? "warning" : "neutral"} href="/pendencias" />
       </div>
 
-      <Can permission="partnerPortal.finance.view">
-        <FinanceStrip partnerOfficeId={office?.id} />
-      </Can>
+      {data.finance?.ok && (
+        <Link
+          href="/financeiro"
+          className="mt-4 flex items-center gap-8 rounded-lg border border-line bg-surface px-5 py-3 text-[12.5px] shadow-hairline transition-colors hover:border-navy-600/40"
+        >
+          <span className="font-medium text-foreground">Sua participação</span>
+          <span className="text-muted">
+            Acumulada <strong className="ml-1 font-semibold text-navy tabular">{formatCurrency(data.finance.data.totals.accruedAmount)}</strong>
+          </span>
+          <span className="text-muted">
+            Disponível <strong className="ml-1 font-semibold text-navy tabular">{formatCurrency(data.finance.data.totals.availableAmount)}</strong>
+          </span>
+          <span className="ml-auto text-[12px] font-semibold text-navy-700">Ver Financeiro</span>
+        </Link>
+      )}
 
       <div className="mt-6 grid grid-cols-12 gap-5">
         <Panel className="col-span-12 xl:col-span-7">
-          <PanelHeader title="Precisa da sua atenção" description="Solicitações, cadastros incompletos e novidades dos seus casos." />
-          {attention.length === 0 ? (
-            <EmptyState compact icon={Info} title="Tudo em dia" description="Nenhuma pendência no momento." />
+          <PanelHeader title="Precisa da sua atenção" description="Solicitações da Bárbara Cardoso Advocacia aguardando o seu escritório." />
+          {!data.openRequests.ok ? (
+            <ActionErrorState error={data.openRequests} title="Não foi possível carregar as solicitações." />
+          ) : data.openRequests.data.items.length === 0 ? (
+            <EmptyState compact icon={Info} title="Tudo em dia" description="Nenhuma solicitação aberta no momento." />
           ) : (
             <ul className="divide-y divide-line">
-              {attention.map((item) => {
-                const Icon = TONE_ICON[item.tone];
-                return (
-                  <li key={item.id} className="flex items-start gap-3 px-5 py-3">
-                    <Icon className={cn("mt-0.5 size-4 shrink-0", TONE_CLASS[item.tone])} aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium text-foreground">{item.title}</p>
-                      <p className="mt-0.5 truncate text-[12px] text-muted">{item.context}</p>
-                    </div>
-                    <Link href={item.href} className="shrink-0 text-[12.5px] font-semibold text-navy-700 hover:underline underline-offset-2">
-                      {item.cta}
-                    </Link>
-                  </li>
-                );
-              })}
+              {data.openRequests.data.items.map((r) => (
+                <li key={r.id} className="flex items-start gap-3 px-5 py-3">
+                  <Inbox className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium text-foreground">{r.title}</p>
+                    <p className="mt-0.5 truncate text-[12px] text-muted">
+                      {(PARTNER_REQUEST_TYPE_LABEL as Record<string, string>)[r.type] ?? "Solicitação"}
+                      {r.caseTitle ? ` · ${r.caseTitle}` : ""} · {formatEventTime(r.createdAt)}
+                    </p>
+                  </div>
+                  <Link href="/pendencias" className="shrink-0 text-[12.5px] font-semibold text-navy-700 hover:underline underline-offset-2">
+                    Responder
+                  </Link>
+                </li>
+              ))}
             </ul>
           )}
         </Panel>
 
         <Panel className="col-span-12 xl:col-span-5">
-          <PanelHeader title="Atualizações recentes" />
-          <div className="px-5 py-4">
-            {updates.length === 0 ? (
-              <EmptyState compact title="Nenhuma atualização ainda." />
-            ) : (
-              <Timeline items={updates.map((u) => ({ id: u.id, title: u.description, meta: formatEventTime(u.at), description: u.actor.name }))} />
-            )}
-          </div>
+          <PanelHeader title="Casos recentes" actions={<ButtonLink href="/casos" variant="secondary" size="sm">Ver casos</ButtonLink>} />
+          {!data.recentCases.ok ? (
+            <ActionErrorState error={data.recentCases} title="Não foi possível carregar os casos." />
+          ) : data.recentCases.data.items.length === 0 ? (
+            <EmptyState compact title="Nenhum caso ainda." />
+          ) : (
+            <ul className="divide-y divide-line">
+              {data.recentCases.data.items.map((c) => (
+                <li key={c.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/casos/${c.id}`} className="block truncate text-[13px] font-medium text-foreground hover:text-navy-700 hover:underline underline-offset-2">
+                      {c.title}
+                    </Link>
+                    <p className="truncate text-[11.5px] text-muted">
+                      {c.clientName || "—"} · {formatEventTime(c.updatedAt)}
+                    </p>
+                  </div>
+                  <StatusBadge status={c.status} labels={PARTNER_CASE_STATUS_LABEL} tones={LEGAL_CASE_STATUS_TONE} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel className="col-span-12">
+          <PanelHeader title="Processos com atualização recente" actions={<ButtonLink href="/processos" variant="secondary" size="sm">Ver processos</ButtonLink>} />
+          {!data.recentProcesses.ok ? (
+            <ActionErrorState error={data.recentProcesses} title="Não foi possível carregar os processos." />
+          ) : data.recentProcesses.data.items.length === 0 ? (
+            <EmptyState compact icon={Briefcase} title="Nenhum processo ainda." />
+          ) : (
+            <ul className="divide-y divide-line">
+              {data.recentProcesses.data.items.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/processos/${p.id}`} className="block truncate text-[13px] font-medium text-foreground hover:text-navy-700 hover:underline underline-offset-2">
+                      {p.title}
+                    </Link>
+                    <p className="truncate text-[11.5px] text-muted">
+                      {p.caseTitle} · {formatEventTime(p.updatedAt)}
+                    </p>
+                  </div>
+                  <StatusBadge status={p.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
       </div>
     </>
-  );
-}
-
-/** Indicador financeiro discreto (somente administrador do parceiro). */
-function FinanceStrip({ partnerOfficeId }: { partnerOfficeId?: string }) {
-  const summary = usePartnerFinancialSummary(partnerOfficeId);
-  if (!summary) return null;
-  return (
-    <Link
-      href="/financeiro"
-      className="mt-4 flex items-center gap-8 rounded-lg border border-line bg-surface px-5 py-3 text-[12.5px] shadow-hairline transition-colors hover:border-navy-600/40"
-    >
-      <span className="font-medium text-foreground">Sua participação</span>
-      <span className="text-muted">
-        Acumulada <strong className="ml-1 font-semibold text-navy tabular">{formatCurrency(summary.accumulatedShare)}</strong>
-      </span>
-      <span className="text-muted">
-        A receber <strong className="ml-1 font-semibold text-navy tabular">{formatCurrency(summary.toReceive)}</strong>
-      </span>
-      <span className="ml-auto text-[12px] font-semibold text-navy-700">Ver Financeiro</span>
-    </Link>
   );
 }

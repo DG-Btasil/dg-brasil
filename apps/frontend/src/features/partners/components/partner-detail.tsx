@@ -9,10 +9,11 @@ import { ROLE_LABEL } from "@/lib/permissions";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import type { PartnerAgreementShareDTO, PartnerFinanceDTO, TransferListItemDTO } from "@/server/domain/finance/dto";
 import { PartnerShareView } from "@/features/finance/components/partner-share";
+import { AuditTimeline } from "@/features/audit/components/audit-timeline";
+import type { AuditEventDTO } from "@/server/domain/audit/dto";
 import type { ActionResult } from "@/lib/actions/result";
 import { Can, PageContainer } from "@/components/layout/guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
-import { PendingIntegration } from "@/components/feedback/pending-integration";
 import { Callout, EmptyState } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,7 +51,7 @@ type PageResult<T> = ActionResult<Page<T>>;
 /**
  * Ficha do escritório parceiro (equipe interna), com dados do servidor.
  * ADMIN vê divisão, responsável e notas internas; LAWYER, só o cadastro.
- * Financeiro (ADMIN) lido do servidor; atividade entra na fase H.
+ * Financeiro e atividade (ADMIN) lidos do servidor.
  */
 export function PartnerDetail({
   detail,
@@ -61,6 +62,7 @@ export function PartnerDetail({
   processes,
   requests,
   finance,
+  activity,
 }: {
   detail: PartnerDetailDTO;
   stats: ActionResult<PartnerStatsDTO>;
@@ -75,6 +77,8 @@ export function PartnerDetail({
     shares: ActionResult<Page<PartnerAgreementShareDTO>>;
     transfers: ActionResult<Page<TransferListItemDTO>>;
   };
+  /** Só ADMIN (audit.view). */
+  activity?: ActionResult<Page<AuditEventDTO>>;
 }) {
   const can = useCan();
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
@@ -92,9 +96,9 @@ export function PartnerDetail({
       { key: "processos", label: "Processos", count: total(processes) },
     ];
     if (can("partners.finance.view")) items.push({ key: "financeiro", label: "Financeiro" });
-    items.push({ key: "atividade", label: "Atividade" });
+    if (activity) items.push({ key: "atividade", label: "Atividade" });
     return items;
-  }, [can, users, clients, cases, processes]);
+  }, [can, users, clients, cases, processes, activity]);
   const active: TabKey = tabs.some((t) => t.key === tab) ? tab : "visao-geral";
 
   return (
@@ -141,7 +145,7 @@ export function PartnerDetail({
             manage={can("finance.manage") ? { partnerOrganizationId: partner.id } : undefined}
           />
         )}
-        {active === "atividade" && <PendingIntegration description="A linha do tempo de auditoria do parceiro será conectada em uma próxima fase." />}
+        {active === "atividade" && activity && <AuditTimeline entityId={partner.id} initial={activity} description="Registro de auditoria do escritório parceiro." />}
       </TabPanel>
 
       {admin && dialog === "edit" && <PartnerEditDrawer partner={admin} open onOpenChange={(o) => !o && setDialog(null)} />}

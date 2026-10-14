@@ -22,7 +22,7 @@ retorno das operações.
 | E | Revisões, Análises | ✅ real | início/envio de análise atômico e idempotente (migration 029); decisão só por `decide_review` |
 | F | Financeiro | ✅ real | ciclo de vida do acordo garantido no banco (migration 030); totais somados no servidor; ledger append-only |
 | G | Execuções de agente | ✅ real | read model paginado (migration 031); configuração de agentes segue fora do escopo |
-| H | Notificações, Auditoria, Home/painéis | ⏳ | painéis por último |
+| H | Notificações, Auditoria, Início/painéis, resumo de processos | ✅ real | contadores no servidor; sem migration |
 
 ## Padrão de integração (vale para todos os domínios)
 
@@ -430,6 +430,58 @@ demonstração), conforme a regra de não expandir a configuração de agentes
 nesta etapa; o indicador "Execuções no mês" do cabeçalho do DG Brasil é
 dessa configuração.
 
+## Fase H — Notificações, Auditoria, Início e painéis
+
+**Notificações.** Sino do cabeçalho e `/notificacoes` (portal) leem a caixa
+REAL do usuário da sessão (`listNotificationsAction`,
+`countUnreadNotificationsAction`), marcam lida/todas pelo servidor e levam ao
+registro referenciado (caso, processo, pendências). Tipo novo do banco
+aparece como "Notificação" (nunca some). Observação: ainda não há produtor de
+notificações no banco (nenhuma regra grava avisos) — a caixa real começa
+vazia; enviar e-mail/SMTP continua fora desta etapa.
+
+**Auditoria (ADMIN, `audit.view`).** Linha do tempo paginada por registro
+nas abas "Atividade" do cliente, do caso e do parceiro, e o registro global
+em Configurações → Segurança (filtros de ação, tipo de responsável e
+período, páginas no servidor). As ações do banco viram frases
+(`features/audit/humanize.ts`: "Caso aceito · de enviado para aceito");
+sem IP, user agent nem texto livre. Para quem não é ADMIN, as abas nem
+aparecem (e o servidor nem consulta).
+
+**Início.** Painel interno e Início do portal lidos no servidor
+(`features/home/load.ts`) pelas mesmas actions das telas, por permissão:
+contadores pelos totais das listagens (pageSize 1), prazos vencidos e em até
+5 dias, distribuição de processos por status (contagens no banco), revisões
+pendentes, clientes recentes, atividade (ADMIN), execuções (ADMIN),
+financeiro (ADMIN). Portal: casos em análise/ativos, solicitações abertas,
+casos e processos recentes e — só PARTNER_ADMIN — a participação. Os
+contadores do menu da casa também vêm do servidor (layout).
+
+**Processos.** Faixa de contadores da carteira (`getProcessSummaryAction`:
+ativos, com prazo em até 5 dias, criados pelo DG Brasil, importados) e
+filtro "Prazo" (vencidos / em até 5 dias, na URL `?prazo=`), resolvidos no
+banco com o embed obrigatório dos prazos em aberto (só equipe interna). Abas
+"Revisões" (filtro novo por processo) e "Financeiro" (contratos do caso) da
+ficha do processo.
+
+**Configurações.** Geral (dados do escritório) lida e gravada no servidor
+(`getOwnerOfficeAction`/`updateOwnerOfficeAction`); Segurança mostra a
+postura real (MFA obrigatório, RLS, credenciais no servidor) e a auditoria —
+a lista de sessões de demonstração saiu (o Auth não expõe sessões pela API do
+produto).
+
+**Mock removido nesta fase:** hooks e componentes mock do Início, do portal,
+de parceiros e de notificações; repositórios `office`, `clients` e
+`notifications`; ações de notificação do store; persona `useCurrentUser`
+(menu, cabeçalho e preferências usam a sessão real); arquivos órfãos.
+
+**Continuam de demonstração (fora do escopo da 4.3, documentado):**
+configuração da área DG Brasil (agentes, skills, teses, referências,
+histórico — "não expandir a configuração de agentes"), Integrações e
+Importação de dados (integrações externas proibidas nesta etapa), uso de IA
+em Configurações → IA e preferências de notificação (envio/SMTP fora da
+etapa). Nenhum desses guarda dado jurídico.
+
 ## Testes
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
@@ -471,6 +523,12 @@ dessa configuração.
   (PGlite) `[031]`; integração `tests/integration/frontend-agent-runs.int.test.ts`
   (páginas sem sobreposição, total, filtros, execução sem caso só para
   ADMIN, papéis sem acesso).
+- Fase H, unitários: `src/features/audit/phase-h-ui.test.ts` (ações
+  humanizadas, detalhe sem texto livre, destino das notificações, corte do
+  filtro de prazo no fuso de SP, URL `?prazo=`, OAB e PATCH do escritório);
+  integração `tests/integration/frontend-phase-h.int.test.ts` (filtro de
+  prazo e total por processo, parceiro sem prazo/resumo, resumo da
+  carteira, revisões por processo, auditoria por registro só ADMIN).
 - Fase B, integração: `tests/integration/frontend-cases-processes.int.test.ts`
   (caso idempotente, filtros e contagem, catálogo, isolamento, processo
   idempotente com próximo prazo, edição que limpa, ciclo do prazo,
@@ -738,4 +796,35 @@ de análise da área bancária com esse agente (o do seed fica sem agente).
 **ASSISTANT / parceiros**
 
 - [ ] Sem execuções em nenhuma tela; `/dg-brasil/execucoes` → acesso negado.
+
+## QA manual — Fase H (Supabase DEV)
+
+**ADMIN**
+
+- [ ] Início: contadores, prazos vencidos/em até 5 dias, distribuição,
+      revisões, clientes recentes, atividade, execuções e financeiro — números
+      batem com as listas correspondentes.
+- [ ] Menu da casa: contadores coerentes; recarregar atualiza.
+- [ ] Cliente, caso e parceiro → Atividade: eventos recentes do registro,
+      com frases e quem fez; páginas.
+- [ ] Configurações → Segurança: postura real; auditoria com filtros de
+      ação, responsável e período; páginas.
+- [ ] Configurações → Geral: alterar e salvar os dados do escritório;
+      recarregar mostra o salvo; OAB "OAB/SP 123.456".
+- [ ] Processos: faixa de contadores; clicar "Com prazo em até 5 dias" aplica
+      o filtro; `?prazo=vencidos` na URL funciona.
+- [ ] Processo → Revisões e → Financeiro (contratos do caso).
+- [ ] Sino: notificação criada pela service role para o ADMIN aparece; marcar
+      lida e "marcar todas" atualizam a contagem.
+
+**LAWYER / ASSISTANT**
+
+- [ ] Início sem financeiro/atividade/execuções; LAWYER vê revisões,
+      ASSISTANT não. Sem abas "Atividade".
+
+**PARTNER_ADMIN / PARTNER_USER**
+
+- [ ] Início do portal só com dados do próprio escritório; participação só
+      para PARTNER_ADMIN.
+- [ ] `/notificacoes`: só as próprias; marcar lida.
 

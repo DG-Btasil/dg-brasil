@@ -15,6 +15,8 @@ import { listProcessesAction } from "@/server/domain/processes/actions";
 import { getPartnerFinanceAction, listPartnerAgreementSharesAction, listTransfersAction } from "@/server/domain/finance/actions";
 import { can } from "@/lib/permissions";
 import { requireAppSession } from "@/server/auth/session";
+import { auditTimelineInput } from "@/features/audit/query";
+import { listAuditEventsAction } from "@/server/domain/audit/actions";
 
 function PartnerNotFound() {
   return (
@@ -49,7 +51,7 @@ async function Partner({ id }: { id: string }) {
   if (detail.data.access === "PARTNER") return <PartnerNotFound />;
   const session = await requireAppSession();
   const canFinance = can(session.role, "partners.finance.view") && can(session.role, "finance.view");
-  const [stats, users, clients, cases, processes, requests, finance] = await Promise.all([
+  const [stats, users, clients, cases, processes, requests, finance, activity] = await Promise.all([
     getPartnerStatsAction({ id }),
     listOrganizationUsersAction({ organizationId: id, pageSize: 50 }),
     listRelatedClientsAction({ organizationId: id, pageSize: 50 }),
@@ -63,6 +65,7 @@ async function Partner({ id }: { id: string }) {
           listTransfersAction({ partnerOrganizationId: id, pageSize: 50 }),
         ])
       : Promise.resolve(undefined),
+    can(session.role, "audit.view") ? listAuditEventsAction(auditTimelineInput(id)) : Promise.resolve(undefined),
   ]);
   return (
     <PartnerDetail
@@ -74,6 +77,7 @@ async function Partner({ id }: { id: string }) {
       processes={processes}
       requests={requests}
       finance={finance ? { summary: finance[0], shares: finance[1], transfers: finance[2] } : undefined}
+      activity={activity}
     />
   );
 }

@@ -4,7 +4,7 @@ import { isPartner, requireInternal, requirePermission, type ServiceContext } fr
 import { forbidden, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
 import { deadlineInsertRow } from "./deadlines/mappers";
-import type { ProcessCreatedDTO, ProcessDetailDTO, ProcessEventDTO, ProcessListItem, ProcessPartyDTO } from "./dto";
+import type { ProcessCreatedDTO, ProcessDetailDTO, ProcessEventDTO, ProcessListItem, ProcessPartyDTO, ProcessSummaryDTO } from "./dto";
 import {
   eventFromRow,
   internalDetailsPatch,
@@ -32,6 +32,7 @@ import type {
   ListProcessesInput,
   UpdatePartyInput,
   UpdateProcessInput,
+  ProcessDeadlineFilter,
 } from "./schemas";
 
 /**
@@ -79,12 +80,38 @@ export async function listProcesses(ctx: ServiceContext, input: ListProcessesInp
       court: input.court,
       technicalOrigin: input.technicalOrigin,
       caseOriginOrganizationId: scope === "INTERNAL" ? input.caseOriginOrganizationId : undefined,
+      // Prazos são só da equipe interna (RLS): parceiro nem chega a filtrar por eles.
+      openDeadlineBefore: scope === "INTERNAL" && input.deadline ? deadlineCutoff(input.deadline) : undefined,
     },
     input,
     { column: input.column, ascending: input.ascending },
   );
   const items = rows.map((r) => listItemFromRow(r, viewer));
   return toPage(scope === "INTERNAL" ? await withNextDeadline(ctx, items) : items, total, input);
+}
+
+/**
+ * Limite do filtro de prazo: vencido = antes de agora; "até 5 dias" = antes do
+ * início do 6º dia (fuso de São Paulo), o que inclui os vencidos.
+ */
+export function deadlineCutoff(kind: ProcessDeadlineFilter, now = new Date()): string {
+  if (kind === "OVERDUE") return now.toISOString();
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(now);
+  const [y, m, d] = today.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 6, 3, 0, 0)).toISOString();
+}
+
+/** Contadores da carteira (equipe interna): ativos, com prazo em até 5 dias, criados pelo DG Brasil, importados. */
+export async function getProcessSummary(ctx: ServiceContext): Promise<ProcessSummaryDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "processes.view");
+  const [active, dueSoon, agent, imported] = await Promise.all([
+    repo.countProcesses(ctx.db, { notStatuses: ["CLOSED", "ARCHIVED"] }),
+    repo.countProcesses(ctx.db, { openDeadlineBefore: deadlineCutoff("NEXT_5_DAYS") }),
+    repo.countProcesses(ctx.db, { technicalOrigins: ["AGENT"] }),
+    repo.countProcesses(ctx.db, { technicalOrigins: ["INTEGRATION", "IMPORT"] }),
+  ]);
+  return { active, dueSoon, agent, imported };
 }
 
 /** Próximo prazo em aberto de cada processo da página (uma consulta). */
