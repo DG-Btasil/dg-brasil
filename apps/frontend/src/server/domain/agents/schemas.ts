@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pageInputSchema } from "@/server/core/pagination";
 import { zOptionalText, zUuid } from "@/server/core/validation";
 
 /**
@@ -35,5 +36,13 @@ export const listAgentRunSummariesSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(25),
 });
 export type ListAgentRunSummariesInput = z.infer<typeof listAgentRunSummariesSchema>;
+
+/** Lista paginada (get_agent_run_summaries_page, 031): filtros por caso, situação e agente. */
+export const listAgentRunsSchema = pageInputSchema.extend({
+  legalCaseId: zUuid().optional(),
+  status: z.enum(AGENT_RUN_STATUSES).optional(),
+  agentId: zUuid().optional(),
+});
+export type ListAgentRunsInput = z.infer<typeof listAgentRunsSchema>;
 
 export const agentRunIdSchema = z.object({ id: zUuid() });

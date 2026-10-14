@@ -21,7 +21,7 @@ retorno das operações.
 | D | Parceiros (equipe interna), Solicitações, Portal do Parceiro | ✅ real | Início e Financeiro do portal ficam para H e F |
 | E | Revisões, Análises | ✅ real | início/envio de análise atômico e idempotente (migration 029); decisão só por `decide_review` |
 | F | Financeiro | ✅ real | ciclo de vida do acordo garantido no banco (migration 030); totais somados no servidor; ledger append-only |
-| G | Execuções de agente / Agentes | ⏳ | paginar o read model antes |
+| G | Execuções de agente | ✅ real | read model paginado (migration 031); configuração de agentes segue fora do escopo |
 | H | Notificações, Auditoria, Home/painéis | ⏳ | painéis por último |
 
 ## Padrão de integração (vale para todos os domínios)
@@ -409,6 +409,27 @@ financeiro e de parceiros, hooks e cálculos de financeiro no navegador
 (totais, cronograma, divisão) e os diálogos mock de "valores da parceria" e
 "repasse".
 
+## Fase G — Execuções de agente
+
+**Read model antes da tela.** `get_agent_run_summaries` só devolvia "as N
+mais recentes" (sem página, total nem filtro). **Migration 031** cria
+`get_agent_run_summaries_page` (página, total e filtros por caso, situação e
+agente) com as MESMAS regras de acesso e colunas fixas; a antiga continua.
+`listAgentRunsAction` (ADMIN e LAWYER) devolve `Page<AgentRunSummaryDTO>`.
+
+**Telas:** DG Brasil → **Execuções** (`/dg-brasil/execucoes`, ADMIN): lista
+paginada com filtro de situação na URL, quem pediu, propostas geradas,
+código de erro (nunca a mensagem bruta) e "Cancelar" para execução na fila,
+executando ou aguardando decisão (`cancelAgentRunAction`, ADMIN). **Caso →
+Análise** (ADMIN/LAWYER): "Execuções de agente neste caso". Nada executa
+agente nesta etapa — o worker consome a fila; nenhuma chamada ao Claude.
+
+**Fora do escopo (não ampliado):** configuração de agentes, skills, teses e
+referências da área DG Brasil continua como no Front V1 (dados de
+demonstração), conforme a regra de não expandir a configuração de agentes
+nesta etapa; o indicador "Execuções no mês" do cabeçalho do DG Brasil é
+dessa configuração.
+
 ## Testes
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
@@ -446,6 +467,10 @@ financeiro e de parceiros, hooks e cálculos de financeiro no navegador
   (ciclo de vida pelo service e direto no banco com o JWT do ADMIN,
   concluído sem obrigação/entrada e com estorno, histórico imutável,
   lista e visão geral, papéis sem acesso).
+- Fase G, unitários: `src/features/agent-runs/phase-g-ui.test.ts`; banco
+  (PGlite) `[031]`; integração `tests/integration/frontend-agent-runs.int.test.ts`
+  (páginas sem sobreposição, total, filtros, execução sem caso só para
+  ADMIN, papéis sem acesso).
 - Fase B, integração: `tests/integration/frontend-cases-processes.int.test.ts`
   (caso idempotente, filtros e contagem, catálogo, isolamento, processo
   idempotente com próximo prazo, edição que limpa, ciclo do prazo,
@@ -694,4 +719,23 @@ de análise da área bancária com esse agente (o do seed fica sem agente).
 **PARTNER_USER**
 
 - [ ] `/financeiro` → acesso negado.
+
+## QA manual — Fase G (Supabase DEV; nenhuma IA executa)
+
+**ADMIN**
+
+- [ ] DG Brasil → Execuções: lista com páginas; filtro de situação vai para a
+      URL. Execução de análise enviada na Fase E aparece "Na fila".
+- [ ] "Cancelar" numa execução na fila → "Cancelada" depois da resposta;
+      execução concluída/cancelada não oferece cancelar.
+- [ ] Caso → Análise: "Execuções de agente neste caso" mostra só as do caso.
+
+**LAWYER**
+
+- [ ] Caso → Análise mostra as execuções do caso; sem "Cancelar"; sem
+      acesso à área DG Brasil.
+
+**ASSISTANT / parceiros**
+
+- [ ] Sem execuções em nenhuma tela; `/dg-brasil/execucoes` → acesso negado.
 

@@ -26,6 +26,11 @@ export interface AgentRunSummaryRow {
   proposal_count: number | string | null;
 }
 
+/** Linha de get_agent_run_summaries_page (031): as mesmas colunas + o total filtrado. */
+export interface AgentRunSummaryPageRow extends AgentRunSummaryRow {
+  total_count: number | string | null;
+}
+
 const opt = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v);
 
 export function summaryFromRow(row: AgentRunSummaryRow): AgentRunSummaryDTO {

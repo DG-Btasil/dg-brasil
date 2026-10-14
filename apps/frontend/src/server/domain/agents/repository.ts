@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fromDbError, unwrap } from "@/server/core/db-errors";
-import type { AgentRunSummaryRow } from "./mappers";
+import type { AgentRunSummaryPageRow, AgentRunSummaryRow } from "./mappers";
 
 /**
  * Acesso a dados de execução de agente. A tabela agent_runs é só de ADMIN:
@@ -38,6 +38,25 @@ export async function requestRunOnce(
 
 export async function summaries(db: SupabaseClient, legalCaseId: string | null, limit: number): Promise<AgentRunSummaryRow[]> {
   return (unwrap(await db.rpc("get_agent_run_summaries", { p_legal_case_id: legalCaseId, p_limit: limit })) ?? []) as AgentRunSummaryRow[];
+}
+
+/** Página de resumos (031): mesmas regras de acesso da RPC antiga; total em cada linha. */
+export async function summariesPage(
+  db: SupabaseClient,
+  filters: { legalCaseId?: string; status?: string; agentId?: string },
+  offset: number,
+  limit: number,
+): Promise<{ rows: AgentRunSummaryPageRow[]; total: number }> {
+  const rows = (unwrap(
+    await db.rpc("get_agent_run_summaries_page", {
+      p_legal_case_id: filters.legalCaseId ?? null,
+      p_status: filters.status ?? null,
+      p_agent_id: filters.agentId ?? null,
+      p_offset: offset,
+      p_limit: limit,
+    }),
+  ) ?? []) as AgentRunSummaryPageRow[];
+  return { rows, total: rows.length ? Number(rows[0].total_count ?? 0) : 0 };
 }
 
 /** ADMIN cancela (política agent_runs_cancel_admin: só de QUEUED/RUNNING/WAITING_HUMAN para CANCELLED). */

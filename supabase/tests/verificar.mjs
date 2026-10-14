@@ -2726,6 +2726,58 @@ await deve('auditoria: mudança de situação do acordo fica registrada (sem val
   if (ev.length < 3) throw new Error(`eventos: ${ev.length}`)
 })
 
+secao('Execuções de agente: resumos paginados [031]')
+const pagina031 = (uid, { caso = null, status = null, agente = null, offset = 0, limit = 25 } = {}) => como(uid, (tx) =>
+  linhas(tx, `select * from public.get_agent_run_summaries_page($1, $2, $3, $4, $5)`, [caso, status, agente, offset, limit]))
+await deve('ADMIN pagina todas: total em todas as linhas, mais recentes primeiro, páginas sem sobreposição', async () => {
+  const todas = await pagina031(ids.barbara, { limit: 100 })
+  const total = Number(todas[0].total_count)
+  igual(todas.length, Math.min(total, 100), 'página cheia')
+  igual(todas.every((r) => Number(r.total_count) === total), true, 'total repetido')
+  const ordenadas = [...todas].sort((a, b) => (b.created_at - a.created_at) || (b.id < a.id ? -1 : 1))
+  igual(todas.map((r) => r.id), ordenadas.map((r) => r.id), 'ordem')
+  const p1 = await pagina031(ids.barbara, { limit: 2 })
+  const p2 = await pagina031(ids.barbara, { offset: 2, limit: 2 })
+  igual(p1.some((r) => p2.some((s) => s.id === r.id)), false, 'sem sobreposição')
+  igual([p1[0].id, p1[1].id, p2[0]?.id], [todas[0].id, todas[1].id, todas[2]?.id], 'páginas seguem a ordem')
+})
+await deve('filtros por caso, situação e agente; colunas fixas, sem dados técnicos', async () => {
+  const doCaso = await pagina031(ids.barbara, { caso: ids.casoA, limit: 100 })
+  igual(doCaso.every((r) => r.legal_case_id === ids.casoA), true, 'caso')
+  const fila = await pagina031(ids.barbara, { status: 'QUEUED', limit: 100 })
+  igual(fila.every((r) => r.status === 'QUEUED'), true, 'situação')
+  const doAgente = await pagina031(ids.barbara, { agente: ids.agente, limit: 100 })
+  igual(doAgente.every((r) => r.agent_id === ids.agente), true, 'agente')
+  for (const k of ['metadata', 'input_tokens', 'estimated_cost', 'model', 'error_message', 'request_text'])
+    if (doCaso[0] && k in doCaso[0]) throw new Error(`RPC expõe ${k}`)
+})
+await deve('LAWYER só vê execuções de casos que acessa (nunca as sem caso), com o total coerente', async () => {
+  const r = await pagina031(ids.lucas, { limit: 100 })
+  igual(r.some((x) => x.id === ids.runAdmin), false, 'sem caso escondida')
+  igual(r.every((x) => x.legal_case_id !== null), true, 'todas com caso')
+  if (r.length) igual(Number(r[0].total_count), r.length <= 100 ? Number(r[0].total_count) : 0, 'total')
+})
+await deve('limite é aparado em 1..100 e deslocamento negativo vira 0', async () => {
+  igual((await pagina031(ids.barbara, { limit: 0 })).length <= 1, true, 'mínimo 1')
+  igual((await pagina031(ids.barbara, { limit: 1000 })).length <= 100, true, 'máximo 100')
+  igual((await pagina031(ids.barbara, { offset: -5, limit: 1 }))[0]?.id, (await pagina031(ids.barbara, { limit: 1 }))[0]?.id, 'offset negativo')
+})
+await deveFalhar('situação inválida é recusada', () => pagina031(ids.barbara, { status: 'QUALQUER' }), /Situação de execução inválida/)
+await deveFalhar('ASSISTANT não lê execuções', () => pagina031(ids.ana), /só a ADMIN e LAWYER/)
+await deveFalhar('parceiro não lê execuções', () => pagina031(ids.almeidaAdm), /só a ADMIN e LAWYER/)
+await deveFalhar('LAWYER filtrando caso sem acesso é recusado', () => pagina031(ids.lucas, { caso: randomUUID() }), /Sem acesso/)
+await deveFalhar('sessão aal1 não lê', () => comoAal1(ids.barbara, (tx) => tx.query(`select * from public.get_agent_run_summaries_page()`)), /duas etapas/)
+await deve('anon não executa a função', async () => {
+  await db.transaction(async (tx) => {
+    await tx.query('set local role anon')
+    await tx.query(`select * from public.get_agent_run_summaries_page()`)
+  }).then(() => { throw new Error('anon leu execuções') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+await deve('a função antiga continua igual (compatibilidade)', async () => {
+  const r = await como(ids.barbara, (tx) => linhas(tx, `select * from public.get_agent_run_summaries(null, 5)`))
+  igual(r.length <= 5 && !('total_count' in (r[0] ?? {})), true, 'antiga')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

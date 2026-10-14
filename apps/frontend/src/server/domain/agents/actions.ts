@@ -2,7 +2,7 @@
 
 import { runAction } from "@/server/core/action";
 import * as service from "./service";
-import { agentRunIdSchema, listAgentRunSummariesSchema, requestAgentRunSchema } from "./schemas";
+import { agentRunIdSchema, listAgentRunsSchema, listAgentRunSummariesSchema, requestAgentRunSchema } from "./schemas";
 
 /**
  * Server Actions de execução de agente. Pedir e acompanhar: ADMIN e LAWYER
@@ -15,6 +15,11 @@ export async function requestAgentRunAction(input: unknown) {
 
 export async function listAgentRunSummariesAction(input: unknown) {
   return runAction({ name: "agents.run_summaries", permission: "analyses.start", schema: listAgentRunSummariesSchema, input, handler: service.listAgentRunSummaries });
+}
+
+/** Lista paginada e filtrável (031). */
+export async function listAgentRunsAction(input: unknown) {
+  return runAction({ name: "agents.runs", permission: "analyses.start", schema: listAgentRunsSchema, input, handler: service.listAgentRuns });
 }
 
 export async function cancelAgentRunAction(input: unknown) {

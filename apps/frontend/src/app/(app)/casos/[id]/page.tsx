@@ -18,6 +18,8 @@ import { can } from "@/lib/permissions";
 import { requireAppSession } from "@/server/auth/session";
 import { getAnalysisAction, getAnalysisSetupAction, listAnalysesAction } from "@/server/domain/analyses/actions";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
+import { DEFAULT_AGENT_RUN_QUERY, agentRunQueryToInput } from "@/features/agent-runs/list-query";
+import { listAgentRunsAction } from "@/server/domain/agents/actions";
 import { DEFAULT_AGREEMENT_QUERY, agreementQueryToInput } from "@/features/finance/list-query";
 import { listAgreementRowsAction, listCasePartnershipsAction } from "@/server/domain/finance/actions";
 
@@ -55,6 +57,7 @@ async function InternalCase({ id }: { id: string }) {
   // Análise atual: a em curso, ou a mais recente; com os rótulos dos campos do modelo.
   const latest = analyses?.ok ? (analyses.data.items.find((a) => IN_FLIGHT_STATUSES.includes(a.dbStatus)) ?? analyses.data.items[0]) : undefined;
   const [current, setup] = latest ? await Promise.all([getAnalysisAction({ id: latest.id }), getAnalysisSetupAction({ legalCaseId: id })]) : [undefined, undefined];
+  const runs = canAnalyses ? await listAgentRunsAction(agentRunQueryToInput(DEFAULT_AGENT_RUN_QUERY, { legalCaseId: id })) : undefined;
   const fieldDefs = (latest && setup?.ok && setup.data.templates.find((t) => t.id === latest.templateId)?.fields) || [];
   return (
     <Suspense fallback={<SkeletonRows rows={6} />}>
@@ -65,7 +68,7 @@ async function InternalCase({ id }: { id: string }) {
         documents={documents}
         requirements={requirements}
         partnerRequests={partnerRequests}
-        analysis={analyses ? { list: analyses, current, fieldDefs } : undefined}
+        analysis={analyses && runs ? { list: analyses, current, fieldDefs, runs } : undefined}
         reviews={reviews}
         finance={finance ? { agreements: finance[0], partnerships: finance[1] } : undefined}
       />

@@ -34,6 +34,9 @@ import { ProcessListTable } from "@/features/processes/components/process-list-t
 import type { AnalysisDetailDTO, AnalysisListItem, TemplateFieldDTO } from "@/server/domain/analyses/dto";
 import type { ReviewListItem } from "@/server/domain/reviews/dto";
 import { AnalysisPanel } from "@/features/analyses/components/analysis-panel";
+import { AgentRunsPanel } from "@/features/agent-runs/components/agent-runs-panel";
+import { DEFAULT_AGENT_RUN_QUERY } from "@/features/agent-runs/list-query";
+import type { AgentRunSummaryDTO } from "@/server/domain/agents/dto";
 import { CaseFinancePanel } from "@/features/finance/components/case-finance-panel";
 import type { AgreementListItemDTO, CasePartnershipDTO } from "@/server/domain/finance/dto";
 import { isOpen, ReviewTable } from "@/features/reviews/components/review-table";
@@ -70,7 +73,12 @@ export function CaseDetail({
   /** Só quando o caso tem parceiro vinculado. */
   partnerRequests?: ActionResult<Page<PartnerRequestListItem>>;
   /** Só ADMIN/LAWYER (analyses.start). */
-  analysis?: { list: ActionResult<Page<AnalysisListItem>>; current?: ActionResult<AnalysisDetailDTO>; fieldDefs: TemplateFieldDTO[] };
+  analysis?: {
+    list: ActionResult<Page<AnalysisListItem>>;
+    current?: ActionResult<AnalysisDetailDTO>;
+    fieldDefs: TemplateFieldDTO[];
+    runs: ActionResult<Page<AgentRunSummaryDTO>>;
+  };
   /** Só ADMIN/LAWYER (reviews.view). */
   reviews?: ActionResult<Page<ReviewListItem>>;
   /** Só ADMIN (finance.view). */
@@ -131,7 +139,16 @@ export function CaseDetail({
           </div>
         )}
         {tab === "analise" && analysis && (
-          <AnalysisPanel legalCaseId={legalCase.id} analyses={analysis.list} current={analysis.current} fieldDefs={analysis.fieldDefs} onGoToDocuments={() => setTab("documentos")} />
+          <div className="space-y-5">
+            <AnalysisPanel legalCaseId={legalCase.id} analyses={analysis.list} current={analysis.current} fieldDefs={analysis.fieldDefs} onGoToDocuments={() => setTab("documentos")} />
+            <AgentRunsPanel
+              legalCaseId={legalCase.id}
+              initialQuery={DEFAULT_AGENT_RUN_QUERY}
+              initialResult={analysis.runs}
+              title="Execuções de agente neste caso"
+              description="Pedidos feitos aos agentes para este caso. O resultado passa por revisão humana."
+            />
+          </div>
         )}
         {tab === "revisoes" && reviews && <CaseReviews reviews={reviews} />}
         {tab === "processos" && <CaseProcessesTab legalCase={legalCase} processes={processes} />}

@@ -51,7 +51,7 @@ qualquer dado real.
   e processo, divisão do próprio escritório para o administrador do parceiro,
   rate limit best-effort na aplicação para CPF/CNPJ do parceiro (migration 027).
 - **4.3** — telas trocam os mocks pelas Server Actions, domínio a domínio
-  (andamento em `docs/frontend-integration.md`; Fases A — diretório e Clientes — B — Casos, Processos, Prazos, Movimentações —, C — Documentos e Pendências —, D — Parceiros, Solicitações e Portal do Parceiro —, E — Revisões e Análises, com a migration 029 — e F — Financeiro, com a migration 030 — concluídas).
+  (andamento em `docs/frontend-integration.md`; Fases A — diretório e Clientes — B — Casos, Processos, Prazos, Movimentações —, C — Documentos e Pendências —, D — Parceiros, Solicitações e Portal do Parceiro —, E — Revisões e Análises, com a migration 029 —, F — Financeiro, com a migration 030 — e G — Execuções de agente, com a migration 031 — concluídas).
 
 ### Etapa 5 — Front-end conectado
 

@@ -1,9 +1,10 @@
 import { hasRole, requireInternal, requirePermission, requireRole, type ServiceContext } from "@/server/core/context";
 import { forbidden, invalidState, notFound } from "@/server/core/errors";
+import { toPage, toRange, type Page } from "@/server/core/pagination";
 import type { AgentRunRequestDTO, AgentRunSummaryDTO } from "./dto";
 import { summaryFromRow } from "./mappers";
 import * as repo from "./repository";
-import type { ListAgentRunSummariesInput, RequestAgentRunInput } from "./schemas";
+import type { ListAgentRunsInput, ListAgentRunSummariesInput, RequestAgentRunInput } from "./schemas";
 
 /**
  * Execuções de agente — "IA executa. Humano decide." Este service só PEDE a
@@ -45,6 +46,15 @@ export async function listAgentRunSummaries(ctx: ServiceContext, input: ListAgen
   requireInternal(ctx);
   requirePermission(ctx, "analyses.start");
   return (await repo.summaries(ctx.db, input.legalCaseId ?? null, input.limit)).map(summaryFromRow);
+}
+
+/** Lista paginada (031). ADMIN: todas; LAWYER: as dos casos que acessa (o banco decide). */
+export async function listAgentRuns(ctx: ServiceContext, input: ListAgentRunsInput): Promise<Page<AgentRunSummaryDTO>> {
+  requireInternal(ctx);
+  requirePermission(ctx, "analyses.start");
+  const { from } = toRange(input);
+  const { rows, total } = await repo.summariesPage(ctx.db, { legalCaseId: input.legalCaseId, status: input.status, agentId: input.agentId }, from, input.pageSize);
+  return toPage(rows.map(summaryFromRow), total, input);
 }
 
 /** ADMIN cancela uma execução ainda não encerrada. */
