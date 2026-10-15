@@ -1,8 +1,9 @@
 "use server";
 
 import { runAction } from "@/server/core/action";
+import * as manual from "./manual-revision";
 import * as service from "./service";
-import { assignReviewSchema, decideReviewSchema, listReviewsSchema, reopenReviewSchema, reviewIdSchema } from "./schemas";
+import { assignReviewSchema, decideReviewSchema, listReviewsSchema, reopenReviewSchema, reviewIdSchema, saveManualRevisionSchema } from "./schemas";
 
 /**
  * Server Actions de revisão humana. Ler: `reviews.view`; atribuir, decidir e
@@ -27,4 +28,14 @@ export async function decideReviewAction(input: unknown) {
 
 export async function reopenReviewAction(input: unknown) {
   return runAction({ name: "reviews.reopen", permission: "reviews.decide", schema: reopenReviewSchema, input, handler: service.reopenReview });
+}
+
+/** Texto da versão em revisão para o editor (034). Ler registra acesso (LGPD) como um download. */
+export async function getReviewContentAction(input: unknown) {
+  return runAction({ name: "reviews.content", permission: "reviews.view", schema: reviewIdSchema, input, handler: (ctx, { id }) => manual.getReviewContent(ctx, id) });
+}
+
+/** Salva a edição manual como versão N+1 com revisão nova (034). Chave por intenção de envio. */
+export async function saveManualRevisionAction(input: unknown) {
+  return runAction({ name: "reviews.manual_revision", permission: "reviews.decide", schema: saveManualRevisionSchema, input, handler: (ctx, data) => manual.saveManualRevision(ctx, data) });
 }

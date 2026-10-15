@@ -82,6 +82,32 @@ export interface ReviewDecisionDTO {
   at: ISODateTime;
 }
 
+/**
+ * Conteúdo editável da versão em revisão (034). Só texto (minutas .md/.txt do
+ * agente ou enviadas como texto); PDF/DOCX seguem por "Enviar nova versão".
+ */
+export type ReviewContentDTO =
+  | {
+      kind: "TEXT";
+      versionId: ID;
+      versionNumber: number;
+      mimeType: string;
+      text: string;
+      /** Editável agora? Revisão decidida ou documento arquivado: só leitura. */
+      editable: boolean;
+      readOnlyReason?: "DECIDED" | "ARCHIVED";
+    }
+  | { kind: "UNAVAILABLE"; reason: "NOT_DOCUMENT" | "FORMAT" | "TOO_LARGE" };
+
+/** Resultado da edição manual: a revisão NOVA (da versão N+1) para onde a tela navega. */
+export interface ManualRevisionDTO {
+  reviewId: ID;
+  previousReviewId: ID;
+  versionId: ID;
+  versionNumber: number;
+  deduplicated: boolean;
+}
+
 export interface ReviewDetailDTO extends ReviewListItem {
   /** null quando o alvo não pôde ser lido (ex.: removido). */
   target: ReviewTargetDTO | null;

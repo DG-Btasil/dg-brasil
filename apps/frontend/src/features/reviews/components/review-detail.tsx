@@ -30,11 +30,20 @@ import { useDirectoryUserMap, useLawyerOptions } from "@/features/directory/dire
 import { useDocumentActions } from "@/features/documents/use-document-actions";
 import { REVIEW_KIND_LABEL } from "../list-query";
 import { useReviewActions } from "../use-review-actions";
+import { canEditReview } from "../manual-revision";
 import { DecisionDialog } from "./decision-dialog";
+import { DocumentContentPanel } from "./document-content";
 import { PriorityBadge } from "./priority-badge";
 import { DB_STATUS_LABEL, isOpen } from "./review-table";
 
 const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }));
+const VERSION_SOURCE_LABEL: Record<string, string> = {
+  AGENT: "Gerado por agente",
+  MANUAL_EDIT: "Edição manual",
+  UPLOAD: "Envio de arquivo",
+  IMPORT: "Importação",
+  EXTERNAL: "Fonte externa",
+};
 
 /**
  * Revisão humana (ADMIN/LAWYER): o CONTEÚDO vem do alvo, lido na hora no
@@ -123,7 +132,7 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
 
       <div className="grid grid-cols-12 items-start gap-5">
         <div className="col-span-12 space-y-5 xl:col-span-8">
-          <TargetPanel target={review.target} />
+          <TargetPanel target={review.target} reviewId={review.id} canEdit={allowed && canEditReview(review.dbStatus)} />
         </div>
         <aside className="col-span-12 space-y-5 xl:col-span-4" aria-label="Atribuição e histórico">
           <Assignment review={review} editable={open && allowed} />
@@ -164,7 +173,7 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
 
 const show = (v: unknown): string => (v === null || v === undefined ? "—" : typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
 
-function TargetPanel({ target }: { target: ReviewTargetDTO | null }) {
+function TargetPanel({ target, reviewId, canEdit }: { target: ReviewTargetDTO | null; reviewId: string; canEdit: boolean }) {
   const docs = useDocumentActions();
   const [busy, setBusy] = useState(false);
   if (!target) {
@@ -197,38 +206,41 @@ function TargetPanel({ target }: { target: ReviewTargetDTO | null }) {
   }
   if (target.kind === "DOCUMENT_VERSION") {
     return (
-      <Panel>
-        <PanelHeader
-          title={target.title}
-          description={`Versão ${target.versionNumber} · ${DOCUMENT_CATEGORY_LABEL[target.category as DocumentCategory] ?? target.category}`}
-          actions={
-            <Button
-              size="sm"
-              variant="secondary"
-              icon={<Download className="size-3.5" aria-hidden />}
-              loading={busy}
-              onClick={async () => {
-                setBusy(true);
-                await docs.download(target.documentId, target.documentVersionId);
-                setBusy(false);
-              }}
-            >
-              Baixar esta versão
-            </Button>
-          }
-        />
-        <PanelBody>
-          <DefinitionGrid
-            columns={2}
-            items={[
-              { label: "Arquivo", value: target.originalFilename },
-              { label: "Origem", value: target.source === "AGENT" ? "Gerado por agente" : target.source },
-              { label: "Visibilidade", value: target.visibility === "PARTNER_VISIBLE" ? "Compartilhado com o parceiro" : "Somente interno" },
-              { label: "Enviado em", value: formatDateTime(target.createdAt) },
-            ]}
+      <div className="space-y-5">
+        <Panel>
+          <PanelHeader
+            title={target.title}
+            description={`Versão ${target.versionNumber} · ${DOCUMENT_CATEGORY_LABEL[target.category as DocumentCategory] ?? target.category}`}
+            actions={
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<Download className="size-3.5" aria-hidden />}
+                loading={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  await docs.download(target.documentId, target.documentVersionId);
+                  setBusy(false);
+                }}
+              >
+                Baixar esta versão
+              </Button>
+            }
           />
-        </PanelBody>
-      </Panel>
+          <PanelBody>
+            <DefinitionGrid
+              columns={2}
+              items={[
+                { label: "Arquivo", value: target.originalFilename },
+                { label: "Origem", value: VERSION_SOURCE_LABEL[target.source] ?? target.source },
+                { label: "Visibilidade", value: target.visibility === "PARTNER_VISIBLE" ? "Compartilhado com o parceiro" : "Somente interno" },
+                { label: "Enviado em", value: formatDateTime(target.createdAt) },
+              ]}
+            />
+          </PanelBody>
+        </Panel>
+        <DocumentContentPanel reviewId={reviewId} mimeType={target.mimeType} canEdit={canEdit} />
+      </div>
     );
   }
   const entries = Object.entries(target.payload);

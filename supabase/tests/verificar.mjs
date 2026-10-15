@@ -2997,6 +2997,118 @@ await deve('estado de interrupção: LAWYER vê só execuções de casos que ace
 await deveFalhar('estado de interrupção: ASSISTANT e parceiro recusados', () =>
   como(ids.almeidaAdm, (tx) => tx.query(`select * from public.get_agent_run_cancel_state($1)`, [[ids.run033]])), /Somente ADMIN ou advogado/)
 
+secao('Revisão: edição manual cria a versão N+1, nunca altera a N [034]')
+const preparar034 = (uid, k, review, base) => como(uid, async (tx) => (await um(tx, `select public.prepare_manual_revision($1, $2, $3) r`, [k, review, base])).r)
+const commit034 = (uid, k, review, base, p, size = 120, checksum = sha('c')) => como(uid, async (tx) =>
+  (await um(tx, `select public.commit_manual_revision_once($1, $2, $3, $4, $5, $6, $7) r`, [k, review, base, p.document_version_id, p.object_name, size, checksum])).r)
+async function minuta034(mime = 'text/plain') {
+  const doc = randomUUID(), v = randomUUID()
+  await db.query(`insert into documents (id, client_id, category, title) values ($1, $2, 'OTHER', 'Minuta 034')`, [doc, ids.joao])
+  await db.query(`insert into case_documents (legal_case_id, document_id, purpose) values ($1, $2, 'AGENT_DRAFT')`, [ids.casoI, doc])
+  await db.query(`insert into document_versions (id, document_id, storage_object_name, original_filename, mime_type, file_size, checksum_sha256, source)
+    values ($1, $2, $3, 'minuta.md', $4, 64, $5, 'AGENT')`, [v, doc, `clients/${ids.joao}/documents/${doc}/${v}/minuta.md`, mime, sha('a')])
+  const review = (await um(db, `insert into reviews (legal_case_id, document_version_id, priority, assigned_reviewer_id)
+    values ($1, $2, 'HIGH', $3) returning id`, [ids.casoI, v, ids.lucas])).id
+  return { doc, v, review }
+}
+const versao034 = (id) => um(db, `select document_id, version_number, storage_object_name, source, created_by, checksum_sha256 from document_versions where id = $1`, [id])
+
+await deve('LAWYER edita: versão N+1 MANUAL_EDIT; a N fica intacta; revisão N recebe "alterações pedidas"; revisão nova PENDING com o mesmo responsável', async () => {
+  const m = await minuta034()
+  ids.m034 = m
+  const antes = await versao034(m.v)
+  const k = randomUUID()
+  const p = await preparar034(ids.lucas, k, m.review, m.v)
+  igual([p.deduplicated, p.base_version_number, p.mime_type], [false, 1, 'text/plain'], 'preparo')
+  if (!p.object_name.startsWith(`clients/${ids.joao}/documents/${m.doc}/${p.document_version_id}/`)) throw new Error(`caminho: ${p.object_name}`)
+  const r = await commit034(ids.lucas, k, m.review, m.v, p)
+  igual([r.deduplicated, r.version_number, r.previous_review_id], [false, 2, m.review], 'commit')
+  ids.m034.v2 = r.document_version_id
+  ids.m034.review2 = r.review_id
+  igual(await versao034(m.v), antes, 'versão N intacta')
+  const nova = await versao034(r.document_version_id)
+  igual([nova.version_number, nova.source, nova.created_by], [2, 'MANUAL_EDIT', ids.lucas], 'versão N+1')
+  const velha = await um(db, `select status from reviews where id = $1`, [m.review])
+  igual(velha.status, 'CHANGES_REQUESTED', 'revisão da N')
+  const dec = await linhas(db, `select decision, decided_by, notes from review_decisions where review_id = $1`, [m.review])
+  igual([dec.length, dec[0].decision, dec[0].decided_by], [1, 'REQUEST_CHANGES', ids.lucas], 'decisão append-only')
+  const rv = await um(db, `select status, document_version_id, priority, assigned_reviewer_id, decided_at from reviews where id = $1`, [r.review_id])
+  igual([rv.status, rv.document_version_id, rv.priority, rv.assigned_reviewer_id, rv.decided_at], ['PENDING', r.document_version_id, 'HIGH', ids.lucas, null], 'revisão nova')
+})
+await deve('aprovação é por versão: a N fica "substituída" e a N+1 nasce pendente (nada herdado)', async () => {
+  const ap = await linhas(db, `select document_version_id, approval_status from document_version_approvals where document_id = $1 order by version_number`, [ids.m034.doc])
+  igual(ap.map((x) => x.approval_status), ['SUPERSEDED', 'PENDING'], 'situação por versão')
+})
+await deve('mesma chave: mesmo resultado (nem versão nem revisão novas); preparo avisa para não subir de novo', async () => {
+  const m = await minuta034()
+  const k = randomUUID()
+  const p = await preparar034(ids.lucas, k, m.review, m.v)
+  const r1 = await commit034(ids.lucas, k, m.review, m.v, p)
+  const r2 = await commit034(ids.lucas, k, m.review, m.v, { ...p, document_version_id: randomUUID() })
+  igual([r2.deduplicated, r2.document_version_id, r2.review_id], [true, r1.document_version_id, r1.review_id], 'repetição')
+  igual((await um(db, `select count(*)::int n from document_versions where document_id = $1`, [m.doc])).n, 2, 'versões')
+  const p2 = await preparar034(ids.lucas, k, m.review, m.v)
+  igual([p2.deduplicated, p2.document_version_id], [true, r1.document_version_id], 'preparo deduplicado')
+})
+await deve('mesma chave com outro conteúdo é recusada', async () => {
+  const m = await minuta034()
+  const k = randomUUID()
+  const p = await preparar034(ids.lucas, k, m.review, m.v)
+  await commit034(ids.lucas, k, m.review, m.v, p)
+  await commit034(ids.lucas, k, m.review, m.v, p, 120, sha('d')).then(() => { throw new Error('aceito') }, (e) => { if (!/outros dados/.test(e.message)) throw e })
+})
+await deveFalhar('editar a partir de versão antiga é recusado (a base precisa ser a mais recente)', async () => {
+  const p = await preparar034(ids.barbara, randomUUID(), ids.m034.review, ids.m034.v).catch((e) => { throw e })
+  return p
+}, /decidida|versão mais nova/)
+await deveFalhar('duas edições da mesma base com chaves diferentes: a segunda é recusada', async () => {
+  const m = await minuta034()
+  const pa = await preparar034(ids.lucas, randomUUID(), m.review, m.v)
+  const kb = randomUUID()
+  const pb = await preparar034(ids.barbara, kb, m.review, m.v)
+  await commit034(ids.lucas, randomUUID(), m.review, m.v, pa)
+  await commit034(ids.barbara, kb, m.review, m.v, pb)
+}, /decidida|versão mais nova/)
+await deveFalhar('revisão já decidida não se edita (reabra antes)', async () => {
+  const m = await minuta034()
+  await decidir(ids.lucas, m.review, 'APPROVE')
+  await preparar034(ids.lucas, randomUUID(), m.review, m.v)
+}, /já decidida/)
+await deveFalhar('formato não editável (PDF): envie uma nova versão do arquivo', async () => {
+  const m = await minuta034('application/pdf')
+  await preparar034(ids.lucas, randomUUID(), m.review, m.v)
+}, /não é editável/)
+await deveFalhar('caminho diferente do autorizado é recusado', async () => {
+  const m = await minuta034()
+  const k = randomUUID()
+  const p = await preparar034(ids.lucas, k, m.review, m.v)
+  await commit034(ids.lucas, k, m.review, m.v, { ...p, object_name: `clients/${ids.joao}/documents/${m.doc}/${p.document_version_id}/outro.md` })
+}, /não confere/)
+await deveFalhar('versão de outra revisão é recusada', async () => {
+  const a = await minuta034(), b = await minuta034()
+  await preparar034(ids.lucas, randomUUID(), a.review, b.v)
+}, /não é a desta revisão/)
+await deveFalhar('ASSISTANT não edita', async () => {
+  const m = await minuta034()
+  await preparar034(ids.ana, randomUUID(), m.review, m.v)
+}, /Somente ADMIN ou advogado/)
+await deveFalhar('parceiro não edita (nem enxerga a revisão)', async () => {
+  const m = await minuta034()
+  await preparar034(ids.almeidaAdm, randomUUID(), m.review, m.v)
+}, /Somente ADMIN ou advogado/)
+await deveFalhar('revisão inexistente: "não encontrada"', () => preparar034(ids.lucas, randomUUID(), randomUUID(), randomUUID()), /não encontrada/)
+await deveFalhar('sessão aal1 não edita', () => comoAal1(ids.lucas, (tx) => tx.query(`select public.prepare_manual_revision($1, $2, $3)`, [randomUUID(), ids.m034.review2, ids.m034.v2])), /Sem sessão liberada|duas etapas/)
+await deve('auditoria: versão N → N+1, revisões anterior e nova, sem conteúdo', async () => {
+  const ev = await um(db, `select actor_user_id, metadata from audit_events where action = 'DOCUMENT_MANUALLY_REVISED' and entity_id = $1`, [ids.m034.v2])
+  igual([ev.actor_user_id, ev.metadata.base_version_number, ev.metadata.version_number, ev.metadata.previous_review_id, ev.metadata.review_id],
+    [ids.lucas, 1, 2, ids.m034.review, ids.m034.review2], 'evento')
+})
+await deve('anon não executa as funções de edição', async () => {
+  for (const q of [`select public.prepare_manual_revision($1, $1, $1)`, `select public.commit_manual_revision_once($1, $1, $1, $1, 'x', 1, 'x')`])
+    await db.transaction(async (tx) => { await tx.query('set local role anon'); await tx.query(q, [randomUUID()]) })
+      .then(() => { throw new Error('anon executou') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

@@ -70,9 +70,14 @@ export interface DocumentVersionTargetRow {
   version_number: number;
   original_filename: string | null;
   mime_type: string | null;
+  file_size?: number | null;
+  storage_object_name?: string;
   source: string;
   created_at: string;
-  documents: { title: string; category: DocumentCategory; visibility: "INTERNAL" | "PARTNER_VISIBLE" } | { title: string; category: DocumentCategory; visibility: "INTERNAL" | "PARTNER_VISIBLE" }[] | null;
+  documents:
+    | { title: string; category: DocumentCategory; visibility: "INTERNAL" | "PARTNER_VISIBLE"; status?: string }
+    | { title: string; category: DocumentCategory; visibility: "INTERNAL" | "PARTNER_VISIBLE"; status?: string }[]
+    | null;
 }
 
 export interface ProposalTargetRow {

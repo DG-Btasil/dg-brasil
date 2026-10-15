@@ -82,6 +82,14 @@ export interface DocumentStorage {
   /** null = objeto não existe (ou o usuário não o enxerga). */
   getObjectInfo(objectName: string): Promise<StoredObjectInfo | null>;
   createSignedDownloadUrl(objectName: string, expiresInSeconds: number, downloadName: string): Promise<string>;
+  /**
+   * Bytes de um objeto (edição manual de minuta de texto, 4.3.1). Só caminho
+   * que o banco autorizou (authorize_document_download: LGPD + auditoria).
+   * Acima de `maxBytes` → VALIDATION (não carrega arquivo grande na memória).
+   */
+  downloadObject(objectName: string, maxBytes: number): Promise<Uint8Array>;
+  /** Grava objeto NOVO (write-once: nunca sobrescreve). Só caminho autorizado (prepare_manual_revision, 034). */
+  uploadObject(objectName: string, bytes: Uint8Array, contentType: string): Promise<void>;
 }
 
 /** Erro do Storage → erro de domínio. Nunca repassa a mensagem (pode conter o caminho). */

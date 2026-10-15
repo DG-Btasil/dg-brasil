@@ -82,6 +82,8 @@ export function DocumentVersionsDialog({ documentId, onClose }: { documentId: st
                   <Td className="max-w-[260px]">
                     <span className="block truncate">{v.fileName ?? "—"}</span>
                     {v.sizeBytes ? <span className="text-[12px] text-muted">{formatBytes(v.sizeBytes)}</span> : null}
+                    {internal && (v as DocumentVersionInternalDTO).source === "MANUAL_EDIT" && <span className="ml-1.5 text-[12px] text-muted">· edição manual</span>}
+                    {internal && (v as DocumentVersionInternalDTO).source === "AGENT" && <span className="ml-1.5 text-[12px] text-muted">· gerada por agente</span>}
                   </Td>
                   <Td className="whitespace-nowrap text-[12.5px] text-muted">{formatDateTime(v.createdAt)}</Td>
                   <Td>

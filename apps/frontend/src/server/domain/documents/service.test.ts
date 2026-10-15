@@ -66,6 +66,8 @@ function fakeStorage(): DocumentStorage & { [K in keyof DocumentStorage]: Return
     createSignedUploadUrl: vi.fn(async () => ({ signedUrl: "https://upload", token: "t" })),
     getObjectInfo: vi.fn(async () => ({ sizeBytes: 10, contentType: "application/pdf" })),
     createSignedDownloadUrl: vi.fn(async () => "https://download"),
+    downloadObject: vi.fn(async () => new Uint8Array()),
+    uploadObject: vi.fn(async () => undefined),
   };
 }
 

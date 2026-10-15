@@ -29,6 +29,21 @@ export type ListReviewsInput = z.infer<typeof listReviewsSchema>;
 
 export const reviewIdSchema = z.object({ id: zUuid() });
 
+/** Texto editável cabe em 512 KB (UTF-8); acima disso, envie uma nova versão do arquivo. */
+export const MANUAL_REVISION_MAX_CHARS = 400_000;
+
+/** Edição manual (034): o servidor grava o texto como a versão N+1. Nada de id de versão vindo do navegador além da BASE. */
+export const saveManualRevisionSchema = z.object({
+  idempotencyKey: zUuid(),
+  reviewId: zUuid(),
+  baseVersionId: zUuid(),
+  content: z
+    .string()
+    .max(MANUAL_REVISION_MAX_CHARS, "Texto longo demais para editar aqui: envie uma nova versão do arquivo.")
+    .refine((v) => v.trim().length > 0, "O conteúdo não pode ficar em branco."),
+});
+export type SaveManualRevisionInput = z.infer<typeof saveManualRevisionSchema>;
+
 /** Atribuição (grant de coluna: só responsável, prioridade e prazo). */
 export const assignReviewSchema = z
   .object({

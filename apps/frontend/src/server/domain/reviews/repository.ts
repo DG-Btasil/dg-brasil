@@ -79,7 +79,7 @@ export async function getDocumentVersionTarget(db: SupabaseClient, id: string): 
   return unwrap(
     await db
       .from("document_versions")
-      .select("id, document_id, version_number, original_filename, mime_type, source, created_at, documents(title, category, visibility)")
+      .select("id, document_id, version_number, original_filename, mime_type, file_size, storage_object_name, source, created_at, documents(title, category, visibility, status)")
       .eq("id", id)
       .maybeSingle(),
   ) as unknown as DocumentVersionTargetRow | null;
@@ -121,4 +121,50 @@ export async function assign(db: SupabaseClient, id: string, payload: Record<str
 /** A ÚNICA porta de decisão: RPC decide_review (o banco valida papel, transição e proposta estrutural). */
 export async function decide(db: SupabaseClient, reviewId: string, decision: DbReviewDecision, notes: string | null): Promise<string> {
   return unwrap(await db.rpc("decide_review", { p_review_id: reviewId, p_decision: decision, p_notes: notes })) as string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Edição manual (034)                                                 */
+/* ------------------------------------------------------------------ */
+
+export interface PreparedRevisionRow {
+  deduplicated: boolean;
+  document_version_id: string;
+  object_name?: string;
+  mime_type?: string;
+  base_version_number?: number;
+  version_number?: number;
+  review_id?: string;
+  previous_review_id?: string;
+}
+
+export interface CommittedRevisionRow {
+  deduplicated: boolean;
+  document_version_id: string;
+  version_number: number;
+  review_id: string;
+  previous_review_id: string;
+}
+
+/** Confere a edição e devolve o caminho EXATO da versão N+1 (ou o resultado anterior da mesma chave). */
+export async function prepareManualRevision(db: SupabaseClient, key: string, reviewId: string, baseVersionId: string): Promise<PreparedRevisionRow> {
+  return unwrap(await db.rpc("prepare_manual_revision", { p_key: key, p_review_id: reviewId, p_base_version_id: baseVersionId })) as PreparedRevisionRow;
+}
+
+/** Versão N+1 + decisão da revisão N + revisão nova + auditoria, numa transação (034). */
+export async function commitManualRevision(
+  db: SupabaseClient,
+  params: { key: string; reviewId: string; baseVersionId: string; versionId: string; objectName: string; size: number; checksum: string },
+): Promise<CommittedRevisionRow> {
+  return unwrap(
+    await db.rpc("commit_manual_revision_once", {
+      p_key: params.key,
+      p_review_id: params.reviewId,
+      p_base_version_id: params.baseVersionId,
+      p_new_version_id: params.versionId,
+      p_object_name: params.objectName,
+      p_file_size: params.size,
+      p_checksum: params.checksum,
+    }),
+  ) as CommittedRevisionRow;
 }
