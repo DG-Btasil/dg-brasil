@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { armazenamentoSupabase } from './armazenamento.js'
-import { aplicarDecididas } from './aplicar.js'
+import { aplicarDecididas, lembrarPrazos } from './aplicar.js'
 import { bancoPostgres } from './banco.js'
 import { executarComClaude } from './executor.js'
 import { lerMensagem, processarMensagem, type Dependencias } from './fila.js'
@@ -57,6 +57,10 @@ async function laço() {
         trabalhou = true
         console.log(`[${WORKER}] ${decididas} proposta(s) decidida(s) processada(s)`)
       }
+
+      // Lembretes de prazo (037): idempotentes no banco; a cada 15 min no máximo.
+      const lembretes = await lembrarPrazos(deps.banco)
+      if (lembretes > 0) console.log(`[${WORKER}] ${lembretes} lembrete(s) de prazo`)
 
       if (!trabalhou) await dormir(OCIOSO_MS)
     } catch (erro) {

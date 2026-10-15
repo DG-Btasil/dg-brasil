@@ -14,7 +14,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { aplicarDecididas } from '../src/aplicar.js'
+import { aplicarDecididas, lembrarPrazos } from '../src/aplicar.js'
 import { armazenamentoEmMemoria } from '../src/armazenamento.js'
 import type { Banco } from '../src/banco.js'
 import { lerMensagem, processarMensagem, type Dependencias } from '../src/fila.js'
@@ -599,6 +599,15 @@ describe('falhas e novas tentativas', () => {
     }), await proximaMensagem())
     expect(desfecho).toBe('interrompida')
     expect((await um(`select status from agent_runs where id = $1`, [runId])).status).toBe('CANCELLED')
+  })
+
+  it('lembretes de prazo (037): o worker roda; repetir não duplica o aviso', async () => {
+    const prazo = (await um(`insert into deadlines (legal_case_id, title, due_at, responsible_user_id)
+      values ($1, 'Prazo do worker', now() + interval '5 hours', $2) returning id`, [ids.casoA, ids.lucas])).id
+    expect(await lembrarPrazos(banco, Date.now(), 0)).toBeGreaterThanOrEqual(1)
+    await lembrarPrazos(banco, Date.now(), 0)
+    const avisos = await linhas(`select 1 from notifications where event_key = $1`, [`deadline-due-soon:${prazo}`])
+    expect(avisos).toHaveLength(1)
   })
 
   it('mensagem de execução cancelada é descartada', async () => {

@@ -9,13 +9,15 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { ActionErrorState } from "@/components/feedback/action-error";
 import type { MyPartnerSettingsDTO, PartnerDetailDTO } from "@/server/domain/organizations/dto";
 import { useClientSession } from "@/features/auth/session-context";
+import { NotificationPreferences } from "@/features/notifications/components/notification-preferences";
 import { UsersPanel } from "./portal-users";
 
 /**
  * Minha Conta: dados da SESSÃO real (nunca do mock), o cadastro do próprio
  * escritório (getMyPartnerOfficeAction → PartnerOwnOfficeDTO, sem nota
  * interna) e, para o administrador do parceiro, a divisão padrão vigente
- * (getMyPartnerSettingsAction, 027) e a gestão de usuários do escritório.
+ * (getMyPartnerSettingsAction, 027), a gestão de usuários do escritório e
+ * as preferências de aviso do próprio usuário (4.3.1).
  */
 export function PortalAccount({
   office,
@@ -90,6 +92,12 @@ export function PortalAccount({
             <UsersPanel />
           </div>
         </Can>
+        <section aria-labelledby="notification-preferences-title" className="col-span-12">
+          <h2 id="notification-preferences-title" className="mb-3 text-[15px] font-semibold text-foreground">
+            Notificações
+          </h2>
+          <NotificationPreferences />
+        </section>
       </div>
     </PageContainer>
   );

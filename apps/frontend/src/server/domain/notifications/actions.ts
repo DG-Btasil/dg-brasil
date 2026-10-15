@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { runAction } from "@/server/core/action";
+import * as preferences from "./preferences";
 import * as service from "./service";
 import { listNotificationsSchema, notificationIdSchema } from "./schemas";
 
@@ -26,4 +27,14 @@ export async function markNotificationReadAction(input: unknown) {
 
 export async function markAllNotificationsReadAction(input?: unknown) {
   return runAction({ name: "notifications.mark_all_read", schema: noInput, input, handler: (ctx) => service.markAllNotificationsRead(ctx) });
+}
+
+/** Preferências do PRÓPRIO usuário por categoria (037). */
+export async function getNotificationPreferencesAction(input?: unknown) {
+  return runAction({ name: "notifications.preferences", schema: noInput, input, handler: (ctx) => preferences.getNotificationPreferences(ctx) });
+}
+
+/** Grava as preferências (in-app respeitado pelo produtor; e-mail guardado para o futuro). */
+export async function saveNotificationPreferencesAction(input: unknown) {
+  return runAction({ name: "notifications.preferences_save", schema: preferences.saveNotificationPreferencesSchema, input, handler: preferences.saveNotificationPreferences });
 }

@@ -2876,7 +2876,7 @@ async function novaAnalise033(uid = ids.lucas) {
   const caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, origin_organization_id, created_by_organization_id)
     values ($1, $2, 'Caso 033', $3, $3) returning id`, [ids.joao, ids.banking, ids.owner])).id
   const r = await iniciar(uid, randomUUID(), caso, ids.tpl029, {}, true)
-  return { caso, analise: r.legal_analysis_id, run: r.agent_run_id }
+  return { caso, analise: r.analysis_id, run: r.agent_run_id }
 }
 const reservar033 = async (run, worker, stale = 300) => {
   const m = (await run033(run)).queue_msg_id
@@ -3332,6 +3332,144 @@ await deve('anon não executa histórico nem contagens', async () => {
   for (const q of [`select * from public.get_partner_case_timeline('${randomUUID()}')`, `select * from public.get_partner_client_counts(array['${randomUUID()}']::uuid[])`])
     await db.transaction(async (tx) => { await tx.query('set local role anon'); await tx.query(q) })
       .then(() => { throw new Error(`anon: ${q}`) }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+
+secao('Notificações: produtor central, destinatários, preferências e idempotência [037]')
+const avisos037 = (uid, tipo) => linhas(db, `select type, title, message, legal_case_id, event_key from notifications where user_id = $1 and type = $2 order by created_at`, [uid, tipo])
+const casoParceiro037 = async (titulo) => (await como(ids.almeidaUsr, (tx) => um(tx,
+  `insert into legal_cases (client_id, legal_area_id, title, status, partner_organization_id, origin_organization_id)
+   values ($1, $2, $3, 'SUBMITTED', $4, $4) returning id`, [ids.joao, ids.banking, titulo, ids.almeida]))).id
+
+await deve('caso enviado pelo parceiro sem responsável → triagem (ADMIN); nunca para o próprio parceiro nem para outro escritório', async () => {
+  const caso = await casoParceiro037('Caso 037 enviado')
+  ids.caso037 = caso
+  igual((await avisos037(ids.barbara, 'CASE_SUBMITTED')).filter((a) => a.legal_case_id === caso).length, 1, 'ADMIN')
+  for (const uid of [ids.almeidaUsr, ids.almeidaAdm, ids.ferreiraAdm, ids.lucas])
+    igual((await avisos037(uid, 'CASE_SUBMITTED')).filter((a) => a.legal_case_id === caso).length, 0, `não para ${uid}`)
+})
+await deve('atribuição: o advogado é avisado (por outra pessoa); quem se atribui não recebe aviso de si', async () => {
+  await como(ids.barbara, (tx) => tx.query(`update legal_cases set assigned_lawyer_id = $2 where id = $1`, [ids.caso037, ids.lucas]))
+  igual((await avisos037(ids.lucas, 'CASE_ASSIGNED')).filter((a) => a.legal_case_id === ids.caso037).length, 1, 'LAWYER avisado')
+  igual((await avisos037(ids.barbara, 'CASE_ASSIGNED')).filter((a) => a.legal_case_id === ids.caso037).length, 0, 'autor não')
+})
+await deve('aceite: todo o escritório parceiro que opera o caso é avisado; o outro parceiro não', async () => {
+  await como(ids.lucas, (tx) => tx.query(`update legal_cases set status = 'ACCEPTED' where id = $1`, [ids.caso037]))
+  for (const uid of [ids.almeidaAdm, ids.almeidaUsr]) igual((await avisos037(uid, 'CASE_ACCEPTED')).filter((a) => a.legal_case_id === ids.caso037).length, 1, `Almeida ${uid}`)
+  igual((await avisos037(ids.ferreiraAdm, 'CASE_ACCEPTED')).filter((a) => a.legal_case_id === ids.caso037).length, 0, 'Ferreira')
+})
+await deve('recusa: o parceiro recebe SÓ o motivo público', async () => {
+  const caso = await casoParceiro037('Caso 037 recusado')
+  await como(ids.lucas, async (tx) => {
+    await tx.query(`insert into legal_case_internal_details (legal_case_id, rejection_reason_internal) values ($1, 'MOTIVO-INTERNO-037')`, [caso])
+    await tx.query(`update legal_cases set status = 'REJECTED', rejected_at = now(), rejection_reason_public = 'Fora da área de atuação' where id = $1`, [caso])
+  })
+  const a = (await avisos037(ids.almeidaUsr, 'CASE_REJECTED')).find((x) => x.legal_case_id === caso)
+  igual(a?.message, 'Fora da área de atuação', 'motivo público')
+  if (JSON.stringify(await linhas(db, `select * from notifications where legal_case_id = $1`, [caso])).includes('MOTIVO-INTERNO-037')) throw new Error('motivo interno vazou')
+})
+await deve('atomicidade: operação recusada não deixa notificação (aceite sem advogado falha → nada para o parceiro)', async () => {
+  const caso = await casoParceiro037('Caso 037 atômico')
+  await como(ids.barbara, (tx) => tx.query(`update legal_cases set status = 'ACCEPTED' where id = $1`, [caso])).then(() => { throw new Error('aceito sem advogado') }, () => {})
+  igual((await linhas(db, `select 1 from notifications where legal_case_id = $1 and type = 'CASE_ACCEPTED'`, [caso])).length, 0, 'nada gravado')
+})
+await deve('prazo novo → responsável; lembretes "próximo" e "vencido" uma vez só (rodar de novo não duplica)', async () => {
+  const proximo = (await como(ids.barbara, (tx) => um(tx, `insert into deadlines (legal_case_id, title, due_at, responsible_user_id, priority)
+    values ($1, 'Contestação 037', now() + interval '10 hours', $2, 'HIGH') returning id`, [ids.caso037, ids.lucas]))).id
+  const vencido = (await como(ids.barbara, (tx) => um(tx, `insert into deadlines (legal_case_id, title, due_at, responsible_user_id)
+    values ($1, 'Réplica 037', now() - interval '2 hours', $2) returning id`, [ids.caso037, ids.lucas]))).id
+  const novo = (await avisos037(ids.lucas, 'DEADLINE_CREATED')).filter((a) => a.event_key === `deadline-created:${proximo}`)
+  igual(novo.length, 1, 'prazo novo')
+  igual((await avisos037(ids.almeidaAdm, 'DEADLINE_CREATED')).length, 0, 'prazo é interno: parceiro não recebe')
+  await comoWorker((tx) => tx.query(`select private.notify_deadline_reminders()`))
+  await comoWorker((tx) => tx.query(`select private.notify_deadline_reminders()`))
+  igual((await avisos037(ids.lucas, 'DEADLINE_DUE_SOON')).filter((a) => a.event_key === `deadline-due-soon:${proximo}`).length, 1, 'próximo, uma vez')
+  igual((await avisos037(ids.lucas, 'DEADLINE_OVERDUE')).filter((a) => a.event_key === `deadline-overdue:${vencido}`).length, 1, 'vencido, uma vez')
+})
+await deve('documento pedido → escritório parceiro; recebido → advogado do caso', async () => {
+  const req = (await como(ids.barbara, (tx) => um(tx, `insert into case_document_requirements (legal_case_id, requirement_label, category, status, requested_at)
+    values ($1, 'Extrato 037', 'BANK_STATEMENT', 'REQUESTED', now()) returning id`, [ids.caso037]))).id
+  for (const uid of [ids.almeidaAdm, ids.almeidaUsr]) igual((await avisos037(uid, 'DOCUMENT_REQUESTED')).filter((a) => a.legal_case_id === ids.caso037).length, 1, `pedido ${uid}`)
+  igual((await avisos037(ids.ferreiraAdm, 'DOCUMENT_REQUESTED')).length, 0, 'outro parceiro')
+  const v = randomUUID(), doc = randomUUID()
+  await db.query(`insert into documents (id, client_id, category, title, visibility) values ($1, $2, 'BANK_STATEMENT', 'Extrato', 'PARTNER_VISIBLE')`, [doc, ids.joao])
+  await db.query(`insert into case_documents (legal_case_id, document_id) values ($1, $2)`, [ids.caso037, doc])
+  await db.query(`insert into document_versions (id, document_id, storage_object_name, source) values ($1, $2, $3, 'UPLOAD')`, [v, doc, `clients/${ids.joao}/documents/${doc}/${v}/extrato.pdf`])
+  await db.query(`update case_document_requirements set status = 'RECEIVED', satisfied_by_document_version_id = $2, satisfied_at = now() where id = $1`, [req, v])
+  igual((await avisos037(ids.lucas, 'DOCUMENT_RECEIVED')).filter((a) => a.legal_case_id === ids.caso037).length, 1, 'recebido')
+})
+await deve('revisão atribuída → revisor; decidida → quem pediu a análise', async () => {
+  const an = (await um(db, `insert into legal_analyses (legal_case_id, analysis_template_id, started_by) values ($1, $2, $3) returning id`, [ids.caso037, ids.tpl029, ids.lucas])).id
+  const rv = (await um(db, `insert into reviews (legal_case_id, legal_analysis_id, assigned_reviewer_id) values ($1, $2, $3) returning id`, [ids.caso037, an, ids.barbara])).id
+  igual((await avisos037(ids.barbara, 'REVIEW_ASSIGNED')).filter((a) => a.event_key.startsWith(`review-assigned:${rv}`)).length, 1, 'atribuída')
+  await decidir(ids.barbara, rv, 'REQUEST_CHANGES', 'Ajustar a conclusão')
+  const d = (await avisos037(ids.lucas, 'REVIEW_DECIDED')).filter((a) => a.event_key.startsWith(`review-decided:${rv}`))
+  igual([d.length, d[0]?.title], [1, 'Alterações pedidas na revisão'], 'decidida')
+})
+await deve('solicitação: do escritório → parceiro; resposta do parceiro → advogado; resposta interna → parceiro', async () => {
+  const q = (await como(ids.lucas, (tx) => um(tx, `insert into partner_requests (partner_organization_id, legal_case_id, type, title) values ($1, $2, 'DOCUMENT', 'Enviar RG 037') returning id`, [ids.almeida, ids.caso037]))).id
+  for (const uid of [ids.almeidaAdm, ids.almeidaUsr]) igual((await avisos037(uid, 'PARTNER_REQUEST_CREATED')).filter((a) => a.event_key === `request-created:${q}`).length, 1, `aberta ${uid}`)
+  const m1 = (await como(ids.almeidaUsr, (tx) => um(tx, `insert into partner_request_messages (partner_request_id, body) values ($1, 'Enviado') returning id`, [q]))).id
+  igual((await avisos037(ids.lucas, 'PARTNER_REQUEST_REPLY')).filter((a) => a.event_key === `request-message:${m1}`).length, 1, 'resposta do parceiro')
+  igual((await avisos037(ids.almeidaUsr, 'PARTNER_REQUEST_REPLY')).filter((a) => a.event_key === `request-message:${m1}`).length, 0, 'autor não')
+  const m2 = (await como(ids.lucas, (tx) => um(tx, `insert into partner_request_messages (partner_request_id, body) values ($1, 'Recebido, obrigado') returning id`, [q]))).id
+  igual((await avisos037(ids.almeidaAdm, 'PARTNER_REQUEST_REPLY')).filter((a) => a.event_key === `request-message:${m2}`).length, 1, 'resposta interna')
+})
+await deve('análise concluída pelo worker → quem pediu', async () => {
+  const a = await novaAnalise033(ids.lucas)
+  await reservar033(a.run, 'worker-037')
+  await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-037', 'COMPLETED')`, [a.run]))
+  igual((await avisos037(ids.lucas, 'ANALYSIS_COMPLETED')).filter((x) => x.event_key.includes(a.analise)).length, 1, 'concluída')
+})
+await deve('repasse → só PARTNER_ADMIN do escritório (PARTNER_USER não vê financeiro)', async () => {
+  const t = (await como(ids.barbara, (tx) => um(tx, `insert into partner_transfers (partner_organization_id, amount) values ($1, 10) returning id`, [ids.almeida]))).id
+  igual((await avisos037(ids.almeidaAdm, 'PARTNER_TRANSFER_REGISTERED')).filter((a) => a.event_key === `transfer:${t}:registered`).length, 1, 'PARTNER_ADMIN')
+  igual((await avisos037(ids.almeidaUsr, 'PARTNER_TRANSFER_REGISTERED')).length, 0, 'PARTNER_USER')
+  igual((await avisos037(ids.ferreiraAdm, 'PARTNER_TRANSFER_REGISTERED')).filter((a) => a.event_key === `transfer:${t}:registered`).length, 0, 'outro parceiro')
+})
+await deve('preferência: categoria desligada não gera aviso; outras continuam', async () => {
+  await como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app, email) values ($1, 'DEADLINES', false, false)`, [ids.lucas]))
+  const d = (await como(ids.barbara, (tx) => um(tx, `insert into deadlines (legal_case_id, title, due_at, responsible_user_id) values ($1, 'Sem aviso 037', now() + interval '20 days', $2) returning id`, [ids.caso037, ids.lucas]))).id
+  igual((await avisos037(ids.lucas, 'DEADLINE_CREATED')).filter((a) => a.event_key === `deadline-created:${d}`).length, 0, 'desligado')
+  const an = (await um(db, `insert into legal_analyses (legal_case_id, analysis_template_id, started_by) values ($1, $2, $3) returning id`, [ids.caso037, ids.tpl029, ids.barbara])).id
+  const rv = (await um(db, `insert into reviews (legal_case_id, legal_analysis_id, assigned_reviewer_id) values ($1, $2, $3) returning id`, [ids.caso037, an, ids.lucas])).id
+  igual((await avisos037(ids.lucas, 'REVIEW_ASSIGNED')).filter((a) => a.event_key.startsWith(`review-assigned:${rv}`)).length, 1, 'revisões seguem ligadas')
+  await db.query(`delete from user_notification_preferences where user_id = $1`, [ids.lucas])
+})
+await deveFalhar('segurança não se desliga na plataforma', () =>
+  como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app) values ($1, 'SECURITY', false)`, [ids.lucas])), /security_in_app/)
+await deveFalhar('categoria desconhecida é recusada', () =>
+  como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type) values ($1, 'QUALQUER')`, [ids.lucas])), /category/)
+await deve('segurança: MFA redefinido e troca de perfil avisam a própria pessoa, mesmo com tudo desligado', async () => {
+  for (const cat of ['CASES', 'DEADLINES', 'DOCUMENTS', 'REVIEWS', 'PARTNER_REQUESTS', 'ANALYSES', 'FINANCE'])
+    await como(ids.ana, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app) values ($1, $2, false)`, [ids.ana, cat]))
+  await db.query(`select private.record_auth_event('MFA_RESET_COMPLETED', $1, '{}', $2)`, [ids.ana, ids.barbara])
+  igual((await avisos037(ids.ana, 'MFA_RESET')).length, 1, 'MFA')
+  const m = (await um(db, `select id from organization_memberships where user_id = $1`, [ids.ana])).id
+  await db.query(`update organization_memberships set role = 'LAWYER' where id = $1`, [m])
+  await db.query(`update organization_memberships set role = 'ASSISTANT' where id = $1`, [m])
+  igual((await avisos037(ids.ana, 'ROLE_CHANGED')).length, 2, 'perfil (duas mudanças)')
+  await db.query(`delete from user_notification_preferences where user_id = $1`, [ids.ana])
+})
+await deve('idempotência: o mesmo evento duas vezes = uma notificação; destinatário inativo ou de outro escritório = nenhuma', async () => {
+  const k = `teste-037:${randomUUID()}`
+  for (let i = 0; i < 2; i++) await db.query(`select private.notify($1, 'CASE_UPDATE', 'Teste', null, 'INFO', $2)`, [ids.lucas, k])
+  igual((await linhas(db, `select 1 from notifications where user_id = $1 and event_key = $2`, [ids.lucas, k])).length, 1, 'uma só')
+  igual((await um(db, `select private.notify($1, 'CASE_UPDATE', 'x', null, 'INFO', $2, $3) v`, [ids.ferreiraAdm, `x:${randomUUID()}`, ids.caso037])).v, false, 'parceiro de outro escritório')
+  await db.query(`update profiles set active = false where id = $1`, [ids.ana])
+  igual((await um(db, `select private.notify($1, 'CASE_UPDATE', 'x', null, 'INFO', $2) v`, [ids.ana, `x:${randomUUID()}`])).v, false, 'inativo')
+  await db.query(`update profiles set active = true where id = $1`, [ids.ana])
+})
+await deve('ninguém grava notificação pela API: nem INSERT direto nem private.notify', async () => {
+  await como(ids.barbara, (tx) => tx.query(`insert into notifications (user_id, type, title) values ($1, 'CASE_UPDATE', 'forjada')`, [ids.lucas]))
+    .then(() => { throw new Error('INSERT aceito') }, (e) => { if (!/permission denied|row-level security/.test(e.message)) throw e })
+  await como(ids.barbara, (tx) => tx.query(`select private.notify($1, 'CASE_UPDATE', 'forjada', null, 'INFO', 'x')`, [ids.lucas]))
+    .then(() => { throw new Error('notify aceito') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+await deve('marcar como lida continua funcionando (só as próprias)', async () => {
+  const n = await como(ids.lucas, async (tx) => (await tx.query(`update notifications set read_at = now() where user_id = $1 and read_at is null`, [ids.lucas])).affectedRows)
+  if (!(n > 0)) throw new Error('nada marcado')
+  const alheias = await como(ids.lucas, async (tx) => (await tx.query(`update notifications set read_at = now() where user_id = $1`, [ids.barbara])).affectedRows)
+  igual(alheias, 0, 'alheias')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

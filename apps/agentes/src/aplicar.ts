@@ -34,3 +34,16 @@ export async function aplicarDecididas(banco: Banco, worker = 'worker', limite =
   const { rows } = await banco.query<{ n: number }>(`select private.worker_close_decided_runs() as n`)
   return processadas + Number(rows[0]?.n ?? 0)
 }
+
+/**
+ * Lembretes de prazo (migration 037): "prazo próximo" (até 48 h) e "prazo
+ * vencido", uma vez por prazo e tipo — o banco garante (chave de evento).
+ * Barato e idempotente: o laço chama no máximo a cada `intervaloMs`.
+ */
+let ultimoLembrete = 0
+export async function lembrarPrazos(banco: Banco, agora = Date.now(), intervaloMs = 15 * 60_000): Promise<number> {
+  if (agora - ultimoLembrete < intervaloMs) return 0
+  ultimoLembrete = agora
+  const { rows } = await banco.query<{ n: number }>(`select private.notify_deadline_reminders() as n`)
+  return Number(rows[0]?.n ?? 0)
+}

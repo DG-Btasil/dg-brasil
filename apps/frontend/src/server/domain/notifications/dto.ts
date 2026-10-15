@@ -18,6 +18,9 @@ export interface NotificationDTO {
   legalCaseId?: ID;
   processId?: ID;
   partnerRequestId?: ID;
+  /** Destino específico (037): revisão, análise, prazo, documento, repasse ou execução. */
+  relatedType?: "review" | "analysis" | "deadline" | "document" | "transfer" | "agent_run";
+  relatedId?: ID;
 }
 
 export interface UnreadCountDTO {

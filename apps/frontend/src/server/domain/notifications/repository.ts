@@ -11,7 +11,7 @@ import type { NotificationOrder } from "./schemas";
  * coluna gravável pelo usuário é `read_at` (grant de coluna).
  */
 
-const COLUMNS = "id, type, title, message, severity, legal_case_id, legal_process_id, partner_request_id, read_at, created_at";
+const COLUMNS = "id, type, title, message, severity, legal_case_id, legal_process_id, partner_request_id, related_type, related_id, read_at, created_at";
 
 export async function list(
   db: SupabaseClient,
