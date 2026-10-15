@@ -292,9 +292,10 @@ servidor grava como `PARTNER_VISIBLE`); nunca só para o cliente. Caso
 recusado ou arquivado: sem envio. Verificação, visibilidade, arquivar e
 excluir continuam só da equipe interna.
 
-**Diferenças do Front V1 (portal):** a lista de clientes não mostra mais
-contagem de processos/pendências por cliente (não há read model; a ficha
-mostra); a aba "Histórico" do caso saiu (auditoria é interna); "Tipo" do caso
+**Diferenças do Front V1 (portal):** ~~a lista de clientes não mostra mais
+contagem de processos/pendências por cliente; a aba "Histórico" do caso
+saiu~~ — **restauradas na 4.3.1** (contagens só do escopo do escritório e
+histórico sanitizado, migration 036); "Tipo" do caso
 é o catálogo real (opcional; o catálogo de tipos ainda está vazio);
 "Representante legal" de PJ saiu do envio (o schema do parceiro não tem); a
 aba "Financeiro" do caso volta na Fase F; o Início do portal é a Fase H.
@@ -338,10 +339,10 @@ obrigatórios presentes). A aba mostra a análise atual (documentos que
 faltam, resultado estruturado, link para a revisão), envio/reenvio atômico e
 o histórico. ASSISTANT não vê as abas Análise e Revisões (nem as lê).
 
-**Diferenças do Front V1:** sem edição do conteúdo dentro da revisão
-(editar manualmente / "editar com agente" / exportar versão) — o conteúdo é
-do alvo e o backend não tem essas operações; sem "interromper análise"
-(cancelar execução é operação de ADMIN em Agentes, Fase G); sem simulação de
+**Diferenças do Front V1:** edição manual na revisão e "interromper análise"
+**voltaram na 4.3.1** (034 e 033; ver a seção 4.3.1). "Editar com agente"
+fica para a etapa de agentes reais (o botão aparece desativado); sem
+exportar versão; sem simulação de
 resultado do agente; sem navegação "próxima pendente". O modelo bancário do
 seed não tem agente configurado: a análise é criada e fica pendente até
 haver agente (configuração de agente fora do escopo da 4.3).
@@ -396,8 +397,9 @@ escritório vem da sessão; DTO do parceiro sem receita do escritório).
 PARTNER_USER não tem financeiro (rota bloqueada). **Configurações → Modelos
 de honorários**: lista, criação e edição reais.
 
-**Diferenças do Front V1:** sem gráfico "contratado por modelo" e sem
-"êxito previsto" (estimativa sobre valor da causa não é dado do ledger);
+**Diferenças do Front V1:** gráfico "contratado por modelo", gerador de
+cronograma e "valores da parceria" (só leitura) **voltaram na 4.3.1** (035);
+sem "êxito previsto" (estimativa sobre valor da causa não é dado do ledger);
 sem filtro de origem na visão geral (a participação por parceiro fica na
 ficha do parceiro); sem "valores da parceria" editáveis (o snapshot é
 imutável; mudar a divisão padrão vale para casos novos); a aba Financeiro
@@ -482,6 +484,34 @@ Importação de dados (integrações externas proibidas nesta etapa), uso de IA
 em Configurações → IA e preferências de notificação (envio/SMTP fora da
 etapa). Nenhum desses guarda dado jurídico.
 
+## 4.3.1 — Feature Restoration & Product Closure
+
+Recupera funções do Front V1 que tinham saído na 4.3 por falta de backend —
+agora com backend real. Migrations **032–037** (032 é a correção de
+desempenho do QA 4.3).
+
+| # | Função | Backend | Tela |
+|---|---|---|---|
+| A | Produtor de notificações | 037: `private.notify` (único escritor) + gatilhos nas tabelas de domínio, na mesma transação; chave de evento por usuário; lembretes de prazo (worker/pg_cron) | sino, `/notificacoes`, destinos novos (revisão, análise, prazo, repasse, execução) |
+| B | Preferências | 037: `user_notification_preferences` por categoria (CASES, DEADLINES, DOCUMENTS, REVIEWS, PARTNER_REQUESTS, ANALYSES, FINANCE, SECURITY); SECURITY sempre in-app | Configurações → Notificações; Minha conta (portal) |
+| C | Edição manual na revisão | 034: `prepare_manual_revision` + `commit_manual_revision_once` (versão N+1 MANUAL_EDIT, decisão na N, revisão nova, auditoria) | Revisão de minuta de texto: "Editar conteúdo" → "Salvar nova versão" |
+| D | Interromper análise/execução | 033: `request_agent_run_cancel` (fila: para já; rodando: pedido que o worker confirma), sincronia análise ← execução, contrato do worker | Aba Análise do caso: "Interromper análise"; Execuções: "Interromper" |
+| E | Cronograma de parcelas | 035: `create_payment_schedule_once` (centavos exatos, resto nas primeiras, atômico, idempotente) | Gaveta do contrato: "Gerar cronograma" com prévia |
+| F | Valores da parceria | 035: view `partner_agreement_share_totals` (só leitura) + histórico de repasses do caso | "Valores" na participação por caso (financeiro do parceiro, portal e caso) |
+| G | Contratado por modelo | 035: view `financial_contracted_by_fee_model` (somada no banco) | Visão geral do Financeiro |
+| H | Histórico do caso no portal | 036: `get_partner_case_timeline` (sanitizado, paginado; nunca auditoria crua) | Portal → Caso → aba Histórico |
+| I | Contagens por cliente no portal | 036: `get_partner_client_counts` (só o escopo do escritório) | Portal → Clientes: Casos, Processos, Pendências |
+
+**Regras mantidas:** RLS não relaxada; nenhum papel novo; zero uso novo de
+service role (a edição manual grava pelo módulo de Storage que já existia,
+só no caminho que o banco autorizou); toda função nova SECURITY DEFINER com
+`search_path` vazio e sem EXECUTE para `anon` (conferido no verificador).
+
+**Continuam para etapas futuras:** IA/Claude real e edição por IA, worker
+no Fly.io, e-mail/SMTP (as preferências de e-mail ficam guardadas),
+integração judicial, importação, Google Drive, sessões/dispositivos do Auth,
+observabilidade/produção.
+
 ## Testes
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
@@ -539,111 +569,117 @@ etapa). Nenhum desses guarda dado jurídico.
   `tests/integration/company-people.int.test.ts` (028 por papel, PF recusada,
   parcial inválido não altera nada, 3 → 2 sócios, IDOR, auditoria sem PII).
 
+## Situação do QA manual (após o QA da 4.3, 2026-10-15)
+
+Itens marcados `[x]` passaram no QA da 4.3 (`docs/qa/etapa-4.3/`). Itens com
+**Retestar** falharam e foram corrigidos em `56a76b8` (BUG-01, 02, 04 e 05);
+itens *Pendente* não tinham fixture possível sem IA. A 4.3.1 está no fim.
+
 ## QA manual — Fase A (Supabase DEV, dados fictícios)
 
 Marque cada item com os cinco papéis indicados.
 
 **ADMIN / LAWYER / ASSISTANT**
 
-- [ ] `/clientes` abre sem flash de dados de demonstração; banco vazio mostra
+- [x] `/clientes` abre sem flash de dados de demonstração; banco vazio mostra
       "Nenhum cliente cadastrado."
-- [ ] Busca por nome responde após parar de digitar; busca por parte do CPF
+- [x] Busca por nome responde após parar de digitar; busca por parte do CPF
       encontra; a URL **não** mostra os dígitos.
-- [ ] Filtros (tipo, situação, responsável, origem) e ordenação refazem a
+- [x] Filtros (tipo, situação, responsável, origem) e ordenação refazem a
       consulta; recarregar a página mantém filtros e página.
-- [ ] Paginação com mais de 25 clientes.
-- [ ] Cadastrar PF e PJ: botão fica em "carregando", duplo clique não cria
+- [x] Paginação com mais de 25 clientes.
+- [x] Cadastrar PF e PJ: botão fica em "carregando", duplo clique não cria
       dois; ao terminar, abre a ficha do cliente criado.
-- [ ] CPF já cadastrado: mensagem no campo CPF ("Cliente já cadastrado no
+- [x] CPF já cadastrado: mensagem no campo CPF ("Cliente já cadastrado no
       sistema.").
-- [ ] Editar: salvar volta para a ficha com os dados novos; apagar o nome
+- [x] Editar: salvar volta para a ficha com os dados novos; apagar o nome
       social apaga de fato.
-- [ ] PF: apagar data de nascimento, gênero, estado civil e documento de
+- [ ] PF: apagar data de nascimento, gênero, estado civil e documento de — **Retestar:** falhou no QA 4.3 (BUG-01); corrigido em `56a76b8`.
       identidade e salvar; recarregar a ficha mostra os campos vazios.
       Tipo de documento sem número (ou o contrário) é apontado no campo.
-- [ ] LAWYER/ASSISTANT alterando o CPF: aviso no campo, nada é salvo.
+- [x] LAWYER/ASSISTANT alterando o CPF: aviso no campo, nada é salvo.
       ADMIN: corrige.
-- [ ] Inativar/reativar: a ficha muda depois da resposta; lista "Inativos"
+- [x] Inativar/reativar: a ficha muda depois da resposta; lista "Inativos"
       mostra o cliente.
-- [ ] PJ — "Salvar representantes e sócios": adicionar, editar, remover e
+- [x] PJ — "Salvar representantes e sócios": adicionar, editar, remover e
       trocar o principal; após salvar, recarregar a página mostra o mesmo
       quadro. Erro (ex.: CPF inválido) mantém o que foi digitado e não muda
       nada no banco. "Descartar alterações" volta ao último estado salvo.
-- [ ] ADMIN exclui: volta para a lista; o cliente sumiu. LAWYER/ASSISTANT não
+- [x] ADMIN exclui: volta para a lista; o cliente sumiu. LAWYER/ASSISTANT não
       veem "Ações perigosas".
-- [ ] ASSISTANT: "Origem" só oferece o escritório proprietário.
-- [ ] Abrir `/clientes/<uuid inexistente>` e `/clientes/abc` → "Cliente não
+- [x] ASSISTANT: "Origem" só oferece o escritório proprietário.
+- [x] Abrir `/clientes/<uuid inexistente>` e `/clientes/abc` → "Cliente não
       encontrado."
-- [ ] Ficha em nova aba e após recarregar funciona.
-- [ ] Desligar a rede e mudar um filtro → erro com "Tentar novamente"; religar
+- [x] Ficha em nova aba e após recarregar funciona.
+- [x] Desligar a rede e mudar um filtro → erro com "Tentar novamente"; religar
       e tentar → volta.
 
 **PARTNER_ADMIN / PARTNER_USER**
 
-- [ ] `/clientes/<id de cliente interno>` não mostra dados internos (ver QA
+- [x] `/clientes/<id de cliente interno>` não mostra dados internos (ver QA
       da Fase D).
-- [ ] `/clientes/<id>/editar` → acesso negado.
+- [x] `/clientes/<id>/editar` → acesso negado.
 
 ## QA manual — Fase B (Supabase DEV, dados fictícios)
 
 **ADMIN / LAWYER**
 
-- [ ] `/casos`: lista do banco; filtros (situação, área, responsável, cliente,
+- [x] `/casos`: lista do banco; filtros (situação, área, responsável, cliente,
       origem, período), ordem e páginas; recarregar mantém os filtros.
-- [ ] Novo caso: buscar cliente pelo nome; "Salvar rascunho" e "Enviar para
+- [x] Novo caso: buscar cliente pelo nome; "Salvar rascunho" e "Enviar para
       análise" abrem a ficha do caso criado. Clique duplo rápido → um caso só.
-- [ ] Ficha do caso: editar dados (área/tipo), definir advogado, aceitar
+- [x] Ficha do caso: editar dados (área/tipo), definir advogado, aceitar
       (sem advogado → aviso no campo), rejeitar (motivo obrigatório), marcar
       em andamento, encerrar, arquivar. A situação só muda depois da resposta.
-- [ ] ADMIN altera a origem de caso aceito: pede motivo + confirmação.
+- [x] ADMIN altera a origem de caso aceito: pede motivo + confirmação.
       LAWYER não vê "Alterar origem" em caso aceito.
-- [ ] Aba Processos do caso lista os processos; "Cadastrar processo" já vem
+- [x] Aba Processos do caso lista os processos; "Cadastrar processo" já vem
       com o caso escolhido.
-- [ ] `/processos`: lista com cliente, caso e próximo prazo; filtros; busca
+- [ ] `/processos`: lista com cliente, caso e próximo prazo; filtros; busca — **Retestar:** falhou no QA 4.3 (BUG-02); corrigido em `56a76b8`.
       por CNJ (os dígitos NÃO aparecem na URL).
-- [ ] Cadastrar processo (CNJ válido e sem CNJ): abre a ficha; prazo inicial
+- [x] Cadastrar processo (CNJ válido e sem CNJ): abre a ficha; prazo inicial
       aparece em Prazos. CNJ com dígito errado → erro no campo.
-- [ ] Editar processo: apagar a vara e o valor da causa apaga de fato.
-- [ ] Registrar andamento (nota da equipe, origem "Equipe").
-- [ ] Prazos: adicionar, editar, cumprir, cancelar; prazo vencido aparece
+- [x] Editar processo: apagar a vara e o valor da causa apaga de fato.
+- [x] Registrar andamento (nota da equipe, origem "Equipe").
+- [x] Prazos: adicionar, editar, cumprir, cancelar; prazo vencido aparece
       como "Vencido".
-- [ ] ADMIN exclui processo → volta para o caso; LAWYER não vê "Excluir".
-- [ ] `/casos/<uuid de outro escritório ou inexistente>` e
+- [x] ADMIN exclui processo → volta para o caso; LAWYER não vê "Excluir".
+- [x] `/casos/<uuid de outro escritório ou inexistente>` e
       `/processos/<idem>` → "não encontrado".
 
 **ASSISTANT**
 
-- [ ] Vê casos e processos; cria caso (rascunho/envio); não vê Aceitar/
+- [x] Vê casos e processos; cria caso (rascunho/envio); não vê Aceitar/
       Rejeitar/Encerrar/Arquivar; não cadastra processo nem prazo.
 
 **PARTNER_ADMIN / PARTNER_USER**
 
-- [ ] Rotas de caso/processo de outro escritório → "não encontrado" (ver QA
+- [x] Rotas de caso/processo de outro escritório → "não encontrado" (ver QA
       da Fase D).
 
 ## QA manual — Fase C (Supabase DEV, arquivos fictícios)
 
 **ADMIN / LAWYER / ASSISTANT**
 
-- [ ] Ficha do cliente → Documentos: arrastar um PDF e enviar; as etapas
+- [x] Ficha do cliente → Documentos: arrastar um PDF e enviar; as etapas
       aparecem; o documento entra como "Não verificado".
-- [ ] Tipo não aceito (.zip) ou arquivo > 50 MB: aviso antes de enviar.
-- [ ] Desligar a rede durante o envio: a tela mostra em que etapa parou e
+- [x] Tipo não aceito (.zip) ou arquivo > 50 MB: aviso antes de enviar.
+- [x] Desligar a rede durante o envio: a tela mostra em que etapa parou e
       "Tentar novamente" funciona depois de religar.
-- [ ] Baixar: o arquivo abre/baixa (o link expira em 60 s; abrir de novo pede
+- [x] Baixar: o arquivo abre/baixa (o link expira em 60 s; abrir de novo pede
       outro link).
-- [ ] Mais → Enviar nova versão: vira v2 "Não verificado"; Histórico de
+- [x] Mais → Enviar nova versão: vira v2 "Não verificado"; Histórico de
       versões mostra v1 e v2, com download de cada uma.
-- [ ] Marcar como verificado / Registrar divergência (com nota).
-- [ ] Arquivar → some de "Ativos", aparece em "Arquivados"; Reativar volta.
-- [ ] ADMIN exclui documento; LAWYER/ASSISTANT não veem "Excluir documento".
-- [ ] Caso → Documentos: "Nova pendência" (já solicitada), enviar o arquivo,
+- [x] Marcar como verificado / Registrar divergência (com nota).
+- [x] Arquivar → some de "Ativos", aparece em "Arquivados"; Reativar volta.
+- [x] ADMIN exclui documento; LAWYER/ASSISTANT não veem "Excluir documento".
+- [x] Caso → Documentos: "Nova pendência" (já solicitada), enviar o arquivo,
       "Registrar recebimento" escolhendo o arquivo; LAWYER aprova (ASSISTANT
       não vê Aprovar/Rejeitar); rejeitar → "Solicitar de novo".
-- [ ] Caso de parceiro: "Compartilhar com o parceiro" em documento com
+- [ ] Caso de parceiro: "Compartilhar com o parceiro" em documento com — *Pendente: não executado no QA 4.3 (exige agente/IA ou fixture; ver qa-pendencias).*
       arquivo; em caso interno a opção não aparece. Minuta de agente não
       aprovada é recusada pelo servidor com mensagem.
-- [ ] Processo → Documentos: enviar; o documento aparece também no caso.
+- [x] Processo → Documentos: enviar; o documento aparece também no caso.
 
 ## QA manual — Fase D (Supabase DEV, dados fictícios)
 
@@ -652,50 +688,50 @@ PARTNER_USER (@dgbrasil.test, CPF 999…).
 
 **ADMIN / LAWYER / ASSISTANT — parceiros e solicitações**
 
-- [ ] `/parceiros`: busca, situação e páginas; contadores (clientes, casos
+- [x] `/parceiros`: busca, situação e páginas; contadores (clientes, casos
       novos, ativos, pendências) batem com os dados. LAWYER/ASSISTANT não
       veem a divisão.
-- [ ] ADMIN cadastra parceiro, edita, muda a divisão (vale para casos novos)
+- [x] ADMIN cadastra parceiro, edita, muda a divisão (vale para casos novos)
       e a situação. LAWYER não vê esses botões.
-- [ ] Ficha do parceiro: equipe, clientes, casos, processos e solicitações
+- [x] Ficha do parceiro: equipe, clientes, casos, processos e solicitações
       listam só o que é desse parceiro.
-- [ ] Caso de parceiro → Solicitações: "Nova solicitação"; responder na
+- [x] Caso de parceiro → Solicitações: "Nova solicitação"; responder na
       conversa; resolver e cancelar; a situação muda depois da resposta do
       servidor.
 
 **PARTNER_ADMIN / PARTNER_USER — portal**
 
-- [ ] `/clientes`: só clientes do próprio escritório; busca por nome e por
+- [x] `/clientes`: só clientes do próprio escritório; busca por nome e por
       CPF (os dígitos não aparecem na URL); recarregar mantém a página.
-- [ ] Ficha do cliente: "Editar" contato/endereço; apagar o e-mail apaga de
+- [x] Ficha do cliente: "Editar" contato/endereço; apagar o e-mail apaga de
       fato; recarregar mostra o salvo. Nenhum campo interno.
-- [ ] `/clientes/novo`: CPF novo → cadastro básico → caso → documentos →
+- [x] `/clientes/novo`: CPF novo → cadastro básico → caso → documentos →
       revisão → enviar. Clique duplo em "Confirmar e enviar" → um caso só.
       Os arquivos sobem depois do envio, com indicação por arquivo.
-- [ ] CPF já cadastrado por OUTRO escritório: "Cliente já cadastrado no
+- [x] CPF já cadastrado por OUTRO escritório: "Cliente já cadastrado no
       sistema." sem nome nem escritório; o caso é criado para o cadastro
       existente e o cliente passa a aparecer na carteira.
-- [ ] CPF já na carteira: "Abrir cliente" / "Criar novo caso".
-- [ ] Muitas consultas seguidas de CPF/CNPJ → aviso "Consulta
+- [x] CPF já na carteira: "Abrir cliente" / "Criar novo caso".
+- [x] Muitas consultas seguidas de CPF/CNPJ → aviso "Consulta
       temporariamente bloqueada" (limite best-effort).
-- [ ] `/casos`: filtro "Em análise" traz prontos para análise, em análise e
+- [ ] `/casos`: filtro "Em análise" traz prontos para análise, em análise e — *Pendente: não executado no QA 4.3 (exige agente/IA ou fixture; ver qa-pendencias).*
       aguardando revisão. Caso recusado mostra só o motivo público.
-- [ ] Caso → Documentos: enviar arquivo; nova versão; baixar. Documento
+- [x] Caso → Documentos: enviar arquivo; nova versão; baixar. Documento
       interno não compartilhado NÃO aparece. Caso recusado/arquivado: sem
       área de envio. Pendências documentais só para leitura.
-- [ ] Caso → Pendências: responder solicitação aberta; resolvida não aceita
+- [x] Caso → Pendências: responder solicitação aberta; resolvida não aceita
       resposta.
-- [ ] Caso → Processos → "Cadastrar processo" (já com o caso); clique duplo
+- [x] Caso → Processos → "Cadastrar processo" (já com o caso); clique duplo
       → um processo só. Em `/processos` sem responsável/prazo interno.
-- [ ] Processo → Movimentações: só oficiais e do sistema (nota manual da
+- [x] Processo → Movimentações: só oficiais e do sistema (nota manual da
       equipe não aparece).
-- [ ] `/pendencias`: todas as solicitações do escritório; filtro por
+- [x] `/pendencias`: todas as solicitações do escritório; filtro por
       situação.
-- [ ] `/minha-conta`: dados da sessão real; PARTNER_ADMIN vê divisão padrão
+- [x] `/minha-conta`: dados da sessão real; PARTNER_ADMIN vê divisão padrão
       e "Usuários do escritório"; PARTNER_USER não vê nenhum dos dois.
-- [ ] Parceiro A abrindo `/clientes|casos|processos/<id do parceiro B>` →
+- [x] Parceiro A abrindo `/clientes|casos|processos/<id do parceiro B>` →
       "não encontrado".
-- [ ] Desligar a rede e mudar um filtro → erro com "Tentar novamente".
+- [x] Desligar a rede e mudar um filtro → erro com "Tentar novamente".
 
 ## QA manual — Fase E (Supabase DEV, dados fictícios; nada executa IA)
 
@@ -704,127 +740,187 @@ de análise da área bancária com esse agente (o do seed fica sem agente).
 
 **ADMIN / LAWYER — análises**
 
-- [ ] Caso → Análise sem análises: estado vazio com "Nova análise".
-- [ ] Nova análise com o modelo SEM agente: "Enviar ao agente agora"
+- [x] Caso → Análise sem análises: estado vazio com "Nova análise".
+- [x] Nova análise com o modelo SEM agente: "Enviar ao agente agora"
       desabilitado; criar → aba Análise mostra "Pendente" e os documentos
       que faltam.
-- [ ] Nova análise com o modelo COM agente e documentos completos: marcar
+- [x] Nova análise com o modelo COM agente e documentos completos: marcar
       "Enviar ao agente agora", clique duplo em "Iniciar e enviar" → UMA
       análise "Na fila do agente" e UMA execução (Agentes/execuções ou SQL).
-- [ ] Faltando documento obrigatório: o envio não é oferecido; depois de
+- [ ] Faltando documento obrigatório: o envio não é oferecido; depois de — *Pendente: não executado no QA 4.3 (exige agente/IA ou fixture; ver qa-pendencias).*
       enviar o documento ao caso, "Enviar ao agente" aparece e funciona.
-- [ ] Com análise na fila, "Nova análise" mostra "já possui uma análise em
+- [x] Com análise na fila, "Nova análise" mostra "já possui uma análise em
       andamento".
-- [ ] Campo obrigatório do modelo vazio → erro no campo; o servidor recusa
+- [ ] Campo obrigatório do modelo vazio → erro no campo; o servidor recusa — *Pendente: não executado no QA 4.3 (exige agente/IA ou fixture; ver qa-pendencias).*
       campo fora do modelo.
 
 **ADMIN / LAWYER — revisões**
 
-- [ ] `/revisoes`: visões, filtros e páginas; recarregar mantém tudo.
-- [ ] Abrir revisão de análise/documento/proposta: conteúdo do alvo; baixar
+- [x] `/revisoes`: visões, filtros e páginas; recarregar mantém tudo.
+- [x] Abrir revisão de análise/documento/proposta: conteúdo do alvo; baixar
       a versão do documento.
-- [ ] Atribuir responsável, prioridade e prazo; salvar muda depois da
+- [x] Atribuir responsável, prioridade e prazo; salvar muda depois da
       resposta.
-- [ ] Aprovar (comentário opcional), pedir alterações e rejeitar
+- [x] Aprovar (comentário opcional), pedir alterações e rejeitar
       (justificativa obrigatória); a decisão aparece no histórico.
-- [ ] Reabrir revisão decidida (não aparece para proposta de agente).
-- [ ] LAWYER em proposta estrutural (alteração de agente/skill): só aviso
+- [x] Reabrir revisão decidida (não aparece para proposta de agente).
+- [ ] LAWYER em proposta estrutural (alteração de agente/skill): só aviso — *Pendente: não executado no QA 4.3 (exige agente/IA ou fixture; ver qa-pendencias).*
       "Decisão do administrador"; ADMIN decide.
-- [ ] Caso → Revisões lista as revisões do caso.
+- [x] Caso → Revisões lista as revisões do caso.
 
 **ASSISTANT / parceiros**
 
-- [ ] ASSISTANT: sem abas Análise/Revisões no caso; `/revisoes` e
+- [x] ASSISTANT: sem abas Análise/Revisões no caso; `/revisoes` e
       `/casos/<id>/analise/nova` → acesso negado.
-- [ ] Parceiro: nenhuma rota de revisão/análise acessível.
+- [x] Parceiro: nenhuma rota de revisão/análise acessível.
 
 ## QA manual — Fase F (Supabase DEV, valores fictícios)
 
 **ADMIN**
 
-- [ ] `/financeiro`: totais e gráfico mensal; contratos paginados; filtro de
+- [x] `/financeiro`: totais e gráfico mensal; contratos paginados; filtro de
       situação vai para a URL e sobrevive ao recarregar.
-- [ ] Novo contrato (com modelo e sem modelo; "Ativar agora" marcado e
+- [ ] Novo contrato (com modelo e sem modelo; "Ativar agora" marcado e — **Retestar:** falhou no QA 4.3 (BUG-04); corrigido em `56a76b8`.
       desmarcado). Clique duplo em "Criar contrato" → um contrato só. Segundo
       contrato ATIVO no mesmo caso → "Este caso já tem um acordo financeiro
       ativo."
-- [ ] Gaveta: nova obrigação; registrar recebimento parcial e "quitar" (valor
+- [ ] Gaveta: nova obrigação; registrar recebimento parcial e "quitar" (valor — **Retestar:** falhou no QA 4.3 (BUG-04); corrigido em `56a76b8`.
       em branco); estornar parte; ajuste para menos com justificativa. A
       situação da obrigação muda (A vencer → Parcial → Recebida) depois da
       resposta.
-- [ ] Concluir com obrigação em aberto → recusado com mensagem; quitada →
+- [ ] Concluir com obrigação em aberto → recusado com mensagem; quitada → — **Retestar:** falhou no QA 4.3 (BUG-04); corrigido em `56a76b8`.
       conclui. Concluído: sem "Nova obrigação" nem "Registrar recebimento";
       estorno continua disponível.
-- [ ] Cancelar obrigação (motivo obrigatório); com recebimento → pede
+- [ ] Cancelar obrigação (motivo obrigatório); com recebimento → pede — **Retestar:** falhou no QA 4.3 (BUG-04); corrigido em `56a76b8`.
       estorno antes.
-- [ ] Caso → Financeiro: contratos do caso e parceria (caso de origem
+- [x] Caso → Financeiro: contratos do caso e parceria (caso de origem
       parceira mostra o percentual congelado).
-- [ ] Parceiro → Financeiro: participação, por caso e repasses; registrar
+- [x] Parceiro → Financeiro: participação, por caso e repasses; registrar
       repasse maior que o disponível → recusado; marcar pago; cancelar
       (motivo).
-- [ ] Configurações → Modelos de honorários: criar, editar, inativar.
+- [ ] Configurações → Modelos de honorários: criar, editar, inativar. — **Retestar:** falhou no QA 4.3 (BUG-04); corrigido em `56a76b8`.
 
 **LAWYER / ASSISTANT**
 
-- [ ] Sem item Financeiro; `/financeiro` → acesso negado; sem aba Financeiro
+- [x] Sem item Financeiro; `/financeiro` → acesso negado; sem aba Financeiro
       no caso.
 
 **PARTNER_ADMIN**
 
-- [ ] `/financeiro`: só a participação do próprio escritório (sem receita do
+- [x] `/financeiro`: só a participação do próprio escritório (sem receita do
       escritório, sem outros parceiros); repasses só leitura.
 
 **PARTNER_USER**
 
-- [ ] `/financeiro` → acesso negado.
+- [x] `/financeiro` → acesso negado.
 
 ## QA manual — Fase G (Supabase DEV; nenhuma IA executa)
 
 **ADMIN**
 
-- [ ] DG Brasil → Execuções: lista com páginas; filtro de situação vai para a
+- [x] DG Brasil → Execuções: lista com páginas; filtro de situação vai para a
       URL. Execução de análise enviada na Fase E aparece "Na fila".
-- [ ] "Cancelar" numa execução na fila → "Cancelada" depois da resposta;
+- [x] "Cancelar" numa execução na fila → "Cancelada" depois da resposta;
       execução concluída/cancelada não oferece cancelar.
-- [ ] Caso → Análise: "Execuções de agente neste caso" mostra só as do caso.
+- [x] Caso → Análise: "Execuções de agente neste caso" mostra só as do caso.
 
 **LAWYER**
 
-- [ ] Caso → Análise mostra as execuções do caso; sem "Cancelar"; sem
+- [x] Caso → Análise mostra as execuções do caso; sem "Cancelar"; sem
       acesso à área DG Brasil.
 
 **ASSISTANT / parceiros**
 
-- [ ] Sem execuções em nenhuma tela; `/dg-brasil/execucoes` → acesso negado.
+- [x] Sem execuções em nenhuma tela; `/dg-brasil/execucoes` → acesso negado.
 
 ## QA manual — Fase H (Supabase DEV)
 
 **ADMIN**
 
-- [ ] Início: contadores, prazos vencidos/em até 5 dias, distribuição,
+- [x] Início: contadores, prazos vencidos/em até 5 dias, distribuição,
       revisões, clientes recentes, atividade, execuções e financeiro — números
       batem com as listas correspondentes.
-- [ ] Menu da casa: contadores coerentes; recarregar atualiza.
-- [ ] Cliente, caso e parceiro → Atividade: eventos recentes do registro,
+- [x] Menu da casa: contadores coerentes; recarregar atualiza.
+- [x] Cliente, caso e parceiro → Atividade: eventos recentes do registro,
       com frases e quem fez; páginas.
-- [ ] Configurações → Segurança: postura real; auditoria com filtros de
+- [x] Configurações → Segurança: postura real; auditoria com filtros de
       ação, responsável e período; páginas.
-- [ ] Configurações → Geral: alterar e salvar os dados do escritório;
+- [ ] Configurações → Geral: alterar e salvar os dados do escritório; — **Retestar:** falhou no QA 4.3 (BUG-05); corrigido em `56a76b8`.
       recarregar mostra o salvo; OAB "OAB/SP 123.456".
-- [ ] Processos: faixa de contadores; clicar "Com prazo em até 5 dias" aplica
+- [x] Processos: faixa de contadores; clicar "Com prazo em até 5 dias" aplica
       o filtro; `?prazo=vencidos` na URL funciona.
-- [ ] Processo → Revisões e → Financeiro (contratos do caso).
-- [ ] Sino: notificação criada pela service role para o ADMIN aparece; marcar
+- [x] Processo → Revisões e → Financeiro (contratos do caso).
+- [x] Sino: notificação criada pela service role para o ADMIN aparece; marcar
       lida e "marcar todas" atualizam a contagem.
 
 **LAWYER / ASSISTANT**
 
-- [ ] Início sem financeiro/atividade/execuções; LAWYER vê revisões,
+- [x] Início sem financeiro/atividade/execuções; LAWYER vê revisões,
       ASSISTANT não. Sem abas "Atividade".
 
 **PARTNER_ADMIN / PARTNER_USER**
 
-- [ ] Início do portal só com dados do próprio escritório; participação só
+- [x] Início do portal só com dados do próprio escritório; participação só
       para PARTNER_ADMIN.
-- [ ] `/notificacoes`: só as próprias; marcar lida.
+- [x] `/notificacoes`: só as próprias; marcar lida.
+
+## QA manual — 4.3.1 (Supabase DEV; worker parado; nada executa IA)
+
+**Preparação:** `npm run usuarios:qa`; agente e modelo fictícios do guia
+(§6.2, já corrigido). Ver `docs/etapa-4.3.1-validacao.md`.
+
+**Notificações (A) — produzidas por operações reais**
+
+- [ ] PARTNER_USER A envia um caso → ADMIN (sem advogado no caso) recebe "Novo caso enviado pelo parceiro"; o parceiro não recebe aviso do próprio envio.
+- [ ] ADMIN atribui o advogado → o LAWYER recebe "Caso atribuído a você"; atribuir de novo não duplica.
+- [ ] LAWYER aceita → PARTNER_ADMIN e PARTNER_USER do A recebem "Caso aceito"; o parceiro B não recebe nada.
+- [ ] Recusa → o parceiro recebe só o motivo PÚBLICO (nunca a nota interna).
+- [ ] Prazo novo com responsável → o responsável recebe "Novo prazo" (link para a aba Prazos do processo).
+- [ ] Pendência de documento "Solicitar" em caso de parceiro → o escritório parceiro recebe; recebimento → o advogado recebe.
+- [ ] Solicitação ao parceiro → o parceiro recebe; resposta do parceiro → o advogado recebe.
+- [ ] Revisão atribuída → o revisor recebe; decisão → quem pediu o material recebe.
+- [ ] Repasse registrado → só PARTNER_ADMIN do escritório recebe (PARTNER_USER não).
+- [ ] ADMIN redefine o MFA de alguém / troca o papel → a pessoa recebe aviso de segurança (mesmo com as outras categorias desligadas).
+- [ ] Sino: contagem, "marcar lida" e "marcar todas" continuam funcionando; clicar leva ao destino certo.
+
+**Preferências (B)**
+
+- [ ] Configurações → Notificações (interno) e Minha conta (portal): só as categorias do perfil (ASSISTANT sem Revisões/Análises; PARTNER_USER sem Financeiro).
+- [ ] Desligar "Prazos" na plataforma → prazo novo não gera aviso; religar → volta.
+- [ ] "Segurança da conta" não desliga (cadeado); "Por e-mail" diz que será usado quando o e-mail for ativado; recarregar mantém o salvo; "Restaurar padrão".
+
+**Revisão — edição manual (C)**
+
+- [ ] Revisão de minuta de texto (.md/.txt): o conteúdo aparece; "Editar conteúdo" → "Versão N → Versão N+1" → "Salvar nova versão" → abre a revisão NOVA (pendente, mesmo responsável).
+- [ ] A revisão antiga fica "Alterações solicitadas" com a nota automática; a versão N continua baixável e intacta; o histórico do documento mostra "· edição manual".
+- [ ] Clique duplo em "Salvar nova versão" → uma versão só.
+- [ ] Revisão de PDF/DOCX: aviso "não editável aqui — envie uma nova versão"; revisão decidida: só leitura ("reabra para editar").
+- [ ] "Solicitar alteração à IA" aparece desativado, com a explicação.
+- [ ] ASSISTANT e parceiro: sem acesso.
+
+**Interromper análise (D)**
+
+- [ ] Análise na fila → "Interromper análise" → confirmação → análise "Interrompida"; Execuções mostra "Cancelada".
+- [ ] Execução "rodando" (simular pela service role: `status = 'RUNNING'`, `claimed_by`, `heartbeat_at = now()`) → "Interromper" → "Interrupção solicitada" (a execução segue até o worker confirmar).
+- [ ] LAWYER interrompe análise de caso dele; ASSISTANT não vê o botão.
+
+**Financeiro (E, F, G)**
+
+- [ ] Gaveta do contrato → "Gerar cronograma": R$ 100,00 em 3 → prévia 33,34 + 33,33 + 33,33; total exato; 31/01 → 28/02 → 31/03.
+- [ ] Confirmar → 3 obrigações; clique duplo → não duplica; acordo cancelado/concluído → recusado.
+- [ ] Participação por caso (financeiro do parceiro, portal do PARTNER_ADMIN e aba Financeiro do caso) → "Valores": receita elegível, participação calculada, repassado, em repasse, saldo, histórico de repasses do caso. Nenhum campo editável.
+- [ ] Visão geral do Financeiro: gráfico "Contratado por modelo" com os modelos do DEV (sem modelo = "valores próprios").
+
+**Portal (H, I)**
+
+- [ ] Caso no portal → aba "Histórico": cadastro, envio, mudanças de situação ("Em análise" sem repetir), processos, movimentações oficiais, documentos compartilhados, pendências, solicitações; "Carregar mais".
+- [ ] Nenhum item interno no histórico (nota interna, motivo interno, revisão, análise, execução).
+- [ ] Portal → Clientes: colunas Casos, Processos, Pendências — contando só o que é do escritório (cliente com casos internos não "mostra" esses casos).
+- [ ] Parceiro B não vê histórico nem contagens de clientes do A.
+
+**Correções do QA 4.3 (retestar)**
+
+- [ ] BUG-04: novo contrato, modelos de honorários e obrigações/lançamentos da gaveta carregam (F-02, F-03, F-04 estorno, F-05, F-08, T-05).
+- [ ] BUG-06: portal → Clientes rápido (< 2 s) mesmo com o DEV cheio.
+- [ ] BUG-01 (A-08), BUG-02 (B-06), BUG-05 (H-05): mensagens no campo de identidade; caso na lista de processos; OAB "OAB/SP 123.456" inteira.
 

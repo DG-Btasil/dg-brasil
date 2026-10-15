@@ -51,7 +51,14 @@ qualquer dado real.
   e processo, divisão do próprio escritório para o administrador do parceiro,
   rate limit best-effort na aplicação para CPF/CNPJ do parceiro (migration 027).
 - **4.3** — telas trocam os mocks pelas Server Actions, domínio a domínio
-  (andamento em `docs/frontend-integration.md`; Fases A — diretório e Clientes — B — Casos, Processos, Prazos, Movimentações —, C — Documentos e Pendências —, D — Parceiros, Solicitações e Portal do Parceiro —, E — Revisões e Análises, com a migration 029 —, F — Financeiro, com a migration 030 —, G — Execuções de agente, com a migration 031 — e H — Notificações, Auditoria e Início — concluídas; validação conjunta no DEV pendente).
+  (andamento em `docs/frontend-integration.md`; Fases A — diretório e Clientes — B — Casos, Processos, Prazos, Movimentações —, C — Documentos e Pendências —, D — Parceiros, Solicitações e Portal do Parceiro —, E — Revisões e Análises, com a migration 029 —, F — Financeiro, com a migration 030 —, G — Execuções de agente, com a migration 031 — e H — Notificações, Auditoria e Início — concluídas; validadas no DEV e no QA manual de 2026-10-15, com correções em `56a76b8` e a migration 032).
+- **4.3.1** — restauração de funcionalidades com backend real (migrations
+  033–037): produtor de notificações e preferências, edição manual na
+  revisão (versão N+1), interromper análise/execução, cronograma de parcelas,
+  valores da parceria (só leitura), "contratado por modelo", histórico do
+  caso e contagens por cliente no portal. Validação no DEV pendente
+  (`docs/etapa-4.3.1-validacao.md`). Próxima: Auth/Security Production
+  Hardening (sessões e dispositivos) — não iniciada.
 
 ### Etapa 5 — Front-end conectado
 

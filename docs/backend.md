@@ -253,10 +253,13 @@ forte/distribuído antes de expansão do produto.
 
 - Unitários (`npm test`): mapeamentos, schemas, tradução de erros, redação de
   logs, paginação, DTOs (o do parceiro não tem campo interno).
-- Banco (`supabase/: npm run verificar`): 481 verificações, inclusive as RPCs
+- Banco (`supabase/: npm run verificar`): 579 verificações, inclusive as RPCs
   da 025–028 (envio de caso do parceiro, gravação de cliente, busca,
   correlation ID, Storage autorizado, idempotência, divisão do parceiro,
-  bloco societário de PJ).
+  bloco societário de PJ) e as da 4.3.1 (032–037: RLS dos caminhos quentes,
+  interrupção de execução, edição manual na revisão, cronograma, valores da
+  parceria, contratado por modelo, histórico e contagens do portal, produtor
+  de notificações), com conferência de catálogo das funções novas.
 - Integração (`apps/frontend: npm run test:integration`) — **107/107 no
   Supabase DEV (2026-10-13)**, 11 domínios: services contra o
   **Supabase DEV** real (dados fictícios, `supabase/.env.real`,

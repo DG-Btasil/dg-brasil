@@ -1,5 +1,16 @@
 # Handoff para o backend
 
+## Atualização — Etapa 4.3.1 (restauração de funcionalidades)
+
+Com backend real (migrations 033–037; ver `docs/frontend-integration.md`,
+seção 4.3.1): notificações produzidas pelo banco (§11 abaixo deixa de ser
+plano), preferências por categoria, edição manual na revisão como versão
+N+1 (§8B: o conteúdo é o arquivo da versão; edição só de minuta de texto;
+"editar com agente" fica para os agentes reais), interromper
+análise/execução com contrato do worker, cronograma de parcelas no banco,
+valores da parceria só leitura, "contratado por modelo", histórico e
+contagens do portal. E-mail/SMTP, sessões do Auth e IA real seguem fora.
+
 ## Atualização — Backend de domínio (Etapa 4.2)
 
 O backend real existe em `src/server/` (ver [docs/backend.md](../../../docs/backend.md)).
