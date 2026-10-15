@@ -28,8 +28,9 @@ if (env('DG_ENV') !== 'development') {
   process.exit(2)
 }
 const SENHA = env('QA_SENHA')
-if (SENHA.length < 12 || !/[A-Za-z]/.test(SENHA) || !/[0-9]/.test(SENHA)) {
-  console.error('QA_SENHA precisa de ao menos 12 caracteres, com letras e números.')
+// Mesma política do app (apps/frontend/src/lib/auth/password-policy.ts).
+if (SENHA.length < 8 || !/[a-z]/.test(SENHA) || !/[A-Z]/.test(SENHA) || !/[0-9]/.test(SENHA)) {
+  console.error('QA_SENHA precisa de ao menos 8 caracteres, com letras maiúsculas, minúsculas e números.')
   process.exit(2)
 }
 

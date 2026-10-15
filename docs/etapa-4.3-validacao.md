@@ -93,7 +93,7 @@ e cancelam as execuções enfileiradas ao final de cada teste.
 
 Os usuários das rodadas automáticas têm senha aleatória que nunca é gravada
 (não dá para recuperar). Para o QA, crie um conjunto fixo, com uma senha que
-você escolhe (mínimo 12 caracteres, letras e números):
+você escolhe (mesma regra do app: mínimo 8 caracteres, com maiúscula, minúscula e número):
 
 ```powershell
 cd supabase
