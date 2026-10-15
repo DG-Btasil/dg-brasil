@@ -801,6 +801,28 @@ for (const [nome, q] of [
   })
 }
 
+secao('41b. Interromper execução com o pgmq real [033]')
+await deve('LAWYER interrompe execução na fila: CANCELLED e a mensagem sai da fila real; repetir é idempotente', async () => {
+  const run = await r(C.LAWYER.rpc('request_agent_run', { p_agent_id: ids.agente, p_legal_case_id: ids.casoA, p_request_text: 'Pedido fictício para interromper' }))
+  igual((await um(`select count(*)::int n from pgmq.q_agent_execution where message ->> 'agent_run_id' = $1`, [run])).n, 1, 'na fila')
+  const res = await r(C.LAWYER.rpc('request_agent_run_cancel', { p_agent_run_id: run }))
+  igual([res.outcome, res.status], ['CANCELLED', 'CANCELLED'], 'resposta')
+  igual((await um(`select count(*)::int n from pgmq.q_agent_execution where message ->> 'agent_run_id' = $1`, [run])).n, 0, 'fora da fila')
+  igual((await r(C.LAWYER.rpc('request_agent_run_cancel', { p_agent_run_id: run }))).outcome, 'ALREADY_CANCELLED', 'repetição')
+})
+await deveFalhar('ASSISTANT não interrompe (PostgREST real)', () => r(C.ASSISTANT.rpc('request_agent_run_cancel', { p_agent_run_id: ids.run })), /Somente ADMIN ou advogado/)
+
+secao('41c. Notificações: produtor no Supabase real [037]')
+await deve('caso aceito avisa o escritório parceiro (A), não o B; o aviso chega pelo PostgREST só para o dono', async () => {
+  const caso = (await um(`insert into legal_cases (client_id, legal_area_id, title, status, partner_organization_id, origin_organization_id, created_by_organization_id)
+    values ($1, $2, 'Caso avisos real', 'SUBMITTED', $3, $3, $3) returning id`, [ids.cliA, ids.banking, ids.pA])).id
+  await r(C.ADMIN.from('legal_cases').update({ assigned_lawyer_id: U.LAWYER.id }).eq('id', caso))
+  await r(C.LAWYER.from('legal_cases').update({ status: 'ACCEPTED' }).eq('id', caso))
+  const doA = await r(C.PARTNER_ADMIN_A.from('notifications').select('type, legal_case_id').eq('legal_case_id', caso))
+  igual(doA.map((n) => n.type), ['CASE_ACCEPTED'], 'parceiro A')
+  igual((await r(C.PARTNER_ADMIN_B.from('notifications').select('id').eq('legal_case_id', caso))).length, 0, 'parceiro B')
+})
+
 secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')
 await deve('carteira do parceiro A (página + total) em menos de 2 s, mesmo com o DEV cheio de rodadas', async () => {
   const inicio = performance.now()
