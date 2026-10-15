@@ -22,6 +22,7 @@ import { TRANSFER_STATUS_LABEL, TRANSFER_STATUS_TONE } from "../labels";
 import { parseMoneyField } from "../server-input";
 import { useFinanceActions } from "../use-finance-actions";
 import { ReasonDialog } from "./finance-dialogs";
+import { PartnershipValuesDialog } from "./partnership-values-dialog";
 
 /**
  * Participação de UM parceiro: totais (acumulado, em repasse, repassado,
@@ -45,6 +46,7 @@ export function PartnerShareView({
   const actions = useFinanceActions();
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [values, setValues] = useState<{ agreementId: string; caseTitle?: string } | null>(null);
   const caseHref = (id: string) => (manage ? `/casos/${id}?aba=financeiro` : `/casos/${id}`);
 
   return (
@@ -72,10 +74,14 @@ export function PartnerShareView({
               <tr>
                 <Th>Caso</Th>
                 <Th className="text-right">Participação</Th>
+                <Th className="text-right">Receita elegível</Th>
                 <Th className="text-right">Acumulado</Th>
                 <Th className="text-right">Repassado</Th>
                 <Th className="text-right">Disponível</Th>
                 <Th>Situação</Th>
+                <Th>
+                  <span className="sr-only">Valores</span>
+                </Th>
               </tr>
             </THead>
             <TBody>
@@ -88,10 +94,16 @@ export function PartnerShareView({
                     <span className="block text-[12px] text-muted">desde {formatDate(s.effectiveAt)}</span>
                   </Td>
                   <Td className="text-right tabular">{formatPercent(s.partnerPercentage)}</Td>
+                  <Td className="text-right tabular text-muted">{formatCurrency(s.eligibleRevenue)}</Td>
                   <Td className="text-right tabular">{formatCurrency(s.accruedAmount)}</Td>
                   <Td className="text-right tabular">{formatCurrency(s.paidOutAmount)}</Td>
                   <Td className="text-right tabular font-medium">{formatCurrency(s.availableAmount)}</Td>
                   <Td>{s.status === "ACTIVE" ? <Badge tone="success">Ativa</Badge> : <Badge tone="neutral">Encerrada</Badge>}</Td>
+                  <Td className="text-right">
+                    <Button size="sm" variant="ghost" onClick={() => setValues({ agreementId: s.agreementId, caseTitle: s.caseTitle })}>
+                      Valores
+                    </Button>
+                  </Td>
                 </Tr>
               ))}
             </TBody>
@@ -180,6 +192,7 @@ export function PartnerShareView({
           onClose={() => setCancelling(null)}
         />
       )}
+      {values && <PartnershipValuesDialog agreementId={values.agreementId} caseTitle={values.caseTitle} internal={!!manage} onClose={() => setValues(null)} />}
     </div>
   );
 }

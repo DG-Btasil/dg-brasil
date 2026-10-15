@@ -3109,6 +3109,143 @@ await deve('anon não executa as funções de edição', async () => {
       .then(() => { throw new Error('anon executou') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
 })
 
+secao('Financeiro: cronograma de parcelas, valores da parceria e contratado por modelo [035]')
+const cronograma035 = (uid, k, acordo, total, n, primeiro, freq = 'MONTHLY', tipo = 'FIXED', desc = null) => como(uid, async (tx) =>
+  (await um(tx, `select public.create_payment_schedule_once($1, $2, $3, $4, $5, $6, $7, $8) r`, [k, acordo, total, n, primeiro, freq, tipo, desc])).r)
+const parcelas035 = (acordo) => linhas(db, `select amount::text a, due_date::text d, description, payment_type from payments where financial_agreement_id = $1 order by due_date, description`, [acordo])
+const contar035 = async (acordo) => (await um(db, `select count(*)::int n from payments where financial_agreement_id = $1`, [acordo])).n
+const novoAcordo035 = async (status = 'DRAFT') => acordo030(ids.barbara, await novoCaso030('Caso 035'), status)
+
+await deve('R$ 100,00 em 3 mensais: 33,34 + 33,33 + 33,33 (resto nas primeiras), soma exata; 31/01 → 28/02 → 31/03', async () => {
+  const a = await novoAcordo035()
+  const r = await cronograma035(ids.barbara, randomUUID(), a, '100.00', 3, '2027-01-31')
+  igual([r.count, r.deduplicated, r.payment_ids.length], [3, false, 3], 'resposta')
+  const p = await parcelas035(a)
+  igual(p.map((x) => x.a), ['33.34', '33.33', '33.33'], 'valores')
+  igual(p.map((x) => x.d), ['2027-01-31', '2027-02-28', '2027-03-31'], 'vencimentos')
+  igual(p.map((x) => x.description), ['Parcela 1/3', 'Parcela 2/3', 'Parcela 3/3'], 'descrições')
+  igual((await um(db, `select sum(amount)::text s from payments where financial_agreement_id = $1`, [a])).s, '100.00', 'soma')
+})
+await deve('uma parcela = o total; 12 parcelas de R$ 1.000,00: quatro de 83,34 e oito de 83,33', async () => {
+  const a = await novoAcordo035()
+  await cronograma035(ids.barbara, randomUUID(), a, '750.55', 1, '2027-05-10')
+  igual((await parcelas035(a)).map((x) => x.a), ['750.55'], 'uma parcela')
+  const b = await novoAcordo035()
+  await cronograma035(ids.barbara, randomUUID(), b, '1000.00', 12, '2027-01-15', 'MONTHLY', 'MONTHLY', 'Mensalidade')
+  const p = await parcelas035(b)
+  igual([p.filter((x) => x.a === '83.34').length, p.filter((x) => x.a === '83.33').length], [4, 8], 'distribuição')
+  igual((await um(db, `select sum(amount)::text s from payments where financial_agreement_id = $1`, [b])).s, '1000.00', 'soma')
+  igual([p[0].description, p[0].payment_type], ['Mensalidade 1/12', 'MONTHLY'], 'rótulo e tipo')
+})
+await deve('quinzenal e semanal', async () => {
+  const a = await novoAcordo035()
+  await cronograma035(ids.barbara, randomUUID(), a, '30.00', 3, '2027-03-01', 'BIWEEKLY')
+  igual((await parcelas035(a)).map((x) => x.d), ['2027-03-01', '2027-03-15', '2027-03-29'], 'quinzenal')
+  const b = await novoAcordo035()
+  await cronograma035(ids.barbara, randomUUID(), b, '30.00', 3, '2027-03-01', 'WEEKLY')
+  igual((await parcelas035(b)).map((x) => x.d), ['2027-03-01', '2027-03-08', '2027-03-15'], 'semanal')
+})
+await deve('mesma chave (clique duplo/nova tentativa): o mesmo cronograma, nada duplicado; outra chave com outros dados é outro pedido', async () => {
+  const a = await novoAcordo035('ACTIVE')
+  const k = randomUUID()
+  const r1 = await cronograma035(ids.barbara, k, a, '900.00', 3, '2027-02-01')
+  const r2 = await cronograma035(ids.barbara, k, a, '900.00', 3, '2027-02-01')
+  igual([r2.deduplicated, r2.payment_ids], [true, r1.payment_ids], 'repetição')
+  igual(await contar035(a), 3, 'obrigações')
+  await cronograma035(ids.barbara, k, a, '901.00', 3, '2027-02-01').then(() => { throw new Error('aceito') }, (e) => { if (!/outros dados/.test(e.message)) throw e })
+  igual(await contar035(a), 3, 'nada a mais')
+})
+await deve('cronograma cria só OBRIGAÇÕES: nenhum recebimento, divisão ou repasse; auditoria do cronograma', async () => {
+  const a = await novoAcordo035('ACTIVE')
+  await cronograma035(ids.barbara, randomUUID(), a, '300.00', 2, '2027-04-01')
+  igual((await um(db, `select count(*)::int n from payment_receipts r join payments p on p.id = r.payment_id where p.financial_agreement_id = $1`, [a])).n, 0, 'recebimentos')
+  const ev = await um(db, `select actor_user_id, metadata from audit_events where action = 'PAYMENT_SCHEDULE_CREATED' and entity_id = $1`, [a])
+  igual([ev.actor_user_id, ev.metadata.count, ev.metadata.frequency], [ids.barbara, 2, 'MONTHLY'], 'auditoria')
+  if (JSON.stringify(ev.metadata).includes('300')) throw new Error('valor na auditoria')
+})
+for (const [rotulo, args, padrao] of [
+  ['acordo concluído ou cancelado', 'CANCELLED', /concluído ou cancelado/],
+  ['fração de centavo', ['100.005', 2], /fração de centavo/],
+  ['parcela abaixo de R$ 0,01', ['0.02', 3], /pelo menos R\$ 0,01/],
+  ['mais de 120 parcelas', ['1000.00', 121], /120 parcelas/],
+  ['periodicidade inválida', ['100.00', 2, 'DAILY'], /Periodicidade/],
+  ['tipo inválido', ['100.00', 2, 'MONTHLY', 'SUCCESS_FEE'], /Tipo de parcela/],
+]) {
+  await deve(`recusado sem gravar nada: ${rotulo}`, async () => {
+    const a = Array.isArray(args) ? await novoAcordo035() : await novoAcordo035(args === 'CANCELLED' ? 'DRAFT' : 'DRAFT')
+    if (args === 'CANCELLED') await situacao030(ids.barbara, a, 'CANCELLED')
+    const [total, n, freq, tipo] = Array.isArray(args) ? args : ['100.00', 2]
+    await cronograma035(ids.barbara, randomUUID(), a, total, n, '2027-01-01', freq ?? 'MONTHLY', tipo ?? 'FIXED')
+      .then(() => { throw new Error('aceito') }, (e) => { if (!padrao.test(e.message)) throw e })
+    igual(await contar035(a), 0, 'obrigações')
+  })
+}
+await deveFalhar('LAWYER não gera cronograma', async () => cronograma035(ids.lucas, randomUUID(), await novoAcordo035(), '100.00', 2, '2027-01-01'), /Somente ADMIN/)
+await deveFalhar('parceiro não gera cronograma', async () => cronograma035(ids.almeidaAdm, randomUUID(), await novoAcordo035(), '100.00', 2, '2027-01-01'), /Somente ADMIN/)
+await deveFalhar('acordo inexistente', () => cronograma035(ids.barbara, randomUUID(), randomUUID(), '100.00', 2, '2027-01-01'), /não encontrado/)
+
+await deve('valores da parceria: receita elegível, participação e parte do escritório derivadas do ledger; parceiro só os dele', async () => {
+  const esperado = await um(db, `select sum(base_amount)::text e, sum(partner_amount)::text p, sum(owner_amount)::text o
+    from partner_revenue_allocations where case_partnership_agreement_id = $1`, [ids.parceriaA])
+  const doAdmin = await como(ids.barbara, (tx) => um(tx, `select eligible_revenue::text e, partner_share::text p, owner_share::text o
+    from partner_agreement_share_totals where case_partnership_agreement_id = $1`, [ids.parceriaA]))
+  igual(doAdmin, esperado, 'ADMIN')
+  const doParceiro = await como(ids.almeidaAdm, (tx) => linhas(tx, `select case_partnership_agreement_id id, partner_organization_id org from partner_agreement_share_totals`))
+  if (!doParceiro.some((x) => x.id === ids.parceriaA) || doParceiro.some((x) => x.org !== ids.almeida)) throw new Error('escopo do parceiro')
+  igual((await como(ids.ferreiraAdm, (tx) => linhas(tx, `select 1 from partner_agreement_share_totals where case_partnership_agreement_id = $1`, [ids.parceriaA]))).length, 0, 'outro parceiro')
+  igual((await como(ids.almeidaUsr, (tx) => linhas(tx, `select 1 from partner_agreement_share_totals`))).length, 0, 'PARTNER_USER')
+  igual((await como(ids.lucas, (tx) => linhas(tx, `select 1 from partner_agreement_share_totals`))).length, 0, 'LAWYER')
+})
+await deveFalhar('valores da parceria não se editam (nem ADMIN)', () =>
+  como(ids.barbara, (tx) => tx.query(`update partner_agreement_share_totals set partner_share = 1 where case_partnership_agreement_id = $1`, [ids.parceriaA])),
+  /cannot update|not automatically updatable|permission denied/)
+
+await deve('contratado por modelo: obrigações não canceladas de acordos não cancelados, somadas no banco; só ADMIN', async () => {
+  const modelo = (await um(db, `insert into fee_models (name) values ('Modelo 035') returning id`)).id
+  const caso1 = await novoCaso030('Caso 035 modelo A'), caso2 = await novoCaso030('Caso 035 modelo B'), caso3 = await novoCaso030('Caso 035 modelo C')
+  const a1 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_case_id, fee_model_id) values ($1, $2) returning id`, [caso1, modelo])).id)
+  const a2 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_case_id, fee_model_id) values ($1, $2) returning id`, [caso2, modelo])).id)
+  const a3 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_case_id, fee_model_id) values ($1, $2) returning id`, [caso3, modelo])).id)
+  await cronograma035(ids.barbara, randomUUID(), a1, '1000.00', 2, '2027-01-01')
+  const p2 = await obrigacao030(ids.barbara, a2, 250)
+  const cancelada = await obrigacao030(ids.barbara, a2, 500)
+  await como(ids.barbara, (tx) => tx.query(`update payments set cancelled_at = now(), cancellation_reason = 'teste' where id = $1`, [cancelada]))
+  await obrigacao030(ids.barbara, a3, 999)
+  await como(ids.barbara, (tx) => tx.query(`update payments set cancelled_at = now(), cancellation_reason = 'teste' where financial_agreement_id = $1`, [a3]))
+  await situacao030(ids.barbara, a3, 'CANCELLED')
+  const r = await como(ids.barbara, (tx) => um(tx, `select agreement_count, contracted_amount::text v from financial_contracted_by_fee_model where fee_model_id = $1`, [modelo]))
+  igual([r.agreement_count, r.v], [2, '1250.00'], 'modelo')
+  igual(!!p2, true, 'obrigação')
+  igual((await como(ids.lucas, (tx) => linhas(tx, `select 1 from financial_contracted_by_fee_model`))).length, 0, 'LAWYER')
+  igual((await como(ids.almeidaAdm, (tx) => linhas(tx, `select 1 from financial_contracted_by_fee_model`))).length, 0, 'parceiro')
+})
+await deve('anon não lê as views nem gera cronograma', async () => {
+  for (const q of [`select 1 from partner_agreement_share_totals`, `select 1 from financial_contracted_by_fee_model`,
+    `select public.create_payment_schedule_once('${randomUUID()}', '${randomUUID()}', 1, 1, current_date, 'MONTHLY', 'FIXED')`])
+    await db.transaction(async (tx) => { await tx.query('set local role anon'); await tx.query(q) })
+      .then(() => { throw new Error(`anon: ${q}`) }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+
+await deve('atomicidade: falha na 3ª de 5 obrigações → nenhuma fica gravada (e a chave pode ser usada de novo)', async () => {
+  const a = await novoAcordo035()
+  await db.exec(`
+    create function public.falha_035() returns trigger language plpgsql as $f$
+    begin
+      if new.description like '% 3/5' then raise exception 'falha simulada na terceira parcela'; end if;
+      return new;
+    end $f$;
+    create trigger falha_035 before insert on public.payments for each row execute function public.falha_035();`)
+  const k = randomUUID()
+  try {
+    await cronograma035(ids.barbara, k, a, '500.00', 5, '2027-01-01').then(() => { throw new Error('aceito') }, (e) => { if (!/falha simulada/.test(e.message)) throw e })
+    igual(await contar035(a), 0, 'obrigações depois da falha')
+  } finally {
+    await db.exec(`drop trigger falha_035 on public.payments; drop function public.falha_035();`)
+  }
+  const r = await cronograma035(ids.barbara, k, a, '500.00', 5, '2027-01-01')
+  igual([r.deduplicated, await contar035(a)], [false, 5], 'nova tentativa com a mesma chave')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

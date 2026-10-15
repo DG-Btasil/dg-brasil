@@ -189,6 +189,8 @@ describe("DTO do parceiro (sanitização)", () => {
       pendingTransferAmount: 0,
       paidOutAmount: 10,
       availableAmount: 20,
+      // Base da participação (4.3.1): o parceiro já lia base_amount das divisões dele pela RLS.
+      eligibleRevenue: 0,
     });
     for (const field of ["ownerAmount", "ownerPercentage", "baseAmount", "receiptId", "cancellationReason"]) {
       expect(dto).not.toHaveProperty(field);

@@ -19,8 +19,7 @@ import type {
   TransferInternalDTO,
   TransferItemDTO,
   TransferPartnerDTO,
-  TransferStatus,
-} from "./dto";
+  TransferStatus, PartnerShareTransferDTO, ContractedByModelPoint } from "./dto";
 import type { CreateAgreementInput, CreateFeeModelInput, UpdateAgreementInput, UpdateFeeModelInput } from "./schemas";
 
 /**
@@ -387,8 +386,9 @@ export function shareTotals(rows: Pick<AllocationBalanceRow, "net_partner_amount
   };
 }
 
-export function agreementShareFromRows(agreement: PartnershipPartnerRow, balances: AllocationBalanceRow[]): PartnerAgreementShareDTO {
+export function agreementShareFromRows(agreement: PartnershipPartnerRow, balances: AllocationBalanceRow[], totals: { case_partnership_agreement_id: string; eligible_revenue: number | string }[] = []): PartnerAgreementShareDTO {
   const own = balances.filter((b) => b.case_partnership_agreement_id === agreement.id);
+  const eligible = totals.find((t) => t.case_partnership_agreement_id === agreement.id);
   return {
     agreementId: agreement.id,
     legalCaseId: agreement.legal_case_id,
@@ -398,6 +398,7 @@ export function agreementShareFromRows(agreement: PartnershipPartnerRow, balance
     status: agreement.cancelled_at ? "CANCELLED" : "ACTIVE",
     cancelledAt: opt(agreement.cancelled_at),
     ...shareTotals(own),
+    eligibleRevenue: eligible ? fromCents(toCents(eligible.eligible_revenue)) : 0,
   };
 }
 
@@ -537,4 +538,39 @@ export function agreementInsert(input: CreateAgreementInput, actorId: ID): Json 
 
 export function agreementUpdate(patch: UpdateAgreementInput["patch"]): Json {
   return columns(patch as Record<string, unknown>, AGREEMENT_TO_COLUMN);
+}
+
+/** Histórico de repasses de um caso: um item por repasse (somado se o repasse tiver várias divisões do caso), mais recentes primeiro. */
+export function shareTransfersFromRows(items: { transfer_id: string; amount: number | string; partner_transfers: unknown }[]): PartnerShareTransferDTO[] {
+  const byTransfer = new Map<string, PartnerShareTransferDTO>();
+  for (const it of items) {
+    const t = first(it.partner_transfers as { status: string; created_at: string; paid_at: string | null; reference: string | null } | { status: string; created_at: string; paid_at: string | null; reference: string | null }[] | null);
+    if (!t) continue;
+    const current = byTransfer.get(it.transfer_id);
+    const cents = toCents(it.amount) + (current ? toCents(current.amount) : 0);
+    byTransfer.set(it.transfer_id, {
+      transferId: it.transfer_id,
+      amount: fromCents(cents),
+      status: t.status as PartnerShareTransferDTO["status"],
+      createdAt: t.created_at,
+      paidAt: opt(t.paid_at),
+      reference: opt(t.reference),
+    });
+  }
+  return [...byTransfer.values()].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+export const NO_FEE_MODEL_LABEL = "Sem modelo (valores próprios)";
+
+/**
+ * Pontos do gráfico "Contratado por modelo": maior para menor; acima de 5
+ * modelos, os 4 maiores + "Outros" (como no Front V1). Centavos inteiros.
+ */
+export function compositionByFeeModel(rows: { fee_model_id: string | null; fee_model_name: string | null; agreement_count: number; contracted_amount: number | string }[]): ContractedByModelPoint[] {
+  const points = rows
+    .map((r) => ({ name: r.fee_model_id ? (r.fee_model_name ?? "Modelo") : NO_FEE_MODEL_LABEL, feeModelId: r.fee_model_id, cents: toCents(r.contracted_amount), count: Number(r.agreement_count) }))
+    .filter((p) => p.count > 0)
+    .sort((a, b) => b.cents - a.cents || a.name.localeCompare(b.name));
+  const out = points.length <= 5 ? points : [...points.slice(0, 4), points.slice(4).reduce((acc, p) => ({ ...acc, cents: acc.cents + p.cents, count: acc.count + p.count }), { name: "Outros", feeModelId: null, cents: 0, count: 0 })];
+  return out.map((p) => ({ name: p.name, feeModelId: p.feeModelId, total: fromCents(p.cents), count: p.count }));
 }

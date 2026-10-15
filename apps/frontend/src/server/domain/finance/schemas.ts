@@ -160,6 +160,29 @@ export const createPaymentSchema = z.object({
 });
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 
+/** Cronograma de parcelas (035): periodicidade e tipos aceitos. */
+export const SCHEDULE_FREQUENCIES = ["MONTHLY", "BIWEEKLY", "WEEKLY"] as const;
+export type ScheduleFrequency = (typeof SCHEDULE_FREQUENCIES)[number];
+export const SCHEDULE_PAYMENT_TYPES = ["FIXED", "MONTHLY", "OTHER"] as const;
+export const SCHEDULE_MAX_INSTALLMENTS = 120;
+
+/**
+ * Gera N obrigações de uma vez, no banco (create_payment_schedule_once): total
+ * + quantidade + 1º vencimento + periodicidade. O navegador NÃO manda a lista
+ * de valores: o servidor/banco calcula (centavos; resto nas primeiras).
+ */
+export const createPaymentScheduleSchema = z.object({
+  agreementId: zUuid(),
+  idempotencyKey: zUuid(),
+  total: zPositiveMoney(),
+  installments: z.coerce.number().int("Informe um número inteiro.").min(1, "Pelo menos 1 parcela.").max(SCHEDULE_MAX_INSTALLMENTS, `No máximo ${SCHEDULE_MAX_INSTALLMENTS} parcelas.`),
+  firstDueDate: zIsoDate(),
+  frequency: z.enum(SCHEDULE_FREQUENCIES),
+  paymentType: z.enum(SCHEDULE_PAYMENT_TYPES).default("FIXED"),
+  description: zOptionalText(120),
+});
+export type CreatePaymentScheduleInput = z.infer<typeof createPaymentScheduleSchema>;
+
 /** Corrige a obrigação (nunca o recebido: recebido é o ledger). */
 export const updatePaymentSchema = z.object({
   id: zUuid(),
@@ -289,3 +312,6 @@ export const listPartnerAgreementSharesSchema = pageInputSchema.extend({
   includeCancelled: z.boolean().default(true),
 });
 export type ListPartnerAgreementSharesInput = z.infer<typeof listPartnerAgreementSharesSchema>;
+
+/** "Valores da parceria" de um caso (só leitura). */
+export const partnerShareDetailSchema = z.object({ agreementId: zUuid() });

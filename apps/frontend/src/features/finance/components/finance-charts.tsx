@@ -3,6 +3,7 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/formatting";
+import type { ContractedByModelPoint } from "@/server/domain/finance/dto";
 import { CHART_AXIS_TICK, CHART_CURSOR, CHART_GRID_STROKE, CHART_TOOLTIP_LABEL_STYLE, CHART_TOOLTIP_STYLE } from "./chart-theme";
 
 const MONTH_LABEL = new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit", timeZone: "UTC" });
@@ -30,6 +31,36 @@ export function MonthlyReceiptsChart({ data }: { data: { month: string; amount: 
           </div>
           <figcaption className="sr-only">{summary}</figcaption>
         </figure>
+      </PanelBody>
+    </Panel>
+  );
+}
+
+/** Contratado por modelo de honorários (4.3.1): somado no banco; obrigações não canceladas de acordos não cancelados. */
+export function CompositionChart({ data }: { data: ContractedByModelPoint[] }) {
+  const summary = data.map((d) => `${d.name}: ${formatCurrency(d.total)} em ${d.count} contrato(s)`).join("; ");
+  return (
+    <Panel>
+      <PanelHeader title="Contratado por modelo" description="Total contratado (obrigações) por modelo de honorários." as="h3" />
+      <PanelBody>
+        {data.length === 0 ? (
+          <p className="py-10 text-center text-[13px] text-muted">Sem contratos ativos para compor.</p>
+        ) : (
+          <figure>
+            <div className="h-[220px]" aria-hidden>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 0 }} barCategoryGap="30%">
+                  <CartesianGrid horizontal={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis type="number" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(v: number) => formatCurrencyCompact(v)} />
+                  <YAxis type="category" dataKey="name" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} width={150} />
+                  <Tooltip formatter={(v: unknown) => formatCurrency(Number(v))} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} cursor={CHART_CURSOR} />
+                  <Bar dataKey="total" name="Contratado" fill="var(--chart-1)" radius={[0, 4, 4, 0]} maxBarSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <figcaption className="sr-only">{summary}</figcaption>
+          </figure>
+        )}
       </PanelBody>
     </Panel>
   );

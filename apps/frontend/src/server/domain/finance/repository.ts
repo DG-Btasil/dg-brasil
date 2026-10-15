@@ -506,3 +506,83 @@ export async function isPartnerOrganization(db: SupabaseClient, id: string): Pro
   const data = unwrap(await db.from("organizations").select("id, type").eq("id", id).is("deleted_at", null).maybeSingle()) as { id: string; type: string } | null;
   return data?.type === "PARTNER";
 }
+
+/** Cronograma de parcelas (035): N obrigações numa transação, idempotente pela chave. */
+export async function createPaymentSchedule(
+  db: SupabaseClient,
+  p: { key: string; agreementId: string; total: number; installments: number; firstDueDate: string; frequency: string; paymentType: string; description: string | null },
+): Promise<{ payment_ids: string[]; count: number; deduplicated: boolean }> {
+  return unwrap(
+    await db.rpc("create_payment_schedule_once", {
+      p_key: p.key,
+      p_agreement_id: p.agreementId,
+      p_total: p.total,
+      p_count: p.installments,
+      p_first_due: p.firstDueDate,
+      p_frequency: p.frequency,
+      p_payment_type: p.paymentType,
+      p_description: p.description,
+    }),
+  ) as { payment_ids: string[]; count: number; deduplicated: boolean };
+}
+
+/* ------------------------------------------------------------------ */
+/* Valores da parceria (035, só leitura)                               */
+/* ------------------------------------------------------------------ */
+
+export interface ShareTotalsRow {
+  case_partnership_agreement_id: string;
+  eligible_revenue: number | string;
+  partner_share: number | string;
+  owner_share: number | string;
+}
+
+/** Receita elegível e divisão por snapshot (view partner_agreement_share_totals; mesma RLS). Uma consulta por página. */
+export async function listShareTotals(db: SupabaseClient, agreementIds: string[]): Promise<ShareTotalsRow[]> {
+  if (agreementIds.length === 0) return [];
+  return (check(
+    await db.from("partner_agreement_share_totals").select("case_partnership_agreement_id, eligible_revenue, partner_share, owner_share").in("case_partnership_agreement_id", agreementIds),
+  ) ?? []) as ShareTotalsRow[];
+}
+
+/** Um snapshot de parceria (RLS: ADMIN; PARTNER_ADMIN só os do próprio escritório). */
+export async function getPartnershipById(db: SupabaseClient, id: string): Promise<(PartnershipPartnerRow & { partner_organization_id: string; owner_percentage: number | string }) | null> {
+  return check(
+    await db.from("case_partnership_agreements").select(`${PARTNERSHIP_PARTNER_COLUMNS}, partner_organization_id, owner_percentage`).eq("id", id).maybeSingle(),
+  ) as (PartnershipPartnerRow & { partner_organization_id: string; owner_percentage: number | string }) | null;
+}
+
+export interface ShareTransferItemRow {
+  transfer_id: string;
+  amount: number | string;
+  partner_transfers: { status: string; created_at: string; paid_at: string | null; reference: string | null } | { status: string; created_at: string; paid_at: string | null; reference: string | null }[] | null;
+}
+
+/** Itens de repasse que saíram das divisões deste snapshot (histórico de repasses do caso). */
+export async function listShareTransferItems(db: SupabaseClient, agreementId: string): Promise<ShareTransferItemRow[]> {
+  return (check(
+    await db
+      .from("partner_transfer_items")
+      .select("transfer_id, amount, partner_transfers!inner(status, created_at, paid_at, reference), partner_revenue_allocations!inner(case_partnership_agreement_id)")
+      .eq("partner_revenue_allocations.case_partnership_agreement_id", agreementId)
+      .limit(MAX_AGGREGATE_ROWS),
+  ) ?? []) as unknown as ShareTransferItemRow[];
+}
+
+/** Recebido líquido no caso inteiro (payment_balances; só ADMIN). */
+export async function caseReceived(db: SupabaseClient, legalCaseId: string): Promise<number> {
+  const rows = (check(await db.from("payment_balances").select("received_amount").eq("legal_case_id", legalCaseId).limit(MAX_AGGREGATE_ROWS)) ?? []) as { received_amount: number | string }[];
+  return rows.reduce((acc, r) => acc + Math.round(Number(r.received_amount) * 100), 0) / 100;
+}
+
+export interface ContractedByModelRow {
+  fee_model_id: string | null;
+  fee_model_name: string | null;
+  agreement_count: number;
+  contracted_amount: number | string;
+}
+
+/** Contratado por modelo (035): uma linha por modelo, somada no banco (ADMIN pela RLS). */
+export async function contractedByFeeModel(db: SupabaseClient): Promise<ContractedByModelRow[]> {
+  return (check(await db.from("financial_contracted_by_fee_model").select("fee_model_id, fee_model_name, agreement_count, contracted_amount").limit(1000)) ?? []) as ContractedByModelRow[];
+}

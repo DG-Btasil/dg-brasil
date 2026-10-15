@@ -11,7 +11,7 @@ import type { Page } from "@/server/core/pagination";
 import type { AgreementListItemDTO, FinanceSummaryDTO } from "@/server/domain/finance/dto";
 import type { AgreementListQuery } from "../list-query";
 import { AgreementsPanel } from "./agreements-table";
-import { MonthlyReceiptsChart } from "./finance-charts";
+import { CompositionChart, MonthlyReceiptsChart } from "./finance-charts";
 import { FinanceStats } from "./finance-stats";
 
 /** Financeiro jurídico (ADMIN): honorários ligados aos casos. Totais e lista do servidor. Não é um ERP. */
@@ -46,7 +46,10 @@ export function FinanceOverview({
               </Callout>
             )}
             <FinanceStats summary={summary.data} />
-            <MonthlyReceiptsChart data={summary.data.monthly} />
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <MonthlyReceiptsChart data={summary.data.monthly} />
+              <CompositionChart data={summary.data.byFeeModel} />
+            </div>
           </>
         )}
         <AgreementsPanel initialQuery={initialQuery} initialResult={initialResult} syncUrl />

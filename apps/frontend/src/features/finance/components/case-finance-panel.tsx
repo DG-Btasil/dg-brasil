@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { formatDateTime, formatPercent } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState } from "@/components/feedback/states";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
 import type { Page } from "@/server/core/pagination";
@@ -12,6 +14,7 @@ import type { AgreementListItemDTO, CasePartnershipDTO } from "@/server/domain/f
 import { useOrganizationNames } from "@/features/directory/directory-context";
 import { DEFAULT_AGREEMENT_QUERY } from "../list-query";
 import { AgreementsPanel } from "./agreements-table";
+import { PartnershipValuesDialog } from "./partnership-values-dialog";
 
 /**
  * Financeiro do caso (ADMIN): contratos de honorários do caso, com obrigações
@@ -28,6 +31,7 @@ export function CaseFinancePanel({
   partnerships: ActionResult<CasePartnershipDTO>;
 }) {
   const names = useOrganizationNames();
+  const [values, setValues] = useState<string | null>(null);
   return (
     <div className="space-y-5">
       <AgreementsPanel legalCaseId={legalCaseId} initialQuery={DEFAULT_AGREEMENT_QUERY} initialResult={agreements} title="Contratos de honorários do caso" />
@@ -46,6 +50,9 @@ export function CaseFinancePanel({
                 <Th className="text-right">Escritório</Th>
                 <Th>Vigência</Th>
                 <Th>Situação</Th>
+                <Th>
+                  <span className="sr-only">Valores</span>
+                </Th>
               </tr>
             </THead>
             <TBody>
@@ -62,12 +69,18 @@ export function CaseFinancePanel({
                     {p.status === "ACTIVE" ? <Badge tone="success">Ativa</Badge> : <Badge tone="neutral">Cancelada</Badge>}
                     {p.cancellationReason && <span className="block text-[12px] text-muted">{p.cancellationReason}</span>}
                   </Td>
+                  <Td className="text-right">
+                    <Button size="sm" variant="ghost" onClick={() => setValues(p.id)}>
+                      Valores
+                    </Button>
+                  </Td>
                 </Tr>
               ))}
             </TBody>
           </Table>
         )}
       </Panel>
+      {values && <PartnershipValuesDialog agreementId={values} internal onClose={() => setValues(null)} />}
     </div>
   );
 }

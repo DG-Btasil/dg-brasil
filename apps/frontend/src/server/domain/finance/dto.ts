@@ -91,7 +91,21 @@ export interface FinanceSummaryDTO {
   agreementsByStatus: Record<AgreementDbStatus, number>;
   /** Recebido líquido por mês (America/Sao_Paulo), últimos 12 meses, do mais antigo ao atual. */
   monthly: { month: string; amount: number }[];
+  /**
+   * Contratado por modelo de honorários (4.3.1): obrigações não canceladas de
+   * acordos não cancelados, somadas NO BANCO (view financial_contracted_by_fee_model).
+   * Até 4 modelos + "Outros", do maior para o menor.
+   */
+  byFeeModel: ContractedByModelPoint[];
   truncated: boolean;
+}
+
+export interface ContractedByModelPoint {
+  name: string;
+  /** null = "Sem modelo (valores próprios)" ou o agrupamento "Outros". */
+  feeModelId: ID | null;
+  total: number;
+  count: number;
 }
 
 /** Obrigação + situação derivada do ledger. `receivedAmount` é SEMPRE derivado. */
@@ -254,4 +268,36 @@ export interface PartnerAgreementShareDTO extends PartnerShareTotals {
   effectiveAt: ISODateTime;
   status: "ACTIVE" | "CANCELLED";
   cancelledAt?: ISODateTime;
+  /**
+   * Receita ELEGÍVEL (4.3.1): soma líquida dos recebimentos divididos sob este
+   * snapshot (estornos inclusos), derivada do ledger pelo banco. É a base da
+   * participação; não é o valor da causa nem uma estimativa.
+   */
+  eligibleRevenue: number;
+}
+
+/** Repasse que incluiu parte deste caso (valor do item, não o total do repasse). */
+export interface PartnerShareTransferDTO {
+  transferId: ID;
+  /** Quanto deste caso entrou no repasse. */
+  amount: number;
+  status: TransferStatus;
+  createdAt: ISODateTime;
+  paidAt?: ISODateTime;
+  reference?: string;
+}
+
+/**
+ * "Valores da parceria" de UM caso (4.3.1): SÓ LEITURA, tudo derivado do
+ * banco (ledger → divisões → repasses). Não existe campo para digitar valor
+ * do parceiro. `ownerShare` e `caseReceived` só para a equipe interna.
+ */
+export interface PartnerShareDetailDTO {
+  share: PartnerAgreementShareDTO;
+  ownerPercentage: number;
+  /** Parte do escritório sobre a receita elegível (interno). */
+  ownerShare?: number;
+  /** Tudo o que entrou no caso, inclusive antes desta parceria (interno). */
+  caseReceived?: number;
+  transfers: PartnerShareTransferDTO[];
 }

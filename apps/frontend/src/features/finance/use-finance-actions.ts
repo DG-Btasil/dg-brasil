@@ -10,6 +10,7 @@ import {
   changeAgreementStatusAction,
   createFeeModelAction,
   createPaymentAction,
+  createPaymentScheduleAction,
   createTransferAction,
   markTransferPaidAction,
   registerAdjustmentAction,
@@ -60,6 +61,12 @@ export function useFinanceActions(onDone?: () => void) {
       updateAgreement: (id: string, patch: Record<string, unknown>) =>
         run(() => updateAgreementAction({ id, patch }), { title: "Termos do acordo atualizados" }, "Não foi possível salvar o acordo."),
       createPayment: (input: Record<string, unknown>) => run(() => createPaymentAction(input), { title: "Obrigação registrada" }, "Não foi possível registrar a obrigação."),
+      createSchedule: (input: Record<string, unknown>) =>
+        run(
+          () => createPaymentScheduleAction(input),
+          { title: "Cronograma gerado", description: "As parcelas foram criadas juntas, com centavos exatos. Recebimentos continuam sendo registrados um a um." },
+          "Não foi possível gerar o cronograma.",
+        ),
       updatePayment: (id: string, patch: Record<string, unknown>) =>
         run(() => updatePaymentAction({ id, patch }), { title: "Obrigação atualizada" }, "Não foi possível atualizar a obrigação."),
       cancelPayment: (id: string, reason: string) => run(() => cancelPaymentAction({ id, reason }), { title: "Obrigação cancelada" }, "Não foi possível cancelar a obrigação."),

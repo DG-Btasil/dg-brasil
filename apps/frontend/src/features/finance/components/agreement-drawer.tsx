@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { MoreHorizontal, Plus } from "lucide-react";
+import { CalendarRange, MoreHorizontal, Plus } from "lucide-react";
 import { formatCurrency, formatDate, formatDateTime, formatPercent } from "@/lib/formatting";
 import { loadAllPages } from "@/lib/actions/all-pages";
 import { callAction, type ActionResult } from "@/lib/actions/result";
@@ -19,10 +19,11 @@ import { listPaymentsAction, listReceiptsAction } from "@/server/domain/finance/
 import type { AgreementListItemDTO, PaymentDTO, ReceiptDTO } from "@/server/domain/finance/dto";
 import { AGREEMENT_DB_STATUS_LABEL, AGREEMENT_DB_STATUS_TONE, PAYMENT_DB_STATUS_LABEL, PAYMENT_DB_STATUS_TONE, PAYMENT_TYPE_LABEL, RECEIPT_KIND_LABEL, RECEIPT_METHOD_LABEL } from "../labels";
 import { useFinanceActions } from "../use-finance-actions";
-import { AdjustmentDialog, ConfirmDialog, PaymentDialog, ReasonDialog, ReceiptDialog, ReversalDialog } from "./finance-dialogs";
+import { AdjustmentDialog, ConfirmDialog, PaymentDialog, ReasonDialog, ReceiptDialog, ReversalDialog, ScheduleDialog } from "./finance-dialogs";
 
 type Modal =
   | { kind: "payment"; payment?: PaymentDTO }
+  | { kind: "schedule" }
   | { kind: "cancelPayment"; payment: PaymentDTO }
   | { kind: "receipt"; payment: PaymentDTO }
   | { kind: "adjustment"; payment: PaymentDTO }
@@ -125,9 +126,14 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-[13.5px] font-semibold text-foreground">Obrigações</h3>
             {canManage && open && (
-              <Button size="sm" variant="secondary" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => setModal({ kind: "payment" })}>
-                Nova obrigação
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" icon={<CalendarRange className="size-3.5" aria-hidden />} onClick={() => setModal({ kind: "schedule" })}>
+                  Gerar cronograma
+                </Button>
+                <Button size="sm" variant="secondary" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => setModal({ kind: "payment" })}>
+                  Nova obrigação
+                </Button>
+              </div>
             )}
           </div>
           {!payments ? (
@@ -226,6 +232,7 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
       </div>
 
       {modal?.kind === "payment" && <PaymentDialog agreementId={agreement.id} payment={modal.payment} onClose={() => setModal(null)} onSaved={reload} />}
+      {modal?.kind === "schedule" && <ScheduleDialog agreement={agreement} onClose={() => setModal(null)} onSaved={reload} />}
       {modal?.kind === "cancelPayment" && (
         <ReasonDialog
           title="Cancelar obrigação"

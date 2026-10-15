@@ -14,8 +14,7 @@ import type {
   ReceiptDTO,
   ReceiptResultDTO,
   TransferInternalDTO,
-  TransferListItemDTO,
-} from "./dto";
+  TransferListItemDTO, PartnerShareDetailDTO } from "./dto";
 import {
   agreementFromRow,
   agreementInsert,
@@ -39,8 +38,7 @@ import {
   transferInternalFromRow,
   transferPartnerFromRow,
   type TransferPartnerRow,
-  type TransferRow,
-} from "./mappers";
+  type TransferRow, shareTransfersFromRows, compositionByFeeModel } from "./mappers";
 import * as repo from "./repository";
 import type {
   CancelPaymentInput,
@@ -64,8 +62,7 @@ import type {
   RegisterReversalInput,
   UpdateAgreementInput,
   UpdateFeeModelInput,
-  UpdatePaymentInput,
-} from "./schemas";
+  UpdatePaymentInput, CreatePaymentScheduleInput } from "./schemas";
 
 /**
  * Regras do financeiro (ledger operacional — não é gateway de pagamento).
@@ -221,17 +218,19 @@ export async function listAgreementRows(ctx: ServiceContext, input: ListAgreemen
 export async function getFinanceSummary(ctx: ServiceContext, now = new Date()): Promise<FinanceSummaryDTO> {
   requireFinance(ctx, "finance.view");
   const months = lastMonths(now, 12);
-  const [balances, byStatus, receipts] = await Promise.all([
+  const [balances, byStatus, receipts, byModel] = await Promise.all([
     repo.allBalances(ctx.db),
     repo.countAgreementsByStatus(ctx.db),
     // Início do mês mais antigo, com um dia de folga para o fuso (o agrupamento é em São Paulo).
     repo.receiptsSince(ctx.db, new Date(Date.parse(`${months[0]}-01T00:00:00Z`) - 86_400_000).toISOString()),
+    repo.contractedByFeeModel(ctx.db),
   ]);
   if (balances.truncated || receipts.truncated) ctx.log.warn("finance.summary_truncated", {});
   return {
     totals: balanceTotals(balances.rows),
     agreementsByStatus: byStatus,
     monthly: monthlyNet(receipts.rows, months),
+    byFeeModel: compositionByFeeModel(byModel),
     truncated: balances.truncated || receipts.truncated,
   };
 }
@@ -323,6 +322,28 @@ export async function createPayment(ctx: ServiceContext, input: CreatePaymentInp
   );
   if (!result.deduplicated) ctx.log.info("finance.payment.created", { paymentId: result.id, agreementId: input.agreementId });
   return result;
+}
+
+/**
+ * Cronograma de parcelas (035): o BANCO calcula e grava as N obrigações numa
+ * transação (todas ou nenhuma), com centavos exatos (resto nas primeiras).
+ * Mesma chave = mesmo cronograma. Só cria OBRIGAÇÕES: recebimento, divisão e
+ * repasse continuam nascendo só quando o dinheiro entra.
+ */
+export async function createPaymentSchedule(ctx: ServiceContext, input: CreatePaymentScheduleInput): Promise<{ paymentIds: string[]; count: number; deduplicated: boolean }> {
+  requireFinance(ctx, "finance.manage");
+  const r = await repo.createPaymentSchedule(ctx.db, {
+    key: input.idempotencyKey,
+    agreementId: input.agreementId,
+    total: input.total,
+    installments: input.installments,
+    firstDueDate: input.firstDueDate,
+    frequency: input.frequency,
+    paymentType: input.paymentType,
+    description: input.description ?? null,
+  });
+  ctx.log.info(r.deduplicated ? "finance.schedule.deduplicated" : "finance.schedule.created", { agreementId: input.agreementId, count: r.count });
+  return { paymentIds: r.payment_ids, count: r.count, deduplicated: r.deduplicated };
 }
 
 /** Corrige valor, vencimento ou descrição. Nunca o recebido (ledger). */
@@ -612,11 +633,46 @@ export async function listPartnerAgreementShares(ctx: ServiceContext, input: Lis
   const org = await resolvePartnerScope(ctx, input.partnerOrganizationId);
   return partnerSafe(ctx, async () => {
     const { rows, total } = await repo.listPartnershipsByPartner(ctx.db, org, input.includeCancelled, input);
-    const balances = rows.length ? await repo.listAllocationBalances(ctx.db, { partnerOrganizationId: org, agreementIds: rows.map((r) => r.id) }) : [];
+    const ids = rows.map((r) => r.id);
+    const [balances, totals] = ids.length
+      ? await Promise.all([repo.listAllocationBalances(ctx.db, { partnerOrganizationId: org, agreementIds: ids }), repo.listShareTotals(ctx.db, ids)])
+      : [[], []];
     return toPage(
-      rows.map((r) => agreementShareFromRows(r, balances)),
+      rows.map((r) => agreementShareFromRows(r, balances, totals)),
       total,
       input,
     );
+  });
+}
+
+/**
+ * "Valores da parceria" de um caso (4.3.1) — SÓ LEITURA: percentual congelado,
+ * receita elegível, participação calculada, repassado, em repasse, saldo e o
+ * histórico de repasses do caso. Tudo derivado do banco; nada se digita.
+ * Parceiro: só PARTNER_ADMIN e só o próprio escritório (a RLS esconde o resto
+ * — "não encontrado"). Interno: ADMIN, com a parte do escritório e o recebido
+ * no caso inteiro.
+ */
+export async function getPartnerShareDetail(ctx: ServiceContext, input: { agreementId: string }): Promise<PartnerShareDetailDTO> {
+  const partner = isPartner(ctx);
+  if (partner) requirePermission(ctx, "partnerPortal.finance.view");
+  else requireFinance(ctx, "finance.view");
+  return partnerSafe(ctx, async () => {
+    const agreement = await repo.getPartnershipById(ctx.db, input.agreementId);
+    if (!agreement || (partner && agreement.partner_organization_id !== ctx.session.organizationId)) throw notFound("Parceria não encontrada.");
+    const [balances, totals, items, received] = await Promise.all([
+      repo.listAllocationBalances(ctx.db, { partnerOrganizationId: agreement.partner_organization_id, agreementIds: [agreement.id] }),
+      repo.listShareTotals(ctx.db, [agreement.id]),
+      repo.listShareTransferItems(ctx.db, agreement.id),
+      partner ? Promise.resolve(undefined) : repo.caseReceived(ctx.db, agreement.legal_case_id),
+    ]);
+    const share = agreementShareFromRows(agreement, balances, totals);
+    return {
+      share,
+      ownerPercentage: Number(agreement.owner_percentage),
+      ownerShare: partner ? undefined : totals[0] ? Math.round(Number(totals[0].owner_share) * 100) / 100 : 0,
+      caseReceived: received,
+      transfers: shareTransfersFromRows(items),
+    };
   });
 }

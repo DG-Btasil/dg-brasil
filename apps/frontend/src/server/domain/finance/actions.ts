@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { runAction } from "@/server/core/action";
 import * as service from "./service";
-import {
+import { partnerShareDetailSchema, createPaymentScheduleSchema,
   cancelPaymentSchema,
   cancelTransferSchema,
   changeAgreementStatusSchema,
@@ -94,6 +94,11 @@ export async function getPaymentAction(input: unknown) {
   return runAction({ name: "finance.payments.get", permission: "finance.view", schema: idSchema, input, handler: (ctx, { id }) => service.getPayment(ctx, id) });
 }
 
+/** Cronograma de parcelas (035): N obrigações atômicas, calculadas no banco. */
+export async function createPaymentScheduleAction(input: unknown) {
+  return runAction({ name: "finance.payments.schedule", permission: "finance.manage", schema: createPaymentScheduleSchema, input, handler: service.createPaymentSchedule });
+}
+
 export async function createPaymentAction(input: unknown) {
   return runAction({ name: "finance.payments.create", permission: "finance.manage", schema: createPaymentSchema, input, handler: service.createPayment });
 }
@@ -179,4 +184,9 @@ export async function listPartnerAgreementSharesAction(input: unknown) {
 /** Atalho do Portal: resumo do próprio escritório (sem parâmetros). */
 export async function getMyPartnerFinanceAction() {
   return runAction({ name: "finance.partner.mine", permission: "partnerPortal.finance.view", schema: z.object({}), input: {}, handler: (ctx) => service.getPartnerFinance(ctx, {}) });
+}
+
+/** "Valores da parceria" de um caso (4.3.1): só leitura. ADMIN ou PARTNER_ADMIN (o próprio escritório). */
+export async function getPartnerShareDetailAction(input: unknown) {
+  return runAction({ name: "finance.partner_share_detail", schema: partnerShareDetailSchema, input, handler: service.getPartnerShareDetail });
 }
