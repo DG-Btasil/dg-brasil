@@ -89,22 +89,45 @@ e cancelam as execuções enfileiradas ao final de cada teste.
 
 ## 6. Preparação para o QA manual
 
-### 6.1 Usuários
+### 6.1 Usuários para o QA
 
-Use os usuários fictícios do DEV: ADMIN, LAWYER, ASSISTANT e, em dois
-escritórios parceiros (A e B), um PARTNER_ADMIN e um PARTNER_USER cada. Todos
-com MFA.
+Os usuários das rodadas automáticas têm senha aleatória que nunca é gravada
+(não dá para recuperar). Para o QA, crie um conjunto fixo, com uma senha que
+você escolhe (mínimo 12 caracteres, letras e números):
+
+```powershell
+cd supabase
+$env:QA_SENHA = 'sua-senha-de-teste'
+npm run usuarios:qa
+```
+
+| Usuário | Papel | Escritório |
+|---|---|---|
+| o seu ADMIN (`adm@dgbrasil.com`) | ADMIN | escritório proprietário |
+| `qa.advogado@dgbrasil.test` | LAWYER | escritório proprietário |
+| `qa.assistente@dgbrasil.test` | ASSISTANT | escritório proprietário |
+| `qa.parceiro-a.admin@dgbrasil.test` | PARTNER_ADMIN | Parceiro QA A |
+| `qa.parceiro-a.usuario@dgbrasil.test` | PARTNER_USER | Parceiro QA A |
+| `qa.parceiro-b.admin@dgbrasil.test` | PARTNER_ADMIN | Parceiro QA B |
+| `qa.parceiro-b.usuario@dgbrasil.test` | PARTNER_USER | Parceiro QA B |
+
+No primeiro login de cada um o app pede os termos e o cadastro do MFA (QR
+code no autenticador), como para um usuário de verdade. Rodar o comando de
+novo só redefine a senha. Os outros escritórios "Parceiro A/B …" e usuários
+`r…`/`i…@dgbrasil.test` são das rodadas automáticas: ignore-os no QA.
 
 ### 6.2 Agente e modelo de análise fictícios (para a Fase E)
 
 O modelo "Análise Bancária" do seed **não tem agente** (de propósito: dá para
-testar "criar sem enviar"). Para testar o envio, rode no SQL Editor do DEV:
+testar "criar sem enviar"). Para testar o envio, rode **só este bloco** no SQL
+Editor do DEV **antes** do QA. "Success. No rows returned" é o normal.
 
 ```sql
--- Agente FICTÍCIO (não executa nada enquanto o worker estiver parado).
+-- ANTES do QA. Agente FICTÍCIO (não executa nada enquanto o worker estiver parado).
 with a as (
   insert into public.agents (slug, name, description, status)
   values ('qa-analise-43', 'Agente QA 4.3', 'Fictício — não executar', 'DRAFT')
+  on conflict (slug) do nothing
   returning id
 ), v as (
   insert into public.agent_versions (agent_id, instructions)
@@ -117,10 +140,20 @@ from v where public.agents.id = v.agent_id;
 insert into public.analysis_templates (legal_area_id, name, description, primary_agent_id)
 select la.id, 'QA 4.3 — com agente', 'Modelo fictício de QA', ag.id
 from public.legal_areas la, public.agents ag
-where la.code = 'BANKING' and ag.slug = 'qa-analise-43';
+where la.code = 'BANKING' and ag.slug = 'qa-analise-43'
+  and not exists (select 1 from public.analysis_templates t where t.name = 'QA 4.3 — com agente');
+
+-- (Re)ativa, caso a limpeza já tenha sido rodada antes.
+update public.agents set status = 'ACTIVE' where slug = 'qa-analise-43';
+update public.analysis_templates set active = true where name = 'QA 4.3 — com agente';
+
+-- Conferência: deve mostrar 1 linha, com agente ACTIVE e modelo ativo.
+select ag.status as agente, t.active as modelo_ativo
+from public.analysis_templates t join public.agents ag on ag.id = t.primary_agent_id
+where t.name = 'QA 4.3 — com agente';
 ```
 
-Depois do QA:
+**Só DEPOIS de terminar o QA** (este bloco desliga o agente e o modelo):
 
 ```sql
 update public.agent_runs set status = 'CANCELLED'
@@ -131,13 +164,19 @@ update public.agents set status = 'INACTIVE' where slug = 'qa-analise-43';
 
 ### 6.3 Notificação de teste (Fase H)
 
-Ainda não há regra que gere notificações; para ver o sino funcionando:
+Ainda não há regra que gere notificações; para ver o sino funcionando (o
+Supabase guarda o e-mail em minúsculas — o `lower` evita a diferença):
 
 ```sql
 insert into public.notifications (user_id, type, title, message, severity, legal_case_id)
 select u.id, 'CASE_UPDATE', 'Aviso de QA 4.3', 'Notificação fictícia de teste', 'WARNING', null
-from auth.users u where u.email = '<e-mail do ADMIN de teste>@dgbrasil.test';
+from auth.users u where lower(u.email) = lower('ADM@DGBrasil.com')
+returning id;
 ```
+
+Deve voltar **1 linha** (o id). Se voltar 0, o e-mail não confere com o do
+login. Depois **recarregue a página** do app: o sino lê as notificações ao
+carregar.
 
 ## 7. QA manual por fase
 

@@ -6,6 +6,7 @@
   "scripts": {
     "verificar": "node tests/verificar.mjs",
     "validar:real": "node --env-file=.env.real tests/real/validar-real.mjs",
+    "usuarios:qa": "node --env-file=.env.real scripts/usuarios-qa.mjs",
     "emails": "node templates/build.mjs",
     "emails:check": "node templates/build.mjs --check",
     "emails:preview": "node templates/build.mjs --preview .preview-emails"

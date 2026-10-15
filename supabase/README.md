@@ -20,6 +20,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 481 verificações (inclusive Auth/MFA da 022, convite da 023, preferências da 024, backend de domínio da 025/026, idempotência da 027, bloco societário de PJ da 028, início atômico de análise da 029, ciclo de vida do acordo financeiro da 030 e resumos paginados de execução da 031), com a RLS testada por papel |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
+| `scripts/usuarios-qa.mjs` | Usuários **fixos** para QA manual no DEV (LAWYER, ASSISTANT e PARTNER_ADMIN/PARTNER_USER de "Parceiro QA A/B"), senha em `QA_SENHA`; termos e MFA no primeiro login (`npm run usuarios:qa`) |
 
 ## Testar localmente
 
