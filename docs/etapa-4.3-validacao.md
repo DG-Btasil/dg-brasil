@@ -33,7 +33,7 @@ npm run verificar
 # Front — esperado: lint sem erros, typecheck limpo, 388 testes, build ok
 cd ../apps/frontend
 npm run lint
-npx tsc --noEmit
+npm run typecheck   # gera os tipos de rota (next typegen) e roda o tsc
 npm test
 npm run build
 ```
