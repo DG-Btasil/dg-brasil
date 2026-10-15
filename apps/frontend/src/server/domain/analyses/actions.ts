@@ -42,6 +42,11 @@ export async function startAnalysisAction(input: unknown) {
   return runAction({ name: "analyses.start", permission: "analyses.start", schema: startAnalysisSchema, input, handler: service.startAnalysis });
 }
 
+/** "Interromper análise" (033): a execução na fila para; rodando, o worker confirma. */
+export async function cancelAnalysisAction(input: unknown) {
+  return runAction({ name: "analyses.cancel", permission: "analyses.start", schema: analysisIdSchema, input, handler: (ctx, { id }) => service.cancelAnalysis(ctx, id) });
+}
+
 export async function sendAnalysisToAgentAction(input: unknown) {
   return runAction({ name: "analyses.send_to_agent", permission: "analyses.start", schema: sendAnalysisToAgentSchema, input, handler: service.sendAnalysisToAgent });
 }

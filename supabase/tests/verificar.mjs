@@ -2867,6 +2867,136 @@ await deve('volume: 3.000 clientes de outro escritório não pesam na carteira d
   await db.query(`delete from clients where cpf like '880%'`)
 })
 
+secao('Interromper análise / execução de agente [033]')
+const cancelar033 = (uid, run) => como(uid, async (tx) => (await um(tx, `select public.request_agent_run_cancel($1) r`, [run])).r)
+const run033 = async (id) => um(db, `select status, cancel_requested_at, cancel_requested_by, queue_msg_id from agent_runs where id = $1`, [id])
+const analise033 = async (runId) => um(db, `select status, interruption_reason from legal_analyses where agent_run_id = $1`, [runId])
+const naFila033 = async (msg) => (await um(db, `select count(*)::int n from pgmq.q_agent_execution where msg_id = $1`, [msg])).n
+async function novaAnalise033(uid = ids.lucas) {
+  const caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, origin_organization_id, created_by_organization_id)
+    values ($1, $2, 'Caso 033', $3, $3) returning id`, [ids.joao, ids.banking, ids.owner])).id
+  const r = await iniciar(uid, randomUUID(), caso, ids.tpl029, {}, true)
+  return { caso, analise: r.legal_analysis_id, run: r.agent_run_id }
+}
+const reservar033 = async (run, worker, stale = 300) => {
+  const m = (await run033(run)).queue_msg_id
+  return comoWorker((tx) => um(tx, `select * from private.claim_agent_run($1, $2, $3, $4)`, [run, worker, m, stale]))
+}
+const recusa033 = (p, padrao) => p.then(() => { throw new Error('foi aceito') }, (e) => { if (!padrao.test(e.message)) throw e })
+
+await deve('QUEUED: LAWYER interrompe → CANCELLED na hora, mensagem arquivada, análise interrompida, auditoria com o autor', async () => {
+  const a = await novaAnalise033()
+  if (!a.run) throw new Error(`análise sem execução: ${JSON.stringify(a)}`)
+  ids.run033 = a.run
+  const msg = (await run033(a.run)).queue_msg_id
+  igual(await naFila033(msg), 1, 'mensagem na fila antes')
+  const r = await cancelar033(ids.lucas, a.run)
+  igual([r.outcome, r.status], ['CANCELLED', 'CANCELLED'], 'resposta')
+  const run = await run033(a.run)
+  igual([run.status, run.cancel_requested_by], ['CANCELLED', ids.lucas], 'execução')
+  igual(await naFila033(msg), 0, 'mensagem saiu da fila')
+  const an = await analise033(a.run)
+  igual([an.status, an.interruption_reason], ['CANCELLED', 'Execução interrompida a pedido.'], 'análise')
+  const ev = await um(db, `select actor_user_id, metadata from audit_events where action = 'AGENT_RUN_CANCELLED' and entity_id = $1`, [a.run])
+  igual([ev.actor_user_id, ev.metadata.from], [ids.lucas, 'QUEUED'], 'auditoria')
+})
+await deve('repetir o pedido é idempotente: mesmo estado, sem evento novo', async () => {
+  const antes = (await um(db, `select count(*)::int n from audit_events where entity_id = $1`, [ids.run033])).n
+  const r = await cancelar033(ids.lucas, ids.run033)
+  igual([r.outcome, r.status], ['ALREADY_CANCELLED', 'CANCELLED'], 'resposta')
+  igual((await um(db, `select count(*)::int n from audit_events where entity_id = $1`, [ids.run033])).n, antes, 'eventos')
+})
+await deve('RUNNING: ADMIN pede interrupção → continua RUNNING até o worker confirmar; pedido auditado e idempotente', async () => {
+  const a = await novaAnalise033()
+  ids.run033b = a.run
+  const c = await reservar033(a.run, 'worker-033')
+  igual(c.claimed, true, 'reservada')
+  igual((await analise033(a.run)).status, 'RUNNING', 'análise acompanha a execução')
+  const r = await cancelar033(ids.barbara, a.run)
+  igual([r.outcome, r.status], ['CANCEL_REQUESTED', 'RUNNING'], 'resposta')
+  igual((await run033(a.run)).cancel_requested_by, ids.barbara, 'quem pediu')
+  igual((await analise033(a.run)).status, 'RUNNING', 'análise ainda rodando')
+  igual((await cancelar033(ids.lucas, a.run)).outcome, 'ALREADY_REQUESTED', 'segundo pedido')
+  const ev = await linhas(db, `select actor_user_id from audit_events where action = 'AGENT_RUN_CANCEL_REQUESTED' and entity_id = $1`, [a.run])
+  igual(ev.map((e) => e.actor_user_id), [ids.barbara], 'um evento, com o autor')
+})
+await deve('contrato do worker: confere o pedido; não conclui nem manda para Revisões; confirma CANCELLED', async () => {
+  const run = ids.run033b
+  igual((await comoWorker((tx) => um(tx, `select private.worker_cancel_requested($1, 'worker-033') v`, [run]))).v, true, 'pedido visto')
+  igual((await comoWorker((tx) => um(tx, `select private.worker_cancel_requested($1, 'outro-worker') v`, [run]))).v, true, 'sem reserva = pare')
+  for (const st of ['COMPLETED', 'WAITING_HUMAN'])
+    await recusa033(comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-033', $2)`, [run, st])), /encerre como CANCELLED/)
+  igual((await comoWorker((tx) => um(tx, `select private.worker_finish_run($1, 'worker-033', 'CANCELLED') v`, [run]))).v, true, 'confirmou')
+  igual((await run033(run)).status, 'CANCELLED', 'execução')
+  igual((await analise033(run)).status, 'CANCELLED', 'análise')
+})
+await deve('worker sem pedido não "cancela" por conta própria; nova tentativa com pedido encerra em vez de voltar à fila', async () => {
+  const a = await novaAnalise033()
+  await reservar033(a.run, 'worker-033')
+  await recusa033(comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-033', 'CANCELLED')`, [a.run])), /só confirma um pedido/)
+  igual((await comoWorker((tx) => um(tx, `select private.worker_cancel_requested($1, 'worker-033') v`, [a.run]))).v, false, 'sem pedido: segue')
+  await cancelar033(ids.lucas, a.run)
+  await comoWorker((tx) => tx.query(`select private.worker_requeue_run($1, 'worker-033', 'falha de rede')`, [a.run]))
+  igual((await run033(a.run)).status, 'CANCELLED', 'não voltou para a fila')
+})
+await deve('worker morto: pedido sobre reserva vencida cancela na hora; reserva vencida COM pedido não é retomada', async () => {
+  const a = await novaAnalise033()
+  await reservar033(a.run, 'worker-morto')
+  await db.query(`update agent_runs set heartbeat_at = now() - interval '1 hour' where id = $1`, [a.run])
+  igual((await cancelar033(ids.lucas, a.run)).outcome, 'CANCELLED', 'cancelada na hora')
+  const b = await novaAnalise033()
+  await reservar033(b.run, 'worker-morto')
+  await cancelar033(ids.lucas, b.run)
+  await db.query(`update agent_runs set heartbeat_at = now() - interval '1 hour' where id = $1`, [b.run])
+  const c = await reservar033(b.run, 'worker-novo')
+  igual([c.claimed, c.status], [false, 'CANCELLED'], 'não retomada')
+})
+await deve('WAITING_HUMAN: advogado decide em Revisões; ADMIN pode interromper', async () => {
+  const a = await novaAnalise033()
+  await reservar033(a.run, 'worker-033')
+  await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-033', 'WAITING_HUMAN')`, [a.run]))
+  igual((await analise033(a.run)).status, 'WAITING_REVIEW', 'análise aguardando revisão')
+  await recusa033(cancelar033(ids.lucas, a.run), /decida em Revisões/)
+  igual((await cancelar033(ids.barbara, a.run)).outcome, 'CANCELLED', 'ADMIN')
+  igual((await analise033(a.run)).status, 'CANCELLED', 'análise')
+})
+await deve('execução encerrada: recusado (e a análise concluiu junto com a execução)', async () => {
+  const a = await novaAnalise033()
+  await reservar033(a.run, 'worker-033')
+  await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-033', 'COMPLETED')`, [a.run]))
+  igual((await analise033(a.run)).status, 'COMPLETED', 'análise concluída junto')
+  await recusa033(cancelar033(ids.barbara, a.run), /já encerrada/)
+})
+await deveFalhar('ASSISTANT não interrompe', () => cancelar033(ids.ana, ids.run033b), /Somente ADMIN ou advogado/)
+await deveFalhar('parceiro não interrompe', () => cancelar033(ids.almeidaAdm, ids.run033b), /Somente ADMIN ou advogado/)
+await deveFalhar('LAWYER não interrompe execução sem caso (só ADMIN a vê)', () => cancelar033(ids.lucas, ids.runAdmin), /não encontrada/)
+await deveFalhar('id inexistente: "não encontrada" (sem enumeração)', () => cancelar033(ids.barbara, randomUUID()), /não encontrada/)
+await deveFalhar('sessão aal1 não interrompe', () => comoAal1(ids.barbara, (tx) => tx.query(`select public.request_agent_run_cancel($1)`, [ids.run033b])), /Sem sessão liberada|duas etapas/)
+await deve('RUNNING não se cancela mais por UPDATE direto (só pelo pedido)', async () => {
+  const a = await novaAnalise033()
+  await reservar033(a.run, 'worker-033')
+  const n = await como(ids.barbara, async (tx) => (await tx.query(`update agent_runs set status = 'CANCELLED' where id = $1`, [a.run])).affectedRows)
+  igual(n, 0, 'linhas alteradas')
+  igual((await run033(a.run)).status, 'RUNNING', 'segue rodando')
+})
+await deveFalhar('pedido de interrupção não se desfaz', () =>
+  db.query(`update agent_runs set cancel_requested_at = null, cancel_requested_by = null where id = $1`, [ids.run033b]), /não se desfaz/)
+await deve('anon não executa; dg_worker só confere (não pede)', async () => {
+  await recusa033(db.transaction(async (tx) => { await tx.query('set local role anon'); await tx.query(`select public.request_agent_run_cancel($1)`, [ids.run033b]) }), /permission denied/)
+  await recusa033(comoWorker((tx) => tx.query(`select private.request_agent_run_cancel($1)`, [ids.run033b])), /permission denied/)
+})
+
+await deve('estado de interrupção: LAWYER vê só execuções de casos que acessa; nada além de id/situação/pedido', async () => {
+  const ids3 = [ids.run033, ids.run033b, ids.runAdmin]
+  const doLawyer = await como(ids.lucas, (tx) => linhas(tx, `select * from public.get_agent_run_cancel_state($1)`, [ids3]))
+  igual(doLawyer.some((r) => r.agent_run_id === ids.runAdmin), false, 'sem caso escondida')
+  igual(Object.keys(doLawyer[0]).sort(), ['agent_run_id', 'cancel_requested', 'status'], 'colunas')
+  const doAdmin = await como(ids.barbara, (tx) => linhas(tx, `select * from public.get_agent_run_cancel_state($1)`, [ids3]))
+  igual(doAdmin.length, 3, 'ADMIN vê todas')
+})
+await deveFalhar('estado de interrupção: ASSISTANT e parceiro recusados', () =>
+  como(ids.almeidaAdm, (tx) => tx.query(`select * from public.get_agent_run_cancel_state($1)`, [[ids.run033]])), /Somente ADMIN ou advogado/)
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fromDbError, unwrap } from "@/server/core/db-errors";
+import { unwrap } from "@/server/core/db-errors";
 import type { AgentRunSummaryPageRow, AgentRunSummaryRow } from "./mappers";
 
 /**
@@ -59,19 +59,18 @@ export async function summariesPage(
   return { rows, total: rows.length ? Number(rows[0].total_count ?? 0) : 0 };
 }
 
-/** ADMIN cancela (política agent_runs_cancel_admin: só de QUEUED/RUNNING/WAITING_HUMAN para CANCELLED). */
-export async function cancel(db: SupabaseClient, id: string): Promise<number> {
-  const { error, count } = await db
-    .from("agent_runs")
-    .update({ status: "CANCELLED" }, { count: "exact" })
-    .eq("id", id)
-    .in("status", ["QUEUED", "RUNNING", "WAITING_HUMAN"]);
-  if (error) throw fromDbError(error);
-  return count ?? 0;
+/**
+ * Interromper (033): request_agent_run_cancel decide tudo no banco — QUEUED
+ * cancela na hora (e arquiva a mensagem), RUNNING vira pedido que o worker
+ * confirma, repetir devolve o mesmo resultado. ADMIN ou LAWYER do caso.
+ */
+export async function requestCancel(db: SupabaseClient, id: string): Promise<{ agent_run_id: string; status: string; outcome: string }> {
+  return unwrap(await db.rpc("request_agent_run_cancel", { p_agent_run_id: id })) as { agent_run_id: string; status: string; outcome: string };
 }
 
-/** Só ADMIN (RLS agent_runs_select_admin). Existe para distinguir "não encontrada" de "já encerrada". */
-export async function adminRunExists(db: SupabaseClient, id: string): Promise<boolean> {
-  const data = unwrap(await db.from("agent_runs").select("id").eq("id", id).maybeSingle());
-  return data !== null;
+/** Pedido de interrupção pendente (033). Só ids que o usuário pode ver; no máximo 100. */
+export async function cancelState(db: SupabaseClient, ids: string[]): Promise<Map<string, boolean>> {
+  if (ids.length === 0) return new Map();
+  const rows = (unwrap(await db.rpc("get_agent_run_cancel_state", { p_ids: ids.slice(0, 100) })) ?? []) as { agent_run_id: string; cancel_requested: boolean }[];
+  return new Map(rows.map((r) => [r.agent_run_id, r.cancel_requested === true]));
 }

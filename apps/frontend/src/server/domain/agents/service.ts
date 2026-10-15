@@ -1,7 +1,7 @@
-import { hasRole, requireInternal, requirePermission, requireRole, type ServiceContext } from "@/server/core/context";
-import { forbidden, invalidState, notFound } from "@/server/core/errors";
+import { hasRole, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
+import { forbidden } from "@/server/core/errors";
 import { toPage, toRange, type Page } from "@/server/core/pagination";
-import type { AgentRunRequestDTO, AgentRunSummaryDTO } from "./dto";
+import type { AgentRunCancelDTO, AgentRunRequestDTO, AgentRunSummaryDTO } from "./dto";
 import { summaryFromRow } from "./mappers";
 import * as repo from "./repository";
 import type { ListAgentRunsInput, ListAgentRunSummariesInput, RequestAgentRunInput } from "./schemas";
@@ -54,17 +54,27 @@ export async function listAgentRuns(ctx: ServiceContext, input: ListAgentRunsInp
   requirePermission(ctx, "analyses.start");
   const { from } = toRange(input);
   const { rows, total } = await repo.summariesPage(ctx.db, { legalCaseId: input.legalCaseId, status: input.status, agentId: input.agentId }, from, input.pageSize);
-  return toPage(rows.map(summaryFromRow), total, input);
+  const items = rows.map(summaryFromRow);
+  return toPage(await withCancelState(ctx, items), total, input);
 }
 
-/** ADMIN cancela uma execução ainda não encerrada. */
-export async function cancelAgentRun(ctx: ServiceContext, id: string): Promise<void> {
-  requireRole(ctx, "ADMIN");
-  requirePermission(ctx, "dgbrasil.manage");
-  const changed = await repo.cancel(ctx.db, id);
-  if (changed === 0) {
-    if (!(await repo.adminRunExists(ctx.db, id))) throw notFound("Execução não encontrada.");
-    throw invalidState("A execução já foi encerrada.");
-  }
-  ctx.log.info("agent_run.cancelled", { agentRunId: id });
+/** Marca as RUNNING com pedido de interrupção pendente (uma consulta para a página). */
+export async function withCancelState(ctx: ServiceContext, items: AgentRunSummaryDTO[]): Promise<AgentRunSummaryDTO[]> {
+  const running = items.filter((i) => i.status === "RUNNING").map((i) => i.id);
+  if (running.length === 0) return items;
+  const state = await repo.cancelState(ctx.db, running);
+  return items.map((i) => (state.get(i.id) ? { ...i, cancelRequested: true } : i));
+}
+
+/**
+ * Interromper uma execução (033). ADMIN: qualquer uma; LAWYER: de caso que
+ * acessa (o banco decide e responde "não encontrada" sem revelar). QUEUED para
+ * já; RUNNING vira pedido que o worker confirma. Repetir é idempotente.
+ */
+export async function cancelAgentRun(ctx: ServiceContext, id: string): Promise<AgentRunCancelDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "analyses.start");
+  const r = await repo.requestCancel(ctx.db, id);
+  ctx.log.info("agent_run.cancel_requested", { agentRunId: id, outcome: r.outcome });
+  return { agentRunId: r.agent_run_id, status: r.status as AgentRunCancelDTO["status"], outcome: r.outcome as AgentRunCancelDTO["outcome"] };
 }

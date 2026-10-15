@@ -81,6 +81,12 @@ export interface ContextoExecucao {
   scratch: string
   operacao: string
   registro: Registro
+  /**
+   * Interrupção pedida por um humano (033): o worker aborta este controlador
+   * quando private.worker_cancel_requested responde true. O executor repassa
+   * ao SDK para parar o agente no meio.
+   */
+  interromper?: AbortController
 }
 
 export type Ferramenta = SdkMcpToolDefinition<any>

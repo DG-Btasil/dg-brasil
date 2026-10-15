@@ -1,5 +1,8 @@
 import { requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
-import { businessRule, notFound, validation } from "@/server/core/errors";
+import { businessRule, invalidState, notFound, validation } from "@/server/core/errors";
+import * as agents from "@/server/domain/agents/service";
+import type { AgentRunCancelDTO } from "@/server/domain/agents/dto";
+import * as agentsRepo from "@/server/domain/agents/repository";
 import { toPage, type Page } from "@/server/core/pagination";
 import type { AnalysisDetailDTO, AnalysisListItem, AnalysisSetupDTO, AnalysisStartedDTO, MissingRequirementDTO } from "./dto";
 import { detailFromRow, fieldValuesPayload, listItemFromRow, missingRequirements, templateSetupFromRow, validateTemplateFields } from "./mappers";
@@ -44,8 +47,29 @@ export async function getAnalysis(ctx: ServiceContext, id: string): Promise<Anal
   requireAnalyst(ctx);
   const row = await repo.getById(ctx.db, id);
   if (!row) throw notFound(NOT_FOUND_MESSAGE);
-  const [missing, reviewId] = await Promise.all([computeMissing(ctx, row.legal_case_id, row.analysis_template_id), repo.latestReviewId(ctx.db, id)]);
-  return detailFromRow(row, missing, reviewId);
+  const [missing, reviewId, cancel] = await Promise.all([
+    computeMissing(ctx, row.legal_case_id, row.analysis_template_id),
+    repo.latestReviewId(ctx.db, id),
+    row.status === "RUNNING" && row.agent_run_id ? agentsRepo.cancelState(ctx.db, [row.agent_run_id]) : Promise.resolve(new Map<string, boolean>()),
+  ]);
+  return detailFromRow(row, missing, reviewId, row.agent_run_id ? cancel.get(row.agent_run_id) === true : false);
+}
+
+/**
+ * "Interromper análise" (033): só com a execução na fila ou rodando. Na fila,
+ * para na hora; rodando, vira pedido que o worker confirma (a análise muda
+ * junto com a execução, pelo banco). Repetir é idempotente.
+ */
+export async function cancelAnalysis(ctx: ServiceContext, id: string): Promise<AgentRunCancelDTO> {
+  requireAnalyst(ctx);
+  const row = await repo.getById(ctx.db, id);
+  if (!row) throw notFound(NOT_FOUND_MESSAGE);
+  if (!row.agent_run_id || !(row.status === "QUEUED" || row.status === "RUNNING" || row.status === "CANCELLED")) {
+    throw invalidState("Só se interrompe análise na fila ou em execução pelo agente.");
+  }
+  const result = await agents.cancelAgentRun(ctx, row.agent_run_id);
+  ctx.log.info("analysis.cancel_requested", { analysisId: id, agentRunId: row.agent_run_id, outcome: result.outcome });
+  return result;
 }
 
 export async function getMissingRequirements(ctx: ServiceContext, id: string): Promise<MissingRequirementDTO[]> {

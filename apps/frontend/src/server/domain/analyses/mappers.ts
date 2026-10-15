@@ -158,7 +158,7 @@ function stringFields(values: Record<string, unknown> | null): Record<string, st
   return out;
 }
 
-export function detailFromRow(row: AnalysisDetailRow, missing: MissingRequirementDTO[], reviewId: string | null): AnalysisDetailDTO {
+export function detailFromRow(row: AnalysisDetailRow, missing: MissingRequirementDTO[], reviewId: string | null, cancelRequested = false): AnalysisDetailDTO {
   const requiredDocumentsComplete = !missing.some((m) => m.required);
   return {
     ...listItemFromRow(row),
@@ -171,5 +171,6 @@ export function detailFromRow(row: AnalysisDetailRow, missing: MissingRequiremen
     missingRequirements: missing,
     requiredDocumentsComplete,
     reviewId: opt(reviewId),
+    cancelRequested,
   };
 }

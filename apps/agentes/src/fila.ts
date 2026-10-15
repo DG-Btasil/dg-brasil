@@ -26,6 +26,11 @@ import {
  *                    roda em dobro. Se a reserva for perdida, o resultado não é
  *                    gravado (o banco recusa: claimed_by não confere);
  *   encerrar         private.worker_finish_run + pgmq.archive.
+ *   interromper      (033) antes de começar, a cada batimento e antes de
+ *                    encerrar, private.worker_cancel_requested: com pedido de
+ *                    interrupção, o agente é abortado e a execução termina
+ *                    CANCELLED (não conclui). O que já tinha sido entregue
+ *                    antes do pedido fica em Revisões para decisão humana.
  */
 
 export const FILA = 'agent_execution'
@@ -51,7 +56,7 @@ export interface MensagemLida {
 }
 
 export type Desfecho =
-  | 'concluida' | 'aguardando_humano' | 'falhou' | 'reenfileirada' | 'ignorada' | 'reservada_por_outro'
+  | 'concluida' | 'aguardando_humano' | 'falhou' | 'reenfileirada' | 'ignorada' | 'reservada_por_outro' | 'interrompida'
 
 /** O que private.worker_run_context devolve. */
 interface ContextoBanco {
@@ -132,6 +137,11 @@ export async function processarMensagem(deps: Dependencias, msg: MensagemLida): 
     return 'falhou'
   }
 
+  // Pedido de interrupção antes de começar: nem carrega o agente.
+  if (await interrupcaoPedida(banco, run.id, worker)) {
+    return encerrarInterrompida(deps, run.id, msg.msg_id)
+  }
+
   let agente: AgenteCarregado
   try {
     agente = await carregarAgente(banco, run)
@@ -149,22 +159,30 @@ export async function processarMensagem(deps: Dependencias, msg: MensagemLida): 
   const registro: Registro = { ferramentas: {}, negadas: [], propostas: [], documentos: [] }
   const scratch = await mkdtemp(join(tmpdir(), `dgbrasil-${agente.slug}-`))
 
-  // Batimento enquanto o agente roda.
+  // Batimento enquanto o agente roda; a cada batida, confere a interrupção.
   let reservaPerdida = false
+  const interromper = new AbortController()
   const batimento = setInterval(() => {
     banco.query(`select private.heartbeat_agent_run($1::uuid, $2::text, $3::bigint, $4::int) as ok`,
       [run.id, worker, msg.msg_id, deps.vtSegundos])
-      .then((r) => { if (!(r.rows[0] as { ok?: boolean } | undefined)?.ok) reservaPerdida = true })
+      .then(async (r) => {
+        if (!(r.rows[0] as { ok?: boolean } | undefined)?.ok) reservaPerdida = true
+        else if (await interrupcaoPedida(banco, run.id, worker)) interromper.abort()
+      })
       .catch(() => { /* rede instável: a próxima batida tenta de novo */ })
   }, deps.batimentoMs ?? Math.max(5_000, (deps.vtSegundos * 1000) / 3))
 
   try {
     const ctx = {
       banco, armazenamento: deps.armazenamento, worker, run, agente,
-      clienteDoCaso: contexto.client_id, scratch, entrada, operacao: conteudo.data.operation, registro,
+      clienteDoCaso: contexto.client_id, scratch, entrada, operacao: conteudo.data.operation, registro, interromper,
     }
     const metricas = await deps.executar(ctx, criarFerramentas(ctx))
     if (reservaPerdida) return 'reservada_por_outro'
+    // Pedido que chegou entre a última batida e o fim: o resultado não segue.
+    if (interromper.signal.aborted || await interrupcaoPedida(banco, run.id, worker)) {
+      return encerrarInterrompida(deps, run.id, msg.msg_id, metricas, registro)
+    }
 
     const destino = registro.propostas.length > 0 ? 'WAITING_HUMAN' : 'COMPLETED'
     await encerrar(deps, run.id, msg.msg_id, destino, {}, metricas, registro)
@@ -172,6 +190,9 @@ export async function processarMensagem(deps: Dependencias, msg: MensagemLida): 
   } catch (e) {
     if (reservaPerdida) return 'reservada_por_outro'
     const metricas = (e as { metricas?: Metricas }).metricas
+    if (interromper.signal.aborted || await interrupcaoPedida(banco, run.id, worker)) {
+      return encerrarInterrompida(deps, run.id, msg.msg_id, metricas, registro)
+    }
     const produziuSaida = registro.propostas.length > 0 || registro.documentos.length > 0
 
     if (msg.read_ct >= deps.maxTentativas || produziuSaida) {
@@ -191,6 +212,31 @@ export async function processarMensagem(deps: Dependencias, msg: MensagemLida): 
   } finally {
     clearInterval(batimento)
     await rm(scratch, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Contrato da 033: true = pare (interrupção pedida por um humano, ou a
+ * execução não está mais reservada por este worker). Conferido antes de
+ * começar, a cada batimento e antes de encerrar.
+ */
+async function interrupcaoPedida(banco: Banco, runId: string, worker: string): Promise<boolean> {
+  const r = await um<{ v: boolean }>(banco, `select private.worker_cancel_requested($1::uuid, $2::text) as v`, [runId, worker])
+  return r?.v === true
+}
+
+/**
+ * Confirma a interrupção (CANCELLED). O banco só aceita com pedido registrado e
+ * reserva deste worker: se recusar, a reserva já era de outro.
+ */
+async function encerrarInterrompida(
+  deps: Dependencias, runId: string, msgId: string, metricas?: Metricas, registro?: Registro,
+): Promise<Desfecho> {
+  try {
+    await encerrar(deps, runId, msgId, 'CANCELLED', { error_code: 'CANCELLED_BY_USER' }, metricas, registro)
+    return 'interrompida'
+  } catch {
+    return 'reservada_por_outro'
   }
 }
 
@@ -238,7 +284,7 @@ async function encerrar(
   deps: Dependencias,
   runId: string,
   msgId: string,
-  status: 'COMPLETED' | 'WAITING_HUMAN' | 'FAILED',
+  status: 'COMPLETED' | 'WAITING_HUMAN' | 'FAILED' | 'CANCELLED',
   erro: { error_code?: string; error_message?: string },
   metricas?: Metricas,
   registro?: Registro,

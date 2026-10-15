@@ -42,6 +42,8 @@ export function fromDbError(error: DbErrorLike | null | undefined): DomainError 
   const technicalCode = code || undefined;
 
   if (code === "PGRST116") return new DomainError("NOT_FOUND", undefined, { technicalCode });
+  // `raise ... using errcode = 'P0002'`: nossa função não achou (ou o ator não acessa — mesma resposta).
+  if (code === "P0002") return new DomainError("NOT_FOUND", isOurDbMessage(message) ? message : undefined, { technicalCode });
   if (code === "23505") {
     const constraint = /constraint "([^"]+)"/.exec(message)?.[1] ?? /\(([^)]+)\)/.exec(error?.details ?? "")?.[1];
     const mapped = constraint ? UNIQUE_CONSTRAINTS[constraint] : undefined;

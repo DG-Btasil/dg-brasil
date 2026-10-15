@@ -5,8 +5,9 @@ import * as service from "./service";
 import { agentRunIdSchema, listAgentRunsSchema, listAgentRunSummariesSchema, requestAgentRunSchema } from "./schemas";
 
 /**
- * Server Actions de execução de agente. Pedir e acompanhar: ADMIN e LAWYER
- * (`analyses.start`); cancelar: ADMIN (`dgbrasil.manage`). Nenhuma executa agente.
+ * Server Actions de execução de agente. Pedir, acompanhar e interromper:
+ * ADMIN e LAWYER (`analyses.start`; o banco ainda confere o caso). Nenhuma
+ * executa agente.
  */
 
 export async function requestAgentRunAction(input: unknown) {
@@ -23,5 +24,5 @@ export async function listAgentRunsAction(input: unknown) {
 }
 
 export async function cancelAgentRunAction(input: unknown) {
-  return runAction({ name: "agents.cancel_run", permission: "dgbrasil.manage", schema: agentRunIdSchema, input, handler: (ctx, { id }) => service.cancelAgentRun(ctx, id) });
+  return runAction({ name: "agents.cancel_run", permission: "analyses.start", schema: agentRunIdSchema, input, handler: (ctx, { id }) => service.cancelAgentRun(ctx, id) });
 }

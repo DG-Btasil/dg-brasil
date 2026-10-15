@@ -35,6 +35,9 @@ export const executarComClaude: ExecutarAgente = async (ctx, ferramentas) => {
       additionalDirectories: [ctx.scratch],
       settingSources: ['project'],
 
+      // Interrupção pedida (033): o worker aborta; o SDK para o agente.
+      abortController: ctx.interromper,
+
       maxTurns: config.max_turns,
       maxBudgetUsd: config.max_budget_usd ?? TETO_USD,
 

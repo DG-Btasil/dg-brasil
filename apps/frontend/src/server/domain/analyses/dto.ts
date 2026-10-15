@@ -45,6 +45,8 @@ export interface AnalysisDetailDTO extends AnalysisListItem {
   requiredDocumentsComplete: boolean;
   /** Revisão humana mais recente desta análise. */
   reviewId?: ID;
+  /** Interrupção pedida e ainda não confirmada pelo worker (033). */
+  cancelRequested: boolean;
 }
 
 /** Campo do template para o formulário (só definição; sem apresentação no banco). */

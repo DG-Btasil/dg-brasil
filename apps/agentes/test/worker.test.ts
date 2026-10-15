@@ -575,6 +575,32 @@ describe('falhas e novas tentativas', () => {
     }
   })
 
+  it('interrupção pedida durante a execução (033): o agente é avisado e a execução termina CANCELLED, sem concluir', async () => {
+    const runId = await enfileirar()
+    let avisado = false
+    const desfecho = await processarMensagem(deps(async (ctx) => {
+      // Um humano pede a interrupção enquanto o agente trabalha.
+      await db.query(`update agent_runs set cancel_requested_at = now(), cancel_requested_by = $2 where id = $1`, [runId, ids.admin])
+      avisado = !!ctx.interromper
+      return metricas
+    }), await proximaMensagem())
+    expect(desfecho).toBe('interrompida')
+    expect(avisado).toBe(true)
+    const r = await um(`select status, error_code from agent_runs where id = $1`, [runId])
+    expect(r).toMatchObject({ status: 'CANCELLED', error_code: 'CANCELLED_BY_USER' })
+    expect(await lerMensagem(banco, 600)).toBeNull()  // mensagem arquivada
+  })
+
+  it('erro do agente com interrupção pedida não volta para a fila (033)', async () => {
+    const runId = await enfileirar()
+    const desfecho = await processarMensagem(deps(async () => {
+      await db.query(`update agent_runs set cancel_requested_at = now(), cancel_requested_by = $2 where id = $1`, [runId, ids.admin])
+      throw new Error('abortado')
+    }), await proximaMensagem())
+    expect(desfecho).toBe('interrompida')
+    expect((await um(`select status from agent_runs where id = $1`, [runId])).status).toBe('CANCELLED')
+  })
+
   it('mensagem de execução cancelada é descartada', async () => {
     const runId = await enfileirar()
     await db.query(`update agent_runs set status = 'CANCELLED' where id = $1`, [runId])

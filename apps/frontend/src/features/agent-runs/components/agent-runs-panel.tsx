@@ -7,8 +7,7 @@ import { Bot } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { Tone } from "@/lib/constants/status";
 import { formatDateTime, pluralize } from "@/lib/formatting";
-import { callAction, type ActionResult } from "@/lib/actions/result";
-import { useActionFeedback } from "@/lib/actions/use-action-feedback";
+import type { ActionResult } from "@/lib/actions/result";
 import { useServerList } from "@/lib/hooks/use-server-list";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState, SkeletonRows } from "@/components/feedback/states";
@@ -22,10 +21,11 @@ import type { Page } from "@/server/core/pagination";
 import { cancelAgentRunAction, listAgentRunsAction } from "@/server/domain/agents/actions";
 import type { AgentRunSummaryDTO } from "@/server/domain/agents/dto";
 import { AGENT_RUN_STATUSES, type AgentRunStatus } from "@/server/domain/agents/schemas";
-import { useToast } from "@/store/ui-store";
 import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUserMap } from "@/features/directory/directory-context";
+import { canInterrupt } from "../interrupt";
 import { AGENT_RUN_PAGE_SIZE, agentRunQueryToInput, agentRunQueryToSearchParams, type AgentRunListQuery } from "../list-query";
+import { InterruptDialog } from "./interrupt-dialog";
 
 export const AGENT_RUN_STATUS_LABEL: Record<AgentRunStatus, string> = {
   QUEUED: "Na fila",
@@ -43,14 +43,14 @@ export const AGENT_RUN_STATUS_TONE: Record<AgentRunStatus, Tone> = {
   FAILED: "danger",
   CANCELLED: "neutral",
 };
-const ACTIVE: AgentRunStatus[] = ["QUEUED", "RUNNING", "WAITING_HUMAN"];
 const STATUS_OPTIONS = AGENT_RUN_STATUSES.map((s) => ({ value: s, label: AGENT_RUN_STATUS_LABEL[s] }));
 
 /**
  * Execuções de agente (ADMIN e LAWYER) pela RPC paginada (031): só colunas
  * fixas — nada de pedido em texto, custo, modelo nem erro bruto (só o
- * código). LAWYER só vê as dos casos que acessa (o banco decide). ADMIN pode
- * cancelar execução ainda não encerrada. Nada é executado por esta tela.
+ * código). LAWYER só vê as dos casos que acessa (o banco decide). ADMIN e
+ * LAWYER interrompem (033): na fila para já; rodando, o worker confirma.
+ * Nada é executado por esta tela.
  */
 export function AgentRunsPanel({
   initialQuery,
@@ -68,9 +68,8 @@ export function AgentRunsPanel({
   description?: string;
 }) {
   const router = useRouter();
-  const toast = useToast();
-  const failed = useActionFeedback();
-  const canCancel = usePermission("dgbrasil.manage");
+  const canCancel = usePermission("analyses.start");
+  const isAdmin = usePermission("dgbrasil.manage");
   const users = useDirectoryUserMap();
   const scope = legalCaseId ? { legalCaseId } : {};
   const { query, setQuery, result, pending, retry } = useServerList({
@@ -79,21 +78,8 @@ export function AgentRunsPanel({
     load: (q: AgentRunListQuery) => listAgentRunsAction(agentRunQueryToInput(q, scope)),
     toSearch: syncUrl ? agentRunQueryToSearchParams : undefined,
   });
-  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [interrupting, setInterrupting] = useState<string | null>(null);
   const page = result.ok ? result.data : undefined;
-
-  async function cancel(id: string) {
-    setCancelling(id);
-    const r = await callAction(() => cancelAgentRunAction({ id }));
-    setCancelling(null);
-    if (!r.ok) {
-      failed(r, "Não foi possível cancelar a execução.");
-      return;
-    }
-    toast({ tone: "success", title: "Execução cancelada" });
-    retry();
-    router.refresh();
-  }
 
   return (
     <Panel>
@@ -167,13 +153,14 @@ export function AgentRunsPanel({
                     <Td className="text-right tabular">{r.proposalCount}</Td>
                     <Td>
                       <StatusBadge status={r.status} labels={AGENT_RUN_STATUS_LABEL} tones={AGENT_RUN_STATUS_TONE} />
+                      {r.cancelRequested && <span className="mt-0.5 block text-[11.5px] text-warning">Interrupção solicitada</span>}
                       {r.errorCode && <span className="mt-0.5 block font-mono text-[11px] text-danger">{r.errorCode}</span>}
                     </Td>
                     {canCancel && (
                       <Td className="text-right">
-                        {ACTIVE.includes(r.status) && (
-                          <Button size="sm" variant="ghost" loading={cancelling === r.id} disabled={!!cancelling} onClick={() => cancel(r.id)}>
-                            Cancelar
+                        {canInterrupt(r, isAdmin) && (
+                          <Button size="sm" variant="ghost" onClick={() => setInterrupting(r.id)}>
+                            Interromper
                           </Button>
                         )}
                       </Td>
@@ -186,6 +173,17 @@ export function AgentRunsPanel({
           </>
         )}
       </div>
+      {interrupting && (
+        <InterruptDialog
+          subject="esta execução"
+          run={() => cancelAgentRunAction({ id: interrupting })}
+          onDone={() => {
+            retry();
+            router.refresh();
+          }}
+          onClose={() => setInterrupting(null)}
+        />
+      )}
     </Panel>
   );
 }

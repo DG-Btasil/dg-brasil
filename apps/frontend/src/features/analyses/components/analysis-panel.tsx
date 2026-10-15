@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, FlaskConical, Plus, Send } from "lucide-react";
+import { ArrowRight, CircleStop, FlaskConical, Plus, Send } from "lucide-react";
 import { ANALYSIS_STATUS_LABEL, ANALYSIS_STATUS_TONE } from "@/lib/constants/status";
 import { formatDateTime } from "@/lib/formatting";
 import { callAction, type ActionResult } from "@/lib/actions/result";
@@ -18,7 +18,8 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import type { DbAnalysisStatus } from "@/repositories/api/db-mappings";
 import type { Page } from "@/server/core/pagination";
-import { sendAnalysisToAgentAction } from "@/server/domain/analyses/actions";
+import { cancelAnalysisAction, sendAnalysisToAgentAction } from "@/server/domain/analyses/actions";
+import { InterruptDialog } from "@/features/agent-runs/components/interrupt-dialog";
 import type { AnalysisDetailDTO, AnalysisListItem, TemplateFieldDTO } from "@/server/domain/analyses/dto";
 import { useToast } from "@/store/ui-store";
 import { formatFieldValue, SENDABLE_STATUSES } from "../fields";
@@ -112,7 +113,9 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments }: { analysis: A
   const failed = useActionFeedback();
   const idempotency = useIdempotencyKey();
   const [sending, setSending] = useState(false);
+  const [interrupting, setInterrupting] = useState(false);
   const sendable = SENDABLE_STATUSES.includes(analysis.dbStatus);
+  const withAgent = analysis.dbStatus === "QUEUED" || analysis.dbStatus === "RUNNING";
   const missingRequired = analysis.missingRequirements.filter((m) => m.required);
   const labels = new Map(fieldDefs.map((f) => [f.key, f]));
 
@@ -172,10 +175,28 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments }: { analysis: A
             </Callout>
           </Can>
         )}
-        {(analysis.dbStatus === "QUEUED" || analysis.dbStatus === "RUNNING") && (
-          <Callout tone="info" title={analysis.dbStatus === "QUEUED" ? "Na fila do agente." : "Com o agente."}>
+        {withAgent && analysis.cancelRequested && (
+          <Callout tone="warning" title="Interrupção solicitada.">
+            O agente foi avisado e vai parar. A análise muda para interrompida assim que ele confirmar.
+          </Callout>
+        )}
+        {withAgent && !analysis.cancelRequested && (
+          <Callout
+            tone="info"
+            title={analysis.dbStatus === "QUEUED" ? "Na fila do agente." : "Com o agente."}
+            action={
+              <Can permission="analyses.start">
+                <Button variant="secondary" icon={<CircleStop className="size-4" aria-hidden />} onClick={() => setInterrupting(true)}>
+                  Interromper análise
+                </Button>
+              </Can>
+            }
+          >
             O resultado será enviado para Revisões e só segue depois da decisão humana.
           </Callout>
+        )}
+        {interrupting && (
+          <InterruptDialog subject="esta análise" run={() => cancelAnalysisAction({ id: analysis.id })} onDone={() => router.refresh()} onClose={() => setInterrupting(false)} />
         )}
         {analysis.result && (
           <DefinitionGrid
