@@ -89,10 +89,11 @@ const novoCliente = () => createClient(URL_, ANON, opcoes)
 
 secao('1. Pré-flight')
 console.log(`  projeto: ${mascara(ref)}  host: ${new URL(URL_).hostname.replace(ref, mascara(ref))}`)
-// Rodadas anteriores deixam só dados fictícios (CPF 999…). Qualquer outro
-// cliente indica que o projeto não é o ambiente limpo de desenvolvimento.
+// Rodadas anteriores deixam só dados fictícios (CPF ou CNPJ 999…). Qualquer
+// outro cliente indica que o projeto não é o ambiente limpo de desenvolvimento.
+// PJ tem cpf nulo: o documento de teste dela está no cnpj.
 await deveOuPara('banco sem dados que não sejam de teste (ambiente de desenvolvimento)', async () => {
-  const n = await um(`select count(*) filter (where coalesce(cpf, '') not like '999%')::int reais,
+  const n = await um(`select count(*) filter (where coalesce(cpf, cnpj, '') not like '999%')::int reais,
                              count(*)::int todos from public.clients`)
   if (n.reais > 0) throw new Error(`há ${n.reais} clientes fora do padrão de teste: confira se o projeto é mesmo de desenvolvimento`)
   if (n.todos > 0) console.log(`    ${n.todos} clientes fictícios de rodadas anteriores (ok)`)
