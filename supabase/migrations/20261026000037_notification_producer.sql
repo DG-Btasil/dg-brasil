@@ -587,6 +587,19 @@ create trigger audit_events_notify_security
   for each row when (new.action in ('MFA_RESET_COMPLETED', 'ROLE_CHANGED'))
   execute function private.notify_security_events();
 
+-- Funções de gatilho: ninguém as executa direto.
+revoke all on function private.notify_legal_cases() from public, anon, authenticated, service_role;
+revoke all on function private.notify_deadlines() from public, anon, authenticated, service_role;
+revoke all on function private.notify_requirements() from public, anon, authenticated, service_role;
+revoke all on function private.notify_reviews() from public, anon, authenticated, service_role;
+revoke all on function private.notify_partner_requests() from public, anon, authenticated, service_role;
+revoke all on function private.notify_partner_request_messages() from public, anon, authenticated, service_role;
+revoke all on function private.notify_legal_analyses() from public, anon, authenticated, service_role;
+revoke all on function private.notify_agent_runs() from public, anon, authenticated, service_role;
+revoke all on function private.notify_partner_transfers() from public, anon, authenticated, service_role;
+revoke all on function private.notify_security_events() from public, anon, authenticated, service_role;
+revoke all on function private.notification_category(text) from public, anon, service_role;
+
 -- ───────────────────────────── agendamento (se houver pg_cron) ────────────
 
 do $$

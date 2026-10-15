@@ -382,3 +382,6 @@ $$;
 create trigger agent_runs_sync_analysis
   after update of status on public.agent_runs
   for each row execute function private.agent_runs_sync_analysis();
+
+revoke all on function private.agent_runs_sync_analysis() from public, anon, authenticated, service_role;
+revoke all on function private.agent_runs_cancel_request_guard() from public, anon, authenticated, service_role;

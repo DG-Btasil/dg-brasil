@@ -3472,6 +3472,38 @@ await deve('marcar como lida continua funcionando (só as próprias)', async () 
   igual(alheias, 0, 'alheias')
 })
 
+secao('Catálogo: funções novas da 4.3.1 seguem as regras de segurança [032–037]')
+const novas431 = [
+  'partner_client_ids', 'partner_case_ids', 'partner_process_ids', 'partner_document_ids',
+  'request_agent_run_cancel', 'get_agent_run_cancel_state', 'worker_cancel_requested', 'claim_agent_run', 'worker_finish_run', 'worker_requeue_run', 'agent_runs_sync_analysis',
+  'prepare_manual_revision', 'commit_manual_revision_once', 'manual_revision_check',
+  'create_payment_schedule_once',
+  'get_partner_case_timeline', 'get_partner_client_counts', 'partner_actor_label',
+  'notify', 'org_member_ids', 'active_admin_ids', 'notify_deadline_reminders', 'notify_legal_cases', 'notify_deadlines', 'notify_requirements',
+  'notify_reviews', 'notify_partner_requests', 'notify_partner_request_messages', 'notify_legal_analyses', 'notify_agent_runs',
+  'notify_partner_transfers', 'notify_security_events', 'deadline_recipient',
+]
+await deve('toda função SECURITY DEFINER nova fixa search_path vazio', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.prosecdef and p.proname = any ($1)`, [novas431])
+  if (r.length < 25) throw new Error(`poucas funções encontradas: ${r.length}`)
+  const sem = r.filter((x) => !/search_path=("")?$|search_path=""|search_path=$/.test(x.cfg) && !x.cfg.includes('search_path=""') && !x.cfg.includes('search_path=')).map((x) => x.f)
+  igual(sem, [], 'sem search_path')
+})
+await deve('anon não executa nenhuma função nova (public ou private)', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.proname = any ($1) and has_function_privilege('anon', p.oid, 'execute')`, [novas431])
+  igual(r.map((x) => x.f), [], 'anon com execute')
+})
+await deve('usuário logado não chama os blocos internos (produtor, conferências, rótulos) direto', async () => {
+  const internos = ['notify', 'manual_revision_check', 'partner_actor_label', 'org_member_ids', 'active_admin_ids', 'deadline_recipient', 'notify_deadline_reminders', 'worker_cancel_requested']
+  const r = await linhas(db, `select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1) and has_function_privilege('authenticated', p.oid, 'execute')`, [internos])
+  igual(r.map((x) => x.f), [], 'authenticated com execute em bloco interno')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(
