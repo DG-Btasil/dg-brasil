@@ -163,3 +163,22 @@ export async function listLinkedProcessIds(db: SupabaseClient, clientId: string)
 export async function recordDetailAccess(db: SupabaseClient, clientId: string): Promise<void> {
   unwrap(await db.rpc("record_personal_data_access", { p_client_id: clientId, p_resource_type: "CLIENT", p_resource_id: clientId, p_action: "VIEW_DETAIL", p_purpose: null }));
 }
+
+/**
+ * Contagens do portal por cliente (036), uma consulta para a página: casos,
+ * processos, solicitações abertas e documentos pedidos — só no escopo do
+ * escritório do parceiro (o banco decide; cliente fora da carteira não volta).
+ */
+export async function partnerClientCounts(db: SupabaseClient, clientIds: string[]): Promise<Map<string, { cases: number; processes: number; openRequests: number; requestedDocuments: number }>> {
+  if (clientIds.length === 0) return new Map();
+  const rows = (unwrap(await db.rpc("get_partner_client_counts", { p_client_ids: clientIds.slice(0, 100) })) ?? []) as {
+    client_id: string;
+    case_count: number;
+    process_count: number;
+    open_request_count: number;
+    requested_document_count: number;
+  }[];
+  return new Map(
+    rows.map((r) => [r.client_id, { cases: Number(r.case_count), processes: Number(r.process_count), openRequests: Number(r.open_request_count), requestedDocuments: Number(r.requested_document_count) }]),
+  );
+}

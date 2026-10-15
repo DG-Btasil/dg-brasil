@@ -238,3 +238,6 @@ export const partnerSubmitCaseSchema = z.object({
     .superRefine((v, ctx) => refineCatalog(v, ctx, true)),
 });
 export type PartnerSubmitCaseInput = z.infer<typeof partnerSubmitCaseSchema>;
+
+/** Histórico do caso no portal (036): paginado; só o id do caso vem do navegador. */
+export const partnerCaseTimelineSchema = pageInputSchema.extend({ legalCaseId: zUuid() });

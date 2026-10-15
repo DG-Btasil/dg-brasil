@@ -22,6 +22,19 @@ export interface ClientListItem {
   responsibleUserId?: ID;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+  /**
+   * Só no Portal do Parceiro (4.3.1, get_partner_client_counts): contagens do
+   * ESCOPO do escritório — casos operados por ele, os processos desses casos,
+   * solicitações em aberto e documentos pedidos. Nunca o total do cliente.
+   */
+  partnerCounts?: PartnerClientCounts;
+}
+
+export interface PartnerClientCounts {
+  cases: number;
+  processes: number;
+  openRequests: number;
+  requestedDocuments: number;
 }
 
 /** Ficha completa para a equipe interna = tipo de domínio do front. */

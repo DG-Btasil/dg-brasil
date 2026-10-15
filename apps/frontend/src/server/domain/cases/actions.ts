@@ -3,8 +3,9 @@
 import { z } from "zod";
 import { runAction } from "@/server/core/action";
 import { enforcePartnerTaxIdLimit } from "@/server/core/rate-limit";
+import * as timeline from "./partner-timeline";
 import * as service from "./service";
-import {
+import { partnerCaseTimelineSchema,
   acceptCaseSchema,
   assignLawyerSchema,
   caseIdSchema,
@@ -106,4 +107,9 @@ export async function changeCaseOriginAction(input: unknown) {
 export async function overrideCaseStatusAction(input: unknown) {
   // Sem permissão própria na matriz: o service exige papel ADMIN (e o banco também).
   return runAction({ name: "cases.override_status", schema: overrideStatusSchema, input, handler: service.overrideCaseStatus });
+}
+
+/** Histórico sanitizado do caso no Portal do Parceiro (036). */
+export async function getPartnerCaseTimelineAction(input: unknown) {
+  return runAction({ name: "cases.partner_timeline", permission: "partnerPortal.view", schema: partnerCaseTimelineSchema, input, handler: timeline.getPartnerCaseTimeline });
 }

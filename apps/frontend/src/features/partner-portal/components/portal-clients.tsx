@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Briefcase, Pencil, Plus, Scale, UserPlus, Users } from "lucide-react";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, PARTNER_CASE_STATUS_LABEL } from "@/lib/constants/status";
-import { formatEventTime, formatPhone, maskCNPJ, maskCPF } from "@/lib/formatting";
+import { formatEventTime, formatPhone, maskCNPJ, maskCPF, pluralize } from "@/lib/formatting";
 import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { isPhoneFormat, msg } from "@/lib/validation";
@@ -24,7 +24,7 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import type { Page } from "@/server/core/pagination";
 import { listClientsAction, updateClientBasicsAction } from "@/server/domain/clients/actions";
-import type { ClientListItem, ClientPartnerDTO } from "@/server/domain/clients/dto";
+import type { ClientListItem, ClientPartnerDTO, PartnerClientCounts } from "@/server/domain/clients/dto";
 import type { CaseListItem } from "@/server/domain/cases/dto";
 import type { DocumentListItem } from "@/server/domain/documents/dto";
 import type { ProcessListItem } from "@/server/domain/processes/dto";
@@ -72,6 +72,9 @@ export function PortalClientList({ initialQuery, initialResult }: { initialQuery
               <Th>Cliente</Th>
               <Th>Tipo</Th>
               <Th>CPF/CNPJ</Th>
+              <Th className="text-right">Casos</Th>
+              <Th className="text-right">Processos</Th>
+              <Th>Pendências</Th>
               <Th>Situação</Th>
               <Th>Atualização</Th>
             </tr>
@@ -87,6 +90,11 @@ export function PortalClientList({ initialQuery, initialResult }: { initialQuery
                 </Td>
                 <Td className="text-[12.5px]">{CLIENT_KIND_LABEL[c.kind]}</Td>
                 <Td className="font-mono text-[12px]">{maskDocument(c.kind, c.document)}</Td>
+                <Td className="text-right tabular">{c.partnerCounts?.cases ?? "—"}</Td>
+                <Td className="text-right tabular">{c.partnerCounts?.processes ?? "—"}</Td>
+                <Td>
+                  <PendingBadge counts={c.partnerCounts} />
+                </Td>
                 <Td className="text-[12.5px]">{CLIENT_STATUS_LABEL[c.status] ?? c.status}</Td>
                 <Td className="text-[12px] text-muted">{formatEventTime(c.updatedAt)}</Td>
               </Tr>
@@ -284,5 +292,22 @@ function EditBasicsDrawer({ client, onClose }: { client: ClientPartnerDTO; onClo
         </form>
       </FormProvider>
     </Drawer>
+  );
+}
+
+/** Pendências do escopo do escritório: solicitações em aberto + documentos pedidos (como no Front V1). */
+function PendingBadge({ counts }: { counts?: PartnerClientCounts }) {
+  const total = counts ? counts.openRequests + counts.requestedDocuments : 0;
+  if (!counts || total === 0) return <span className="text-[12px] text-subtle">—</span>;
+  const detail = [
+    counts.openRequests ? pluralize(counts.openRequests, "solicitação aberta", "solicitações abertas") : null,
+    counts.requestedDocuments ? pluralize(counts.requestedDocuments, "documento pedido", "documentos pedidos") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <Badge tone="warning" title={detail}>
+      {pluralize(total, "pendência", "pendências")}
+    </Badge>
   );
 }

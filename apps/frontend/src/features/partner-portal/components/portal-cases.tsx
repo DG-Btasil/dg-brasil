@@ -23,6 +23,7 @@ import type { RequirementDTO } from "@/server/domain/documents/requirements/dto"
 import type { PartnerRequestListItem } from "@/server/domain/partner-requests/dto";
 import type { ProcessListItem } from "@/server/domain/processes/dto";
 import { useOrganizationNames, useOrgDirectory } from "@/features/directory/directory-context";
+import { PortalCaseHistory } from "./portal-case-history";
 import { CaseListTable } from "@/features/cases/components/case-list-table";
 import { DocumentsPanel } from "@/features/documents/components/documents-panel";
 import { RequirementsPanel } from "@/features/documents/components/requirements-panel";
@@ -69,12 +70,13 @@ export function PortalCaseList({ initialQuery, initialResult }: { initialQuery: 
 
 /* ------------------------------------------------------------------ */
 
-const TAB_KEYS = ["visao-geral", "documentos", "pendencias", "processos"] as const;
+const TAB_KEYS = ["visao-geral", "documentos", "pendencias", "processos", "historico"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 /**
  * Caso no portal (CasePartnerDTO): nenhum conteúdo interno chega aqui (nota
- * interna, motivo interno de rejeição, advogado, análise, revisões).
+ * interna, motivo interno de rejeição, advogado, análise, revisões). A aba
+ * Histórico (4.3.1) lê eventos montados pelo servidor, nunca a auditoria.
  */
 export function PortalCaseDetail({
   legalCase,
@@ -98,6 +100,7 @@ export function PortalCaseDetail({
       { key: "documentos", label: "Documentos" },
       { key: "pendencias", label: "Pendências", count: open, attention: open > 0 },
       { key: "processos", label: "Processos", count: processes.ok ? processes.data.total : undefined },
+      { key: "historico", label: "Histórico" },
     ],
     [open, processes],
   );
@@ -165,6 +168,7 @@ export function PortalCaseDetail({
           <RequestsPanel scope={{ legalCaseId: legalCase.id }} initial={requests} title="Pendências deste caso" description="Solicitações da Bárbara Cardoso Advocacia. Responda enquanto estiverem abertas." showCase={false} />
         )}
         {tab === "processos" && <CaseProcesses legalCase={legalCase} processes={processes} closed={closed} />}
+        {tab === "historico" && <PortalCaseHistory legalCaseId={legalCase.id} />}
       </TabPanel>
     </PageContainer>
   );

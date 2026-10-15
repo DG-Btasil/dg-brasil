@@ -3246,6 +3246,94 @@ await deve('atomicidade: falha na 3ª de 5 obrigações → nenhuma fica gravada
   igual([r.deduplicated, await contar035(a)], [false, 5], 'nova tentativa com a mesma chave')
 })
 
+secao('Portal: histórico sanitizado do caso e contagens por cliente [036]')
+const historico036 = (uid, caso, offset = 0, limit = 100) => como(uid, (tx) =>
+  linhas(tx, `select * from public.get_partner_case_timeline($1, $2, $3)`, [caso, offset, limit]))
+const contagens036 = (uid, clientes) => como(uid, (tx) => linhas(tx, `select * from public.get_partner_client_counts($1)`, [clientes]))
+
+await deve('caso de parceiro: cadastro, processo, documento compartilhado e solicitações; nada interno', async () => {
+  const h = await historico036(ids.almeidaAdm, ids.casoA)
+  if (h.length === 0) throw new Error('histórico vazio')
+  const tipos = new Set(h.map((e) => e.kind))
+  for (const k of ['CASE', 'PROCESS', 'DOCUMENT', 'REQUEST']) if (!tipos.has(k)) throw new Error(`faltou ${k}: ${[...tipos]}`)
+  igual(h.every((e) => Number(e.total_count) === h.length), true, 'total')
+  const texto = JSON.stringify(h)
+  for (const proibido of ['Parecer interno', 'internal_notes', 'rejection_reason_internal', 'request_id', 'ip_address', 'user_agent', 'metadata'])
+    if (texto.includes(proibido)) throw new Error(`vazou: ${proibido}`)
+  igual(Object.keys(h[0]).sort(), ['actor_label', 'description', 'event_id', 'kind', 'occurred_at', 'related_id', 'related_type', 'title', 'total_count'], 'colunas fixas')
+  const docs = h.filter((e) => e.kind === 'DOCUMENT').map((e) => e.related_id)
+  igual(docs.includes(ids.docInterno), false, 'documento interno')
+})
+await deve('mais recentes primeiro; páginas sem sobreposição', async () => {
+  const todos = await historico036(ids.almeidaAdm, ids.casoA)
+  igual(todos.every((e, i) => i === 0 || todos[i - 1].occurred_at >= e.occurred_at), true, 'ordem')
+  const p1 = await historico036(ids.almeidaAdm, ids.casoA, 0, 2)
+  const p2 = await historico036(ids.almeidaAdm, ids.casoA, 2, 2)
+  igual(p1.some((a) => p2.some((b) => b.event_id === a.event_id)), false, 'sobreposição')
+  igual([p1[0]?.event_id, p2[0]?.event_id], [todos[0]?.event_id, todos[2]?.event_id], 'sequência')
+  igual(Number(p1[0].total_count), todos.length, 'total na página')
+})
+await deve('situações internas viram "Em análise" sem repetir; recusa mostra SÓ o motivo público', async () => {
+  const caso = (await como(ids.almeidaUsr, (tx) => um(tx, `insert into legal_cases (client_id, legal_area_id, title, status, partner_organization_id, origin_organization_id)
+    values ($1, $2, 'Caso 036', 'SUBMITTED', $3, $3) returning id`, [ids.joao, ids.banking, ids.almeida]))).id
+  for (const st of ['WAITING_DOCUMENTS', 'READY_FOR_ANALYSIS', 'ANALYZING', 'WAITING_REVIEW'])
+    await como(ids.lucas, (tx) => tx.query(`update legal_cases set status = $2 where id = $1`, [caso, st]))
+  await como(ids.lucas, async (tx) => {
+    await tx.query(`insert into legal_case_internal_details (legal_case_id, rejection_reason_internal, internal_notes) values ($1, 'MOTIVO-INTERNO-036', 'NOTA-INTERNA-036')
+      on conflict (legal_case_id) do update set rejection_reason_internal = excluded.rejection_reason_internal, internal_notes = excluded.internal_notes`, [caso])
+    await tx.query(`update legal_cases set status = 'REJECTED', rejected_at = now(), rejection_reason_public = 'Documentação insuficiente (público)' where id = $1`, [caso])
+  })
+  const h = await historico036(ids.almeidaUsr, caso)
+  const titulos = h.map((e) => e.title)
+  igual(titulos.filter((t) => t === 'Situação: Em análise').length, 1, 'uma vez "Em análise"')
+  igual(titulos.includes('Situação: Aguardando documentos'), true, 'aguardando documentos')
+  const recusa = h.find((e) => e.title === 'Caso não aceito')
+  igual(recusa?.description, 'Documentação insuficiente (público)', 'motivo público')
+  const texto = JSON.stringify(h)
+  if (/MOTIVO-INTERNO-036|NOTA-INTERNA-036/.test(texto)) throw new Error('motivo/nota interna vazou')
+  igual(h.find((e) => e.title === 'Caso cadastrado')?.actor_label, 'Paula', 'autor do próprio escritório pelo nome')
+  igual(recusa?.actor_label, 'Bárbara Cardoso Advocacia', 'equipe interna como escritório')
+})
+await deveFalhar('outro parceiro: "não encontrado"', () => historico036(ids.ferreiraAdm, ids.casoA), /não encontrado/)
+await deveFalhar('equipe interna não usa o histórico do portal', () => historico036(ids.barbara, ids.casoA), /só do escritório parceiro/)
+await deveFalhar('caso interno com origem do parceiro (sem operação): "não encontrado"', () => historico036(ids.almeidaAdm, ids.casoI), /não encontrado/)
+await deveFalhar('sessão aal1 não lê', () => comoAal1(ids.almeidaAdm, (tx) => tx.query(`select * from public.get_partner_case_timeline($1)`, [ids.casoA])), /Sem sessão liberada|duas etapas/)
+
+const esperado036 = (cliente, org) => um(db, `select
+    (select count(*)::int from legal_cases where client_id = $1 and partner_organization_id = $2 and deleted_at is null) case_count,
+    (select count(*)::int from legal_processes p join legal_cases c on c.id = p.legal_case_id
+      where c.client_id = $1 and c.partner_organization_id = $2 and c.deleted_at is null and p.deleted_at is null) process_count,
+    (select count(*)::int from partner_requests q join legal_cases c on c.id = q.legal_case_id
+      where c.client_id = $1 and c.partner_organization_id = $2 and c.deleted_at is null and q.partner_organization_id = $2 and q.status = 'OPEN') open_request_count,
+    (select count(*)::int from case_document_requirements r join legal_cases c on c.id = r.legal_case_id
+      where c.client_id = $1 and c.partner_organization_id = $2 and c.deleted_at is null and r.status = 'REQUESTED') requested_document_count,
+    (select count(*)::int from legal_cases where client_id = $1 and deleted_at is null) todos`, [cliente, org])
+const carteira036 = async (org) => (await linhas(db, `select r.client_id from client_organization_relationships r join clients c on c.id = r.client_id
+  where r.organization_id = $1 and r.status = 'ACTIVE' and c.deleted_at is null`, [org])).map((x) => x.client_id)
+await deve('contagens só no escopo de cada escritório: cliente fora da carteira não volta; o total do cliente nunca vaza', async () => {
+  const fora = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '77700000361', $1) returning id`, [ids.owner])).id
+  let provouVazamento = false
+  for (const [uid, org] of [[ids.almeidaAdm, ids.almeida], [ids.ferreiraAdm, ids.ferreira]]) {
+    const r = await contagens036(uid, [ids.joao, ids.carla, fora])
+    const carteira = await carteira036(org)
+    igual(r.map((x) => x.client_id).sort(), [ids.joao, ids.carla].filter((c) => carteira.includes(c)).sort(), 'só a carteira')
+    for (const linha of r) {
+      const e = await esperado036(linha.client_id, org)
+      igual([linha.case_count, linha.process_count, linha.open_request_count, linha.requested_document_count],
+        [e.case_count, e.process_count, e.open_request_count, e.requested_document_count], `contagens ${linha.client_id}`)
+      if (e.todos > e.case_count) provouVazamento = true
+    }
+  }
+  if (!provouVazamento) throw new Error('cenário fraco: nenhum cliente com casos fora do escopo do parceiro')
+})
+await deveFalhar('equipe interna não usa as contagens do portal', () => contagens036(ids.barbara, [ids.joao]), /só do escritório parceiro/)
+await deveFalhar('no máximo 100 clientes por consulta', () => contagens036(ids.almeidaAdm, Array.from({ length: 101 }, () => randomUUID())), /100 clientes/)
+await deve('anon não executa histórico nem contagens', async () => {
+  for (const q of [`select * from public.get_partner_case_timeline('${randomUUID()}')`, `select * from public.get_partner_client_counts(array['${randomUUID()}']::uuid[])`])
+    await db.transaction(async (tx) => { await tx.query('set local role anon'); await tx.query(q) })
+      .then(() => { throw new Error(`anon: ${q}`) }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

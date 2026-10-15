@@ -38,11 +38,16 @@ export async function listClients(ctx: ServiceContext, input: ListClientsInput):
     input,
     { column: input.column, ascending: input.ascending },
   );
-  return toPage(
-    rows.map((r) => listItemFromRow(r, ctx.session)),
-    total,
-    input,
-  );
+  const items = rows.map((r) => listItemFromRow(r, ctx.session));
+  if (partner && items.length > 0) {
+    // Contagens do escopo do escritório (036): uma consulta para a página inteira.
+    const counts = await repo.partnerClientCounts(
+      ctx.db,
+      items.map((i) => i.id),
+    );
+    for (const item of items) item.partnerCounts = counts.get(item.id) ?? { cases: 0, processes: 0, openRequests: 0, requestedDocuments: 0 };
+  }
+  return toPage(items, total, input);
 }
 
 /** Clientes relacionados a um escritório parceiro (equipe interna com partners.view). */
