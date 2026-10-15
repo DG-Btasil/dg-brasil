@@ -28,7 +28,7 @@ export function AppHeader() {
             </span>
           )}
           {DEMO_MODE && (
-            <span className="hidden rounded-xs border border-gold/40 px-1.5 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-gold-300 lg:inline">
+            <span className="hidden rounded-xs border border-gold/40 px-1.5 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-gold-300 lg:inline" title="Ferramentas de demonstração ligadas (NEXT_PUBLIC_DEMO_MODE=true)">
               Demonstração
             </span>
           )}

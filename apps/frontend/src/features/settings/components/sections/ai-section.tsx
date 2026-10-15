@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { AiPlatformCard } from "@/features/integrations/components/ai/ai-platform-card";
 import { DailyUsageChart, RunsByAgentChart, UsageByModelTable } from "@/features/integrations/components/ai/ai-usage-charts";
 import { useAgentNameMap, useAIUsage, useIntegrations } from "@/features/integrations/hooks";
+import { DemoAreaNotice } from "@/components/feedback/demo-area-notice";
 import { SectionHeader } from "../section-header";
 
 export function AiSection() {
@@ -21,8 +22,9 @@ export function AiSection() {
     <div className="space-y-5">
       <SectionHeader
         title="Configuração Claude"
-        description="Status da conexão, uso, execuções e limites dos agentes no mês. Dados sincronizados pelo backend."
+        description="Status da conexão, uso, execuções e limites dos agentes no mês."
       />
+      <DemoAreaNotice area="O painel de uso de IA" className="mb-0" />
       <AiPlatformCard usage={usage} integration={integration} topAgent={byAgent[0]} />
       <DailyUsageChart daily={usage.daily} />
       <div className="grid grid-cols-2 gap-5">

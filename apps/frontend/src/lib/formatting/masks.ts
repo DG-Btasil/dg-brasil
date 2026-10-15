@@ -86,6 +86,7 @@ export const INPUT_MASKS = {
   phone: (v: string) => formatPhone(v),
   cnj: (v: string) => formatCNJ(v),
   document: (v: string) => formatDocument(v),
-  oab: (v: string) => v.toUpperCase().replace(/[^0-9A-Z/ ]/g, "").slice(0, 12),
+  // "OAB/UF 000.000" cabe inteiro (com ponto e hífen); o número é limpo no servidor.
+  oab: (v: string) => v.toUpperCase().replace(/[^0-9A-Z/ .\-]/g, "").slice(0, 20),
 } as const;
 export type InputMaskName = keyof typeof INPUT_MASKS;

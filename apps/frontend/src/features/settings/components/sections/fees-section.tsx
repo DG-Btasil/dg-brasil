@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Pencil, Plus, ReceiptText } from "lucide-react";
 import { BILLING_MOMENT_LABEL } from "@/lib/constants/status";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/formatting";
+import { loadAllPages } from "@/lib/actions/all-pages";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { Can } from "@/components/layout/guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -38,7 +39,7 @@ export function FeesSection() {
 
   useEffect(() => {
     let alive = true;
-    callAction(() => listFeeModelsAction({ pageSize: 100 })).then((r) => alive && setResult(r));
+    callAction(() => loadAllPages((page, pageSize) => listFeeModelsAction({ page, pageSize }))).then((r) => alive && setResult(r));
     return () => {
       alive = false;
     };

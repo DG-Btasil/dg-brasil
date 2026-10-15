@@ -2778,6 +2778,95 @@ await deve('a função antiga continua igual (compatibilidade)', async () => {
   igual(r.length <= 5 && !('total_count' in (r[0] ?? {})), true, 'antiga')
 })
 
+secao('RLS dos caminhos quentes do portal: mesmo acesso, calculado uma vez [032]')
+// Critério ANTIGO (funções can_access_* por linha), avaliado como dono do banco
+// com o JWT do usuário: é a referência que as políticas novas precisam igualar.
+const criterio032 = {
+  clients: `t.deleted_at is null and private.is_partner_user() and private.can_access_client(t.id)`,
+  individual_client_details: `private.can_access_client(t.client_id)`,
+  company_client_details: `private.can_access_client(t.client_id)`,
+  company_representatives: `private.can_access_client(t.client_id)`,
+  company_shareholders: `private.can_access_client(t.client_id)`,
+  client_contacts: `private.can_access_client(t.client_id)`,
+  client_addresses: `private.can_access_client(t.client_id)`,
+  legal_processes: `t.deleted_at is null and private.is_partner_user() and private.can_access_case(t.legal_case_id)`,
+  process_parties: `private.can_access_process(t.legal_process_id)`,
+  process_events: `t.source in ('JUDICIAL_INTEGRATION', 'IMPORT', 'SYSTEM') and private.can_access_process(t.legal_process_id)`,
+  case_document_requirements: `private.can_access_case(t.legal_case_id)`,
+  documents: `t.visibility = 'PARTNER_VISIBLE' and private.is_partner_user() and private.can_access_document(t.id)`,
+  document_versions: `private.can_access_document(t.document_id)`,
+  case_documents: `private.can_access_case(t.legal_case_id) and private.can_access_document(t.document_id)`,
+  process_documents: `private.can_access_process(t.legal_process_id) and private.can_access_document(t.document_id)`,
+}
+const referencia032 = (uid, tabela) => db.transaction(async (tx) => {
+  await tx.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: uid, role: 'authenticated', aal: 'aal2' })])
+  return (await linhas(tx, `select t::text k from public.${tabela} t where ${criterio032[tabela]} order by 1`)).map((r) => r.k)
+})
+const visto032 = (uid, tabela) => como(uid, async (tx) =>
+  (await linhas(tx, `select t::text k from public.${tabela} t order by 1`)).map((r) => r.k))
+for (const [nome, uid] of [['PARTNER_ADMIN Almeida', ids.almeidaAdm], ['PARTNER_USER Almeida', ids.almeidaUsr], ['PARTNER_ADMIN Ferreira', ids.ferreiraAdm]]) {
+  await deve(`${nome}: cada tabela devolve exatamente as linhas do critério antigo`, async () => {
+    let algum = 0
+    for (const tabela of Object.keys(criterio032)) {
+      const [ref, real] = await Promise.all([referencia032(uid, tabela), visto032(uid, tabela)])
+      igual(real.length, ref.length, `${tabela} (quantidade)`)
+      igual(real, ref, tabela)
+      algum += real.length
+    }
+    if (algum === 0) throw new Error('cenário sem nenhuma linha visível ao parceiro: o teste não provaria nada')
+  })
+}
+await deve('internos (ADMIN e ASSISTANT) continuam lendo todas as linhas', async () => {
+  for (const uid of [ids.barbara, ids.ana])
+    for (const tabela of Object.keys(criterio032)) {
+      const total = (await um(db, `select count(*)::int n from public.${tabela}`)).n
+      igual((await como(uid, (tx) => um(tx, `select count(*)::int n from public.${tabela}`))).n, total, tabela)
+    }
+})
+await deve('sessão aal1 e usuário sem vínculo não leem nada', async () => {
+  const semVinculo = (await um(db, `insert into auth.users (email) values ('sem-vinculo-032@exemplo.com') returning id`)).id
+  for (const tabela of ['clients', 'documents', 'legal_processes']) {
+    igual((await como(semVinculo, (tx) => um(tx, `select count(*)::int n from public.${tabela}`))).n, 0, `${tabela} sem vínculo`)
+    igual((await comoAal1(ids.almeidaAdm, (tx) => um(tx, `select count(*)::int n from public.${tabela}`))).n, 0, `${tabela} aal1`)
+  }
+})
+await deve('funções do conjunto: sem parâmetro (escopo só da sessão) e fora do alcance de anon', async () => {
+  for (const f of ['partner_client_ids', 'partner_case_ids', 'partner_process_ids', 'partner_document_ids']) {
+    const p = await um(db, `select pronargs, prosecdef from pg_proc where proname = $1 and pronamespace = 'private'::regnamespace`, [f])
+    igual([p.pronargs, p.prosecdef], [0, true], f)
+    await db.transaction(async (tx) => {
+      await tx.query('set local role anon')
+      await tx.query(`select private.${f}()`)
+    }).then(() => { throw new Error(`anon executou ${f}`) }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  }
+})
+await deve('volume: 3.000 clientes de outro escritório não pesam na carteira do parceiro', async () => {
+  await db.query(`
+    with novos as (
+      insert into clients (kind, cpf, origin_organization_id)
+      select 'INDIVIDUAL', lpad((88000000000 + g)::text, 11, '0'), $1 from generate_series(1, 3000) g
+      returning id
+    )
+    insert into individual_client_details (client_id, full_name) select id, 'Volume 032' from novos`, [ids.owner])
+  const antes = performance.now()
+  const novo = await como(ids.almeidaAdm, (tx) => um(tx, `select count(*)::int n from public.client_directory where deleted_at is null`))
+  const tNovo = performance.now() - antes
+  const antes2 = performance.now()
+  const antigo = await db.transaction(async (tx) => {
+    await tx.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: ids.almeidaAdm, role: 'authenticated', aal: 'aal2' })])
+    return um(tx, `select count(*)::int n from public.clients c
+      left join public.individual_client_details i on i.client_id = c.id and private.can_access_client(i.client_id)
+      left join public.company_client_details co on co.client_id = c.id and private.can_access_client(co.client_id)
+      where c.deleted_at is null and private.is_partner_user() and private.can_access_client(c.id)`)
+  })
+  const tAntigo = performance.now() - antes2
+  igual(novo.n, antigo.n, 'mesma carteira')
+  console.log(`    carteira ${novo.n} · política nova ${tNovo.toFixed(0)} ms × critério por linha ${tAntigo.toFixed(0)} ms`)
+  if (tNovo >= tAntigo) throw new Error('a política nova não ficou mais rápida que o critério por linha')
+  await db.query(`delete from individual_client_details where full_name = 'Volume 032'`)
+  await db.query(`delete from clients where cpf like '880%'`)
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

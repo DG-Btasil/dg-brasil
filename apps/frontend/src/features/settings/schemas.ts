@@ -3,12 +3,17 @@ import { BRAZILIAN_STATES } from "@/lib/constants/legal";
 import { ROLES } from "@/lib/permissions";
 import { zCepOptional, zCnpjOptional, zEmail, zEmailOptional, zPhoneOptional, zRequired } from "@/lib/validation";
 import type { Office } from "@/types";
+import { parseOab } from "./office-input";
 
 export const officeSchema = z.object({
   name: zRequired(),
   legalName: z.string().trim().optional(),
   cnpj: zCnpjOptional(),
-  oab: z.string().trim().optional(),
+  oab: z
+    .string()
+    .trim()
+    .optional()
+    .refine((v) => !v || parseOab(v) !== null, "Use o formato OAB/UF 000.000 (ex.: OAB/SP 123.456)."),
   principalLawyer: zRequired(),
   email: zEmailOptional(),
   phone: zPhoneOptional(),

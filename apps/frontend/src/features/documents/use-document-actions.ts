@@ -63,6 +63,8 @@ export function useDocumentActions() {
       const link = document.createElement("a");
       link.href = result.data.url;
       link.rel = "noopener noreferrer";
+      // Nova aba: se o navegador exibir em vez de baixar (PDF), o app não some (QA 4.3, OBS-05).
+      link.target = "_blank";
       link.click();
       return true;
     },

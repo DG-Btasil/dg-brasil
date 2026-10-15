@@ -10,7 +10,7 @@ import { formatPhone, maskCNPJ, maskCPF } from "@/lib/formatting";
 import { callAction, mapFieldErrors, referenceCode } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
-import { isCnpjFormat, isCpfFormat, isPhoneFormat, msg } from "@/lib/validation";
+import { isPhoneFormat, msg, taxIdProblem } from "@/lib/validation";
 import { Callout } from "@/components/feedback/states";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { PageHeader, Steps, type StepState } from "@/components/ui/display";
@@ -335,7 +335,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
                     autoComplete="off"
                     {...p}
                     {...register("document", {
-                      validate: (value) => (kind === "INDIVIDUAL" ? isCpfFormat(value) || msg.cpf : isCnpjFormat(value) || msg.cnpj),
+                      validate: (value) => taxIdProblem(value, kind === "INDIVIDUAL" ? "cpf" : "cnpj") ?? true,
                       onChange: () => {
                         setLookup(null);
                         setTarget(null);

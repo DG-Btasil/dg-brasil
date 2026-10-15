@@ -15,8 +15,12 @@ import { Avatar } from "@/components/ui/display";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 
-/** Ferramentas da demonstração (dados mock) — só ADMIN; desligáveis por env. */
-export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
+/**
+ * Ferramentas da demonstração — só ADMIN e só com NEXT_PUBLIC_DEMO_MODE=true.
+ * Desligado por padrão desde que as telas jurídicas leem o banco real (QA 4.3,
+ * OBS-03); as áreas ainda de demonstração mostram o próprio aviso.
+ */
+export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export function UserMenu() {
   const session = useClientSession();
@@ -112,7 +116,7 @@ export function UserMenu() {
                   setConfirmReset(true);
                 }}
               >
-                <RotateCcw className="size-4 text-subtle" aria-hidden /> Restaurar dados de demonstração
+                <RotateCcw className="size-4 text-subtle" aria-hidden /> Restaurar áreas de demonstração
               </button>
             </div>
           )}
@@ -137,8 +141,8 @@ export function UserMenu() {
         open={confirmReset}
         onOpenChange={setConfirmReset}
         size="sm"
-        title="Restaurar dados de demonstração?"
-        description="Todos os clientes, processos, revisões e configurações criados nesta demonstração serão substituídos pelos dados originais."
+        title="Restaurar áreas de demonstração?"
+        description="Restaura só o que ainda é demonstração e fica neste navegador (configuração da área DG Brasil, integrações, importação e uso de IA). Clientes, casos, processos e os demais dados reais estão no servidor e não são afetados."
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmReset(false)}>

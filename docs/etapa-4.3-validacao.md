@@ -124,18 +124,22 @@ Editor do DEV **antes** do QA. "Success. No rows returned" é o normal.
 
 ```sql
 -- ANTES do QA. Agente FICTÍCIO (não executa nada enquanto o worker estiver parado).
-with a as (
-  insert into public.agents (slug, name, description, status)
-  values ('qa-analise-43', 'Agente QA 4.3', 'Fictício — não executar', 'DRAFT')
-  on conflict (slug) do nothing
-  returning id
-), v as (
-  insert into public.agent_versions (agent_id, instructions)
-  select id, 'Agente fictício de QA. Não executar.' from a
-  returning id, agent_id
-)
-update public.agents set current_version_id = v.id, status = 'ACTIVE'
-from v where public.agents.id = v.agent_id;
+-- Três comandos separados: numa CTE única o UPDATE não enxerga a versão
+-- inserida no mesmo comando (QA 4.3, BUG-03).
+insert into public.agents (slug, name, description, status)
+values ('qa-analise-43', 'Agente QA 4.3', 'Fictício — não executar', 'DRAFT')
+on conflict (slug) do nothing;
+
+insert into public.agent_versions (agent_id, instructions)
+select a.id, 'Agente fictício de QA. Não executar.'
+from public.agents a
+where a.slug = 'qa-analise-43'
+  and not exists (select 1 from public.agent_versions v where v.agent_id = a.id);
+
+update public.agents a
+set current_version_id = (select v.id from public.agent_versions v where v.agent_id = a.id order by v.created_at desc limit 1),
+    status = 'ACTIVE'
+where a.slug = 'qa-analise-43';
 
 insert into public.analysis_templates (legal_area_id, name, description, primary_agent_id)
 select la.id, 'QA 4.3 — com agente', 'Modelo fictício de QA', ag.id
@@ -144,11 +148,10 @@ where la.code = 'BANKING' and ag.slug = 'qa-analise-43'
   and not exists (select 1 from public.analysis_templates t where t.name = 'QA 4.3 — com agente');
 
 -- (Re)ativa, caso a limpeza já tenha sido rodada antes.
-update public.agents set status = 'ACTIVE' where slug = 'qa-analise-43';
 update public.analysis_templates set active = true where name = 'QA 4.3 — com agente';
 
--- Conferência: deve mostrar 1 linha, com agente ACTIVE e modelo ativo.
-select ag.status as agente, t.active as modelo_ativo
+-- Conferência: 1 linha, agente ACTIVE, COM versão atual, modelo ativo.
+select ag.status as agente, ag.current_version_id is not null as tem_versao, t.active as modelo_ativo
 from public.analysis_templates t join public.agents ag on ag.id = t.primary_agent_id
 where t.name = 'QA 4.3 — com agente';
 ```

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { processSubtitle } from "./subtitle";
 import { stableStringify } from "@/lib/hooks/use-idempotency-key";
 import { listCasesSchema, updateCaseSchema } from "@/server/domain/cases/schemas";
 import { orQuoted, likePattern } from "@/server/domain/cases/repository";
@@ -163,5 +164,14 @@ describe("servidor — partes puras da Fase B", () => {
   });
   it("edição de caso: tipo pode ser removido (null); área por código", () => {
     expect(updateCaseSchema.parse({ id: UUID_A, patch: { caseTypeId: null, area: "consumer" } }).patch).toEqual({ caseTypeId: null, area: "CONSUMER" });
+  });
+});
+
+describe("lista de processos — coluna Tipo / ação (QA 4.3, BUG-02)", () => {
+  it("o caso aparece sempre; com tipo de ação, depois do título do processo", () => {
+    expect(processSubtitle({ actionType: "Ação revisional", title: "Proc 1", caseTitle: "Caso X" })).toBe("Proc 1 · Caso X");
+    expect(processSubtitle({ actionType: undefined, title: "Proc 1", caseTitle: "Caso X" })).toBe("Caso X");
+    expect(processSubtitle({ actionType: "Ação", title: "Caso X", caseTitle: "Caso X" })).toBe("Caso X");
+    expect(processSubtitle({ actionType: "Ação", title: "Proc 1", caseTitle: "" })).toBe("Proc 1");
   });
 });

@@ -136,7 +136,8 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments }: { analysis: A
       <PanelHeader
         title={analysis.templateName || "Análise jurídica"}
         description={`Criada em ${formatDateTime(analysis.createdAt)}${analysis.startedAt ? ` · enviada em ${formatDateTime(analysis.startedAt)}` : ""}`}
-        actions={<StatusBadge status={analysis.status} labels={ANALYSIS_STATUS_LABEL} tones={ANALYSIS_STATUS_TONE} />}
+        // Mesmo rótulo da tabela "Análises do caso" (QA 4.3, OBS-06); a cor segue o grupo.
+        actions={<StatusBadge status={analysis.status} labels={{ ...ANALYSIS_STATUS_LABEL, [analysis.status]: DB_ANALYSIS_STATUS_LABEL[analysis.dbStatus] }} tones={ANALYSIS_STATUS_TONE} />}
       />
       <PanelBody className="space-y-4">
         {analysis.interruptionReason && (
@@ -172,7 +173,7 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments }: { analysis: A
           </Can>
         )}
         {(analysis.dbStatus === "QUEUED" || analysis.dbStatus === "RUNNING") && (
-          <Callout tone="info" title="Com o agente.">
+          <Callout tone="info" title={analysis.dbStatus === "QUEUED" ? "Na fila do agente." : "Com o agente."}>
             O resultado será enviado para Revisões e só segue depois da decisão humana.
           </Callout>
         )}

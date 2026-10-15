@@ -38,7 +38,7 @@ export function PortalHome({ data }: { data: PartnerHomeData }) {
       />
 
       <div className="grid grid-cols-3 gap-4">
-        <Stat label="Casos em análise" value={data.inAnalysis ?? "—"} icon={Hourglass} href="/casos?situacao=Em%20an%C3%A1lise" />
+        <Stat label="Aguardando decisão" hint="Enviados, aguardando documentos ou em análise" value={data.inAnalysis ?? "—"} icon={Hourglass} href="/casos" />
         <Stat label="Casos aceitos e em andamento" value={data.activeCases ?? "—"} icon={CheckCircle2} href="/casos" />
         <Stat label="Solicitações abertas" value={open ?? "—"} icon={Inbox} tone={open ? "warning" : "neutral"} href="/pendencias" />
       </div>

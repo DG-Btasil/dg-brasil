@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { callAction, mapFieldErrors, NETWORK_ERROR_MESSAGE, referenceCode } from "@/lib/actions/result";
 import { companyPeoplePayload, updatePayload } from "@/server/domain/clients/mappers";
@@ -179,6 +181,18 @@ describe("PF — três estados no PATCH: ausente / valor / null", () => {
     expect(ok({ idNumber: "1" })).toBe(false);
     expect(ok({ idIssuer: "SSP" })).toBe(false);
   });
+
+  it("todo erro do bloco cai num campo que a tela mostra (QA 4.3, BUG-01)", () => {
+    const fields = readFileSync(join(__dirname, "components", "form", "individual-fields.tsx"), "utf-8");
+    for (const partial of [{ idType: "RG" }, { idNumber: "1" }, { idIssuer: "SSP" }, { idState: "SP" }]) {
+      const r = individualFormSchema.safeParse(pf(partial));
+      expect(r.success).toBe(false);
+      for (const issue of r.success ? [] : r.error.issues) {
+        const path = issue.path.join(".");
+        expect(fields, `erro em "${path}" sem error= no campo`).toContain(`error={errors.${path}?.message}`);
+      }
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -249,5 +263,20 @@ describe("erros das actions na UI", () => {
   it("código de referência curto a partir do requestId", () => {
     expect(referenceCode("3f2a9c1d-0000-4000-8000-000000000000")).toBe("3F2A9C1D");
     expect(referenceCode("")).toBeUndefined();
+  });
+});
+
+describe("CPF/CNPJ recusado: o motivo certo (QA 4.3, OBS-02)", () => {
+  it("dígitos repetidos = inválido; tamanho errado = quantos dígitos faltam; servidor igual", async () => {
+    const { taxIdProblem } = await import("@/lib/validation");
+    const { zCpf, zCnpj } = await import("@/server/core/validation");
+    expect(taxIdProblem("111.111.111-11", "cpf")).toBe("CPF inválido.");
+    expect(taxIdProblem("123", "cpf")).toBe("CPF deve ter 11 dígitos.");
+    expect(taxIdProblem("999.000.001-91", "cpf")).toBeNull();
+    expect(taxIdProblem("11.111.111/1111-11", "cnpj")).toBe("CNPJ inválido.");
+    const first = (r: { success: boolean; error?: { issues: { message: string }[] } }) => r.error?.issues[0]?.message;
+    expect(first(zCpf().safeParse("111.111.111-11"))).toBe("CPF inválido.");
+    expect(first(zCpf().safeParse("123"))).toBe("CPF deve ter 11 dígitos.");
+    expect(first(zCnpj().safeParse("11111111111111"))).toBe("CNPJ inválido.");
   });
 });

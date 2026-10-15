@@ -10,6 +10,12 @@ import { z } from "zod";
 const digits = (v: string) => v.replace(/\D/g, "");
 const allSame = (d: string) => /^(\d)\1+$/.test(d);
 
+/** Tamanho errado e dígitos todos iguais têm mensagens distintas (QA 4.3, OBS-02). */
+const sizeAndRepeat = (size: number, label: string) => (d: string, ctx: z.RefinementCtx) => {
+  if (d.length !== size) ctx.addIssue({ code: "custom", message: `${label} deve ter ${size} dígitos.` });
+  else if (allSame(d)) ctx.addIssue({ code: "custom", message: `${label} inválido.` });
+};
+
 export const zUuid = () => z.string().uuid("Identificador inválido.");
 
 /** CPF → 11 dígitos (aceita máscara). */
@@ -18,7 +24,7 @@ export const zCpf = () =>
     .string()
     .trim()
     .transform(digits)
-    .refine((d) => d.length === 11 && !allSame(d), "CPF deve ter 11 dígitos.");
+    .superRefine(sizeAndRepeat(11, "CPF"));
 
 /** CNPJ → 14 dígitos (aceita máscara). */
 export const zCnpj = () =>
@@ -26,7 +32,7 @@ export const zCnpj = () =>
     .string()
     .trim()
     .transform(digits)
-    .refine((d) => d.length === 14 && !allSame(d), "CNPJ deve ter 14 dígitos.");
+    .superRefine(sizeAndRepeat(14, "CNPJ"));
 
 /** CPF ou CNPJ (consulta de cliente). */
 export const zTaxId = () =>

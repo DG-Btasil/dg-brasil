@@ -54,7 +54,7 @@ export function OfficeForm({ office, onSaved }: { office: Office; onSaved: () =>
         <Field label="CNPJ" requirement="recommended" error={errors.cnpj?.message}>
           {(p) => <MaskedInput {...p} mask="cnpj" placeholder="00.000.000/0000-00" {...register("cnpj")} />}
         </Field>
-        <Field label="OAB da sociedade ou do titular" requirement="optional">
+        <Field label="OAB da sociedade ou do titular" requirement="optional" error={errors.oab?.message}>
           {(p) => <MaskedInput {...p} mask="oab" placeholder="OAB/UF 000.000" {...register("oab")} />}
         </Field>
         <Field label="Advogado(a) responsável" requirement="required" error={errors.principalLawyer?.message}>

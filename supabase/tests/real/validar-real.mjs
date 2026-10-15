@@ -801,6 +801,31 @@ for (const [nome, q] of [
   })
 }
 
+secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')
+await deve('carteira do parceiro A (página + total) em menos de 2 s, mesmo com o DEV cheio de rodadas', async () => {
+  const inicio = performance.now()
+  const { error, count } = await C.PARTNER_ADMIN_A.from('client_directory').select('id', { count: 'exact' }).is('deleted_at', null).order('updated_at', { ascending: false }).range(0, 24)
+  const ms = performance.now() - inicio
+  if (error) throw new Error(error.message)
+  console.log(`    ${count} clientes na carteira · ${ms.toFixed(0)} ms (total de clientes no banco: ${(await um(`select count(*)::int n from clients`)).n})`)
+  if (ms > 2000) throw new Error(`lento: ${ms.toFixed(0)} ms`)
+})
+
+// ═════════════════════════════ limpeza da rodada ═════════════════════════
+
+secao('43. Limpeza: nenhuma execução de agente de teste fica na fila')
+// Agentes "teste-r…" são desta e de rodadas anteriores (QA 4.3, OBS-01): com o
+// worker ligado no DEV, execuções QUEUED deles chamariam a IA de verdade.
+await deve('execuções QUEUED dos agentes de teste canceladas; agentes de teste inativos', async () => {
+  const canceladas = await sql(`update agent_runs set status = 'CANCELLED'
+    where status = 'QUEUED' and agent_id in (select id from agents where slug like 'teste-r%') returning id`)
+  await sql(`update agents set status = 'INACTIVE' where slug like 'teste-r%' and status <> 'INACTIVE'`)
+  const restantes = await um(`select count(*)::int n from agent_runs r join agents a on a.id = r.agent_id
+    where a.slug like 'teste-r%' and r.status = 'QUEUED'`)
+  igual(restantes.n, 0, 'fila de teste')
+  console.log(`    ${canceladas.length} execuções de teste canceladas`)
+})
+
 await adminDb.end()
 console.log(falhas === 0
   ? `\n\x1b[32m${total} verificações reais, todas passaram.\x1b[0m (rodada ${RODADA})\n`

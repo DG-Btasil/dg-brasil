@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { formatCurrency, formatDate, formatDateTime, formatPercent } from "@/lib/formatting";
+import { loadAllPages } from "@/lib/actions/all-pages";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { usePermission } from "@/features/auth/hooks";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -51,7 +52,7 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
 
   useEffect(() => {
     let alive = true;
-    callAction(() => listPaymentsAction({ agreementId: agreement.id, pageSize: 100, sortBy: "dueDate", sortDirection: "asc" })).then((r) => alive && setPayments(r));
+    callAction(() => loadAllPages((page, pageSize) => listPaymentsAction({ agreementId: agreement.id, page, pageSize, sortBy: "dueDate", sortDirection: "asc" }))).then((r) => alive && setPayments(r));
     return () => {
       alive = false;
     };
@@ -60,7 +61,7 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
   useEffect(() => {
     if (!expanded) return;
     let alive = true;
-    callAction(() => listReceiptsAction({ paymentId: expanded, pageSize: 100 })).then((r) => alive && setLedger((l) => ({ ...l, [expanded]: r })));
+    callAction(() => loadAllPages((page, pageSize) => listReceiptsAction({ paymentId: expanded, page, pageSize }))).then((r) => alive && setLedger((l) => ({ ...l, [expanded]: r })));
     return () => {
       alive = false;
     };

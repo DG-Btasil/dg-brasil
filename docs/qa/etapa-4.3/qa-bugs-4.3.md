@@ -2,10 +2,29 @@
 
 Formato por defeito: funcionalidade · esperado × observado · passos · evidência
 (sem segredos) · causa provável · severidade/impacto · correção sugerida.
-Nenhum código de produção é alterado nesta rodada.
+Nenhum código de produção foi alterado na rodada de QA; as correções vieram depois (seção abaixo).
 
 Problemas de ambiente, fixture ausente ou sessão expirada **não** entram aqui
 (vão para [qa-pendencias-4.3.md](qa-pendencias-4.3.md)).
+
+## Correções (2026-10-15, antes da 4.3.1)
+
+| Item | Correção | Teste |
+|---|---|---|
+| BUG-04 | Telas que precisam de "todos" (obrigações e lançamentos do contrato, modelos de honorários, novo contrato) usam `loadAllPages` (páginas de 50; a 1ª traz o total, as demais em paralelo). Varredura impede `pageSize` literal acima do máximo do servidor. | `server/core/page-size-literals.test.ts` |
+| BUG-06 | Migration **032**: políticas de leitura dos caminhos quentes calculam o conjunto acessível ao parceiro uma vez por consulta (antes: função por linha, custo proporcional ao banco inteiro). Mesmo acesso, tabela a tabela. 3.000 clientes de outro escritório: 6 ms × 3.980 ms. `validar:real` mede a carteira do parceiro no DEV (< 2 s). | `verificar [032]`, `validar:real §42` |
+| BUG-01 | Campos do documento de identidade (e data de nascimento) mostram o erro do schema. | `clients-ui.test.ts` (todo erro do bloco cai num campo com `error=`) |
+| BUG-05 | Máscara aceita "OAB/UF 000.000" inteiro; OAB inválida é recusada com mensagem (antes virava "limpa" sem aviso). | `phase-h-ui.test.ts` |
+| BUG-02 | 2ª linha da coluna "Tipo / ação": título do processo (se houver tipo) · caso — o caso aparece sempre. | `phase-b-ui.test.ts` |
+| BUG-03 | SQL do §6.2 em três comandos; conferência inclui `tem_versao`. | — (guia) |
+| OBS-01 | `validar:real` termina cancelando as execuções QUEUED dos agentes `teste-r…` (desta e de rodadas anteriores) e inativando-os. | `validar:real §43` |
+| OBS-02 | "CPF inválido." / "CNPJ inválido." para dígitos repetidos; tamanho errado mantém "deve ter N dígitos" (tela e servidor). | `clients-ui.test.ts` |
+| OBS-03 | Selo global "Demonstração" desligado por padrão (`NEXT_PUBLIC_DEMO_MODE=true` liga); cada área ainda de demonstração mostra o próprio aviso; "Restaurar áreas de demonstração" com texto exato (não toca no banco). | — |
+| OBS-05 | "Baixar" abre em nova aba. | — |
+| OBS-06 | Cartão da análise usa o mesmo rótulo da tabela ("Na fila do agente"). | — |
+| OBS-07 | Card do portal: "Aguardando decisão" (enviados, aguardando documentos ou em análise), levando à lista sem filtro. | — |
+| OBS-04 | Seletores poluídos pelas rodadas automáticas: limpeza do DEV fica para depois da validação (decisão da usuária). | — |
+
 
 ## BUG-01 — Documento de identidade incompleto não mostra erro no campo (PF)
 

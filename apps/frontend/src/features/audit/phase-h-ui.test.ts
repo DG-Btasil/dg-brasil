@@ -5,6 +5,8 @@ import { updateOwnerOfficeSchema } from "@/server/domain/organizations/schemas";
 import { deadlineCutoff } from "@/server/domain/processes/service";
 import { notificationTarget, notificationTypeLabel } from "@/features/notifications/presentation";
 import { officePatchToServer, parseOab } from "@/features/settings/office-input";
+import { officeSchema } from "@/features/settings/schemas";
+import { INPUT_MASKS } from "@/lib/formatting/masks";
 import { processQueryFromSearchParams, processQueryToInput, DEFAULT_PROCESS_QUERY } from "@/features/processes/list-query";
 import { actionLabel, eventDetail } from "./humanize";
 import { auditTimelineInput } from "./query";
@@ -58,6 +60,18 @@ describe("Configurações → Geral (escritório real)", () => {
     expect(parseOab("OAB/SP 123.456")).toEqual({ state: "SP", number: "123456" });
     expect(parseOab("oab rj 9")).toEqual({ state: "RJ", number: "9" });
     expect(parseOab("")).toBeNull();
+  });
+  it("OAB do placeholder cabe inteira na máscara e nada é cortado sem aviso (QA 4.3, BUG-05)", () => {
+    const typed = [..."OAB/SP 123.456"].reduce((acc, ch) => INPUT_MASKS.oab(acc + ch), "");
+    expect(typed).toBe("OAB/SP 123.456");
+    expect(parseOab(typed)).toEqual({ state: "SP", number: "123456" });
+    expect(parseOab("SP 123456")).toEqual({ state: "SP", number: "123456" });
+    // Inválido não vira "limpo" em silêncio: o formulário recusa com mensagem.
+    for (const bad of ["123456", "OAB/XX 123", "OAB/SP 12345678901"]) {
+      expect(parseOab(bad)).toBeNull();
+      expect(officeSchema.shape.oab.safeParse(bad).success).toBe(false);
+    }
+    expect(officeSchema.shape.oab.safeParse("").success).toBe(true);
   });
   it("vazio limpa (null); endereço vazio = null; passa no schema real", () => {
     const patch = officePatchToServer({

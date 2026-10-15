@@ -37,20 +37,20 @@ export function IndividualIdentificationFields() {
       <Field label="CPF" requirement="required" error={errors.cpf?.message}>
         {(p) => <MaskedInput mask="cpf" placeholder="000.000.000-00" {...p} {...register("cpf")} />}
       </Field>
-      <Field label="Data de nascimento" requirement="recommended">
+      <Field label="Data de nascimento" requirement="recommended" error={errors.birthDate?.message}>
         {(p) => <Input type="date" {...p} {...register("birthDate")} />}
       </Field>
       <div className="col-span-2 grid grid-cols-[1fr_1.3fr_1fr_0.7fr] gap-x-5">
-        <Field label="Documento de identidade" requirement="recommended">
+        <Field label="Documento de identidade" requirement="recommended" error={errors.idType?.message}>
           {(p) => <Select placeholder="Tipo" options={ID_OPTIONS} {...p} {...register("idType")} />}
         </Field>
-        <Field label="Número do documento" requirement="recommended">
+        <Field label="Número do documento" requirement="recommended" error={errors.idNumber?.message}>
           {(p) => <Input placeholder="00.000.000-0" {...p} {...register("idNumber")} />}
         </Field>
-        <Field label="Órgão emissor" requirement="recommended">
+        <Field label="Órgão emissor" requirement="recommended" error={errors.idIssuer?.message}>
           {(p) => <Input placeholder="SSP" {...p} {...register("idIssuer")} />}
         </Field>
-        <Field label="UF" requirement="recommended">
+        <Field label="UF" requirement="recommended" error={errors.idState?.message}>
           {(p) => <Select placeholder="—" options={UF_OPTIONS} {...p} {...register("idState")} />}
         </Field>
       </div>

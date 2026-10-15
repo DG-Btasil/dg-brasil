@@ -17,6 +17,21 @@ export const isCnpjFormat = (v: string) => {
   const d = onlyDigits(v);
   return d.length === 14 && !allSameDigit(d);
 };
+
+/**
+ * Motivo de um CPF/CNPJ ser recusado: tamanho errado ou todos os dígitos
+ * iguais ("111.111.111-11" tem 11 dígitos — dizer "deve ter 11 dígitos"
+ * confundia; QA 4.3, OBS-02). null = formato aceito.
+ */
+export function taxIdProblem(v: string, kind: "cpf" | "cnpj"): string | null {
+  const d = onlyDigits(v);
+  if (d.length !== (kind === "cpf" ? 11 : 14)) return msg[kind];
+  return allSameDigit(d) ? msg.taxIdInvalid[kind] : null;
+}
+const taxIdRefine = (kind: "cpf" | "cnpj") => (v: string | undefined, ctx: z.RefinementCtx) => {
+  const problem = v ? taxIdProblem(v, kind) : null;
+  if (problem) ctx.addIssue({ code: "custom", message: problem });
+};
 export const isCepFormat = (v: string) => onlyDigits(v).length === 8;
 export const isPhoneFormat = (v: string) => {
   const n = onlyDigits(v).length;
@@ -29,6 +44,7 @@ export const msg = {
   email: "Informe um e-mail válido.",
   cpf: "CPF deve ter 11 dígitos.",
   cnpj: "CNPJ deve ter 14 dígitos.",
+  taxIdInvalid: { cpf: "CPF inválido.", cnpj: "CNPJ inválido." },
   cep: "CEP deve ter 8 dígitos.",
   phone: "Telefone deve ter DDD e 8 ou 9 dígitos.",
   cnj: "Número CNJ deve ter 20 dígitos (0000000-00.0000.0.00.0000).",
@@ -57,20 +73,10 @@ export const zEmailOptional = () =>
     .refine((v) => !v || z.string().email().safeParse(v).success, msg.email)
     .transform((v) => (v ? v : undefined));
 
-export const zCpf = () => z.string().trim().min(1, msg.required).refine(isCpfFormat, msg.cpf);
-export const zCnpj = () => z.string().trim().min(1, msg.required).refine(isCnpjFormat, msg.cnpj);
-export const zCpfOptional = () =>
-  z
-    .string()
-    .trim()
-    .optional()
-    .refine((v) => !v || isCpfFormat(v), msg.cpf);
-export const zCnpjOptional = () =>
-  z
-    .string()
-    .trim()
-    .optional()
-    .refine((v) => !v || isCnpjFormat(v), msg.cnpj);
+export const zCpf = () => z.string().trim().min(1, msg.required).superRefine(taxIdRefine("cpf"));
+export const zCnpj = () => z.string().trim().min(1, msg.required).superRefine(taxIdRefine("cnpj"));
+export const zCpfOptional = () => z.string().trim().optional().superRefine(taxIdRefine("cpf"));
+export const zCnpjOptional = () => z.string().trim().optional().superRefine(taxIdRefine("cnpj"));
 export const zCepOptional = () =>
   z
     .string()

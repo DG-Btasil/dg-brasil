@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
+import { loadAllPages } from "@/lib/actions/all-pages";
 import type { ActionResult } from "@/lib/actions/result";
 import type { Page } from "@/server/core/pagination";
 import type { OrgDirectory } from "@/lib/directory/types";
@@ -17,23 +18,15 @@ import { getOwnerOfficeAction, listOrganizationUsersAction, listPartnersAction }
  * (`complete: false`) e as telas mostram "—" no lugar do nome.
  */
 
-/** Teto de páginas por leitura (50 × 20 = 1.000 registros); acima disso, parcial. */
-const MAX_DIRECTORY_PAGES = 20;
-
 /**
- * Lê todas as páginas de uma listagem: o diretório não pode cortar em 50
- * (quem ficasse fora sumiria do "responsável" e viraria "—" nas telas).
+ * Lê todas as páginas: o diretório não pode cortar em 50 (quem ficasse fora
+ * sumiria do "responsável" e viraria "—" nas telas). Acima do teto, parcial.
  */
-async function allPages<T>(load: (page: number) => Promise<ActionResult<Page<T>>>): Promise<{ ok: boolean; items: T[] }> {
-  const items: T[] = [];
-  for (let page = 1; page <= MAX_DIRECTORY_PAGES; page++) {
-    const r = await load(page);
-    if (!r.ok) return { ok: false, items };
-    items.push(...r.data.items);
-    if (!r.data.hasMore) return { ok: true, items };
-  }
-  return { ok: false, items };
+async function allPages<T>(load: (page: number, pageSize: number) => Promise<ActionResult<Page<T>>>): Promise<{ ok: boolean; items: T[] }> {
+  const r = await loadAllPages(load);
+  return r.ok ? { ok: !r.data.hasMore, items: r.data.items } : { ok: false, items: [] };
 }
+
 export const loadOrgDirectory = cache(async (): Promise<OrgDirectory> => {
   const session = await requireAppSession();
   const partnerSurface = session.surface === "PARTNER";
@@ -42,11 +35,11 @@ export const loadOrgDirectory = cache(async (): Promise<OrgDirectory> => {
     partnerSurface
       ? getOwnerOfficeAction().then((r) => (r.ok ? { id: r.data.office.id, name: r.data.office.name } : null))
       : Promise.resolve({ id: session.organizationId, name: session.organizationName }),
-    allPages((page) => listOrganizationUsersAction({ page, pageSize: 50, sortBy: "createdAt", sortDirection: "asc" })),
+    allPages((page, pageSize) => listOrganizationUsersAction({ page, pageSize, sortBy: "createdAt", sortDirection: "asc" })),
     partnerSurface
       ? Promise.resolve({ ok: true, items: [{ id: session.organizationId, name: session.organizationName, status: "ACTIVE" as const }] })
       : can(session.role, "partners.view")
-        ? allPages((page) => listPartnersAction({ page, pageSize: 50 }))
+        ? allPages((page, pageSize) => listPartnersAction({ page, pageSize }))
         : Promise.resolve({ ok: true, items: [] }),
   ]);
 

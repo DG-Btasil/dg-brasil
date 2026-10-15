@@ -4,6 +4,7 @@ import { DataImportSection } from "@/features/data-import/components/data-import
 import { usePermission } from "@/features/auth/hooks";
 import { IntegrationsList } from "@/features/integrations/components/integrations-list";
 import { JudicialIntegrationSection } from "@/features/integrations/components/judicial-integration-section";
+import { DemoAreaNotice } from "@/components/feedback/demo-area-notice";
 import { SectionHeader } from "../section-header";
 
 export function IntegrationsSection() {
@@ -14,6 +15,7 @@ export function IntegrationsSection() {
         title="Integrações"
         description="Serviços conectados ao escritório. Status, última sincronização e ações disponíveis para o seu perfil."
       />
+      <DemoAreaNotice area="Integrações e importação de dados" />
       <div className="space-y-8">
         <JudicialIntegrationSection canManage={canManage} />
         <DataImportSection canManage={canManage} />

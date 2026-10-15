@@ -1,3 +1,4 @@
+import { BRAZILIAN_STATES } from "@/lib/constants/legal";
 import type { OwnerOfficeDTO } from "@/server/domain/organizations/dto";
 import type { Office } from "@/types";
 import type { OfficeFormOutput } from "./schemas";
@@ -12,12 +13,18 @@ export function officeFromDto(dto: OwnerOfficeDTO): Office {
   return { ...dto, oab: dto.oab ? `OAB/${dto.oab.state} ${dto.oab.number}` : undefined } as Office;
 }
 
-/** "OAB/SP 123.456" → { state: "SP", number: "123456" }; inválido/vazio → null. */
+/**
+ * "OAB/SP 123.456" (ou "SP 123456") → { state: "SP", number: "123456" };
+ * vazio, UF inexistente ou número fora de 1–10 letras/dígitos → null. O
+ * formulário recusa o que não passa aqui (nunca grava "limpo" sem avisar).
+ */
 export function parseOab(text: string | undefined): { state: string; number: string } | null {
-  const m = /^\s*OAB\s*\/?\s*([A-Za-z]{2})\s*([0-9A-Za-z.\-\s]+)$/i.exec(text ?? "");
+  const m = /^\s*(?:OAB\s*\/?\s*)?([A-Za-z]{2})\s*[/\-]?\s*([0-9A-Za-z.\-\s]+)$/i.exec(text ?? "");
   if (!m) return null;
+  const state = m[1].toUpperCase();
   const number = m[2].replace(/[^0-9A-Za-z]/g, "").toUpperCase();
-  return number ? { state: m[1].toUpperCase(), number } : null;
+  if (!(BRAZILIAN_STATES as readonly string[]).includes(state) || !/^[0-9A-Z]{1,10}$/.test(number)) return null;
+  return { state, number };
 }
 
 const filled = (v: string | undefined) => (v && v.trim() ? v.trim() : null);

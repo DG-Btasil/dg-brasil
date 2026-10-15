@@ -9,6 +9,7 @@ import { SortableTh, Table, TBody, Td, Th, THead, Tr, type SortDirection } from 
 import type { ProcessListItem } from "@/server/domain/processes/dto";
 import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUserMap, useOrganizationNames, useOrgDirectory } from "@/features/directory/directory-context";
+import { processSubtitle } from "../subtitle";
 import { CnjText } from "./cnj-text";
 import { ProcessOriginBadge } from "./process-origin-badge";
 
@@ -87,7 +88,10 @@ export function ProcessListTable({
               )}
               <Td className="max-w-[260px]">
                 <div className="truncate text-foreground">{p.actionType ?? p.title}</div>
-                <div className="truncate text-[12px] text-muted">{p.actionType ? p.title : p.caseTitle}</div>
+                {/* O caso aparece sempre (QA 4.3, BUG-02); com tipo de ação, o título do processo vem antes. */}
+                <div className="truncate text-[12px] text-muted" title={processSubtitle(p)}>
+                  {processSubtitle(p)}
+                </div>
               </Td>
               <Td className="whitespace-nowrap text-[12.5px]">{courtLocation(p) || <span className="text-subtle">—</span>}</Td>
               {internal && <Td className="whitespace-nowrap text-[12.5px]">{(p.responsibleUserId && users.get(p.responsibleUserId)?.name) || "—"}</Td>}
