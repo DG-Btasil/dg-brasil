@@ -135,16 +135,27 @@ describe("Fase A — PF: apagar data de nascimento, gênero, estado civil e docu
   });
 });
 
+/** O DEV acumula integrantes e parceiros de rodadas anteriores: percorre todas as páginas. */
+async function allPages<T>(load: (page: number) => Promise<{ items: T[]; hasMore: boolean }>): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; ; page++) {
+    const r = await load(page);
+    items.push(...r.items);
+    if (!r.hasMore) return items;
+  }
+}
+
 describe("Fase A — diretório da organização (responsáveis e origens)", () => {
   it("interno: integrantes do próprio escritório; parceiros só com partners.view", async () => {
     for (const role of ["ADMIN", "LAWYER", "ASSISTANT"] as const) {
       const ctx = await ctxFor(role);
-      const users = await organizations.listOrganizationUsers(ctx, listOrganizationUsersSchema.parse({ pageSize: 50 }));
-      expect(users.items.every((u) => u.organizationId === world.owner)).toBe(true);
-      expect(users.items.map((u) => u.userId)).toContain(world.users[role].id);
+      const all = await allPages((page) => organizations.listOrganizationUsers(ctx, listOrganizationUsersSchema.parse({ page, pageSize: 50 })));
+      expect(all.every((u) => u.organizationId === world.owner)).toBe(true);
+      expect(all.map((u) => u.userId)).toContain(world.users[role].id);
     }
-    const partners = await organizations.listPartners(await ctxFor("LAWYER"), listPartnersSchema.parse({ pageSize: 50 }));
-    expect(partners.items.map((p) => p.id)).toEqual(expect.arrayContaining([world.partnerA, world.partnerB]));
+    const lawyer = await ctxFor("LAWYER");
+    const partners = await allPages((page) => organizations.listPartners(lawyer, listPartnersSchema.parse({ page, pageSize: 50 })));
+    expect(partners.map((p) => p.id)).toEqual(expect.arrayContaining([world.partnerA, world.partnerB]));
     // ASSISTANT não lista parceiros: a tela mostra só o escritório proprietário como origem.
     await expectDomainError(organizations.listPartners(await ctxFor("ASSISTANT"), listPartnersSchema.parse({ pageSize: 50 })), "FORBIDDEN");
   });
