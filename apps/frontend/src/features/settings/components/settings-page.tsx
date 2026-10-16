@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/feedback/states";
 import { cn } from "@/lib/cn";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import { SECTION_META, useAllowedSections, type SettingsSection } from "../hooks";
+import { AccountSection } from "./sections/account-section";
 import { AiSection } from "./sections/ai-section";
 import { FeesSection } from "./sections/fees-section";
 import { GeneralSection } from "./sections/general-section";
@@ -22,6 +23,7 @@ const SECTION_COMPONENT: Record<SettingsSection, ComponentType> = {
   ia: AiSection,
   honorarios: FeesSection,
   notificacoes: NotificationsSection,
+  conta: AccountSection,
   seguranca: SecuritySection,
 };
 

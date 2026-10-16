@@ -509,10 +509,28 @@ só no caminho que o banco autorizou); toda função nova SECURITY DEFINER com
 
 **Continuam para etapas futuras:** IA/Claude real e edição por IA, worker
 no Fly.io, e-mail/SMTP (as preferências de e-mail ficam guardadas),
-integração judicial, importação, Google Drive, sessões/dispositivos do Auth,
-observabilidade/produção.
+integração judicial, importação, Google Drive, observabilidade/produção.
+(Sessões e dispositivos: feitas na 4.3.2 — abaixo.)
+
+## 4.3.2 — Segurança da conta e sessões
+
+| Tela | Onde | Server Actions | Banco |
+|---|---|---|---|
+| "Sua conta e sessões" | Configurações (todo papel interno; `permission: null` na seção) | `getAccountSecurityAction`, `signOutOtherSessionsAction`, `signOutAllSessionsAction` (`server/domain/account`) e `signOut` (`server/auth/actions`) | `get_my_sessions`, `record_account_security_event` (038) |
+| "Segurança da conta" | Minha Conta (parceiro) | as mesmas | as mesmas |
+| "Sessão encerrada" | `/acesso?motivo=sessao-encerrada` | `getCurrentSession` → `SESSION_REVOKED` | `get_my_session_context().session_state` |
+
+Componente único: `features/account/components/account-security.tsx`
+(senha → `/nova-senha`; MFA só leitura — sem desativar, sem segredo; sessões
+com "Este dispositivo"; três ações com confirmação, a global digitando SAIR).
+Detalhes de segurança e limitações: [auth.md](auth.md#sessões-e-dispositivos-etapa-432-migration-038).
 
 ## Testes
+
+- 4.3.2: `src/server/domain/account/security.test.ts` (DTO sem id completo,
+  user agent, IP nem segredo do TOTP; ordem auditoria → revogação; limite;
+  `SESSION_REVOKED`); integração `tests/integration/account-sessions.int.test.ts`
+  (várias sessões reais da mesma conta).
 
 - Unitários: `src/features/clients/clients-ui.test.ts` (URL ↔ filtros, CPF
   fora da URL, formulário → schema real do servidor, PATCH, erros de campo,

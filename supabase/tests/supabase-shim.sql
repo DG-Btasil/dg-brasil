@@ -65,6 +65,19 @@ create table auth.mfa_factors (
   created_at  timestamptz not null default now()
 );
 
+-- Sessões do Supabase Auth (só as colunas que a 038 lê). No Supabase real o
+-- `aal` é o enum auth.aal_level; a 038 sempre o converte com ::text.
+create table auth.sessions (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users (id),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  aal          text,
+  not_after    timestamptz,
+  refreshed_at timestamp,
+  user_agent   text
+);
+
 -- ───────────────────────────── storage ────────────────────────────────────
 
 create schema storage;

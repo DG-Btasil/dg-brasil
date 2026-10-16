@@ -16,6 +16,8 @@ export type LegalDocumentType = "TERMS_OF_USE" | "PRIVACY_POLICY" | "CONFIDENTIA
  */
 export type AuthOnboardingState =
   | "ANONYMOUS"
+  /** A sessão deste JWT foi encerrada (outro dispositivo saiu de todos, senha trocada) ou é anterior a um reset de MFA (038). */
+  | "SESSION_REVOKED"
   | "PROFILE_MISSING"
   | "PROFILE_INACTIVE"
   | "NO_MEMBERSHIP"
@@ -40,6 +42,8 @@ export interface SessionContextRow {
   } | null;
   legal_acceptances: { document_type: string; document_version: string }[];
   aal: string;
+  /** 038: estado da sessão do JWT (ausente antes da 038). */
+  session_state?: "VALID" | "NO_SESSION_CLAIM" | "REVOKED" | "REAUTH_REQUIRED";
 }
 
 export interface MfaStatus {

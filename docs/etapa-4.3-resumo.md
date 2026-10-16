@@ -29,7 +29,7 @@ Detalhes técnicos por domínio: [`frontend-integration.md`](frontend-integratio
 
 ## Migrations
 
-`028`–`037`, todas aplicadas no DEV. Próxima livre: **038**.
+`028`–`037`, todas aplicadas no DEV. (A `038` é da Etapa 4.3.2.)
 
 | # | Conteúdo |
 |---|---|
@@ -66,7 +66,7 @@ Detalhes técnicos por domínio: [`frontend-integration.md`](frontend-integratio
 
 ## Pendente para etapas futuras
 
-- **Próxima:** Auth/Security Production Hardening — sessões e dispositivos.
+- Auth/Security Hardening (sessões e dispositivos): feito na Etapa 4.3.2 — `docs/etapa-4.3.2-relatorio.md`.
 - IA/Claude real e edição por IA; worker no Fly.io (os lembretes de prazo
   rodam no ciclo do worker ou no `pg_cron`).
 - E-mail/SMTP (preferências de e-mail já guardadas).

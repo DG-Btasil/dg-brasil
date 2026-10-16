@@ -57,8 +57,16 @@ qualquer dado real.
   revisão (versão N+1), interromper análise/execução, cronograma de parcelas,
   valores da parceria (só leitura), "contratado por modelo", histórico do
   caso e contagens por cliente no portal. Validada no DEV e no QA manual
-  (2026-10-16); resumo em `docs/etapa-4.3-resumo.md`. Próxima: Auth/Security
-  Production Hardening (sessões e dispositivos) — não iniciada.
+  (2026-10-16); resumo em `docs/etapa-4.3-resumo.md`.
+- **4.3.2 — Auth & Session Security Hardening (código pronto; validar no
+  DEV)** — migration 038: sessão revogada perde o banco na hora (RLS confere
+  o `session_id` do JWT em `auth.sessions`), reset de MFA força novo login,
+  lista das próprias sessões com navegador/sistema amigáveis (sem user agent
+  cru nem IP), sair deste / dos outros / de todos os dispositivos, troca de
+  senha encerra as outras sessões, auditoria e avisos de segurança. Encerrar
+  uma sessão específica não é suportado pelo Supabase (documentado). Ver
+  [docs/auth.md](docs/auth.md) e `docs/etapa-4.3.2-relatorio.md`. Próxima:
+  Agents/worker/IA reais — não iniciada.
 
 ### Etapa 5 — Front-end conectado
 

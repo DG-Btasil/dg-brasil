@@ -16,6 +16,7 @@ import { hardNavigate } from "./navigation";
 
 const NOTICES: Record<string, { tone: "success" | "info"; text: string }> = {
   saiu: { tone: "info", text: "Você saiu da sua conta." },
+  "saiu-todos": { tone: "info", text: "Você saiu de todos os dispositivos. Entre de novo com senha e código." },
   "senha-alterada": { tone: "success", text: "Senha alterada. Entre com a nova senha." },
 };
 
