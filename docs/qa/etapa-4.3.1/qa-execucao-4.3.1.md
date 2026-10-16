@@ -143,3 +143,12 @@ manual) com 2 revisões; revisão do PDF `QA43 Doc processo msta`; 3 análises i
 
 Execução simulada "rodando" → CANCELLED; bloco do §8 executado (agente `qa-analise-43` INACTIVE, modelo
 inativo; 0 execuções QUEUED/RUNNING de agentes QA ou de teste).
+
+## Reteste após as correções (commit `d4a6091`, 2026-10-16)
+
+| Item | Status | Evidência |
+|---|---|---|
+| `test:integration` | **PASS**: 25/25 arquivos, **192/192** testes (138 s) | TEST-01, TEST-02 e TEST-03 resolvidos, sem exportar variáveis à mão. |
+| BUG-07 | **PASS** | ASSISTANT → menu do usuário → "Preferências de notificação" → `/configuracoes?secao=notificacoes`, só a seção "Notificações"; categorias Casos, Prazos, Documentos, Solicitações e Segurança da conta (**sem Revisões/Análises**); desligar "Documentos" persiste após recarregar; "Restaurar padrão" volta ao padrão; `?secao=geral\|equipe\|honorarios\|seguranca` cai em Notificações (nada é exposto). Captura: `../etapa-4.3/evidencias/fase-H/BUG-07-assistant-preferencias.png`. |
+
+As demais correções do commit (OBS-05, 08, 09 e 10) não foram retestadas pela tela nesta rodada.
