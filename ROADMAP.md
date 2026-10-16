@@ -56,9 +56,9 @@ qualquer dado real.
   033–037): produtor de notificações e preferências, edição manual na
   revisão (versão N+1), interromper análise/execução, cronograma de parcelas,
   valores da parceria (só leitura), "contratado por modelo", histórico do
-  caso e contagens por cliente no portal. Validação no DEV pendente
-  (`docs/etapa-4.3.1-validacao.md`). Próxima: Auth/Security Production
-  Hardening (sessões e dispositivos) — não iniciada.
+  caso e contagens por cliente no portal. Validada no DEV e no QA manual
+  (2026-10-16); resumo em `docs/etapa-4.3-resumo.md`. Próxima: Auth/Security
+  Production Hardening (sessões e dispositivos) — não iniciada.
 
 ### Etapa 5 — Front-end conectado
 
