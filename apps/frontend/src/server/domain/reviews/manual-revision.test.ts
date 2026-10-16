@@ -12,6 +12,7 @@ import { saveManualRevisionSchema } from "./schemas";
 vi.mock("./repository", () => ({
   getById: vi.fn(),
   getDocumentVersionTarget: vi.fn(),
+  latestVersionNumber: vi.fn(async () => 1),
   prepareManualRevision: vi.fn(),
   commitManualRevision: vi.fn(),
 }));
@@ -61,7 +62,10 @@ function fakeStorage(text = "Texto da minuta") {
   } satisfies DocumentStorage;
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(repo.latestVersionNumber).mockResolvedValue(1);
+});
 
 describe("conteúdo da minuta em revisão (034)", () => {
   it("texto: lê pelo caminho que o banco autorizou (LGPD + auditoria) e devolve editável", async () => {
@@ -81,6 +85,14 @@ describe("conteúdo da minuta em revisão (034)", () => {
     vi.mocked(docsRepo.authorizeDownload).mockResolvedValue(target().storage_object_name!);
     const r = await getReviewContent(ctxOf("ADMIN"), REVIEW, { storage: fakeStorage() });
     expect(r).toMatchObject({ kind: "TEXT", editable: false, readOnlyReason: "DECIDED" });
+  });
+
+  it("versão já substituída (revisão antiga após edição): texto visível, mas só leitura (QA 4.3.1, OBS-08)", async () => {
+    vi.mocked(repo.getById).mockResolvedValue(review({ status: "CHANGES_REQUESTED" }));
+    vi.mocked(repo.getDocumentVersionTarget).mockResolvedValue(target());
+    vi.mocked(repo.latestVersionNumber).mockResolvedValue(2);
+    vi.mocked(docsRepo.authorizeDownload).mockResolvedValue(target().storage_object_name!);
+    expect(await getReviewContent(ctxOf("LAWYER"), REVIEW, { storage: fakeStorage() })).toMatchObject({ kind: "TEXT", editable: false, readOnlyReason: "SUPERSEDED" });
   });
 
   it("PDF não é lido (nem registra acesso): indisponível por formato", async () => {

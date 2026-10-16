@@ -10,9 +10,11 @@ import { AccessDenied } from "./guards";
  * Auth, nesta requisição) — nunca do navegador. Sem permissão, o conteúdo
  * protegido nem é renderizado nem enviado ao cliente.
  */
-export async function RequirePermission({ permission, children, fallback }: { permission: Permission; children: ReactNode; fallback?: ReactNode }) {
+/** `permission` em lista = basta UMA delas. */
+export async function RequirePermission({ permission, children, fallback }: { permission: Permission | readonly Permission[]; children: ReactNode; fallback?: ReactNode }) {
   const session = await requireAppSession();
-  if (!can(session.role, permission)) return <>{fallback ?? <AccessDenied />}</>;
+  const list: readonly Permission[] = Array.isArray(permission) ? permission : [permission as Permission];
+  if (!list.some((p) => can(session.role, p))) return <>{fallback ?? <AccessDenied />}</>;
   return <>{children}</>;
 }
 

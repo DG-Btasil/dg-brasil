@@ -32,5 +32,10 @@ export function integrationEnv(): IntegrationEnv {
   const anonKey = get("SUPABASE_ANON_KEY");
   const serviceKey = get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !anonKey || !serviceKey) throw new Error("Faltam SUPABASE_URL, SUPABASE_ANON_KEY ou SUPABASE_SERVICE_ROLE_KEY em supabase/.env.real.");
+  // Os módulos do app (ex.: Storage de documentos) leem os nomes do app em
+  // process.env; o .env.real usa os nomes do validar:real (QA 4.3.1, TEST-03).
+  process.env.NEXT_PUBLIC_SUPABASE_URL ??= url;
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= anonKey;
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??= serviceKey;
   return { url, anonKey, serviceKey };
 }

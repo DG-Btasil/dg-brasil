@@ -25,6 +25,8 @@ export function contentNotEditableMessage(reason: NotEditable): string {
       return "Este formato (PDF, DOCX ou imagem) não é editável aqui. Para corrigir, envie uma nova versão do arquivo na aba Documentos do caso — a versão atual continua no histórico.";
     case "TOO_LARGE":
       return "O arquivo é grande demais para editar aqui. Envie uma nova versão do arquivo na aba Documentos do caso.";
+    case "SUPERSEDED":
+      return "Esta versão já foi substituída por uma mais nova: edite pela revisão da versão atual.";
     case "DECIDED":
       return "Esta revisão já foi decidida. Para editar, reabra a revisão.";
     case "ARCHIVED":

@@ -77,7 +77,15 @@ export async function getReviewContent(ctx: ServiceContext, reviewId: string, de
     return { kind: "UNAVAILABLE", reason: "FORMAT" };
   }
   ctx.log.info("review.content_read", { reviewId, documentVersionId: version.id });
-  const readOnlyReason = !OPEN_FOR_EDIT.includes(row.status) ? "DECIDED" : one(version.documents)?.status === "ARCHIVED" ? "ARCHIVED" : undefined;
+  // Versão já substituída (ex.: a revisão antiga depois de uma edição manual): só leitura (QA 4.3.1, OBS-08).
+  const latest = await repo.latestVersionNumber(ctx.db, version.document_id);
+  const readOnlyReason = !OPEN_FOR_EDIT.includes(row.status)
+    ? "DECIDED"
+    : latest !== null && latest > version.version_number
+      ? "SUPERSEDED"
+      : one(version.documents)?.status === "ARCHIVED"
+        ? "ARCHIVED"
+        : undefined;
   return { kind: "TEXT", versionId: version.id, versionNumber: version.version_number, mimeType: mime, text, editable: !readOnlyReason, readOnlyReason };
 }
 

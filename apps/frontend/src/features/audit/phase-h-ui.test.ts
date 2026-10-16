@@ -4,7 +4,7 @@ import { listProcessesSchema } from "@/server/domain/processes/schemas";
 import { updateOwnerOfficeSchema } from "@/server/domain/organizations/schemas";
 import { deadlineCutoff } from "@/server/domain/processes/service";
 import { notificationTarget, notificationTypeLabel } from "@/features/notifications/presentation";
-import { officePatchToServer, parseOab } from "@/features/settings/office-input";
+import { formatOabNumber, officeFromDto, officePatchToServer, parseOab } from "@/features/settings/office-input";
 import { officeSchema } from "@/features/settings/schemas";
 import { INPUT_MASKS } from "@/lib/formatting/masks";
 import { processQueryFromSearchParams, processQueryToInput, DEFAULT_PROCESS_QUERY } from "@/features/processes/list-query";
@@ -72,6 +72,11 @@ describe("Configurações → Geral (escritório real)", () => {
       expect(officeSchema.shape.oab.safeParse(bad).success).toBe(false);
     }
     expect(officeSchema.shape.oab.safeParse("").success).toBe(true);
+  });
+  it("OAB volta exibida no formato do placeholder (QA 4.3.1, OBS-05)", () => {
+    expect([formatOabNumber("123456"), formatOabNumber("9"), formatOabNumber("12345A")]).toEqual(["123.456", "9", "12345A"]);
+    expect(officeFromDto({ oab: { state: "SP", number: "123456" } } as never).oab).toBe("OAB/SP 123.456");
+    expect(parseOab("OAB/SP 123.456")).toEqual({ state: "SP", number: "123456" });
   });
   it("vazio limpa (null); endereço vazio = null; passa no schema real", () => {
     const patch = officePatchToServer({

@@ -146,16 +146,15 @@ describe("acompanhamento (get_agent_run_summaries)", () => {
   });
 });
 
-describe("cancelamento (ADMIN)", () => {
-  it("ADMIN cancela; repetir é estado inválido; LAWYER não cancela", async () => {
+describe("interrupção (033)", () => {
+  it("LAWYER do caso interrompe execução na fila; repetir é idempotente; ASSISTANT não; id inventado: não encontrada", async () => {
     const lawyer = await ctxFor("LAWYER");
     const { runId } = await agents.requestAgentRun(lawyer, request({ legalCaseId: caseId, operation: "CANCEL_CHECK" }));
-    await expectDomainError(agents.cancelAgentRun(lawyer, runId), "FORBIDDEN");
-    const admin = await ctxFor("ADMIN");
-    await agents.cancelAgentRun(admin, runId);
+    await expectDomainError(agents.cancelAgentRun(await ctxFor("ASSISTANT"), runId), "FORBIDDEN");
+    expect((await agents.cancelAgentRun(lawyer, runId)).outcome).toBe("CANCELLED");
     const { data } = await svc.from("agent_runs").select("status").eq("id", runId).single();
     expect(data?.status).toBe("CANCELLED");
-    await expectDomainError(agents.cancelAgentRun(admin, runId), "INVALID_STATE");
-    await expectDomainError(agents.cancelAgentRun(admin, randomUUID()), "NOT_FOUND");
+    expect((await agents.cancelAgentRun(await ctxFor("ADMIN"), runId)).outcome).toBe("ALREADY_CANCELLED");
+    await expectDomainError(agents.cancelAgentRun(await ctxFor("ADMIN"), randomUUID()), "NOT_FOUND");
   });
 });

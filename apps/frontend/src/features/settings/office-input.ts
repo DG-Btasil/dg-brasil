@@ -10,7 +10,12 @@ import type { OfficeFormOutput } from "./schemas";
  */
 
 export function officeFromDto(dto: OwnerOfficeDTO): Office {
-  return { ...dto, oab: dto.oab ? `OAB/${dto.oab.state} ${dto.oab.number}` : undefined } as Office;
+  return { ...dto, oab: dto.oab ? `OAB/${dto.oab.state} ${formatOabNumber(dto.oab.number)}` : undefined } as Office;
+}
+
+/** "123456" → "123.456" (só número puro; com letras fica como está). QA 4.3.1, OBS-05. */
+export function formatOabNumber(number: string): string {
+  return /^\d+$/.test(number) ? number.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : number;
 }
 
 /**

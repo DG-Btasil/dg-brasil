@@ -67,3 +67,10 @@ describe("matriz central de permissões", () => {
     expect([...ROLE_PERMISSIONS.ADMIN].sort()).toEqual([...OWNER_PERMISSIONS].sort());
   });
 });
+
+describe("preferências de aviso (QA 4.3.1, BUG-07)", () => {
+  it("todo papel interno edita as próprias notificações; ASSISTANT só isso das configurações", () => {
+    for (const role of ["ADMIN", "LAWYER", "ASSISTANT"] as const) expect(can(role, "settings.notifications.edit")).toBe(true);
+    expect(can("ASSISTANT", "settings.view")).toBe(false);
+  });
+});

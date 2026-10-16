@@ -1,6 +1,19 @@
 # QA 4.3.1 — Defeitos e observações
 
-Nenhum código de produção foi alterado.
+Nenhum código de produção foi alterado na rodada de QA; as correções vieram depois (seção abaixo).
+
+## Correções (2026-10-16)
+
+| Item | Correção | Teste |
+|---|---|---|
+| BUG-07 | ASSISTANT ganha só `settings.notifications.edit`; `/configuracoes` abre para quem tem `settings.view` OU essa permissão e mostra só as seções permitidas (o ASSISTANT cai direto em Notificações); o menu do usuário mostra "Preferências de notificação". | `permissions.test.ts` |
+| TEST-01 | `agents.int.test.ts` segue a regra da 033 (LAWYER do caso interrompe; repetir = `ALREADY_CANCELLED`; ASSISTANT recusado). | — |
+| TEST-02 | `frontend-431-notifications`: `DOCUMENT_REQUEST`. | — |
+| TEST-03 | `support/env.ts` exporta `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` a partir do `.env.real` (sem sobrescrever o que já existir). | — |
+| OBS-05 | OAB exibida como "OAB/SP 123.456" (só formatação; grava os dígitos). | `phase-h-ui.test.ts` |
+| OBS-08 | Revisão de versão já substituída: texto só leitura, com aviso para editar pela revisão da versão atual. | `manual-revision.test.ts` |
+| OBS-09 | Análise interrompida aparece como "Interrompida". | — |
+| OBS-10 | Obrigação com recebimento: "Cancelar obrigação" aparece desabilitado, explicando "estorne os lançamentos antes". | — |
 
 ## BUG-07 — ASSISTANT não acessa as próprias preferências de notificação (média)
 

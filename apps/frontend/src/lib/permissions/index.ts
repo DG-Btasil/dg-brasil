@@ -168,6 +168,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "processes.view",
     "processes.caseValue.view",
     "partnerRequests.manage",
+    // Só as próprias preferências de aviso (QA 4.3.1, BUG-07): ela recebe avisos e precisa poder desligá-los.
+    "settings.notifications.edit",
   ],
   PARTNER_ADMIN: [...PARTNER_BASE, "partnerPortal.finance.view", "partnerPortal.users.manage"],
   PARTNER_USER: PARTNER_BASE,

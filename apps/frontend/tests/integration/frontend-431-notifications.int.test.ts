@@ -48,7 +48,7 @@ describe("avisos produzidos por operações reais (037)", () => {
     const caseId = await partnerCase(`Caso solicitação 4.3.1 ${world.run}`);
     const admin = await ctxFor("ADMIN");
     await admin.db.from("legal_cases").update({ assigned_lawyer_id: world.users.LAWYER.id }).eq("id", caseId);
-    const req = await requests.createPartnerRequest(await ctxFor("LAWYER"), createPartnerRequestSchema.parse({ legalCaseId: caseId, type: "DOCUMENT", title: "Enviar extrato (teste)" }));
+    const req = await requests.createPartnerRequest(await ctxFor("LAWYER"), createPartnerRequestSchema.parse({ legalCaseId: caseId, type: "DOCUMENT_REQUEST", title: "Enviar extrato (teste)" }));
     expect((await inbox("PARTNER_USER_A", "PARTNER_REQUEST_CREATED", caseId)).length).toBe(1);
     await requests.addPartnerRequestMessage(await ctxFor("PARTNER_USER_A"), addPartnerRequestMessageSchema.parse({ requestId: req.id, message: "Enviado (teste)" }));
     expect((await inbox("LAWYER", "PARTNER_REQUEST_REPLY", caseId)).length).toBe(1);

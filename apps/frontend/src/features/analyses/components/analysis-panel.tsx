@@ -32,7 +32,7 @@ export const DB_ANALYSIS_STATUS_LABEL: Record<DbAnalysisStatus, string> = {
   WAITING_REVIEW: "Aguardando revisão humana",
   COMPLETED: "Concluída",
   FAILED: "Falhou",
-  CANCELLED: "Cancelada",
+  CANCELLED: "Interrompida",
 };
 
 /**

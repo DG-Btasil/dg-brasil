@@ -168,3 +168,11 @@ export async function commitManualRevision(
     }),
   ) as CommittedRevisionRow;
 }
+
+/** Número da versão mais recente do documento (RLS de quem pergunta). */
+export async function latestVersionNumber(db: SupabaseClient, documentId: string): Promise<number | null> {
+  const data = unwrap(
+    await db.from("document_versions").select("version_number").eq("document_id", documentId).order("version_number", { ascending: false }).limit(1).maybeSingle(),
+  ) as { version_number: number } | null;
+  return data?.version_number ?? null;
+}

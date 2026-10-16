@@ -95,7 +95,7 @@ export type ReviewContentDTO =
       text: string;
       /** Editável agora? Revisão decidida ou documento arquivado: só leitura. */
       editable: boolean;
-      readOnlyReason?: "DECIDED" | "ARCHIVED";
+      readOnlyReason?: "DECIDED" | "ARCHIVED" | "SUPERSEDED";
     }
   | { kind: "UNAVAILABLE"; reason: "NOT_DOCUMENT" | "FORMAT" | "TOO_LARGE" };
 

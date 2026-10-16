@@ -38,7 +38,7 @@ export function SettingsPage() {
 
 function SettingsContent() {
   const allowed = useAllowedSections();
-  const [section, setSection] = useUrlTab<SettingsSection>(allowed, "geral", "secao");
+  const [section, setSection] = useUrlTab<SettingsSection>(allowed, allowed[0] ?? "geral", "secao");
   const Section = SECTION_COMPONENT[section];
 
   return (

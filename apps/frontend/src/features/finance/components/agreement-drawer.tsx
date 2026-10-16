@@ -166,8 +166,13 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
                       : []),
                     ...(canManage ? [{ key: "adjust", label: "Registrar ajuste", onSelect: () => setModal({ kind: "adjustment", payment: p }) }] : []),
                     ...(canManage && !cancelled && open ? [{ key: "edit", label: "Corrigir obrigação", onSelect: () => setModal({ kind: "payment", payment: p }) }] : []),
-                    ...(canManage && !cancelled && open && p.receivedAmount === 0
-                      ? [{ key: "cancel", label: "Cancelar obrigação", onSelect: () => setModal({ kind: "cancelPayment", payment: p }) }]
+                    ...(canManage && !cancelled && open
+                      ? [
+                          p.receivedAmount === 0
+                            ? { key: "cancel", label: "Cancelar obrigação", onSelect: () => setModal({ kind: "cancelPayment", payment: p }) }
+                            : // Visível, mas explicado (QA 4.3.1, OBS-10): com recebimento, estorne antes.
+                              { key: "cancel", label: "Cancelar obrigação", description: "Há recebimento registrado: estorne os lançamentos antes de cancelar.", disabled: true, onSelect: () => undefined },
+                        ]
                       : []),
                   ];
                   const entries = ledger[p.id];

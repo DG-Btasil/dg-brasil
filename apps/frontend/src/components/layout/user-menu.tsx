@@ -31,6 +31,7 @@ export function UserMenu() {
   const startTour = useUiStore((s) => s.startTour);
   const { resetDemo } = useSessionActions();
   const canSettings = usePermission("settings.view");
+  const canNotifications = usePermission("settings.notifications.edit");
   const canDemo = usePermission("demo.tools");
   const isPartner = useIsPartner();
   const [signingOut, startSignOut] = useTransition();
@@ -79,10 +80,16 @@ export function UserMenu() {
             </div>
           </div>
           <div className="py-1.5">
-            {canSettings && (
+            {canSettings ? (
               <Link role="menuitem" href="/configuracoes" className={item} onClick={() => setOpen(false)}>
                 <Settings className="size-4 text-subtle" aria-hidden /> Configurações
               </Link>
+            ) : (
+              canNotifications && (
+                <Link role="menuitem" href="/configuracoes?secao=notificacoes" className={item} onClick={() => setOpen(false)}>
+                  <Settings className="size-4 text-subtle" aria-hidden /> Preferências de notificação
+                </Link>
+              )
             )}
             {isPartner ? (
               <Link role="menuitem" href="/minha-conta" className={item} onClick={() => setOpen(false)}>
