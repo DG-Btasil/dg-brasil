@@ -111,7 +111,9 @@ Dado jurídico nunca passa por cache compartilhado: o client do servidor usa
 | `server/auth/team-actions.ts` → `resetUserMfa` | `auth.admin.mfa.listFactors/deleteFactor` + `record_auth_event` | Admin API do Auth | Só ADMIN, nunca a si mesmo; o banco revalida | `MFA_RESET_REQUESTED/COMPLETED` |
 | `server/domain/documents/signed-storage.ts` | `createSignedUploadUrl`, `info`, `createSignedUrl(60 s)` no bucket `legal-documents` | Buckets privados sem política para o usuário (017) | `authorize_document_upload/download` com o JWT do usuário devolve o caminho exato; o servidor confere e só assina esse caminho | `DOCUMENT_DOWNLOADED` + acesso LGPD gravados pela RPC, ator USER |
 
-Nenhuma consulta ou gravação de domínio usa a service role. `grep createSupabaseAdminClient src` lista exatamente estes arquivos.
+Nenhuma consulta ou gravação de domínio usa a service role. A Etapa 4.3.2
+(sessões) **não** acrescentou uso: listar e encerrar as próprias sessões usa o
+JWT do usuário (`auth.signOut({ scope: "others" | "global" })` e RPCs da 038). `grep createSupabaseAdminClient src` lista exatamente estes arquivos.
 
 ## Domínios
 
@@ -132,6 +134,7 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Financeiro | modelos, acordos, obrigações, lançamentos (recebimento, ajuste, estorno — append-only), divisões (leitura), parcerias, repasses, visão do parceiro | ledger + views; chaves de idempotência e `create_partner_transfer` (026) |
 | Organizações | escritório proprietário, parceiros (listar, cadastrar atômico, editar, status, divisão padrão), usuários (leitura), divisão do próprio escritório (administrador do parceiro) | `create_partner_office` (026), `get_my_partner_settings` (027); gestão de equipe segue em `server/auth/team-actions.ts` |
 | Notificações | listar, contar não lidas, marcar lida(s) | RLS do próprio usuário (aal2) |
+| Conta (`server/domain/account`) | sessões da própria conta (lista, MFA), sair dos outros dispositivos, sair de todos — toda sessão liberada, qualquer papel, sem `userId` no input | `get_my_sessions`, `record_account_security_event` (038) + `auth.signOut({ scope })` com o JWT do usuário |
 | Auditoria | eventos e acessos a dado pessoal (ADMIN, paginado, metadata por whitelist, sem IP/navegador) | `audit_events`, `personal_data_access_events` |
 
 ## Idempotência
@@ -219,6 +222,13 @@ responsável ou origem — e cada consulta de CPF existente fica auditada
 número de parceiros crescer muito, se houver abuso ou antes de exposição
 externa relevante.
 
+### Ações de segurança da conta (4.3.2)
+
+`enforceAccountSecurityLimit`: **5/min por usuário** para "sair dos outros
+dispositivos" e "sair de todos" (cada uma audita e gera aviso). Mesmo modelo
+best-effort em memória; a revogação em si é do Supabase Auth, e o banco
+recusa ação fora da lista. Chave `account-security:user:<id>`.
+
 ## Hardening pendente por domínio
 
 ### Agents / Analysis
@@ -253,7 +263,9 @@ forte/distribuído antes de expansão do produto.
 
 - Unitários (`npm test`): mapeamentos, schemas, tradução de erros, redação de
   logs, paginação, DTOs (o do parceiro não tem campo interno).
-- Banco (`supabase/: npm run verificar`): 579 verificações, inclusive as RPCs
+- Banco (`supabase/: npm run verificar`): 598 verificações (038: sessão
+  revogada/vencida/de outro usuário sem dados, reset de MFA, lista só das
+  próprias, parser de navegador, auditoria e avisos da conta), inclusive as RPCs
   da 025–028 (envio de caso do parceiro, gravação de cliente, busca,
   correlation ID, Storage autorizado, idempotência, divisão do parceiro,
   bloco societário de PJ) e as da 4.3.1 (032–037: RLS dos caminhos quentes,

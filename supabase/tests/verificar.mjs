@@ -3504,6 +3504,155 @@ await deve('usuário logado não chama os blocos internos (produtor, conferênci
   igual(r.map((x) => x.f), [], 'authenticated com execute em bloco interno')
 })
 
+secao('Sessões: revogação vale no banco, reset de MFA força novo login, lista só das próprias [038]')
+// Como usuário logado COM o session_id do JWT (o Supabase sempre envia).
+function comoSessao(uid, sid, fn, aal = 'aal2') {
+  return db.transaction(async (tx) => {
+    await tx.query(`select set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ sub: uid, role: 'authenticated', aal, session_id: sid })])
+    await tx.query('set local role authenticated')
+    return fn(tx)
+  })
+}
+const UA_CHROME_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+const UA_SAFARI_IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
+const UA_FIREFOX_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14.6; rv:132.0) Gecko/20100101 Firefox/132.0'
+const novaSessao038 = async (uid, ua = UA_CHROME_WIN, extra = '') =>
+  (await um(db, `insert into auth.sessions (user_id, aal, user_agent ${extra ? ', ' + extra.split('=')[0] : ''})
+    values ($1, 'aal2', $2 ${extra ? ', ' + extra.split('=')[1] : ''}) returning id`, [uid, ua])).id
+const contexto038 = (uid, sid) => comoSessao(uid, sid, (tx) => um(tx, `select public.get_my_session_context() c`)).then((r) => r.c)
+const clientesVisiveis038 = (uid, sid) => comoSessao(uid, sid, async (tx) => (await linhas(tx, `select id from clients`)).length)
+
+ids.sLucasA = await novaSessao038(ids.lucas, UA_CHROME_WIN)
+ids.sLucasB = await novaSessao038(ids.lucas, UA_SAFARI_IPHONE)
+
+await deve('sessão existente e válida: acesso normal; contexto diz VALID', async () => {
+  igual((await contexto038(ids.lucas, ids.sLucasA)).session_state, 'VALID', 'estado')
+  if (!((await clientesVisiveis038(ids.lucas, ids.sLucasA)) > 0)) throw new Error('não viu clientes')
+})
+await deve('sem session_id no JWT (serviço, testes antigos): comportamento de antes', async () => {
+  igual((await como(ids.lucas, (tx) => um(tx, `select public.get_my_session_context() c`))).c.session_state, 'NO_SESSION_CLAIM', 'estado')
+})
+await deve('sessão revogada (some de auth.sessions): o JWT ainda não expirou, mas a RLS não devolve nada e o contexto diz REVOKED', async () => {
+  const sid = await novaSessao038(ids.lucas)
+  igual((await clientesVisiveis038(ids.lucas, sid)) > 0, true, 'antes')
+  await db.query(`delete from auth.sessions where id = $1`, [sid]) // o que o Auth faz no signOut
+  igual(await clientesVisiveis038(ids.lucas, sid), 0, 'depois: nenhum cliente')
+  igual((await contexto038(ids.lucas, sid)).session_state, 'REVOKED', 'estado')
+  await comoSessao(ids.lucas, sid, (tx) => tx.query(`insert into deadlines (legal_case_id, title, due_at) values ($1, 'Revogada', now() + interval '1 day')`, [ids.casoA]))
+    .then(() => { throw new Error('gravou com sessão revogada') }, (e) => { if (!/row-level security|permission denied|violates/.test(e.message)) throw e })
+})
+await deve('session_id de OUTRA pessoa no JWT (forjado) não vale', async () => {
+  igual((await contexto038(ids.ana, ids.sLucasA)).session_state, 'REVOKED', 'estado')
+  igual(await clientesVisiveis038(ids.ana, ids.sLucasA), 0, 'nada')
+})
+await deve('sessão vencida (not_after no passado) não vale e não aparece na lista', async () => {
+  const sid = await novaSessao038(ids.lucas, UA_FIREFOX_MAC, `not_after=now() - interval '1 minute'`)
+  igual((await contexto038(ids.lucas, sid)).session_state, 'REVOKED', 'estado')
+  const lista = await comoSessao(ids.lucas, ids.sLucasA, (tx) => linhas(tx, `select session_id from public.get_my_sessions()`))
+  igual(lista.some((s) => s.session_id === sid), false, 'fora da lista')
+})
+await deve('reset de MFA: sessão aberta ANTES perde acesso (REAUTH_REQUIRED); sessão nova depois funciona', async () => {
+  const antiga = await novaSessao038(ids.almeidaUsr, UA_CHROME_WIN, `created_at=now() - interval '1 hour'`)
+  igual((await contexto038(ids.almeidaUsr, antiga)).session_state, 'VALID', 'antes do reset')
+  await db.query(`select private.record_auth_event('MFA_RESET_COMPLETED', $1, '{}', $2)`, [ids.almeidaUsr, ids.barbara])
+  igual((await contexto038(ids.almeidaUsr, antiga)).session_state, 'REAUTH_REQUIRED', 'depois do reset')
+  igual(await clientesVisiveis038(ids.almeidaUsr, antiga), 0, 'sem dados')
+  const nova = await novaSessao038(ids.almeidaUsr, UA_CHROME_WIN, `created_at=now() + interval '1 second'`)
+  igual((await contexto038(ids.almeidaUsr, nova)).session_state, 'VALID', 'sessão nova')
+  if (!((await clientesVisiveis038(ids.almeidaUsr, nova)) > 0)) throw new Error('sessão nova sem dados')
+  const lista = await comoSessao(ids.almeidaUsr, nova, (tx) => linhas(tx, `select session_id from public.get_my_sessions()`))
+  igual(lista.map((s) => s.session_id).includes(antiga), false, 'antiga não aparece como ativa')
+})
+await deve('suspensão: vínculo suspenso perde acesso mesmo com sessão válida (a cada requisição)', async () => {
+  const m = (await um(db, `select id from organization_memberships where user_id = $1`, [ids.lucas])).id
+  await db.query(`update organization_memberships set status = 'SUSPENDED' where id = $1`, [m])
+  try {
+    igual(await clientesVisiveis038(ids.lucas, ids.sLucasA), 0, 'suspenso')
+    await comoSessao(ids.lucas, ids.sLucasA, (tx) => tx.query(`select * from public.get_my_sessions()`))
+      .then(() => { throw new Error('suspenso listou sessões') }, (e) => { if (!/Sem sessão liberada/.test(e.message)) throw e })
+  } finally {
+    await db.query(`update organization_memberships set status = 'ACTIVE' where id = $1`, [m])
+  }
+})
+await deve('lista de sessões: só as do próprio usuário; atual marcada; navegador/sistema/aparelho amigáveis; sem user agent cru nem IP', async () => {
+  const outra = await novaSessao038(ids.barbara)
+  const lista = await comoSessao(ids.lucas, ids.sLucasA, (tx) => linhas(tx, `select * from public.get_my_sessions()`))
+  igual(lista.some((s) => s.session_id === outra), false, 'sessão da Barbara não aparece')
+  igual(lista[0].session_id, ids.sLucasA, 'atual primeiro')
+  igual(lista.filter((s) => s.is_current).length, 1, 'uma atual')
+  const a = lista.find((s) => s.session_id === ids.sLucasA), b = lista.find((s) => s.session_id === ids.sLucasB)
+  igual([a.browser, a.operating_system, a.device_class], ['Chrome', 'Windows', 'DESKTOP'], 'Chrome no Windows')
+  igual([b.browser, b.operating_system, b.device_class, b.is_current], ['Safari', 'iPhone', 'MOBILE', false], 'Safari no iPhone')
+  igual(Object.keys(a).sort(), ['aal', 'browser', 'created_at', 'device_class', 'is_current', 'last_refreshed_at', 'operating_system', 'session_id'], 'colunas')
+  if (JSON.stringify(lista).includes('Mozilla')) throw new Error('user agent cru vazou')
+})
+await deve('user agent: famílias conhecidas; desconhecido ou vazio → nulo (sem palpite)', async () => {
+  const r = await um(db, `select
+    private.ua_browser($1) b1, private.ua_os($1) o1,
+    private.ua_browser($2) b2, private.ua_os($2) o2, private.ua_device($2) d2,
+    private.ua_browser('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0') b3,
+    private.ua_browser('Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36') b4,
+    private.ua_os('Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36') o4,
+    private.ua_browser('node') b5, private.ua_device('node') d5, private.ua_browser(null) b6, private.ua_browser('') b7`,
+    [UA_FIREFOX_MAC, 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'])
+  igual(r, { b1: 'Firefox', o1: 'macOS', b2: 'Safari', o2: 'iPad', d2: 'TABLET', b3: 'Edge', b4: 'Chrome', o4: 'Android', b5: null, d5: null, b6: null, b7: null }, 'parser')
+})
+await deveFalhar('lista de sessões exige MFA (aal1 não lista)', () =>
+  comoSessao(ids.lucas, ids.sLucasA, (tx) => tx.query(`select * from public.get_my_sessions()`), 'aal1'), /Sem sessão liberada/)
+await deveFalhar('sessão revogada não lista sessões', async () => {
+  const sid = await novaSessao038(ids.lucas)
+  await db.query(`delete from auth.sessions where id = $1`, [sid])
+  await comoSessao(ids.lucas, sid, (tx) => tx.query(`select * from public.get_my_sessions()`))
+}, /Sem sessão liberada/)
+await deve('auth.sessions não é exposta: nem authenticated nem anon leem a tabela', async () => {
+  for (const r of ['authenticated', 'anon']) {
+    const pode = (await um(db, `select has_table_privilege($1, 'auth.sessions', 'select') v`, [r])).v
+    igual(pode, false, r)
+  }
+})
+await deve('auditoria da conta: registra quem fez (a própria pessoa), sem segredo; avisa nas ações críticas', async () => {
+  const antes = (await linhas(db, `select 1 from notifications where user_id = $1 and type = 'SECURITY_NOTICE'`, [ids.lucas])).length
+  for (const acao of ['SESSION_CURRENT_REVOKED', 'OTHER_SESSIONS_REVOKED', 'ALL_SESSIONS_REVOKED', 'PASSWORD_CHANGED'])
+    await comoSessao(ids.lucas, ids.sLucasA, (tx) => tx.query(`select public.record_account_security_event($1)`, [acao]))
+  const ev = await linhas(db, `select action, actor_user_id, entity_type, entity_id, metadata from audit_events
+    where entity_id = $1 and action in ('SESSION_CURRENT_REVOKED', 'OTHER_SESSIONS_REVOKED', 'ALL_SESSIONS_REVOKED', 'PASSWORD_CHANGED') order by created_at`, [ids.lucas])
+  igual(ev.map((e) => e.action), ['SESSION_CURRENT_REVOKED', 'OTHER_SESSIONS_REVOKED', 'ALL_SESSIONS_REVOKED', 'PASSWORD_CHANGED'], 'ações')
+  igual(ev.every((e) => e.actor_user_id === ids.lucas && e.entity_type === 'profiles'), true, 'autor e entidade')
+  igual(ev.map((e) => Object.keys(e.metadata)), [['aal'], ['aal'], ['aal'], ['aal']], 'metadados mínimos')
+  const avisos = await linhas(db, `select title from notifications where user_id = $1 and type = 'SECURITY_NOTICE' order by created_at`, [ids.lucas])
+  igual(avisos.length - antes, 3, 'sair só deste dispositivo não gera aviso; os outros três sim')
+  igual(avisos.slice(-3).map((a) => a.title), ['Outras sessões encerradas', 'Todas as sessões encerradas', 'Sua senha foi alterada'], 'títulos')
+})
+await deveFalhar('auditoria da conta: ação fora da lista é recusada', () =>
+  comoSessao(ids.lucas, ids.sLucasA, (tx) => tx.query(`select public.record_account_security_event('MFA_RESET_COMPLETED')`)), /não permitido/)
+await deveFalhar('auditoria da conta: sem MFA não registra', () =>
+  comoSessao(ids.lucas, ids.sLucasA, (tx) => tx.query(`select public.record_account_security_event('PASSWORD_CHANGED')`), 'aal1'), /Sem sessão liberada/)
+await deve('aviso de segurança da conta não depende de preferência e não duplica', async () => {
+  await como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app, email) values ($1, 'CASES', false, false)`, [ids.lucas]))
+  const ev = (await comoSessao(ids.lucas, ids.sLucasA, (tx) => um(tx, `select public.record_account_security_event('PASSWORD_CHANGED') id`))).id
+  igual((await linhas(db, `select 1 from notifications where event_key = $1`, [`security:${ev}`])).length, 1, 'um aviso')
+  await db.query(`delete from user_notification_preferences where user_id = $1`, [ids.lucas])
+})
+
+secao('Catálogo: funções da 4.3.2 [038]')
+const novas432 = ['jwt_session_id', 'jwt_session_state', 'current_membership', 'get_my_session_context', 'ua_browser', 'ua_os', 'ua_device',
+  'get_my_sessions', 'record_account_security_event', 'notify_security_events']
+await deve('SECURITY DEFINER com search_path fixo; anon não executa nada', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, p.prosecdef d, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.proname = any ($1)`, [novas432])
+  igual(r.filter((x) => !x.cfg.includes('search_path=')).map((x) => x.f), [], 'sem search_path')
+  igual(r.filter((x) => x.anon).map((x) => x.f), [], 'anon com execute')
+})
+await deve('authenticated não chama o parser nem o produtor de avisos direto', async () => {
+  const r = await linhas(db, `select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1) and has_function_privilege('authenticated', p.oid, 'execute')`,
+    [['ua_browser', 'ua_os', 'ua_device', 'notify_security_events']])
+  igual(r.map((x) => x.f), [], 'authenticated com execute')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

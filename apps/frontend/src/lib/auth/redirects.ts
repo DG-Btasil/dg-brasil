@@ -81,6 +81,7 @@ export function safeNextPath(raw: string | null | undefined, fallback: string = 
 }
 
 const BLOCKED_REASON: Partial<Record<AuthOnboardingState, string>> = {
+  SESSION_REVOKED: "sessao-encerrada",
   PROFILE_MISSING: "conta-inativa",
   PROFILE_INACTIVE: "conta-inativa",
   NO_MEMBERSHIP: "sem-acesso",
@@ -113,6 +114,10 @@ export function destinationFor(result: SessionResult, next?: string | null): str
 
 /** Motivos que a tela /acesso sabe explicar (o parâmetro só escolhe o texto). */
 export const BLOCKED_MESSAGES: Record<string, { title: string; body: string }> = {
+  "sessao-encerrada": {
+    title: "Sessão encerrada",
+    body: "Esta sessão foi encerrada: alguém saiu de todos os dispositivos, a senha foi trocada ou a verificação em duas etapas foi redefinida. Entre novamente com senha e código.",
+  },
   "conta-inativa": {
     title: "Conta inativa",
     body: "Seu acesso ao DG Brasil está desativado. Se acredita que é um engano, fale com a administração do escritório.",

@@ -63,6 +63,8 @@ describe("nenhuma preferência do navegador transforma aal1 em aal2", () => {
       "src/proxy.ts",
       "src/features/auth/components/login-screen.tsx",
       "src/server/auth/actions.ts",
+      // "Sair de todos os dispositivos" (4.3.2): só apaga a preferência.
+      "src/server/domain/account/actions.ts",
     ]);
     const walk = (dir: string): string[] =>
       readdirSync(dir).flatMap((name) => {

@@ -8,12 +8,16 @@ import type { AppSession, MfaStatus, SessionContextRow, SessionResult } from "./
  * Função pura (sem I/O): o servidor chama com dados frescos a cada requisição,
  * por isso mudança de papel, inativação e suspensão valem na hora.
  *
- * Ordem: conta válida (perfil → vínculo → organização) → MFA de quem já tem
- * fator → termos → cadastro do MFA → liberado.
+ * Ordem: sessão ainda válida (038) → conta válida (perfil → vínculo →
+ * organização) → MFA de quem já tem fator → termos → cadastro do MFA → liberado.
  */
 export function evaluateSession(ctx: SessionContextRow | null, mfa: MfaStatus): SessionResult {
   if (!ctx) return { state: "ANONYMOUS" };
   const base = { userId: ctx.user_id, email: ctx.email ?? undefined, fullName: ctx.profile?.full_name ?? undefined };
+
+  // Sessão encerrada em outro dispositivo, ou aberta antes de um reset de MFA:
+  // nada mais vale nela (o banco também já recusa) — entrar de novo.
+  if (ctx.session_state === "REVOKED" || ctx.session_state === "REAUTH_REQUIRED") return { ...base, state: "SESSION_REVOKED" };
 
   if (!ctx.profile) return { ...base, state: "PROFILE_MISSING" };
   if (!ctx.profile.active) return { ...base, state: "PROFILE_INACTIVE" };

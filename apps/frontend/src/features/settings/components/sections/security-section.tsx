@@ -9,8 +9,8 @@ import { AuditLog } from "./audit-log";
 
 /**
  * Segurança e auditoria (ADMIN): postura REAL da plataforma e o registro de
- * auditoria do banco. Sessões não são listadas aqui (o Supabase Auth não as
- * expõe pela API do produto); cada usuário encerra a própria sessão ao sair.
+ * auditoria do banco. As sessões de cada pessoa ficam em "Sua conta e
+ * sessões" (só as próprias): o administrador não vê sessões de terceiros.
  */
 export function SecuritySection() {
   return (

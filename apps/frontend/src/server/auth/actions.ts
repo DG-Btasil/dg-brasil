@@ -15,12 +15,18 @@ import { getCurrentSession } from "./session";
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
 /**
- * Logout: revoga a sessão no Supabase (o refresh token deixa de valer) e apaga
- * os cookies. "Lembrar de mim" também é apagado: o próximo login começa do
- * zero — senha + TOTP.
+ * Logout ("Sair" / "Sair deste dispositivo"): revoga SÓ esta sessão no
+ * Supabase (scope "local" — os outros dispositivos continuam) e apaga os
+ * cookies. "Lembrar de mim" também é apagado: o próximo login começa do zero —
+ * senha + TOTP. Com a sessão liberada, registra SESSION_CURRENT_REVOKED antes
+ * (o JWT ainda vale); se não estiver (bloqueio, sessão já encerrada), só sai.
  */
 export async function signOut(): Promise<void> {
   const supabase = await createSupabaseServerClient();
+  if ((await getCurrentSession()).state === "READY") {
+    const { error } = await supabase.rpc("record_account_security_event", { p_action: "SESSION_CURRENT_REVOKED" });
+    if (error) console.error("[auth] auditoria do logout", sanitizeForLog(error));
+  }
   await supabase.auth.signOut({ scope: "local" });
   (await cookies()).delete(REMEMBER_COOKIE);
   redirect(`${AUTH_ROUTES.login}?aviso=saiu`);
@@ -102,7 +108,11 @@ export async function completeInvitation(input: { ref: string; fullName: string;
   return { ok: true };
 }
 
-/** Nova senha (recuperação ou troca). Exige sessão; com MFA, sessão aal2. */
+/**
+ * Nova senha (recuperação ou troca). Exige sessão; com MFA, sessão aal2.
+ * Depois da troca: auditoria PASSWORD_CHANGED (o banco avisa a pessoa) e as
+ * OUTRAS sessões são encerradas — quem tinha a senha antiga sai; esta continua.
+ */
 export async function updatePassword(input: { password: string }): Promise<ActionResult> {
   const result = await getCurrentSession();
   if (result.state === "ANONYMOUS") return { ok: false, error: "O link expirou. Peça uma nova recuperação de senha." };
@@ -112,5 +122,12 @@ export async function updatePassword(input: { password: string }): Promise<Actio
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.updateUser({ password: input.password });
   if (error) return { ok: false, error: passwordErrorMessage(error) };
+
+  if (result.state === "READY") {
+    const { error: auditError } = await supabase.rpc("record_account_security_event", { p_action: "PASSWORD_CHANGED" });
+    if (auditError) console.error("[auth] auditoria da troca de senha", sanitizeForLog(auditError));
+  }
+  const { error: othersError } = await supabase.auth.signOut({ scope: "others" });
+  if (othersError) console.error("[auth] encerrar outras sessões após troca de senha", sanitizeForLog(othersError));
   return { ok: true };
 }

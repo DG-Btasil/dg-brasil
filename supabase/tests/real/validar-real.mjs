@@ -823,6 +823,73 @@ await deve('caso aceito avisa o escritório parceiro (A), não o B; o aviso cheg
   igual((await r(C.PARTNER_ADMIN_B.from('notifications').select('id').eq('legal_case_id', caso))).length, 0, 'parceiro B')
 })
 
+secao('41d. Sessões e dispositivos no Auth real [038]')
+await deve('auth.sessions tem as colunas que a 038 lê; authenticated/anon não leem a tabela', async () => {
+  const cols = (await sql(`select column_name from information_schema.columns where table_schema = 'auth' and table_name = 'sessions'`)).map((c) => c.column_name)
+  for (const c of ['id', 'user_id', 'created_at', 'not_after', 'refreshed_at', 'user_agent', 'aal'])
+    if (!cols.includes(c)) throw new Error(`auth.sessions sem a coluna ${c}`)
+  const p = await um(`select has_table_privilege('authenticated', 'auth.sessions', 'select') a, has_table_privilege('anon', 'auth.sessions', 'select') b`)
+  igual([p.a, p.b], [false, false], 'privilégios')
+})
+// Navegadores "diferentes": cabeçalho User-Agent na requisição de login.
+const UA_CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+const UA_IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
+const navegador = (ua) => createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: fetchComRetry, headers: { 'User-Agent': ua } } })
+const soToken = (t) => createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: fetchComRetry, headers: { Authorization: `Bearer ${t}` } } })
+const S = {}
+await deve('duas sessões reais do mesmo usuário: lista só dele, atual marcada, "Chrome/Windows" e "Safari/iPhone", sem user agent cru', async () => {
+  for (const [k, ua] of [['pc', UA_CHROME], ['cel', UA_IPHONE]]) {
+    S[k] = navegador(ua)
+    await r(S[k].auth.signInWithPassword({ email: U.LAWYER_2.email, password: U.LAWYER_2.pass }))
+    await verificarCodigo(S[k], U.LAWYER_2.email)
+    S[`${k}Token`] = (await r(S[k].auth.getSession())).session.access_token
+  }
+  const lista = await r(S.pc.rpc('get_my_sessions'))
+  igual(lista.filter((s) => s.is_current).length, 1, 'uma atual')
+  const atual = lista.find((s) => s.is_current)
+  igual([atual.browser, atual.operating_system, atual.device_class], ['Chrome', 'Windows', 'DESKTOP'], 'atual')
+  if (!lista.some((s) => !s.is_current && s.browser === 'Safari' && s.operating_system === 'iPhone')) throw new Error('sessão do iPhone não listada')
+  if (JSON.stringify(lista).includes('Mozilla')) throw new Error('user agent cru')
+  const minhas = new Set(lista.map((s) => s.session_id))
+  const doOutro = await r(C.LAWYER.rpc('get_my_sessions'))
+  if (doOutro.some((s) => minhas.has(s.session_id))) throw new Error('outro usuário vê estas sessões')
+  const reais = await sql(`select id from auth.sessions where user_id = $1`, [U.LAWYER_2.id])
+  for (const s of lista) if (!reais.some((x) => x.id === s.session_id)) throw new Error('sessão listada que não existe no Auth')
+})
+await deve('sair dos outros dispositivos: o JWT do celular (ainda não expirado) perde o banco na hora; o PC continua', async () => {
+  igual((await r(soToken(S.celToken).from('organizations').select('id'))).length > 0, true, 'antes')
+  await r(S.pc.rpc('record_account_security_event', { p_action: 'OTHER_SESSIONS_REVOKED' }))
+  await r(S.pc.auth.signOut({ scope: 'others' }))
+  igual((await r(soToken(S.celToken).from('organizations').select('id'))).length, 0, 'celular depois')
+  igual((await r(soToken(S.celToken).rpc('get_my_session_context'))).session_state, 'REVOKED', 'estado do celular')
+  igual((await r(S.pc.rpc('get_my_session_context'))).session_state, 'VALID', 'PC')
+  if ((await r(S.pc.from('organizations').select('id'))).length === 0) throw new Error('PC perdeu o acesso')
+  const ev = await um(`select actor_user_id, metadata from audit_events where action = 'OTHER_SESSIONS_REVOKED' and entity_id = $1 order by created_at desc limit 1`, [U.LAWYER_2.id])
+  igual(ev.actor_user_id, U.LAWYER_2.id, 'auditoria')
+  igual((await um(`select count(*)::int n from notifications where user_id = $1 and type = 'SECURITY_NOTICE' and title = 'Outras sessões encerradas'`, [U.LAWYER_2.id])).n >= 1, true, 'aviso')
+})
+await deve('sair de todos: auditado ANTES; nenhuma sessão do usuário sobra no Auth; o JWT do PC perde o banco', async () => {
+  await r(S.pc.rpc('record_account_security_event', { p_action: 'ALL_SESSIONS_REVOKED' }))
+  await r(S.pc.auth.signOut({ scope: 'global' }))
+  igual((await um(`select count(*)::int n from auth.sessions where user_id = $1`, [U.LAWYER_2.id])).n, 0, 'sessões no Auth')
+  igual((await r(soToken(S.pcToken).rpc('get_my_session_context'))).session_state, 'REVOKED', 'PC')
+  igual((await r(soToken(S.pcToken).from('organizations').select('id'))).length, 0, 'PC sem dados')
+})
+await deve('custo: a checagem de sessão (caminho de toda a RLS) fica abaixo de 2 ms por chamada, com JWT de sessão real', async () => {
+  const sessao = await um(`select id from auth.sessions where user_id = $1 limit 1`, [U.LAWYER.id])
+  await sql('begin')
+  try {
+    await sql(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: U.LAWYER.id, role: 'authenticated', aal: 'aal2', session_id: sessao.id })])
+    igual((await um(`select private.jwt_session_state() s`)).s, 'VALID', 'estado')
+    const p = await um(`explain (analyze, format json) select private.jwt_session_state() from generate_series(1, 200)`)
+    const ms = p['QUERY PLAN'][0]['Execution Time']
+    console.log(`    200 chamadas: ${ms.toFixed(1)} ms`)
+    if (ms / 200 > 2) throw new Error(`lento: ${(ms / 200).toFixed(2)} ms por chamada`)
+  } finally {
+    await sql('rollback')
+  }
+})
+
 secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')
 await deve('carteira do parceiro A (página + total) em menos de 2 s, mesmo com o DEV cheio de rodadas', async () => {
   const inicio = performance.now()

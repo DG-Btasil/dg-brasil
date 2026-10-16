@@ -108,3 +108,22 @@ export function enforcePartnerTaxIdLimit(ctx: Pick<ServiceContext, "session" | "
     throw new DomainError("RATE_LIMITED", RATE_LIMITED_MESSAGE);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Ações de segurança da própria conta (4.3.2)                         */
+/* ------------------------------------------------------------------ */
+
+/** Encerrar sessões: poucas por minuto por usuário (cada uma audita e avisa). */
+export const ACCOUNT_SECURITY_LIMITS = { windowMs: 60_000, perUser: 5 } as const;
+
+const accountSecurityLimiter = new SlidingWindowLimiter(ACCOUNT_SECURITY_LIMITS.windowMs);
+
+export const ACCOUNT_SECURITY_RATE_LIMITED_MESSAGE = "Muitas ações de segurança em pouco tempo. Aguarde um minuto e tente novamente.";
+
+export function enforceAccountSecurityLimit(ctx: Pick<ServiceContext, "session" | "log">, limiter: SlidingWindowLimiter = accountSecurityLimiter): void {
+  const result = limiter.consume([{ key: `account-security:user:${ctx.session.userId}`, limit: ACCOUNT_SECURITY_LIMITS.perUser }]);
+  if (!result.allowed) {
+    ctx.log.warn("rate_limit.account_security", { retryAfterMs: result.retryAfterMs });
+    throw new DomainError("RATE_LIMITED", ACCOUNT_SECURITY_RATE_LIMITED_MESSAGE);
+  }
+}
