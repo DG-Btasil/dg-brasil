@@ -1,95 +1,64 @@
-"use client";
-
-import { useMemo, useState } from "react";
+import Link from "next/link";
 import { History } from "lucide-react";
+import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState } from "@/components/feedback/states";
-import { Button } from "@/components/ui/button";
-import { Panel } from "@/components/ui/panel";
-import { useUserMap } from "@/features/offices/hooks";
-import { daysSince } from "@/lib/clock";
-import type { ChangeHistoryEntry } from "@/types";
-import { useChangeHistory, useDgMaps } from "../../hooks";
-import { dgRoutes, formatVersionChange } from "../../utils";
-import { DiffDialog } from "../shared/diff-dialog";
-import { HistoryEntry } from "./history-entry";
-import { HistoryFilters, type HistoryFilterValue } from "./history-filters";
+import { Badge } from "@/components/ui/badge";
+import { Panel, PanelHeader } from "@/components/ui/panel";
+import type { ActionResult } from "@/lib/actions/result";
+import { formatDateTime } from "@/lib/formatting";
+import type { HistoryEntryDTO } from "@/server/domain/dg/dto";
+import { dgRoutes, formatVersion } from "../../utils";
+import { DiffView } from "../shared/diff-view";
 
-const INITIAL: HistoryFilterValue = { status: "", entity: "", period: "all" };
+const ENTITY_LABEL: Record<HistoryEntryDTO["entityType"], string> = { AGENT: "Agente", SKILL: "Skill", THESIS: "Tese", REFERENCE: "Referência" };
 
-export function HistoryView() {
-  const history = useChangeHistory();
-  const maps = useDgMaps();
-  const users = useUserMap();
-  const [filters, setFilters] = useState<HistoryFilterValue>(INITIAL);
-  const [diffEntry, setDiffEntry] = useState<ChangeHistoryEntry | null>(null);
+function href(e: HistoryEntryDTO): string | undefined {
+  if (e.entityType === "AGENT") return dgRoutes.agent(e.entityId);
+  if (e.entityType === "SKILL") return dgRoutes.skill(e.entityId);
+  if (e.entityType === "THESIS") return dgRoutes.thesis(e.entityId);
+  return undefined;
+}
 
-  const filtered = useMemo(
-    () =>
-      history.filter(
-        (h) =>
-          (!filters.status || h.status === filters.status) &&
-          (!filters.entity || h.entityType === filters.entity) &&
-          (filters.period === "all" || daysSince(h.at) <= Number(filters.period)),
-      ),
-    [history, filters],
-  );
-
-  function entityHref(e: ChangeHistoryEntry): string | undefined {
-    if (e.entityType === "SKILL" && maps.skills.has(e.entityId)) return dgRoutes.skill(e.entityId);
-    if (e.entityType === "THESIS" && maps.theses.has(e.entityId)) return dgRoutes.thesis(e.entityId);
-    if ((e.entityType === "AGENT" || e.entityType === "RULE") && maps.agents.has(e.entityId)) return dgRoutes.agent(e.entityId);
-    return undefined;
-  }
-
-  const hasFilters = filters.status !== "" || filters.entity !== "" || filters.period !== "all";
-
+/** Histórico real: cada versão criada (append-only), com a diferença para a anterior. */
+export function HistoryView({ result }: { result: ActionResult<HistoryEntryDTO[]> }) {
+  if (!result.ok) return <ActionErrorState error={result} title="Não foi possível carregar o histórico." />;
+  const entries = result.data;
   return (
-    <section aria-labelledby="dg-history-title">
-      <div className="mb-3">
-        <h2 id="dg-history-title" className="text-[15px] font-semibold text-foreground">
-          Histórico de alterações
-        </h2>
-        <p className="mt-0.5 text-[12.5px] text-muted">Toda mudança em agentes, Skills, teses e regras, com quem pediu, o que mudou e quem confirmou.</p>
-      </div>
-      <Panel>
-        <HistoryFilters value={filters} onChange={setFilters} resultCount={filtered.length} />
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon={History}
-            title={history.length === 0 ? "Nenhuma alteração registrada." : "Nenhuma alteração encontrada com esses filtros."}
-            action={
-              hasFilters ? (
-                <Button variant="secondary" onClick={() => setFilters(INITIAL)}>
-                  Limpar filtros
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <ol className="divide-y divide-line">
-            {filtered.map((e) => (
-              <HistoryEntry
-                key={e.id}
-                entry={e}
-                requestedByName={users.get(e.requestedBy)?.name ?? "—"}
-                entityHref={entityHref(e)}
-                agents={e.affectedAgentIds.flatMap((id) => {
-                  const a = maps.agents.get(id);
-                  return a ? [{ id: a.id, name: a.name, href: dgRoutes.agent(a.id) }] : [];
-                })}
-                onShowDiff={() => setDiffEntry(e)}
-              />
-            ))}
-          </ol>
-        )}
-      </Panel>
-      <DiffDialog
-        open={diffEntry !== null}
-        onOpenChange={(v) => !v && setDiffEntry(null)}
-        title={diffEntry ? `${diffEntry.entityName} · ${formatVersionChange(diffEntry.fromVersion, diffEntry.toVersion)}` : "Alterações"}
-        description={diffEntry?.suggestedChange}
-        lines={diffEntry?.diff ?? []}
-      />
-    </section>
+    <Panel>
+      <PanelHeader title="Histórico de alterações" description="Toda versão nova de agente, skill, tese ou referência. Execuções antigas continuam ligadas à versão que usaram." />
+      {entries.length === 0 ? (
+        <EmptyState icon={History} title="Nenhuma alteração registrada." />
+      ) : (
+        <ol className="divide-y divide-line">
+          {entries.map((e) => {
+            const link = href(e);
+            return (
+              <li key={e.id} className="px-5 py-4">
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
+                  <Badge tone={e.action === "CREATED" ? "success" : "info"}>{e.action === "CREATED" ? "Criação" : "Alteração"}</Badge>
+                  <span className="text-subtle">{ENTITY_LABEL[e.entityType]}</span>
+                  {link ? (
+                    <Link href={link} className="font-medium text-navy hover:underline underline-offset-2">
+                      {e.entityName}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-foreground">{e.entityName}</span>
+                  )}
+                  <span className="tabular text-muted">{formatVersion(e.version)}</span>
+                  <span className="ml-auto text-[12px] text-muted">
+                    {formatDateTime(e.at)}
+                    {e.authorName ? ` · ${e.authorName}` : ""}
+                  </span>
+                </div>
+                <details>
+                  <summary className="cursor-pointer text-[12.5px] font-medium text-navy">Ver diferenças</summary>
+                  <DiffView lines={e.diff} className="mt-2" />
+                </details>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </Panel>
   );
 }

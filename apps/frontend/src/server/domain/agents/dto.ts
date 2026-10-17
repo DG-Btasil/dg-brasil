@@ -39,3 +39,42 @@ export interface AgentRunRequestDTO {
   runId: ID;
   deduplicated: boolean;
 }
+
+/** Uma execução, para a tela (get_agent_run_detail, 039). `usage`/`config` só para ADMIN. */
+export interface AgentRunDetailDTO {
+  id: ID;
+  agent: { id: ID; name: string; slug: string };
+  status: AgentRunStatus;
+  cancelRequested: boolean;
+  errorCode?: string;
+  attempt: number;
+  legalCaseId?: ID;
+  processId?: ID;
+  createdAt: ISODateTime;
+  startedAt?: ISODateTime;
+  completedAt?: ISODateTime;
+  retryOfId?: ID;
+  retriedByIds: ID[];
+  analysisId?: ID;
+  proposals: { id: ID; type: string; status: string; summary?: string; reviewId?: ID; applicationError?: string }[];
+  documents: { versionId: ID; documentId: ID; title: string; versionNumber: number; reviewId?: ID; reviewStatus?: string }[];
+  analysisResult?: { id: ID; summary: string; reviewId?: ID; reviewStatus?: string };
+  usage?: {
+    provider: string;
+    model?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    estimatedCost?: number;
+    currency?: string;
+    details?: Record<string, unknown>;
+    toolsUsed?: Record<string, number>;
+    errorMessage?: string;
+  };
+  config?: Record<string, unknown>;
+}
+
+export interface AgentRunRetryDTO {
+  runId: ID;
+  retryOfId: ID;
+  deduplicated: boolean;
+}

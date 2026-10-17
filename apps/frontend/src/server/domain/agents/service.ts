@@ -1,8 +1,8 @@
 import { hasRole, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { forbidden } from "@/server/core/errors";
 import { toPage, toRange, type Page } from "@/server/core/pagination";
-import type { AgentRunCancelDTO, AgentRunRequestDTO, AgentRunSummaryDTO } from "./dto";
-import { summaryFromRow } from "./mappers";
+import type { AgentRunCancelDTO, AgentRunDetailDTO, AgentRunRequestDTO, AgentRunRetryDTO, AgentRunSummaryDTO } from "./dto";
+import { detailFromJson, summaryFromRow } from "./mappers";
 import * as repo from "./repository";
 import type { ListAgentRunsInput, ListAgentRunSummariesInput, RequestAgentRunInput } from "./schemas";
 
@@ -77,4 +77,24 @@ export async function cancelAgentRun(ctx: ServiceContext, id: string): Promise<A
   const r = await repo.requestCancel(ctx.db, id);
   ctx.log.info("agent_run.cancel_requested", { agentRunId: id, outcome: r.outcome });
   return { agentRunId: r.agent_run_id, status: r.status as AgentRunCancelDTO["status"], outcome: r.outcome as AgentRunCancelDTO["outcome"] };
+}
+
+/** Uma execução: o que entregou (com a revisão de cada item) e as tentativas ligadas (039). */
+export async function getAgentRunDetail(ctx: ServiceContext, id: string): Promise<AgentRunDetailDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "analyses.start");
+  return detailFromJson(await repo.detail(ctx.db, id));
+}
+
+/**
+ * Nova tentativa de execução avulsa (falhou ou foi interrompida): OUTRA
+ * execução com a mesma entrada, ligada à anterior. A de análise é reenviada
+ * pela análise (o banco recusa aqui). Idempotente pela chave.
+ */
+export async function retryAgentRun(ctx: ServiceContext, key: string, id: string): Promise<AgentRunRetryDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "analyses.start");
+  const r = await repo.retry(ctx.db, key, id);
+  ctx.log.info("agent_run.retry_requested", { agentRunId: r.agent_run_id, retryOf: id, deduplicated: r.deduplicated });
+  return { runId: r.agent_run_id, retryOfId: r.retry_of_agent_run_id, deduplicated: r.deduplicated === true };
 }

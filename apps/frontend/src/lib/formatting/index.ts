@@ -154,3 +154,11 @@ export function greeting(date: Date): string {
   if (h < 18) return "Boa tarde";
   return "Boa noite";
 }
+
+/** Tamanho de arquivo legível (1,2 MB; 830 KB). */
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`;
+}

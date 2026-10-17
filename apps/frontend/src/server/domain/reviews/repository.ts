@@ -17,7 +17,7 @@ import type { AnalysisTargetRow, DocumentVersionTargetRow, ProposalTargetRow, Re
  * cada tabela vale — o que o usuário não vê volta nulo). Só nomes/títulos:
  * nenhum conteúdo revisado entra na listagem.
  */
-const REVIEW_COLUMNS = `id, legal_case_id, legal_process_id, document_version_id, legal_analysis_id, agent_proposal_id,
+const REVIEW_COLUMNS = `id, legal_case_id, legal_process_id, document_version_id, legal_analysis_id, legal_analysis_result_id, agent_proposal_id,
   status, priority, assigned_reviewer_id, due_at, created_at, updated_at, decided_at,
   agent_proposals(proposal_type, agent_runs(agents(name))),
   legal_analyses(analysis_templates(name)),
@@ -73,6 +73,13 @@ export async function getAnalysisTarget(db: SupabaseClient, id: string): Promise
   return unwrap(
     await db.from("legal_analyses").select("id, status, analysis_template_id, agent_run_id, summary, result_data").eq("id", id).maybeSingle(),
   ) as AnalysisTargetRow | null;
+}
+
+/** Resultado EXATO revisado (039): a revisão de uma tentativa antiga mostra o resultado dela, não o atual. */
+export async function getAnalysisResult(db: SupabaseClient, id: string): Promise<{ id: string; agent_run_id: string; summary: string; result: unknown } | null> {
+  return unwrap(
+    await db.from("legal_analysis_results").select("id, agent_run_id, summary, result").eq("id", id).maybeSingle(),
+  ) as { id: string; agent_run_id: string; summary: string; result: unknown } | null;
 }
 
 export async function getDocumentVersionTarget(db: SupabaseClient, id: string): Promise<DocumentVersionTargetRow | null> {

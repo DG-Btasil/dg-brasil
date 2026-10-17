@@ -63,8 +63,13 @@ export async function listReviews(ctx: ServiceContext, input: ListReviewsInput):
 async function loadTarget(ctx: ServiceContext, row: ReviewRow): Promise<ReviewTargetDTO | null> {
   const target = targetOf(row);
   if (target.kind === "ANALYSIS") {
-    const t = await repo.getAnalysisTarget(ctx.db, target.id);
-    return t ? analysisTargetFromRow(t) : null;
+    const [t, exact] = await Promise.all([
+      repo.getAnalysisTarget(ctx.db, target.id),
+      row.legal_analysis_result_id ? repo.getAnalysisResult(ctx.db, row.legal_analysis_result_id) : Promise.resolve(null),
+    ]);
+    if (!t) return null;
+    // Revisão de um resultado específico: mostra ESSE resultado (o atual pode ser de outra tentativa).
+    return analysisTargetFromRow(exact ? { ...t, agent_run_id: exact.agent_run_id, summary: exact.summary, result_data: exact.result } : t);
   }
   if (target.kind === "DOCUMENT_VERSION") {
     const t = await repo.getDocumentVersionTarget(ctx.db, target.id);

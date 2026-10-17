@@ -33,6 +33,7 @@ import { useReviewActions } from "../use-review-actions";
 import { canEditReview } from "../manual-revision";
 import { DecisionDialog } from "./decision-dialog";
 import { DocumentContentPanel } from "./document-content";
+import { AnalysisResultView } from "@/features/analyses/components/analysis-result-view";
 import { PriorityBadge } from "./priority-badge";
 import { DB_STATUS_LABEL, isOpen } from "./review-table";
 
@@ -132,7 +133,7 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
 
       <div className="grid grid-cols-12 items-start gap-5">
         <div className="col-span-12 space-y-5 xl:col-span-8">
-          <TargetPanel target={review.target} reviewId={review.id} canEdit={allowed && canEditReview(review.dbStatus)} />
+          <TargetPanel target={review.target} reviewId={review.id} reviewStatus={review.dbStatus} canEdit={allowed && canEditReview(review.dbStatus)} />
         </div>
         <aside className="col-span-12 space-y-5 xl:col-span-4" aria-label="Atribuição e histórico">
           <Assignment review={review} editable={open && allowed} />
@@ -171,9 +172,19 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
 
 /* ------------------------------------------------------------------ */
 
+/** Rótulos dos campos de proposta (propostas.ts do worker). */
+const PAYLOAD_LABEL: Record<string, string> = {
+  title: "Título", description: "Descrição", due_at: "Vence em", priority: "Prioridade", legal_process_id: "Processo",
+  responsible_user_id: "Responsável", category: "Categoria", label: "Documento", required: "Obrigatório",
+  message_to_partner: "Mensagem ao parceiro", summary: "Resumo", status: "Situação", cnj_number: "Número CNJ", court: "Tribunal",
+  court_unit: "Vara", district: "Comarca", state: "UF", legal_class: "Classe", subject: "Assunto", client_side: "Polo do cliente",
+  adverse_party_summary: "Parte contrária", case_value: "Valor da causa", skill_slug: "Skill", agent_slug: "Agente",
+  instructions: "Instruções", configuration: "Configuração",
+};
+
 const show = (v: unknown): string => (v === null || v === undefined ? "—" : typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
 
-function TargetPanel({ target, reviewId, canEdit }: { target: ReviewTargetDTO | null; reviewId: string; canEdit: boolean }) {
+function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: ReviewTargetDTO | null; reviewId: string; reviewStatus: string; canEdit: boolean }) {
   const docs = useDocumentActions();
   const [busy, setBusy] = useState(false);
   if (!target) {
@@ -191,14 +202,14 @@ function TargetPanel({ target, reviewId, canEdit }: { target: ReviewTargetDTO | 
           {!target.result ? (
             <EmptyState compact title="A análise ainda não tem resultado." />
           ) : (
-            <DefinitionGrid
-              columns={2}
-              items={[
-                { label: "Resumo", value: target.result.summary || undefined, wide: true },
-                { label: "Recomendação", value: target.result.recommendation || undefined, wide: true },
-                { label: "Teses identificadas", value: target.result.identifiedThesisIds.length ? String(target.result.identifiedThesisIds.length) : undefined },
-              ]}
-            />
+            <AnalysisResultView result={target.result} reviewStatus={reviewStatus} />
+          )}
+          {target.agentRunId && (
+            <p className="text-[12.5px]">
+              <Link href={`/execucoes/${target.agentRunId}`} className="font-medium text-navy hover:underline underline-offset-2">
+                Ver a execução do agente
+              </Link>
+            </p>
           )}
         </PanelBody>
       </Panel>
@@ -243,15 +254,33 @@ function TargetPanel({ target, reviewId, canEdit }: { target: ReviewTargetDTO | 
       </div>
     );
   }
-  const entries = Object.entries(target.payload);
+  // Payload do worker (018/039): { summary, data }. O que será aplicado é `data`, exatamente como está.
+  const summary = typeof target.payload.summary === "string" ? target.payload.summary : undefined;
+  const data = target.payload.data && typeof target.payload.data === "object" && !Array.isArray(target.payload.data) ? (target.payload.data as Record<string, unknown>) : undefined;
+  const entries = Object.entries(data ?? target.payload).filter(([key]) => data || key !== "summary");
   return (
     <Panel>
       <PanelHeader title={PROPOSAL_TYPE_LABEL[target.proposalType] ?? "Proposta do agente"} description={`Criada em ${formatDateTime(target.createdAt)}. Aprovar aplica a proposta pelo worker.`} />
-      <PanelBody>
+      <PanelBody className="space-y-4">
+        {summary && (
+          <Callout tone="warning" title="Proposta da IA — não aplicada">
+            {summary}
+          </Callout>
+        )}
         {entries.length === 0 ? (
           <EmptyState compact title="Proposta sem conteúdo." />
         ) : (
-          <DefinitionGrid columns={2} items={entries.map(([key, value]) => ({ label: key, value: show(value), wide: true }))} />
+          <>
+            <p className="text-[12px] text-muted">Se aprovada, será aplicada exatamente com estes dados:</p>
+            <DefinitionGrid columns={2} items={entries.map(([key, value]) => ({ label: PAYLOAD_LABEL[key] ?? key, value: show(value), wide: typeof value === "string" && value.length > 60 }))} />
+          </>
+        )}
+        {target.agentRunId && (
+          <p className="text-[12.5px]">
+            <Link href={`/execucoes/${target.agentRunId}`} className="font-medium text-navy hover:underline underline-offset-2">
+              Ver a execução do agente
+            </Link>
+          </p>
         )}
       </PanelBody>
     </Panel>

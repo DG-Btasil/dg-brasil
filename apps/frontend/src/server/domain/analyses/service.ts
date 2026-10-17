@@ -47,12 +47,12 @@ export async function getAnalysis(ctx: ServiceContext, id: string): Promise<Anal
   requireAnalyst(ctx);
   const row = await repo.getById(ctx.db, id);
   if (!row) throw notFound(NOT_FOUND_MESSAGE);
-  const [missing, reviewId, cancel] = await Promise.all([
+  const [missing, review, cancel] = await Promise.all([
     computeMissing(ctx, row.legal_case_id, row.analysis_template_id),
-    repo.latestReviewId(ctx.db, id),
+    repo.latestReview(ctx.db, id),
     row.status === "RUNNING" && row.agent_run_id ? agentsRepo.cancelState(ctx.db, [row.agent_run_id]) : Promise.resolve(new Map<string, boolean>()),
   ]);
-  return detailFromRow(row, missing, reviewId, row.agent_run_id ? cancel.get(row.agent_run_id) === true : false);
+  return detailFromRow(row, missing, review?.id ?? null, row.agent_run_id ? cancel.get(row.agent_run_id) === true : false, review?.status);
 }
 
 /**

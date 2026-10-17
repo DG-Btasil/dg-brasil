@@ -1,4 +1,4 @@
-import type { AgentRunSummaryDTO } from "./dto";
+import type { AgentRunDetailDTO, AgentRunSummaryDTO } from "./dto";
 import type { AgentRunStatus } from "./schemas";
 
 /**
@@ -50,5 +50,49 @@ export function summaryFromRow(row: AgentRunSummaryRow): AgentRunSummaryDTO {
     startedAt: opt(row.started_at),
     completedAt: opt(row.completed_at),
     proposalCount: Number(row.proposal_count ?? 0),
+  };
+}
+
+const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+const num = (v: unknown) => (v === null || v === undefined || v === "" ? undefined : Number(v));
+const arr = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
+
+export function detailFromJson(d: Record<string, unknown>): AgentRunDetailDTO {
+  const agent = (d.agent ?? {}) as Record<string, unknown>;
+  const usage = d.usage as Record<string, unknown> | null | undefined;
+  const result = d.analysis_result as Record<string, unknown> | null | undefined;
+  return {
+    id: String(d.id),
+    agent: { id: String(agent.id), name: String(agent.name ?? ""), slug: String(agent.slug ?? "") },
+    status: d.status as AgentRunStatus,
+    cancelRequested: d.cancel_requested === true,
+    errorCode: str(d.error_code),
+    attempt: Number(d.attempt ?? 0),
+    legalCaseId: str(d.legal_case_id),
+    processId: str(d.legal_process_id),
+    createdAt: String(d.created_at),
+    startedAt: str(d.started_at),
+    completedAt: str(d.completed_at),
+    retryOfId: str(d.retry_of_agent_run_id),
+    retriedByIds: Array.isArray(d.retried_by) ? (d.retried_by as string[]) : [],
+    analysisId: str(d.analysis_id),
+    proposals: arr(d.proposals).map((p) => ({
+      id: String(p.id), type: String(p.type), status: String(p.status), summary: str(p.summary), reviewId: str(p.review_id), applicationError: str(p.application_error),
+    })),
+    documents: arr(d.documents).map((x) => ({
+      versionId: String(x.version_id), documentId: String(x.document_id), title: String(x.title ?? ""), versionNumber: Number(x.version_number ?? 0),
+      reviewId: str(x.review_id), reviewStatus: str(x.review_status),
+    })),
+    analysisResult: result ? { id: String(result.id), summary: String(result.summary ?? ""), reviewId: str(result.review_id), reviewStatus: str(result.review_status) } : undefined,
+    usage: usage
+      ? {
+          provider: String(usage.provider ?? ""), model: str(usage.model), inputTokens: num(usage.input_tokens), outputTokens: num(usage.output_tokens),
+          estimatedCost: num(usage.estimated_cost), currency: str(usage.currency),
+          details: (usage.details ?? undefined) as Record<string, unknown> | undefined,
+          toolsUsed: (usage.tools_used ?? undefined) as Record<string, number> | undefined,
+          errorMessage: str(usage.error_message),
+        }
+      : undefined,
+    config: (d.config ?? undefined) as Record<string, unknown> | undefined,
   };
 }

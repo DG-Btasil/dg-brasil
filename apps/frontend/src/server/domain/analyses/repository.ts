@@ -82,10 +82,14 @@ export async function satisfiedCategories(db: SupabaseClient, caseId: string): P
 }
 
 export async function latestReviewId(db: SupabaseClient, analysisId: string): Promise<string | null> {
-  const data = unwrap(
-    await db.from("reviews").select("id").eq("legal_analysis_id", analysisId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-  ) as { id: string } | null;
-  return data?.id ?? null;
+  return (await latestReview(db, analysisId))?.id ?? null;
+}
+
+/** Revisão mais recente da análise, com a situação (resultado da IA aprovado ou não). */
+export async function latestReview(db: SupabaseClient, analysisId: string): Promise<{ id: string; status: string } | null> {
+  return unwrap(
+    await db.from("reviews").select("id, status").eq("legal_analysis_id", analysisId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ) as { id: string; status: string } | null;
 }
 
 export interface TemplateSetupRow {

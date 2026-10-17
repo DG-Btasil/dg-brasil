@@ -149,7 +149,33 @@ export function resultFromRow(summary: string | null, resultData: unknown): Anal
   const theses = Array.isArray(data.identified_thesis_ids) ? data.identified_thesis_ids.filter((t): t is string => typeof t === "string" && UUID.test(t)) : [];
   const recommendation = typeof data.recommendation === "string" ? data.recommendation : "";
   if (!summary && theses.length === 0 && !recommendation) return undefined;
-  return { summary: summary ?? "", identifiedThesisIds: theses, recommendation };
+  const base: AnalysisResult = { summary: summary ?? "", identifiedThesisIds: theses, recommendation };
+  if (typeof data.schema_version !== "number") return base;
+  // Resultado estruturado (039). Leitura defensiva: só texto/booleano/UUID do
+  // formato esperado; o resto é ignorado (nunca renderizado como HTML).
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter(isObject) : []);
+  const text = (v: unknown, max = 4000) => (typeof v === "string" ? v.slice(0, max) : "");
+  const texts = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((x) => x.slice(0, 2000)) : []);
+  const uuids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && UUID.test(x)) : []);
+  return {
+    ...base,
+    resultId: typeof data.result_id === "string" && UUID.test(data.result_id) ? data.result_id : undefined,
+    schemaVersion: data.schema_version,
+    findings: list(data.findings).map((f) => ({
+      title: text(f.title, 300), detail: text(f.detail),
+      relevance: f.relevance === "HIGH" || f.relevance === "LOW" ? f.relevance : "MEDIUM",
+      documentVersionIds: uuids(f.document_version_ids),
+    })),
+    missingInformation: texts(data.missing_information),
+    recommendations: texts(data.recommendations),
+    proposedActions: list(data.proposed_actions).map((a) => ({ description: text(a.description, 2000), proposalType: typeof a.proposal_type === "string" ? a.proposal_type : undefined })),
+    referencesUsed: list(data.references_used)
+      .filter((r) => typeof r.reference_id === "string" && UUID.test(r.reference_id))
+      .map((r) => ({ referenceId: r.reference_id as string, title: text(r.title, 300), howUsed: text(r.how_used, 1000) })),
+    thesesConsidered: list(data.theses_considered)
+      .filter((t) => typeof t.thesis_id === "string" && UUID.test(t.thesis_id))
+      .map((t) => ({ thesisId: t.thesis_id as string, title: typeof t.title === "string" ? t.title.slice(0, 300) : undefined, applicable: t.applicable === true, rationale: text(t.rationale, 2000) })),
+  };
 }
 
 function stringFields(values: Record<string, unknown> | null): Record<string, string> {
@@ -158,7 +184,7 @@ function stringFields(values: Record<string, unknown> | null): Record<string, st
   return out;
 }
 
-export function detailFromRow(row: AnalysisDetailRow, missing: MissingRequirementDTO[], reviewId: string | null, cancelRequested = false): AnalysisDetailDTO {
+export function detailFromRow(row: AnalysisDetailRow, missing: MissingRequirementDTO[], reviewId: string | null, cancelRequested = false, reviewStatus?: string): AnalysisDetailDTO {
   const requiredDocumentsComplete = !missing.some((m) => m.required);
   return {
     ...listItemFromRow(row),
@@ -171,6 +197,7 @@ export function detailFromRow(row: AnalysisDetailRow, missing: MissingRequiremen
     missingRequirements: missing,
     requiredDocumentsComplete,
     reviewId: opt(reviewId),
+    reviewStatus,
     cancelRequested,
   };
 }

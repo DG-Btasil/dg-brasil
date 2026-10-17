@@ -46,3 +46,5 @@ export const listAgentRunsSchema = pageInputSchema.extend({
 export type ListAgentRunsInput = z.infer<typeof listAgentRunsSchema>;
 
 export const agentRunIdSchema = z.object({ id: zUuid() });
+
+export const retryAgentRunSchema = z.object({ key: zUuid(), id: zUuid() });

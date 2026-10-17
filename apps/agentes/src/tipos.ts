@@ -113,7 +113,7 @@ export interface Registro {
   analise: string | null
   documentosAbertos: number
   /** Versões de tese e de referência efetivamente consultadas pelo agente. */
-  tesesConsultadas: Map<string, string>
+  tesesConsultadas: Map<string, { versao: string; titulo: string }>
   referenciasAbertas: Map<string, string>
   /** Minutas já entregues nesta execução: checksum → versão (não duplica). */
   entregues: Map<string, string>

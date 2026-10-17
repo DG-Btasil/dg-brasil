@@ -178,7 +178,7 @@ export function criarFerramentas(ctx: ContextoExecucao): Ferramenta<any>[] {
         [ctx.agente.id, doTemplate],
       )
       if (!rows.length) return ok('Nenhuma tese autorizada para esta execução.')
-      for (const t of rows) registro.tesesConsultadas.set(t.id, t.versao_id)
+      for (const t of rows) registro.tesesConsultadas.set(t.id, { versao: t.versao_id, titulo: t.titulo })
       return ok(limitar(json(rows.map(({ versao_id: _v, ...t }) => t))))
     },
   }
@@ -391,7 +391,7 @@ export function criarFerramentas(ctx: ContextoExecucao): Ferramenta<any>[] {
       try {
         r = (await um<{ result_id: string; review_id: string | null; created: boolean }>(banco,
           `select * from private.worker_submit_analysis_result($1::uuid, $2::text, $3::text, $4::jsonb, $5::int)`,
-          [run.id, worker, resultado.summary, JSON.stringify(paraGravar(resultado)), VERSAO_RESULTADO]))!
+          [run.id, worker, resultado.summary, JSON.stringify(paraGravar(resultado, registro.tesesConsultadas)), VERSAO_RESULTADO]))!
       } catch (e) {
         return falha(`Resultado recusado: ${e instanceof Error ? e.message.slice(0, 500) : String(e)}`)
       }

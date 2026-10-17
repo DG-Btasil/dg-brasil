@@ -45,6 +45,8 @@ export interface AnalysisDetailDTO extends AnalysisListItem {
   requiredDocumentsComplete: boolean;
   /** Revisão humana mais recente desta análise. */
   reviewId?: ID;
+  /** Situação dessa revisão: o resultado da IA só vale aprovado (039). */
+  reviewStatus?: string;
   /** Interrupção pedida e ainda não confirmada pelo worker (033). */
   cancelRequested: boolean;
 }

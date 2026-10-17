@@ -13,8 +13,13 @@ export type { WorldRole } from "./world-types";
 const env = integrationEnv();
 export const world: World = inject("world");
 
-/** Sequência única por execução: CPFs/CNPJs fictícios (prefixo 999) sem colisão. */
-let seq = Math.floor(Math.random() * 1e5);
+/**
+ * Sequência por execução: CPFs/CNPJs fictícios (prefixo 999). O início é
+ * sorteado em TODA a faixa de 8 dígitos (TEST-04, QA 4.3.2): o DEV acumula
+ * clientes de rodadas anteriores e uma faixa estreita colidia ("Cliente já
+ * cadastrado").
+ */
+let seq = Math.floor(Math.random() * 1e8);
 export function fakeCpf(): string {
   seq = (seq + 1) % 1e8;
   return `999${String(seq).padStart(8, "0")}`;

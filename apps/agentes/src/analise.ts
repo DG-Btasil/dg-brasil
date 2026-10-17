@@ -83,10 +83,15 @@ export const ESQUEMA_RESULTADO_ANALISE = objeto({
   }), 'Teses consultadas e avaliadas. Vazio se não houve tese.'),
 })
 
-/** O que vai para o banco: o resultado + ids das teses aplicáveis (a tela antiga lê esse campo). */
-export function paraGravar(r: ResultadoAnalise): Record<string, unknown> {
+/**
+ * O que vai para o banco: o resultado + ids das teses aplicáveis (a tela
+ * antiga lê esse campo) + o título de cada tese (quem revisa nem sempre pode
+ * ler a tabela de teses).
+ */
+export function paraGravar(r: ResultadoAnalise, teses: Map<string, { titulo: string }> = new Map()): Record<string, unknown> {
   return {
     ...r,
+    theses_considered: r.theses_considered.map((t) => ({ ...t, title: teses.get(t.thesis_id)?.titulo ?? null })),
     identified_thesis_ids: r.theses_considered.filter((t) => t.applicable).map((t) => t.thesis_id),
   }
 }

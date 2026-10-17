@@ -54,10 +54,30 @@ export interface AnalysisEvent {
   message: string;
 }
 
+export interface AnalysisFinding {
+  title: string;
+  detail: string;
+  relevance: "HIGH" | "MEDIUM" | "LOW";
+  documentVersionIds: ID[];
+}
+
+/**
+ * Resultado de análise. `summary`/`recommendation`/`identifiedThesisIds` existem
+ * desde a 4.3; o restante é o resultado ESTRUTURADO entregue pelo agente (039,
+ * schema_version 1). É resultado da IA: só vale depois da revisão humana.
+ */
 export interface AnalysisResult {
   summary: string;
   identifiedThesisIds: ID[];
   recommendation: string;
+  resultId?: ID;
+  schemaVersion?: number;
+  findings?: AnalysisFinding[];
+  missingInformation?: string[];
+  recommendations?: string[];
+  proposedActions?: { description: string; proposalType?: string }[];
+  referencesUsed?: { referenceId: ID; title: string; howUsed: string }[];
+  thesesConsidered?: { thesisId: ID; title?: string; applicable: boolean; rationale: string }[];
 }
 
 export interface LegalAnalysis extends OfficeScoped, Timestamps {

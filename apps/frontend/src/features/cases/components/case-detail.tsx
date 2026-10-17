@@ -79,6 +79,8 @@ export function CaseDetail({
     current?: ActionResult<AnalysisDetailDTO>;
     fieldDefs: TemplateFieldDTO[];
     runs: ActionResult<Page<AgentRunSummaryDTO>>;
+    /** Interruptor geral da IA (039). */
+    aiEnabled?: boolean;
   };
   /** Só ADMIN/LAWYER (reviews.view). */
   reviews?: ActionResult<Page<ReviewListItem>>;
@@ -143,7 +145,7 @@ export function CaseDetail({
         )}
         {tab === "analise" && analysis && (
           <div className="space-y-5">
-            <AnalysisPanel legalCaseId={legalCase.id} analyses={analysis.list} current={analysis.current} fieldDefs={analysis.fieldDefs} onGoToDocuments={() => setTab("documentos")} />
+            <AnalysisPanel legalCaseId={legalCase.id} analyses={analysis.list} current={analysis.current} fieldDefs={analysis.fieldDefs} onGoToDocuments={() => setTab("documentos")} aiEnabled={analysis.aiEnabled} />
             <AgentRunsPanel
               legalCaseId={legalCase.id}
               initialQuery={DEFAULT_AGENT_RUN_QUERY}

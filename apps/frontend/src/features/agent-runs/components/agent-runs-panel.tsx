@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { Tone } from "@/lib/constants/status";
 import { formatDateTime, pluralize } from "@/lib/formatting";
+import { runErrorLabel } from "@/lib/constants/ai";
 import type { ActionResult } from "@/lib/actions/result";
 import { useServerList } from "@/lib/hooks/use-server-list";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -56,6 +57,7 @@ export function AgentRunsPanel({
   initialQuery,
   initialResult,
   legalCaseId,
+  agentId,
   syncUrl = false,
   title = "Execuções de agente",
   description = "Pedidos aos agentes do DG Brasil, do mais recente ao mais antigo.",
@@ -63,6 +65,8 @@ export function AgentRunsPanel({
   initialQuery: AgentRunListQuery;
   initialResult: ActionResult<Page<AgentRunSummaryDTO>>;
   legalCaseId?: string;
+  /** Só as execuções deste agente (tela do agente, DG Brasil). */
+  agentId?: string;
   syncUrl?: boolean;
   title?: string;
   description?: string;
@@ -71,7 +75,7 @@ export function AgentRunsPanel({
   const canCancel = usePermission("analyses.start");
   const isAdmin = usePermission("dgbrasil.manage");
   const users = useDirectoryUserMap();
-  const scope = legalCaseId ? { legalCaseId } : {};
+  const scope = { ...(legalCaseId ? { legalCaseId } : {}), ...(agentId ? { agentId } : {}) };
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
     initialResult,
@@ -80,6 +84,15 @@ export function AgentRunsPanel({
   });
   const [interrupting, setInterrupting] = useState<string | null>(null);
   const page = result.ok ? result.data : undefined;
+  // Enquanto houver execução na fila ou rodando, a lista se atualiza sozinha.
+  const active = !!page?.items.some((r) => r.status === "QUEUED" || r.status === "RUNNING");
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") retry();
+    }, 8_000);
+    return () => window.clearInterval(id);
+  }, [active, retry]);
 
   return (
     <Panel>
@@ -130,7 +143,9 @@ export function AgentRunsPanel({
                 {page.items.map((r) => (
                   <Tr key={r.id}>
                     <Td>
-                      <span className="block font-medium text-foreground">{r.agentName}</span>
+                      <Link href={`/execucoes/${r.id}`} className="block font-medium text-foreground hover:text-navy hover:underline underline-offset-2">
+                        {r.agentName}
+                      </Link>
                       <span className="block text-[12px] text-muted">
                         {r.operation}
                         {r.attempt > 1 ? ` · tentativa ${r.attempt}` : ""}
@@ -154,7 +169,11 @@ export function AgentRunsPanel({
                     <Td>
                       <StatusBadge status={r.status} labels={AGENT_RUN_STATUS_LABEL} tones={AGENT_RUN_STATUS_TONE} />
                       {r.cancelRequested && <span className="mt-0.5 block text-[11.5px] text-warning">Interrupção solicitada</span>}
-                      {r.errorCode && <span className="mt-0.5 block font-mono text-[11px] text-danger">{r.errorCode}</span>}
+                      {r.errorCode && r.status !== "CANCELLED" && (
+                        <span className="mt-0.5 block max-w-[260px] text-[11.5px] text-danger" title={r.errorCode}>
+                          {runErrorLabel(r.errorCode)}
+                        </span>
+                      )}
                     </Td>
                     {canCancel && (
                       <Td className="text-right">

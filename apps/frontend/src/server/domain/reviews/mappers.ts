@@ -28,6 +28,8 @@ export interface ReviewRow {
   legal_process_id: string | null;
   document_version_id: string | null;
   legal_analysis_id: string | null;
+  /** Resultado exato revisado (039); null em revisões anteriores à Etapa 5. */
+  legal_analysis_result_id?: string | null;
   agent_proposal_id: string | null;
   status: DbReviewStatus;
   priority: DbReviewPriority;

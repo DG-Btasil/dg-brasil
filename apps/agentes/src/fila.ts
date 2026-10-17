@@ -358,7 +358,7 @@ async function encerrar(
       proposals: registro.propostas,
       analysis_result_id: registro.analise,
       consulted: {
-        theses: [...registro.tesesConsultadas].map(([id, version_id]) => ({ id, version_id })),
+        theses: [...registro.tesesConsultadas].map(([id, t]) => ({ id, version_id: t.versao })),
         references: [...registro.referenciasAbertas].map(([id, version_id]) => ({ id, version_id })),
         documents_opened: registro.documentosAbertos,
       },

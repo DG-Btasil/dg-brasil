@@ -22,7 +22,9 @@ import { cancelAnalysisAction, sendAnalysisToAgentAction } from "@/server/domain
 import { InterruptDialog } from "@/features/agent-runs/components/interrupt-dialog";
 import type { AnalysisDetailDTO, AnalysisListItem, TemplateFieldDTO } from "@/server/domain/analyses/dto";
 import { useToast } from "@/store/ui-store";
+import { useAutoRefresh } from "@/lib/hooks/use-auto-refresh";
 import { formatFieldValue, SENDABLE_STATUSES } from "../fields";
+import { AnalysisResultView } from "./analysis-result-view";
 
 export const DB_ANALYSIS_STATUS_LABEL: Record<DbAnalysisStatus, string> = {
   PENDING: "Pendente",
@@ -47,6 +49,7 @@ export function AnalysisPanel({
   current,
   fieldDefs,
   onGoToDocuments,
+  aiEnabled,
 }: {
   legalCaseId: string;
   analyses: ActionResult<Page<AnalysisListItem>>;
@@ -54,6 +57,8 @@ export function AnalysisPanel({
   /** Definição dos campos do template da análise atual (rótulos). */
   fieldDefs: TemplateFieldDTO[];
   onGoToDocuments: () => void;
+  /** Interruptor geral da IA (039). false = execuções ficam na fila. */
+  aiEnabled?: boolean;
 }) {
   const newHref = `/casos/${legalCaseId}/analise/nova`;
   const cta = (
@@ -79,7 +84,7 @@ export function AnalysisPanel({
   }
   return (
     <div className="space-y-5">
-      {current && (!current.ok ? <ActionErrorState error={current} title="Não foi possível abrir a análise." /> : <CurrentAnalysis analysis={current.data} fieldDefs={fieldDefs} onGoToDocuments={onGoToDocuments} />)}
+      {current && (!current.ok ? <ActionErrorState error={current} title="Não foi possível abrir a análise." /> : <CurrentAnalysis analysis={current.data} fieldDefs={fieldDefs} onGoToDocuments={onGoToDocuments} aiEnabled={aiEnabled} />)}
       <Panel>
         <PanelHeader title="Análises do caso" actions={cta} />
         <Table caption="Análises do caso">
@@ -107,7 +112,10 @@ export function AnalysisPanel({
   );
 }
 
-function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments }: { analysis: AnalysisDetailDTO; fieldDefs: TemplateFieldDTO[]; onGoToDocuments: () => void }) {
+/** Texto fixo do banco (039) quando a análise volta da revisão humana. */
+const BACK_FROM_REVIEW = /rejeitado na revisão|Alterações pedidas na revisão/;
+
+function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, aiEnabled }: { analysis: AnalysisDetailDTO; fieldDefs: TemplateFieldDTO[]; onGoToDocuments: () => void; aiEnabled?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const failed = useActionFeedback();
@@ -118,6 +126,9 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments }: { analysis: A
   const withAgent = analysis.dbStatus === "QUEUED" || analysis.dbStatus === "RUNNING";
   const missingRequired = analysis.missingRequirements.filter((m) => m.required);
   const labels = new Map(fieldDefs.map((f) => [f.key, f]));
+  const backFromReview = !!analysis.interruptionReason && BACK_FROM_REVIEW.test(analysis.interruptionReason);
+  // Enquanto o agente trabalha, a tela se atualiza sozinha (para quando terminar).
+  useAutoRefresh(withAgent);
 
   async function send() {
     if (sending) return;
@@ -143,9 +154,19 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments }: { analysis: A
         actions={<StatusBadge status={analysis.status} labels={{ ...ANALYSIS_STATUS_LABEL, [analysis.status]: DB_ANALYSIS_STATUS_LABEL[analysis.dbStatus] }} tones={ANALYSIS_STATUS_TONE} />}
       />
       <PanelBody className="space-y-4">
+        {aiEnabled === false && (withAgent || sendable) && (
+          <Callout tone="warning" title="A execução de IA está desligada pelo administrador.">
+            Pedidos ficam na fila e só começam quando a IA for religada em Configurações → IA.
+          </Callout>
+        )}
         {analysis.interruptionReason && (
-          <Callout tone="danger" title="A execução anterior não terminou.">
+          <Callout tone={backFromReview ? "warning" : "danger"} title={backFromReview ? "O resultado voltou da revisão humana." : "A execução anterior não terminou."}>
             {analysis.interruptionReason}
+            {analysis.agentRunId && (
+              <Link href={`/execucoes/${analysis.agentRunId}`} className="ml-1.5 font-medium underline underline-offset-2">
+                Ver a execução
+              </Link>
+            )}
           </Callout>
         )}
         {sendable && missingRequired.length > 0 && (
@@ -198,21 +219,20 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments }: { analysis: A
         {interrupting && (
           <InterruptDialog subject="esta análise" run={() => cancelAnalysisAction({ id: analysis.id })} onDone={() => router.refresh()} onClose={() => setInterrupting(false)} />
         )}
-        {analysis.result && (
-          <DefinitionGrid
-            columns={2}
-            items={[
-              { label: "Resumo", value: analysis.result.summary || undefined, wide: true },
-              { label: "Recomendação", value: analysis.result.recommendation || undefined, wide: true },
-              { label: "Teses identificadas", value: analysis.result.identifiedThesisIds.length ? String(analysis.result.identifiedThesisIds.length) : undefined },
-            ]}
-          />
-        )}
+        {analysis.result && <AnalysisResultView result={analysis.result} reviewStatus={analysis.reviewStatus} />}
         {analysis.reviewId && (
           <p className="text-[13px]">
             <Link href={`/revisoes/${analysis.reviewId}`} className="font-medium text-navy hover:underline underline-offset-2">
               Abrir a revisão humana desta análise
             </Link>
+            {analysis.agentRunId && (
+              <>
+                {" · "}
+                <Link href={`/execucoes/${analysis.agentRunId}`} className="text-navy hover:underline underline-offset-2">
+                  Ver a execução do agente
+                </Link>
+              </>
+            )}
           </p>
         )}
         {Object.keys(analysis.fields).length > 0 && (

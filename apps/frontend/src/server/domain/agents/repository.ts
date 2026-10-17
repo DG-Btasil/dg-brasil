@@ -74,3 +74,13 @@ export async function cancelState(db: SupabaseClient, ids: string[]): Promise<Ma
   const rows = (unwrap(await db.rpc("get_agent_run_cancel_state", { p_ids: ids.slice(0, 100) })) ?? []) as { agent_run_id: string; cancel_requested: boolean }[];
   return new Map(rows.map((r) => [r.agent_run_id, r.cancel_requested === true]));
 }
+
+/** Detalhe de uma execução (039): mesmo acesso das listas; uso e configuração só para ADMIN. */
+export async function detail(db: SupabaseClient, id: string): Promise<Record<string, unknown>> {
+  return unwrap(await db.rpc("get_agent_run_detail", { p_agent_run_id: id })) as Record<string, unknown>;
+}
+
+/** Nova tentativa de execução avulsa (039), idempotente pela chave. */
+export async function retry(db: SupabaseClient, key: string, id: string): Promise<{ agent_run_id: string; retry_of_agent_run_id: string; deduplicated: boolean }> {
+  return unwrap(await db.rpc("retry_agent_run_once", { p_key: key, p_agent_run_id: id })) as never;
+}

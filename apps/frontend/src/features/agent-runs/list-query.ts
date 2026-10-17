@@ -28,6 +28,6 @@ export function agentRunQueryToSearchParams(q: AgentRunListQuery): URLSearchPara
   return p;
 }
 
-export function agentRunQueryToInput(q: AgentRunListQuery, scope: { legalCaseId?: string } = {}): Record<string, unknown> {
+export function agentRunQueryToInput(q: AgentRunListQuery, scope: { legalCaseId?: string; agentId?: string } = {}): Record<string, unknown> {
   return { ...scope, status: q.status || undefined, page: q.page, pageSize: AGENT_RUN_PAGE_SIZE };
 }
