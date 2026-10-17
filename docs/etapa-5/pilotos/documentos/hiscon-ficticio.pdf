@@ -1,0 +1,52 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1471 >>
+stream
+BT /F1 9 Tf 40 800 Td 13 TL
+(INSTITUTO NACIONAL DO SEGURO SOCIAL - DOCUMENTO FICTÍCIO PARA TESTE \(NÃO É REAL\)) Tj T*
+(HISTÓRICO DE EMPRÉSTIMO CONSIGNADO - HISCON) Tj T*
+(Beneficiário: JOSÉ DA SILVA FICTÍCIO     CPF: 999.000.000-01 \(fictício\)) Tj T*
+(Benefício \(NB\): 000.000.000-0 \(fictício\)   Espécie: 41 - Aposentadoria por idade) Tj T*
+(Banco pagador: BANCO FICTÍCIO S.A.     Data do extrato: 01/10/2026) Tj T*
+(Margem consignável: R$ 1.000,00   Utilizada: R$ 980,00   Disponível: R$ 20,00) Tj T*
+() Tj T*
+(EMPRÉSTIMOS BANCÁRIOS) Tj T*
+(Contrato     Banco            Situação  Origem da averbação             Inclusão    Parcelas  Valor) Tj T*
+(111111-01    BANCO ALFA S.A.  Ativo     Averbação nova                  10/01/2021  84        R$ 210,00) Tj T*
+(222222-02    BANCO BETA S.A.  Ativo     Migração de contrato \(portab.\)  15/03/2023  84        R$ 180,00) Tj T*
+(333333-03    BANCO GAMA S.A.  Excluído  Averbação nova                  02/05/2024  72        R$ 150,00) Tj T*
+(333333-04    BANCO GAMA S.A.  Ativo     Averbação nova                  06/05/2024  72        R$ 160,00) Tj T*
+() Tj T*
+(CARTÃO DE CRÉDITO \(RMC\)) Tj T*
+(Contrato     Banco             Situação  Inclusão    Limite       Utilizado 10/2023  11/2023  12/2023) Tj T*
+(444444-RMC   BANCO DELTA S.A.  Ativo     20/07/2019  R$ 1.400,00  R$ 1.400,00        R$ 900   R$ 900) Tj T*
+() Tj T*
+(Fim do extrato fictício. Todos os nomes, números e valores são inventados para teste.) Tj T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001764 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1861
+%%EOF

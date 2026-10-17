@@ -25,12 +25,13 @@ Supabase Auth.
 └───────────────────────────▲──────────────────────────────┘
                             │ claim / update
 ┌───────────────────────────┴──────────────────────────────┐
-│  MOTOR DE AGENTES (worker Node, Claude Agent SDK)        │
+│  MOTOR DE AGENTES (worker Node, Claude API)              │
 │  Papel dg_worker, sem bypass de RLS. Processo longo,     │
 │  fora do serverless. Reserva a execução, bate enquanto   │
-│  roda, lê a fila,                                        │
-│  roda o agente com ferramentas restritas, grava          │
-│  PROPOSTAS e MINUTAS em revisão — não fatos consumados.  │
+│  roda, executa o agente CADASTRADO com o catálogo de     │
+│  ferramentas; scripts das skills só no ambiente isolado  │
+│  do provedor. Grava PROPOSTAS, MINUTAS e RESULTADOS de   │
+│  análise em revisão — não fatos consumados.              │
 └──────────────────────────────────────────────────────────┘
 ```
 

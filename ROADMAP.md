@@ -10,7 +10,7 @@ seguinte existir. Nenhuma etapa começa sem autorização da anterior.
 - Repositório, arquitetura, front-end V1 navegável (dados fictícios):
   escritório proprietário, portal do parceiro, Client → LegalCase → LegalProcess,
   Revisões, DG Brasil.
-- Motor de agentes: fila, executor com Claude Agent SDK, ferramentas, aplicador.
+- Motor de agentes: fila, executor pela Claude API (Etapa 5: provider abstrato, ambiente isolado com skills, resultado estruturado), ferramentas, aplicador.
 
 ### Etapa 3.1–3.2 — Banco V1 auditado e consolidado ✅
 

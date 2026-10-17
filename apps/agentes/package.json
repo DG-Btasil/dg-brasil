@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:ai:real": "tsx src/smoke-real.ts"
+    "test:ai:real": "tsx --env-file-if-exists=.env src/smoke-real.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.131.0",

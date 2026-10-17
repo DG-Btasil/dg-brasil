@@ -14,21 +14,20 @@ papéis (ADMIN, LAWYER, ASSISTANT, PARTNER_ADMIN, PARTNER_USER). Domínio centra
 
 ## A ideia em um parágrafo
 
-Os agentes que hoje rodam no computador da Barbara (Lucas, esteira, réplica,
-radar) passam a rodar num servidor, 24 horas por dia, disparados por horário ou
-por evento. Eles leem o banco do escritório à vontade, mas **não escrevem nada**:
-tudo que querem fazer vira uma *proposta* na fila do painel, que um advogado
-aprova ou rejeita. Só a aprovação produz efeito.
+Os agentes que hoje rodam no computador da Barbara (Lucas, Clara, réplica,
+radar) passam a ser **cadastrados no DG Brasil** e executados por um worker na
+nuvem. Cada execução lê só o caso dela e **não escreve nada direto**: tudo que
+o agente produz (proposta, minuta, resultado de análise) vai para Revisões, e
+um advogado aprova ou rejeita. Só a aprovação produz efeito.
 
 ## Estrutura
 
 | Caminho | Papel |
 |---|---|
 | `supabase/` | **Banco V1** (especificação DG Brasil V1, consolidado na Etapa 3.2): 19 migrations, RLS, Storage, fila pgmq e 248 verificações. Ver [supabase/README.md](supabase/README.md) |
-| `apps/agentes/` | O worker (papel `dg_worker`). Consome a fila e roda os agentes com o Claude Agent SDK |
+| `apps/agentes/` | O worker (papel `dg_worker`). Consome a fila e executa os agentes cadastrados pela Claude API, com skills no ambiente isolado do provedor (Etapa 5) |
 | `apps/frontend/` | **Front-end V1 (protótipo navegável, dados fictícios).** Escritório proprietário + portal do parceiro, RBAC, Revisões, DG Brasil. Ver [apps/frontend/README.md](apps/frontend/README.md) |
 | `packages/dominio/` | Motor de classificação da esteira, vindo do `esteira-consignado` *(fase 3)* |
-| `agentes-claude/` | `.claude/` do escritório: agentes e skills versionados, carregados pelo worker |
 
 ## Como subir
 

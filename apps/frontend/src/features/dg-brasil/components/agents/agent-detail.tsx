@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Pause, Pencil, Play } from "lucide-react";
+import { Pause, Pencil, Play, Rocket } from "lucide-react";
 import { Can } from "@/components/layout/guards";
 import { Callout } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ import { DEFAULT_AGENT_RUN_QUERY } from "@/features/agent-runs/list-query";
 import { dgRoutes, formatVersion } from "../../utils";
 import { InstructionsView, LinkedNames, VersionsList } from "../shared/bits";
 import { AgentFormDrawer } from "./agent-form-drawer";
+import { RunAgentDialog } from "./run-agent-dialog";
 
 const TABS = ["visao-geral", "instrucoes", "conhecimento", "execucoes", "versoes"] as const;
 type AgentTab = (typeof TABS)[number];
@@ -35,6 +36,7 @@ type AgentTab = (typeof TABS)[number];
 export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; catalog: DgCatalogDTO; runs: ActionResult<Page<AgentRunSummaryDTO>> }) {
   const [tab, setTab] = useUrlTab<AgentTab>(TABS, "visao-geral");
   const [editing, setEditing] = useState(false);
+  const [running, setRunning] = useState(false);
   const items: TabItem<AgentTab>[] = [
     { key: "visao-geral", label: "Visão geral" },
     { key: "instrucoes", label: "Instruções" },
@@ -44,7 +46,7 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
   ];
   return (
     <>
-      <Header agent={agent} onEdit={() => setEditing(true)} />
+      <Header agent={agent} onEdit={() => setEditing(true)} onRun={() => setRunning(true)} />
       <Tabs items={items} value={tab} onChange={setTab} label="Seções do agente" className="mb-5" />
       <TabPanel tabKey={tab}>
         {tab === "visao-geral" && <Overview agent={agent} catalog={catalog} />}
@@ -91,11 +93,12 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
         )}
       </TabPanel>
       {editing && <AgentFormDrawer open onOpenChange={setEditing} agent={agent} catalog={catalog} />}
+      {running && <RunAgentDialog agent={agent} onClose={() => setRunning(false)} />}
     </>
   );
 }
 
-function Header({ agent, onEdit }: { agent: AgentDetailDTO; onEdit: () => void }) {
+function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () => void; onRun: () => void }) {
   const router = useRouter();
   const toast = useToast();
   const failed = useActionFeedback();
@@ -133,6 +136,9 @@ function Header({ agent, onEdit }: { agent: AgentDetailDTO; onEdit: () => void }
         actions={
           <Can permission="dgbrasil.manage">
             <div className="flex gap-2">
+              <Button variant="secondary" icon={<Rocket className="size-4" aria-hidden />} onClick={onRun} disabled={agent.status !== "ACTIVE"}>
+                Executar em um caso
+              </Button>
               <Button variant="secondary" icon={<Pencil className="size-4" aria-hidden />} onClick={onEdit}>
                 Editar
               </Button>

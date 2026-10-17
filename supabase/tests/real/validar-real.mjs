@@ -890,6 +890,59 @@ await deve('custo: a checagem de sessão (caminho de toda a RLS) fica abaixo de 
   }
 })
 
+secao('41e. Execução real dos agentes: interruptor, skills com arquivo, worker [039]')
+await deve('interruptor geral: nasce/fica DESLIGADO; ADMIN liga e desliga pelo PostgREST; LAWYER não', async () => {
+  const s = await r(C.LAWYER.rpc('get_ai_runtime_status'))
+  if (typeof s.execution_enabled !== 'boolean') throw new Error('sem situação')
+  igual((await r(C.ADMIN.rpc('set_ai_execution_enabled', { p_enabled: true, p_reason: `validar:real ${RODADA}` }))).execution_enabled, true, 'ligou')
+  igual((await r(C.ADMIN.rpc('set_ai_execution_enabled', { p_enabled: false }))).execution_enabled, false, 'desligou')
+  const l = await C.LAWYER.rpc('set_ai_execution_enabled', { p_enabled: true })
+  if (!l.error || !/Somente ADMIN/.test(l.error.message)) throw new Error('LAWYER ligou a IA')
+})
+await deve('bucket skill-files privado; navegador não envia direto; o servidor assina e o envio funciona', async () => {
+  igual((await um(`select public from storage.buckets where id = 'skill-files'`))?.public, false, 'bucket privado')
+  const u = await C.ADMIN.storage.from('skill-files').upload(`skills/x/y/z.py`, new Blob(['x']))
+  if (!u.error) throw new Error('upload direto aceito')
+  const path = `skills/${randomUUID()}/${randomUUID()}/scripts/teste.py`
+  const up = await r(service.storage.from('skill-files').createSignedUploadUrl(path))
+  await r(novoCliente().storage.from('skill-files').uploadToSignedUrl(path, up.token, new Blob(['print(1)'], { type: 'text/x-python' })))
+  ids.skillObj = path
+})
+await deve('ADMIN salva agente pela RPC atômica (versão + configuração); configuração com shell é recusada', async () => {
+  const slug = `teste-r${RODADA}-e5`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 60)
+  const a = await r(C.ADMIN.rpc('dg_save_agent_once', { p_key: randomUUID(), p_agent: { slug, name: `Agente E5 ${RODADA}`, status: 'DRAFT', instructions: 'Agente fictício. Não executar.', configuration: { model: 'claude-haiku-5-5', max_budget_usd: 0.1 } } }))
+  igual([a.version_number, a.created], [1, true], 'agente')
+  const ruim = await C.ADMIN.rpc('dg_save_agent_once', { p_key: randomUUID(), p_agent: { slug: `${slug}-x`, name: 'X', instructions: 'x', configuration: { shell: true } } })
+  if (!ruim.error || !/campo desconhecido/.test(ruim.error.message)) throw new Error('configuração com shell aceita')
+  const l = await C.LAWYER.rpc('dg_save_agent_once', { p_key: randomUUID(), p_agent: { slug: `${slug}-l`, name: 'L', instructions: 'x' } })
+  if (!l.error) throw new Error('LAWYER criou agente')
+})
+await deve('dg_worker (login de produção): lê o interruptor e arquivos de skill; não lê resultado de análise', async () => {
+  const w = new pg.Client({ connectionString: WORKER_URL, ssl: { rejectUnauthorized: false } })
+  await w.connect()
+  try {
+    const v = (await w.query(`select private.worker_ai_enabled() v`)).rows[0].v
+    igual(typeof v, 'boolean', 'interruptor')
+    await w.query(`select 1 from public.skill_version_files limit 1`)
+    await w.query(`select 1 from public.skill_provider_versions limit 1`)
+    for (const t of ['legal_analysis_results', 'legal_analyses', 'reviews']) {
+      try { await w.query(`select 1 from public.${t} limit 1`); throw new Error(`leu ${t}`) }
+      catch (e) { if (!/permission denied/.test(e.message)) throw e }
+    }
+    for (const q of [`select public.set_ai_execution_enabled(true)`, `select public.dg_save_agent_once('${randomUUID()}', '{}'::jsonb)`]) {
+      try { await w.query(q); throw new Error(`aceitou: ${q}`) } catch (e) { if (!/permission denied/.test(e.message)) throw e }
+    }
+  } finally {
+    await w.end()
+  }
+})
+await deve('detalhe da execução: LAWYER vê sem uso/custo/configuração; ADMIN vê', async () => {
+  const d = await r(C.LAWYER.rpc('get_agent_run_detail', { p_agent_run_id: ids.run }))
+  igual([d.id, d.usage, d.config], [ids.run, null, null], 'LAWYER')
+  const a = await r(C.ADMIN.rpc('get_agent_run_detail', { p_agent_run_id: ids.run }))
+  if (!a.usage) throw new Error('ADMIN sem uso')
+})
+
 secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')
 await deve('carteira do parceiro A (página + total) em menos de 2 s, mesmo com o DEV cheio de rodadas', async () => {
   const inicio = performance.now()
