@@ -1,0 +1,47 @@
+# Worker de agentes — ambiente DEV (não é produção).
+#
+# Uma máquina, sem escala automática, sem porta pública (o worker não recebe
+# tráfego; só a verificação de saúde interna do Fly fala com ele).
+#
+# Segredos (nunca neste arquivo, nunca no Git, nunca na imagem):
+#   fly secrets set -a dg-brasil-worker-dev \
+#     DATABASE_URL=... SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... ANTHROPIC_API_KEY=...
+# Ver docs/etapa-5-validacoes.md, parte do Fly.io.
+
+app = "dg-brasil-worker-dev"
+primary_region = "gru"
+# Tempo para terminar a execução em andamento depois do SIGTERM. Se não der,
+# a mensagem volta a ficar visível e outro worker retoma (nada vira "sucesso").
+kill_signal = "SIGTERM"
+kill_timeout = 300
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  # Desligado por padrão. Ligue conscientemente (fly secrets/env) para testar:
+  # AI_EXECUTION_ENABLED = "true". Além disto, o ADMIN liga no DG Brasil.
+  AI_EXECUTION_ENABLED = "false"
+  WORKER_CONCURRENCY = "1"
+  TETO_USD = "2.00"
+  MAX_TENTATIVAS = "3"
+  FILA_VT_SEGUNDOS = "300"
+  RESERVA_VENCIDA_SEGUNDOS = "600"
+  ANTHROPIC_MAX_RETRIES = "2"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# Processo contínuo, sem serviço HTTP público. A verificação de saúde usa a
+# porta interna; ela não executa agente nem devolve segredo.
+[checks]
+  [checks.saude]
+    type = "http"
+    port = 8080
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"

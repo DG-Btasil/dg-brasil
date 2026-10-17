@@ -1299,7 +1299,7 @@ await deve('usuário não reativa o próprio perfil', async () => {
 secao('Storage')
 await deve('buckets de documentos são privados', async () => {
   const r = await linhas(db, `select id, public from storage.buckets order by id`)
-  igual(r.map((x) => [x.id, x.public]), [['imports', false], ['legal-documents', false], ['reference-materials', false]], 'buckets')
+  igual(r.map((x) => [x.id, x.public]), [['imports', false], ['legal-documents', false], ['reference-materials', false], ['skill-files', false]], 'buckets')
 })
 await deveFalhar('navegador não grava direto no bucket', () => como(ids.barbara, (tx) =>
   tx.query(`insert into storage.objects (bucket_id, name) values ('legal-documents', 'clients/x/y.pdf')`)),
@@ -3651,6 +3651,324 @@ await deve('authenticated não chama o parser nem o produtor de avisos direto', 
     where n.nspname = 'private' and p.proname = any ($1) and has_function_privilege('authenticated', p.oid, 'execute')`,
     [['ua_browser', 'ua_os', 'ua_device', 'notify_security_events']])
   igual(r.map((x) => x.f), [], 'authenticated com execute')
+})
+
+// ═════════════════════════════ 039: execução real dos agentes ════════════
+
+secao('Interruptor geral da IA [039]')
+const statusIA = (uid) => como(uid, async (tx) => (await um(tx, `select public.get_ai_runtime_status() r`)).r)
+const ligarIA = (uid, on, motivo = null) => como(uid, async (tx) => (await um(tx, `select public.set_ai_execution_enabled($1, $2) r`, [on, motivo])).r)
+const iaNoWorker = () => comoWorker(async (tx) => (await um(tx, `select private.worker_ai_enabled() v`)).v)
+await deve('nasce DESLIGADO; equipe interna vê a situação; o worker vê desligado', async () => {
+  igual((await statusIA(ids.barbara)).execution_enabled, false, 'ADMIN')
+  igual((await statusIA(ids.ana)).execution_enabled, false, 'ASSISTANT')
+  igual(await iaNoWorker(), false, 'worker')
+})
+await deve('ADMIN liga e desliga; auditado com o autor; o worker acompanha', async () => {
+  const r = await ligarIA(ids.barbara, true, 'Teste controlado no DEV')
+  igual([r.execution_enabled, r.reason, r.updated_by_name], [true, 'Teste controlado no DEV', 'Bárbara Cardoso'], 'ligado')
+  igual(await iaNoWorker(), true, 'worker vê ligado')
+  await ligarIA(ids.barbara, false)
+  igual(await iaNoWorker(), false, 'worker vê desligado')
+  const ev = await linhas(db, `select action, actor_user_id from audit_events where action in ('AI_EXECUTION_ENABLED', 'AI_EXECUTION_DISABLED') order by created_at`)
+  igual(ev.map((e) => [e.action, e.actor_user_id]), [['AI_EXECUTION_ENABLED', ids.barbara], ['AI_EXECUTION_DISABLED', ids.barbara]], 'auditoria')
+})
+await deve('LAWYER e ASSISTANT não ligam; parceiro nem lê; ninguém lê a tabela direto', async () => {
+  for (const u of [ids.lucas, ids.ana])
+    await ligarIA(u, true).then(() => { throw new Error('aceito') }, (e) => { if (!/Somente ADMIN/.test(e.message)) throw e })
+  await statusIA(ids.almeidaAdm).then(() => { throw new Error('parceiro leu') }, (e) => { if (!/equipe interna/.test(e.message)) throw e })
+  await como(ids.barbara, (tx) => tx.query(`select * from ai_runtime_settings`)).then(
+    () => { throw new Error('leitura direta aceita') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  igual(await iaNoWorker(), false, 'continua desligado')
+})
+
+secao('Área DG Brasil: agente, skill (com arquivos), tese e referência [039]')
+const salvarAgente = (uid, k, a) => como(uid, async (tx) => (await um(tx, `select public.dg_save_agent_once($1, $2) r`, [k, JSON.stringify(a)])).r)
+const salvarSkill = (uid, k, s) => como(uid, async (tx) => (await um(tx, `select public.dg_save_skill_once($1, $2) r`, [k, JSON.stringify(s)])).r)
+const salvarTese = (uid, k, t) => como(uid, async (tx) => (await um(tx, `select public.dg_save_thesis_once($1, $2) r`, [k, JSON.stringify(t)])).r)
+const salvarRef = (uid, k, r) => como(uid, async (tx) => (await um(tx, `select public.dg_save_reference_once($1, $2) r`, [k, JSON.stringify(r)])).r)
+const objetoSkill = (nome) => db.query(`insert into storage.objects (bucket_id, name) values ('skill-files', $1)`, [nome])
+const sha64 = 'a'.repeat(64)
+await deve('ADMIN cria skill com arquivo: versão 1 com SKILL.md gerado (não aceita SKILL.md como arquivo)', async () => {
+  ids.sk039 = randomUUID(); ids.sk039v1 = randomUUID()
+  const obj = `skills/${ids.sk039}/${ids.sk039v1}/scripts/gerar.py`
+  await objetoSkill(obj)
+  const r = await salvarSkill(ids.barbara, randomUUID(), {
+    id: ids.sk039, create: true, version_id: ids.sk039v1, slug: 'kit-documentos', name: 'Kit de documentos',
+    description: 'Gera procuração e declaração.', status: 'ACTIVE', instructions: 'Use scripts/gerar.py com os dados do cliente.',
+    files: [{ path: 'scripts/gerar.py', storage_object_name: obj, mime_type: 'text/x-python', file_size: 120, checksum_sha256: sha64 }],
+  })
+  igual([r.version_number, r.version_created, r.created], [1, true, true], 'versão 1')
+  const f = await linhas(db, `select path from skill_version_files where skill_version_id = $1`, [ids.sk039v1])
+  igual(f.map((x) => x.path), ['scripts/gerar.py'], 'arquivo')
+})
+await deve('repetir a mesma chave devolve o mesmo resultado, sem versão nova', async () => {
+  const k = randomUUID()
+  const dados = { id: ids.sk039, version_id: randomUUID(), name: 'Kit de documentos', description: 'Gera procuração e declaração.',
+    status: 'ACTIVE', instructions: 'Use scripts/gerar.py com os dados do cliente.' }
+  const r1 = await salvarSkill(ids.barbara, k, dados)
+  const r2 = await salvarSkill(ids.barbara, k, dados)
+  igual([r1.version_created, r1.version_number, r2.deduplicated, r2.version_number], [false, 1, true, 1], 'sem mudança, sem versão')
+})
+await deve('arquivo novo = versão 2, mantém o anterior (mesmo objeto); remover = versão 3', async () => {
+  ids.sk039v2 = randomUUID()
+  const obj = `skills/${ids.sk039}/${ids.sk039v2}/modelos/procuracao.docx`
+  await objetoSkill(obj)
+  const r = await salvarSkill(ids.barbara, randomUUID(), { id: ids.sk039, version_id: ids.sk039v2, name: 'Kit de documentos',
+    status: 'ACTIVE', instructions: 'Use scripts/gerar.py com os dados do cliente.',
+    files: [{ path: 'modelos/procuracao.docx', storage_object_name: obj, mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', file_size: 300, checksum_sha256: sha64 }] })
+  igual(r.version_number, 2, 'versão 2')
+  const f = await linhas(db, `select path, storage_object_name from skill_version_files where skill_version_id = $1 order by path`, [ids.sk039v2])
+  igual(f.map((x) => x.path), ['modelos/procuracao.docx', 'scripts/gerar.py'], 'arquivos da v2')
+  igual(f[1].storage_object_name.includes(ids.sk039v1), true, 'arquivo mantido aponta para o objeto da v1')
+  const r3 = await salvarSkill(ids.barbara, randomUUID(), { id: ids.sk039, version_id: randomUUID(), name: 'Kit de documentos',
+    status: 'ACTIVE', instructions: 'Use scripts/gerar.py com os dados do cliente.', keep_paths: ['scripts/gerar.py'] })
+  igual(r3.version_number, 3, 'versão 3')
+  ids.sk039v3 = r3.version_id
+  igual((await linhas(db, `select path from skill_version_files where skill_version_id = $1`, [r3.version_id])).map((x) => x.path), ['scripts/gerar.py'], 'só o mantido')
+  igual((await linhas(db, `select 1 from skill_version_files where skill_version_id = $1`, [ids.sk039v2])).length, 2, 'v2 intacta')
+})
+await deveFalhar('arquivo fora do caminho da versão é recusado', async () => {
+  const v = randomUUID()
+  await salvarSkill(ids.barbara, randomUUID(), { id: ids.sk039, version_id: v, name: 'Kit', status: 'ACTIVE', instructions: 'x',
+    files: [{ path: 'a.py', storage_object_name: `skills/${ids.sk039}/${randomUUID()}/a.py`, mime_type: 'text/x-python', file_size: 1, checksum_sha256: sha64 }] })
+}, /fora do caminho/)
+await deveFalhar('arquivo que não está no Storage é recusado', async () => {
+  const v = randomUUID()
+  await salvarSkill(ids.barbara, randomUUID(), { id: ids.sk039, version_id: v, name: 'Kit', status: 'ACTIVE', instructions: 'x',
+    files: [{ path: 'b.py', storage_object_name: `skills/${ids.sk039}/${v}/b.py`, mime_type: 'text/x-python', file_size: 1, checksum_sha256: sha64 }] })
+}, /não encontrado no Storage/)
+await deveFalhar('caminho com ".." ou SKILL.md é recusado', async () => {
+  const v = randomUUID()
+  const obj = `skills/${ids.sk039}/${v}/SKILL.md`
+  await objetoSkill(obj)
+  await salvarSkill(ids.barbara, randomUUID(), { id: ids.sk039, version_id: v, name: 'Kit', status: 'ACTIVE', instructions: 'x',
+    files: [{ path: 'SKILL.md', storage_object_name: obj, mime_type: 'text/markdown', file_size: 1, checksum_sha256: sha64 }] })
+}, /skill_version_files_path_format/)
+await deveFalhar('identificador de skill com "claude" é recusado (nome reservado do provedor)', () =>
+  salvarSkill(ids.barbara, randomUUID(), { id: randomUUID(), create: true, version_id: randomUUID(), slug: 'claude-helper',
+    name: 'X', instructions: 'x' }), /não pode conter/)
+await deveFalhar('arquivo de skill é append-only', () =>
+  db.query(`update skill_version_files set path = 'outro.py' where skill_version_id = $1`, [ids.sk039v1]), /append-only|imutável|não pode/i)
+
+await deve('ADMIN cria agente com versão, skill e configuração; LAWYER não', async () => {
+  const k = randomUUID()
+  const r = await salvarAgente(ids.barbara, k, { slug: 'lucas-kit', name: 'Lucas (kit)', status: 'ACTIVE',
+    instructions: 'Você gera o kit de documentos do cliente.', configuration: { model: 'claude-opus-5-5', effort: 'high', code_execution: true, max_turns: 30 },
+    skill_ids: [ids.sk039] })
+  igual([r.version_number, r.created], [1, true], 'agente criado')
+  ids.ag039 = r.agent_id
+  const a = await um(db, `select a.status, v.configuration ->> 'model' m from agents a join agent_versions v on v.id = a.current_version_id where a.id = $1`, [ids.ag039])
+  igual([a.status, a.m], ['ACTIVE', 'claude-opus-5-5'], 'agente ativo com a versão')
+  igual((await linhas(db, `select 1 from agent_skill_bindings where agent_id = $1 and enabled`, [ids.ag039])).length, 1, 'skill vinculada')
+  await salvarAgente(ids.lucas, randomUUID(), { slug: 'x-lawyer', name: 'X', instructions: 'x' }).then(
+    () => { throw new Error('LAWYER criou agente') }, (e) => { if (!/Somente ADMIN/.test(e.message)) throw e })
+})
+await deve('salvar sem mudar instruções/configuração não cria versão; mudar cria v2; desvincular desabilita sem apagar', async () => {
+  const base = { id: ids.ag039, name: 'Lucas (kit)', status: 'ACTIVE', instructions: 'Você gera o kit de documentos do cliente.',
+    configuration: { model: 'claude-opus-5-5', effort: 'high', code_execution: true, max_turns: 30 } }
+  igual((await salvarAgente(ids.barbara, randomUUID(), { ...base, description: 'Descrição nova' })).version_created, false, 'sem versão')
+  const r = await salvarAgente(ids.barbara, randomUUID(), { ...base, instructions: base.instructions + ' Sempre confira o CPF.', skill_ids: [] })
+  igual([r.version_created, r.version_number], [true, 2], 'v2')
+  igual((await um(db, `select enabled from agent_skill_bindings where agent_id = $1`, [ids.ag039])).enabled, false, 'vínculo desabilitado')
+  await salvarAgente(ids.barbara, randomUUID(), { ...base, instructions: base.instructions + ' Sempre confira o CPF.', skill_ids: [ids.sk039] })
+})
+await deveFalhar('configuração com campo desconhecido é recusada', () =>
+  salvarAgente(ids.barbara, randomUUID(), { slug: 'cfg-ruim', name: 'X', instructions: 'x', configuration: { shell: true } }), /campo desconhecido/)
+await deveFalhar('modelo fora do formato é recusado', () =>
+  salvarAgente(ids.barbara, randomUUID(), { slug: 'cfg-ruim2', name: 'X', instructions: 'x', configuration: { model: 'gpt-5' } }), /modelo inválido/)
+await deveFalhar('identificador do agente não muda depois de criado', () =>
+  salvarAgente(ids.barbara, randomUUID(), { id: ids.ag039, slug: 'outro-slug', name: 'X', instructions: 'x' }), /não muda/)
+await deve('ADMIN cria tese (versão) e referência de texto; vínculos com o agente', async () => {
+  const t = await salvarTese(ids.barbara, randomUUID(), { slug: 'tese-039', title: 'Tese 039', legal_area_id: ids.banking, status: 'ACTIVE',
+    foundations: 'Art. 1º', application_criteria: 'Quando X', agent_ids: [ids.ag039] })
+  igual([t.version_number, t.created], [1, true], 'tese v1')
+  ids.tese039 = t.thesis_id
+  const t2 = await salvarTese(ids.barbara, randomUUID(), { id: ids.tese039, title: 'Tese 039', status: 'ACTIVE', foundations: 'Art. 1º e 2º', application_criteria: 'Quando X' })
+  igual(t2.version_number, 2, 'tese v2')
+  ids.ref039 = randomUUID()
+  const r = await salvarRef(ids.barbara, randomUUID(), { id: ids.ref039, create: true, version_id: randomUUID(), type: 'INTERNAL_GUIDELINE',
+    title: 'Orientação 039', status: 'ACTIVE', content_text: 'Sempre conferir o HISCON.', tags: ['Consignado', 'consignado'], agent_ids: [ids.ag039] })
+  igual([r.version_number, r.created], [1, true], 'referência v1')
+  igual((await um(db, `select tags from reference_materials where id = $1`, [ids.ref039])).tags, ['consignado'], 'tags normalizadas')
+  igual((await linhas(db, `select 1 from agent_reference_bindings where agent_id = $1 and enabled`, [ids.ag039])).length, 1, 'referência vinculada')
+})
+await deveFalhar('referência nova sem texto nem arquivo é recusada', () =>
+  salvarRef(ids.barbara, randomUUID(), { id: randomUUID(), create: true, title: 'Vazia' }), /texto ou arquivo/)
+await deve('template de análise → agente (ADMIN); LAWYER não', async () => {
+  ids.tpl039 = (await um(db, `insert into analysis_templates (legal_area_id, name) values ($1, 'Template 039') returning id`, [ids.banking])).id
+  await como(ids.barbara, (tx) => tx.query(`select public.dg_set_template_agent($1, $2)`, [ids.tpl039, ids.ag039]))
+  igual((await um(db, `select primary_agent_id from analysis_templates where id = $1`, [ids.tpl039])).primary_agent_id, ids.ag039, 'ligado')
+  await como(ids.lucas, (tx) => tx.query(`select public.dg_set_template_agent($1, null)`, [ids.tpl039])).then(
+    () => { throw new Error('LAWYER mudou template') }, (e) => { if (!/Somente ADMIN/.test(e.message)) throw e })
+})
+await deve('LAWYER não lê arquivos de skill; o worker lê (configuração, sem dado de cliente)', async () => {
+  await como(ids.lucas, async (tx) => igual((await linhas(tx, `select 1 from skill_version_files`)).length, 0, 'LAWYER'))
+  igual((await comoWorker((tx) => linhas(tx, `select 1 from skill_version_files where skill_id = $1`, [ids.sk039]))).length > 0, true, 'worker')
+})
+
+secao('Execução real: análise estruturada, revisão do resultado exato e nova tentativa [039]')
+const reservar039 = async (run, worker = 'worker-039') => {
+  const m = (await um(db, `select queue_msg_id from agent_runs where id = $1`, [run])).queue_msg_id
+  return comoWorker((tx) => um(tx, `select * from private.claim_agent_run($1, $2, $3, 300)`, [run, worker, m]))
+}
+const entregarAnalise = (run, worker, resumo, resultado) => comoWorker((tx) =>
+  um(tx, `select * from private.worker_submit_analysis_result($1, $2, $3, $4, 1)`, [run, worker, resumo, JSON.stringify(resultado)]))
+const resultado039 = { summary: 'Cabem duas ações.', recommendation: 'Ajuizar no JEC', findings: [{ title: 'Migração', detail: 'Contrato migrado' }],
+  missing_information: [], recommendations: [], proposed_actions: [], references_used: [], theses_considered: [] }
+await deve('análise enviada: o contexto do worker traz template, campos e skills do template', async () => {
+  const r = await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl039, { banco: 'Banco 039' }, true, 'Analise o HISCON')
+  ids.an039 = r.analysis_id; ids.run039 = r.agent_run_id
+  igual((await reservar039(ids.run039)).claimed, true, 'reservada')
+  const c = await comoWorker(async (tx) => (await um(tx, `select private.worker_run_context($1, 'worker-039') c`, [ids.run039])).c)
+  igual([c.analysis.id, c.analysis.template_name, c.analysis.field_values.banco, c.analysis.previous, c.previous_output],
+    [ids.an039, 'Template 039', 'Banco 039', null, false], 'contexto da análise')
+})
+await deve('worker registra a configuração usada (só ids/hashes); recusa prompt, instruções e entrada', async () => {
+  const snap = { runtime: 'dg-agentes/5', agent_version_id: ids.agenteV, prompt_sha256: sha64, model: 'claude-opus-5-5' }
+  igual((await comoWorker((tx) => um(tx, `select private.worker_record_run_config($1, 'worker-039', $2) v`, [ids.run039, JSON.stringify(snap)]))).v, true, 'gravado')
+  igual((await um(db, `select config_snapshot ->> 'prompt_sha256' h from agent_runs where id = $1`, [ids.run039])).h, sha64, 'snapshot')
+  for (const k of ['prompt', 'instructions', 'input'])
+    await comoWorker((tx) => tx.query(`select private.worker_record_run_config($1, 'worker-039', $2)`, [ids.run039, JSON.stringify({ [k]: 'x' })])).then(
+      () => { throw new Error(`aceitou ${k}`) }, (e) => { if (!/não guarda/.test(e.message)) throw e })
+  igual((await comoWorker((tx) => um(tx, `select private.worker_record_run_config($1, 'outro', '{}') v`, [ids.run039]))).v, false, 'sem reserva, não grava')
+})
+await deve('resultado estruturado: append-only, espelhado na análise, revisão aponta o resultado EXATO; repetir não duplica', async () => {
+  const r1 = await entregarAnalise(ids.run039, 'worker-039', 'Cabem duas ações.', resultado039)
+  const r2 = await entregarAnalise(ids.run039, 'worker-039', 'Outro resumo', resultado039)
+  igual([r1.created, r2.created, r2.result_id === r1.result_id, r2.review_id === r1.review_id], [true, false, true, true], 'idempotente')
+  ids.res039 = r1.result_id; ids.rev039 = r1.review_id
+  const a = await um(db, `select summary, result_data ->> 'recommendation' rec, result_data ->> 'result_id' rid from legal_analyses where id = $1`, [ids.an039])
+  igual([a.summary, a.rec, a.rid], ['Cabem duas ações.', 'Ajuizar no JEC', ids.res039], 'espelho')
+  const rv = await um(db, `select status, legal_analysis_id, legal_analysis_result_id from reviews where id = $1`, [ids.rev039])
+  igual([rv.status, rv.legal_analysis_id, rv.legal_analysis_result_id], ['PENDING', ids.an039, ids.res039], 'revisão')
+  await db.query(`update legal_analysis_results set summary = 'x' where id = $1`, [ids.res039]).then(
+    () => { throw new Error('resultado editável') }, () => {})
+})
+await deveFalhar('outro worker (sem a reserva) não entrega resultado', () => entregarAnalise(ids.run039, 'intruso', 'x', resultado039), /não está reservada/)
+await deveFalhar('execução que não é de análise não entrega resultado de análise', async () => {
+  await reservar039(ids.runAdmin, 'worker-039b')
+  await entregarAnalise(ids.runAdmin, 'worker-039b', 'x', resultado039)
+}, /não é de uma análise/)
+await deve('execução com resultado pendente fica aguardando humano; LAWYER pede alterações → análise volta para envio, execução encerra', async () => {
+  igual((await comoWorker((tx) => um(tx, `select private.worker_finish_run($1, 'worker-039', 'WAITING_HUMAN') v`, [ids.run039]))).v, true, 'encerrou aguardando')
+  igual((await um(db, `select status from legal_analyses where id = $1`, [ids.an039])).status, 'WAITING_REVIEW', 'análise aguardando revisão')
+  igual((await comoWorker((tx) => um(tx, `select private.worker_close_decided_runs() n`))).n, 0, 'nada a fechar ainda')
+  await decidir(ids.lucas, ids.rev039, 'REQUEST_CHANGES', 'Faltou o bloco D (cartão RMC).')
+  const a = await um(db, `select status, interruption_reason from legal_analyses where id = $1`, [ids.an039])
+  igual(a.status, 'PENDING', 'análise volta para novo envio')
+  await comoWorker((tx) => tx.query(`select private.worker_close_decided_runs()`))
+  igual((await um(db, `select status from agent_runs where id = $1`, [ids.run039])).status, 'COMPLETED', 'execução encerrada')
+  igual((await um(db, `select summary from legal_analysis_results where id = $1`, [ids.res039])).summary, 'Cabem duas ações.', 'resultado original intacto')
+})
+await deve('reenvio cria execução NOVA ligada à anterior; o contexto traz o resultado anterior e as observações da revisão', async () => {
+  const r = await enviarAnalise(ids.lucas, randomUUID(), ids.an039, 'Inclua o bloco D')
+  ids.run039b = r.agent_run_id
+  igual((await um(db, `select retry_of_agent_run_id from agent_runs where id = $1`, [ids.run039b])).retry_of_agent_run_id, ids.run039, 'ligada')
+  await reservar039(ids.run039b)
+  const c = await comoWorker(async (tx) => (await um(tx, `select private.worker_run_context($1, 'worker-039') c`, [ids.run039b])).c)
+  igual([c.retry_of_agent_run_id, c.analysis.previous.result_id, c.analysis.previous.review_status, c.analysis.previous.review_notes],
+    [ids.run039, ids.res039, 'CHANGES_REQUESTED', 'Faltou o bloco D (cartão RMC).'], 'contexto da nova tentativa')
+  const r2 = await entregarAnalise(ids.run039b, 'worker-039', 'Cabem três ações.', { ...resultado039, recommendation: 'Ajuizar três ações' })
+  ids.rev039b = r2.review_id
+  igual((await linhas(db, `select 1 from legal_analysis_results where legal_analysis_id = $1`, [ids.an039])).length, 2, 'dois resultados no histórico')
+})
+await deve('aprovar o resultado conclui a análise; a execução fecha quando nada mais está pendente', async () => {
+  await decidir(ids.lucas, ids.rev039b, 'APPROVE')
+  igual((await um(db, `select status from legal_analyses where id = $1`, [ids.an039])).status, 'COMPLETED', 'análise concluída')
+  await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-039', 'WAITING_HUMAN')`, [ids.run039b]))
+  await comoWorker((tx) => tx.query(`select private.worker_close_decided_runs()`))
+  igual((await um(db, `select status from agent_runs where id = $1`, [ids.run039b])).status, 'COMPLETED', 'execução encerrada')
+  igual((await um(db, `select status from legal_analyses where id = $1`, [ids.an039])).status, 'COMPLETED', 'análise segue concluída')
+})
+await deve('registro de skill no provedor: só skill vinculada, uma vez', async () => {
+  const r = await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl039, {}, true)
+  await reservar039(r.agent_run_id, 'worker-039c')
+  const reg = (v) => comoWorker((tx) => um(tx, `select * from private.worker_register_skill_upload($1, 'worker-039c', $2, 'skill_01x', 'kit-documentos', $3, $4)`,
+    [r.agent_run_id, ids.sk039v3, v, sha64]))
+  const a = await reg('skver_1')
+  const b = await reg('skver_2')
+  igual([a.created, b.created, b.provider_version_id], [true, false, 'skver_1'], 'primeira gravação vale')
+  const solta = (await um(db, `select id from skills where slug = 'roteiro-hiscon'`))?.id ?? (await salvarSkill(ids.barbara, randomUUID(), {
+    id: randomUUID(), create: true, version_id: randomUUID(), slug: 'skill-solta', name: 'Solta', instructions: 'x' })).skill_id
+  const sv = (await um(db, `select current_version_id v from skills where id = $1`, [solta])).v
+  await comoWorker((tx) => tx.query(`select * from private.worker_register_skill_upload($1, 'worker-039c', $2, 's', 'n', 'v', $3)`, [r.agent_run_id, sv, sha64])).then(
+    () => { throw new Error('skill não vinculada aceita') }, (e) => { if (!/não vinculada/.test(e.message)) throw e })
+  await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-039c', 'FAILED', 'CONFIGURATION_ERROR')`, [r.agent_run_id]))
+  ids.run039fail = r.agent_run_id
+})
+await deve('abrir documento: só versão vinculada ao caso da execução, com tipo e título; acesso registrado', async () => {
+  const r = await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl039, {}, true)
+  await reservar039(r.agent_run_id, 'worker-039d')
+  const meu = await um(db, `select v.id from document_versions v join case_documents cd on cd.document_id = v.document_id where cd.legal_case_id = $1 limit 1`, [ids.casoA])
+  const alheio = await um(db, `select v.id from document_versions v join case_documents cd on cd.document_id = v.document_id where cd.legal_case_id <> $1 limit 1`, [ids.casoA])
+  if (meu) {
+    const d = await comoWorker((tx) => linhas(tx, `select * from private.worker_open_document($1, 'worker-039d', $2)`, [r.agent_run_id, meu.id]))
+    igual(d.length, 1, 'documento do caso')
+  }
+  if (alheio) {
+    const d = await comoWorker((tx) => linhas(tx, `select * from private.worker_open_document($1, 'worker-039d', $2)`, [r.agent_run_id, alheio.id]))
+    igual(d.length, 0, 'documento de outro caso não volta')
+  }
+  await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-039d', 'FAILED', 'INTERNAL_ERROR')`, [r.agent_run_id]))
+})
+await deve('nova tentativa de execução avulsa: nova execução ligada; idempotente; recusada para execução de análise', async () => {
+  const run = (await como(ids.lucas, (tx) => um(tx, `select public.request_agent_run($1, $2) id`, [ids.agente, ids.casoA]))).id
+  await reservar039(run, 'worker-039e')
+  await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-039e', 'FAILED', 'PROVIDER_UNAVAILABLE')`, [run]))
+  const k = randomUUID()
+  const r1 = await como(ids.lucas, async (tx) => (await um(tx, `select public.retry_agent_run_once($1, $2) r`, [k, run])).r)
+  const r2 = await como(ids.lucas, async (tx) => (await um(tx, `select public.retry_agent_run_once($1, $2) r`, [k, run])).r)
+  igual([r1.deduplicated, r2.deduplicated, r2.agent_run_id === r1.agent_run_id], [false, true, true], 'idempotente')
+  const n = await um(db, `select status, retry_of_agent_run_id from agent_runs where id = $1`, [r1.agent_run_id])
+  igual([n.status, n.retry_of_agent_run_id], ['QUEUED', run], 'nova execução ligada')
+  await como(ids.lucas, (tx) => tx.query(`select public.retry_agent_run_once($1, $2)`, [randomUUID(), ids.run039fail])).then(
+    () => { throw new Error('retry de análise aceito') }, (e) => { if (!/envie a análise de novo/.test(e.message)) throw e })
+  await como(ids.ana, (tx) => tx.query(`select public.retry_agent_run_once($1, $2)`, [randomUUID(), run])).then(
+    () => { throw new Error('ASSISTANT tentou de novo') }, (e) => { if (!/Somente ADMIN ou advogado/.test(e.message)) throw e })
+  await db.query(`update agent_runs set status = 'CANCELLED' where id = $1`, [r1.agent_run_id])
+})
+await deve('detalhe da execução: LAWYER vê o que foi entregue, sem uso/custo/configuração; ADMIN vê tudo; ASSISTANT não', async () => {
+  const d = await como(ids.lucas, async (tx) => (await um(tx, `select public.get_agent_run_detail($1) d`, [ids.run039b])).d)
+  igual([d.status, d.analysis_id, d.analysis_result.id, d.analysis_result.review_status, d.retry_of_agent_run_id, d.usage, d.config],
+    ['COMPLETED', ids.an039, (await um(db, `select id from legal_analysis_results where agent_run_id = $1`, [ids.run039b])).id, 'APPROVED', ids.run039, null, null], 'LAWYER')
+  const adm = await como(ids.barbara, async (tx) => (await um(tx, `select public.get_agent_run_detail($1) d`, [ids.run039])).d)
+  igual([typeof adm.usage, adm.config.prompt_sha256, adm.retried_by], ['object', sha64, [ids.run039b]], 'ADMIN')
+  await como(ids.ana, (tx) => tx.query(`select public.get_agent_run_detail($1)`, [ids.run039])).then(
+    () => { throw new Error('ASSISTANT leu') }, (e) => { if (!/só a ADMIN e LAWYER/.test(e.message)) throw e })
+})
+await deve('uso da IA: só ADMIN, só agregados', async () => {
+  const u = await como(ids.barbara, async (tx) => (await um(tx, `select public.get_ai_usage_summary(30) u`)).u)
+  igual([typeof u.totals.runs, Array.isArray(u.by_agent), Array.isArray(u.by_day)], ['number', true, true], 'formato')
+  await como(ids.lucas, (tx) => tx.query(`select public.get_ai_usage_summary(30)`)).then(
+    () => { throw new Error('LAWYER leu uso') }, (e) => { if (!/Somente ADMIN/.test(e.message)) throw e })
+})
+
+secao('Catálogo: funções da Etapa 5 [039]')
+const novas039 = ['get_ai_runtime_status', 'set_ai_execution_enabled', 'worker_ai_enabled', 'dg_storage_object_exists',
+  'worker_register_skill_upload', 'reviews_validate_analysis_result', 'reviews_sync_analysis', 'worker_submit_analysis_result',
+  'agent_runs_retry_guard', 'worker_record_run_config', 'worker_open_document', 'retry_agent_run_once', 'link_analysis_retry',
+  'agent_run_has_pending_outputs', 'dg_validate_agent_configuration', 'dg_uuid_array', 'dg_save_agent_once', 'dg_set_agent_status',
+  'dg_save_skill_once', 'dg_save_thesis_once', 'dg_save_reference_once', 'dg_set_template_agent', 'get_agent_run_detail', 'get_ai_usage_summary']
+await deve('toda função nova fixa search_path; anon não executa nenhuma', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.proname = any ($1)`, [novas039])
+  if (r.length < novas039.length) throw new Error(`funções faltando: ${r.length}`)
+  igual(r.filter((x) => !x.cfg.includes('search_path=') && x.f !== 'private.agent_runs_retry_guard').map((x) => x.f), [], 'sem search_path')
+  igual(r.filter((x) => x.anon).map((x) => x.f), [], 'anon com execute')
+})
+await deve('usuário logado não chama as portas do worker; o worker não chama as da tela', async () => {
+  const doWorker = ['worker_ai_enabled', 'worker_register_skill_upload', 'worker_submit_analysis_result', 'worker_record_run_config',
+    'worker_open_document', 'agent_run_has_pending_outputs', 'reviews_sync_analysis']
+  const r = await linhas(db, `select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1) and has_function_privilege('authenticated', p.oid, 'execute')`, [doWorker])
+  igual(r.map((x) => x.f), [], 'authenticated com execute em porta do worker')
+  const daTela = ['set_ai_execution_enabled', 'retry_agent_run_once', 'get_agent_run_detail', 'get_ai_usage_summary']
+  const w = await linhas(db, `select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1) and has_function_privilege('dg_worker', p.oid, 'execute')`, [daTela])
+  igual(w.map((x) => x.f), [], 'dg_worker com execute em porta da tela')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
