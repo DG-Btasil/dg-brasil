@@ -10,3 +10,6 @@ supabase/.env.real
 supabase/.temp/
 supabase/.branches/
 supabase/.preview-emails/
+
+# Playwright MCP (snapshots e logs)
+.playwright-mcp/
