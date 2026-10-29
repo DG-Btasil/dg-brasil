@@ -65,19 +65,28 @@ qualquer dado real.
   cru nem IP), sair deste / dos outros / de todos os dispositivos, troca de
   senha encerra as outras sessões, auditoria e avisos de segurança. Encerrar
   uma sessão específica não é suportado pelo Supabase (documentado). Ver
-  [docs/auth.md](docs/auth.md) e `docs/etapa-4.3.2-relatorio.md`. Próxima:
-  Agents/worker/IA reais — não iniciada.
+  [docs/auth.md](docs/auth.md) e `docs/etapa-4.3.2-relatorio.md`. Validada.
 
 ### Etapa 5 — Front-end conectado
 
 `repositories/api` no lugar dos mocks, usando os mapeamentos de
 `src/repositories/api/db-mappings.ts`. A equipe começa a usar com dados reais.
 
-### Etapa 6 — Primeiro agente na nuvem
+### Etapa 6 — Agentes pelo Claude Code do escritório (MCP) e Google Drive
 
-- Deploy do worker no Fly.io (região gru), conectado como `dg_worker`.
-- Primeiro agente em produção, com a fila de Revisões como tela central.
-- Despachante de gatilhos (horário/evento) chamando `request_agent_run`.
+Substitui o "agente na nuvem" (worker no Fly.io, Etapa 5 — removido sem nunca ter
+rodado). Decidido em 2026-10-29 (docs/mcp/relatorio-diagnostico.md):
+
+- **Código pronto (2026-10-30), validação no DEV pendente** — migrations 040
+  (computador do escritório: token, reserva por trabalho, linha do tempo,
+  manutenção no `pg_cron`) e 041 (Google Drive); API `/api/executor/v1`; pacote
+  `apps/executor` (MCP local, modo assistido); telas "Computador do escritório",
+  linha do tempo da execução e Drive. Guia: [docs/mcp/validacao.md](docs/mcp/validacao.md).
+- Depois da validação: Lucas e Clara de verdade, com as orientações do DG Brasil
+  e os documentos vindos da plataforma (e não mais das pastas por nome).
+- Fora por decisão: modo automático (exigiria chave de API) e mudar os
+  agendamentos atuais do computador do escritório.
+- Despachante de gatilhos (horário/evento) chamando `request_agent_run`: não começado.
 
 ### Etapa 7 — Importação
 

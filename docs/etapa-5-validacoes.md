@@ -1,5 +1,11 @@
 # Etapa 5 — Validações (Agents Runtime & Claude Integration)
 
+> **Substituído em 2026-10-29.** O worker na nuvem (Claude API, Fly.io) desta
+> etapa foi removido sem nunca ter rodado; os agentes passaram a rodar no Claude
+> Code do escritório via MCP. Veja [docs/mcp/](mcp/). Este arquivo fica como
+> registro histórico; as partes de worker, Fly.io e skills com arquivo não valem
+> mais.
+
 Roteiro para o **agente validador** na máquina que tem o `supabase/.env.real`
 (Supabase **DEV**). Faça **na ordem**. Em cada item, marque `[x]` e copie a
 evidência (saída do terminal, contagem, print) para o relatório

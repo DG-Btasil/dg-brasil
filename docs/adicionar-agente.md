@@ -1,101 +1,105 @@
-# Como adicionar um agente
+# Como pôr um agente do Claude Code para trabalhar no DG Brasil
 
-Desde a Etapa 5, agente, skill, tese e referência são **cadastro**, feito pela
-área **DG Brasil** (só ADMIN). Nenhum agente é programado no código: o worker
-executa qualquer agente cadastrado, dentro das mesmas regras.
+Desde 2026-10-29, **os agentes e as skills ficam no Claude Code do computador do
+escritório** (repositório `Agents_for_DG_Brasil`, instalado em `~/.claude`). O DG
+Brasil não guarda as instruções do agente. Ele guarda:
 
-Antes de começar, descubra em qual nível você está: **o agente precisa de
-alguma informação ou de algum efeito que o catálogo de ferramentas ainda não
-tem?** Quase sempre não — e aí é só cadastro.
+- **qual agente local** faz cada tipo de trabalho;
+- **as orientações do DG Brasil**: o que entregar e como;
+- **o conhecimento autorizado**: teses e referências.
 
----
+Tudo o que o agente entrega vai para **Revisões** e só vale depois de um advogado
+aprovar.
 
-## Nível 1 — Cadastro pela tela (minutos, sem deploy)
+## 1. O agente no Claude Code
 
-### Skills (DG Brasil → Skills → Criar skill)
+O agente é um arquivo `.md` em `~/.claude/agents/` (ou no `Agents_for_DG_Brasil`),
+com `name:` no cabeçalho. Para trabalhar com o DG Brasil, ele precisa de três
+coisas:
 
-Uma skill é **instruções (o SKILL.md) + arquivos** (scripts `.py`, modelos
-`.docx`, referências `.md`/`.pdf`/`.json`…), igual ao Claude Code.
+- **Ler os documentos na pasta `entrada` que o trabalho informa.** O próprio
+  Claude Code, conduzido pelo comando `/mcp__dg-brasil__trabalhos`, baixa os
+  documentos do caso para essa pasta antes de chamar o agente.
+- **Gravar o que gerar na pasta `saida`** do trabalho: PDF, DOCX, XLSX, TXT ou CSV.
+  Para análise, gravar `saida\analise.json` no formato que o trabalho mostra.
+- **Não usar, durante um trabalho do DG Brasil:**
+  - as pastas do Google Drive por nome;
+  - o ChatJurídico ou o WhatsApp;
+  - o Gmail;
+  - o ADVBOX.
 
-- **Enviar pasta**: escolha a pasta da skill do Claude Code. O `SKILL.md` vira
-  nome, descrição e instruções; os outros arquivos vão junto, com as subpastas
-  (`scripts/gerar.py` continua `scripts/gerar.py`).
-- **Descrição** é obrigatória (até 1.024 caracteres): é por ela que o agente
-  decide usar a skill.
-- Limites: 10 MB por arquivo, 25 MB por skill, 200 arquivos. Identificador sem
-  "anthropic"/"claude" (nome reservado do provedor).
-- Mudar instruções ou arquivos cria **versão nova**; a anterior fica no
-  histórico e nas execuções que a usaram.
+  Os dados vêm do DG Brasil, e a entrega volta para ele.
 
-Os scripts rodam **só no ambiente isolado do provedor** (contêiner sem
-internet, sem instalação de pacote, sem acesso ao DG Brasil). Disponíveis lá:
-Python 3.11 com `python-docx`, `reportlab`, `pypdf`, `pypdfium2`, `pdfplumber`,
-`pdf2image`, `openpyxl`, `pandas` e outros. **Não há Word nem LibreOffice**:
-script que dependia do Word para gerar PDF precisa gerar o PDF direto (ex.:
-`reportlab`) ou entregar `.docx`.
+Os agentes atuais (Clara, Lucas) foram escritos para as pastas `G:\Meu Drive\...`
+e para o ChatJurídico. Para usá-los pelo DG Brasil, o caminho mais seguro é uma
+**variante** de cada um (ex.: `clara-dg`), com:
 
-### Agentes (DG Brasil → Agentes → Criar agente)
+- o mesmo método de trabalho;
+- a entrada e a saída nas pastas do trabalho;
+- a lista de ferramentas mais curta possível (`tools: Read, Write, Glob` e, se
+  precisar de script, `Bash`).
 
-- **Importar .md**: o arquivo do agente do Claude Code preenche nome,
-  descrição e instruções. `tools` e `model` do Claude Code **não** são copiados
-  (no DG Brasil as ferramentas são as do catálogo e o modelo é escolhido aqui).
-- **Instruções**: o papel e o passo a passo. Adapte o que dependia da máquina
-  local: Drive (`G:\`), ChatJurídico, PowerShell, Word — no DG Brasil o agente
-  lê os **documentos do caso** e entrega para **Revisões**.
-- **Execução**: modelo (Opus para redação/análise jurídica; Haiku só para
-  tarefas simples), esforço, ambiente isolado (ligado para skills com scripts
-  e para gerar arquivos), limites (passos, chamadas de ferramenta, tempo, teto
-  de custo em dólares) e, se quiser, restrição das ferramentas de leitura.
-- **Conhecimento**: skills (até 20), teses autorizadas, referências.
-- Situação **Ativo** para receber execuções.
+Os agendamentos atuais continuam como estão.
 
-Para o agente executar **análises**, ligue-o a um modelo de análise (aba Visão
-geral do agente → "Análises executadas por este agente").
+Exemplos fictícios prontos para testar: [mcp/pilotos/agentes/](mcp/pilotos/agentes/).
 
-### Ferramentas que o agente tem
+## 2. O registro no DG Brasil
 
-| Ferramenta | O que faz |
+Como ADMIN, em **DG Brasil → Agentes → Cadastrar agente**:
+
+| Campo | O que pôr |
 |---|---|
-| `ver_caso` | O caso da execução: cliente, processos, prazos, documentos (com o id da última versão), pendências |
-| `ver_processo` | Um processo do caso: dados, partes, movimentações |
-| `abrir_documento` | Uma versão de documento do caso: para LER (PDF/texto/imagem) e/ou para o ambiente isolado (scripts). Até 12 por execução, 25 MB cada |
-| `consultar_teses` | Teses ativas autorizadas (do agente e do modelo de análise) |
-| `listar_referencias` / `abrir_referencia` | Referências ativas vinculadas ao agente |
-| `propor` | Proposta para revisão humana (prazo, pedido de documento, atualização do caso, processo, providência) |
-| `entregar_documento` | Minuta que o agente GEROU nesta execução no ambiente isolado → documento interno, versão nova, revisão pendente |
-| `entregar_analise` | Resultado estruturado da análise → revisão humana do resultado exato |
+| Nome | Como a equipe reconhece (ex.: "Clara · Análise do HISCON") |
+| Agente no Claude Code | O `name:` do arquivo `.md` (ex.: `clara-dg`) |
+| Orientações do DG Brasil | O que entregar e como. Vão junto com cada trabalho. Já vem um modelo. |
+| Teses e referências | O que o agente pode consultar pelo DG Brasil durante o trabalho |
+| Situação | Ativo, para receber trabalhos |
 
-Não existe ferramenta de SQL, shell do servidor, URL, nem leitura de arquivo
-do servidor. Tudo que o agente lê é do caso da execução; tudo que entrega vai
-para Revisões.
+O botão **Importar .md** lê o arquivo do agente só para preencher o nome do agente
+local e a descrição.
 
-### O que o agente pode propor
+Mudar as orientações ou o agente local cria uma **versão nova**. Cada execução
+registra a versão que usou.
 
-| Tipo | Efeito depois da aprovação |
-|---|---|
-| `CREATE_DEADLINE` | Cria prazo no caso (origem `AGENT`) |
-| `REQUEST_DOCUMENT` | Cria pendência de documento; em caso de parceiro, também uma solicitação ao parceiro |
-| `UPDATE_CASE` | Título, resumo ou status de triagem. Nunca aceita, rejeita ou encerra caso |
-| `CREATE_PROCESS` | Cria processo em preparação no caso |
-| `UPDATE_SKILL` / `UPDATE_AGENT` | Cria versão nova e a torna corrente. **Só ADMIN aprova** |
-| `OTHER` | Nenhum efeito automático: aprovado, vira providência da equipe |
+## 3. Como o agente recebe trabalho
 
----
+- **Análise:** em **DG Brasil → Agentes → (o agente) → Visão geral**, ligue o
+  agente a um modelo de análise (ex.: "Análise Bancária"). A partir daí, toda
+  análise desse modelo enviada num caso vira trabalho para ele.
+- **Execução avulsa:** **Executar em um caso** (ADMIN), no detalhe do agente.
 
-## Nível 2 — Agente que precisa de algo novo (é código, com revisão)
+## 4. Como o escritório processa a fila
 
-**a) Precisa LER algo que nenhuma ferramenta expõe.**
-→ Nova ferramenta em [`apps/agentes/src/ferramentas.ts`](../apps/agentes/src/ferramentas.ts).
-Se lê dado de cliente, a leitura é uma função `private.worker_*` nova (migration
-nova) que recebe a execução, confere a reserva e deriva o caso dela — o
-`dg_worker` não tem SELECT em tabela de domínio, de propósito.
+No computador do escritório, com o Claude Code aberto, digite
+`/mcp__dg-brasil__trabalhos`. O Claude:
 
-**b) Precisa PRODUZIR um efeito que ainda não existe.**
-→ Novo tipo em `agent_proposals.proposal_type` (migration nova), o schema do
-payload em [`propostas.ts`](../apps/agentes/src/propostas.ts) e o ramo em
-`private.apply_proposal_effect`. Tipo sem aplicador não entra no CHECK. Se o
-efeito altera configuração do DG Brasil, confira `private.proposal_requires_admin`.
+1. lista a fila;
+2. pergunta quais trabalhos processar;
+3. reserva cada um;
+4. baixa os documentos, conferindo o checksum;
+5. chama o agente local;
+6. entrega análise, minutas e propostas;
+7. encerra o trabalho.
 
-**c) Precisa de uma integração externa (Drive, WhatsApp, tribunal).**
-→ Não é ferramenta genérica de rede para o agente: é um provider próprio, com
-credencial no servidor, escopo por caso e efeito por proposta. Etapa futura.
+Instalação: [mcp/instalacao.md](mcp/instalacao.md).
+
+## 5. O que o agente pode e não pode fazer
+
+**Pode** (pelas ferramentas do DG Brasil):
+- ver o caso e os processos do trabalho reservado;
+- baixar os documentos do caso;
+- consultar teses e referências autorizadas;
+- informar o andamento;
+- entregar análise, minuta ou proposta.
+
+**Não pode** (as ferramentas não existem):
+- apagar;
+- aprovar;
+- protocolar;
+- mandar mensagem;
+- mudar permissão;
+- ver outro cliente;
+- rodar SQL.
+
+O banco confere em toda chamada que o trabalho está reservado por aquele
+computador e deriva o caso do trabalho, nunca de um argumento.

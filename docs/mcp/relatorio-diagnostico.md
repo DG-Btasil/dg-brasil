@@ -1,6 +1,9 @@
 # Agentes via Claude Code + MCP: diagnóstico e plano (Etapa A)
 
-**Status: AGUARDANDO APROVAÇÃO. Nada foi removido nem alterado no sistema.**
+**Status: APROVADO em 2026-10-29 e implementado** (decisões na seção 13; o que
+foi feito em [relatorio-final.md](relatorio-final.md)). Este documento é o
+diagnóstico ORIGINAL, mantido como registro: onde ele fala em modo automático ou
+em executor `run`, a decisão foi não fazer.
 Base: `master` em `5609165` (2026-10-29). Fontes: o código deste repositório, o repositório
 `Agents_for_DG_Brasil`, a configuração do Claude Code desta máquina e a documentação oficial da
 Anthropic (links na seção 12).
@@ -583,3 +586,14 @@ A grande redução de custo **só existe no modo assistido**.
    deles para o novo executor (Etapa D), ou ficam como estão por enquanto?
 6. **Aprovação deste plano:** com o "ok", começo pela Etapa B1. Nada é removido antes de B1 estar
    testada.
+
+### Respostas (2026-10-29)
+
+1. **Modo:** só assistido. Sem executor automático e sem chave de API.
+2. **Agentes e skills:** escritos no Claude Code; o DG Brasil registra o agente
+   local, as orientações de entrega e as teses/referências.
+3. **Teses e referências:** continuam no DG Brasil, servidas pelo MCP.
+4. **Google Drive:** tipo de conta ainda não sabido; a integração aceita OAuth e
+   conta de serviço.
+5. **Agendamentos atuais:** não mexer.
+6. **Plano:** aprovado.

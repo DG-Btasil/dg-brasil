@@ -1,5 +1,11 @@
 # Etapa 5 — Agents Runtime & Claude Integration — Relatório
 
+> **Substituído em 2026-10-29.** O worker na nuvem (Claude API, Fly.io) desta
+> etapa foi removido sem nunca ter rodado; os agentes passaram a rodar no Claude
+> Code do escritório via MCP. Veja [docs/mcp/](mcp/). Este arquivo fica como
+> registro histórico; as partes de worker, Fly.io e skills com arquivo não valem
+> mais.
+
 ## 1. Status
 
 **AGENTS RUNTIME READY FOR DEV VALIDATION**

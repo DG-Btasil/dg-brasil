@@ -1,7 +1,9 @@
 # DG Brasil — arquitetura
 
-Sistema interno da Barbara Cardoso Advocacia: CRM próprio + motor de agentes de IA
-na nuvem, acessado pela equipe e pelos escritórios parceiros pelo navegador.
+Sistema interno da Barbara Cardoso Advocacia: CRM próprio + fila de trabalhos para
+os agentes de IA do escritório, acessado pela equipe e pelos escritórios parceiros
+pelo navegador. Os agentes rodam no Claude Code do computador do escritório
+(desde 2026-10-29; antes era um worker na nuvem — ver docs/mcp/).
 
 Não é produto para venda nem SaaS multi-tenant: uma organização proprietária
 (OWNER), escritórios parceiros (PARTNER) subordinados ao ecossistema, uma base,
@@ -11,27 +13,28 @@ Supabase Auth.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  PAINEL (Next.js)                                        │
+│  PAINEL (Next.js, Vercel)                                │
 │  A equipe trabalha aqui: contatos, casos, prazos,        │
-│  documentos, WhatsApp e — o centro de tudo — a           │
-│  FILA DE APROVAÇÃO do que os agentes propuseram.         │
+│  documentos e — o centro de tudo — REVISÕES, a fila de   │
+│  aprovação do que os agentes entregaram. Também expõe    │
+│  /api/executor/v1 ao computador do escritório e          │
+│  sincroniza o Google Drive (servidor).                   │
 └───────────────────────────┬──────────────────────────────┘
-                            │ SQL + Storage
+                            │ SQL (JWT do usuário / dg_worker) + Storage
 ┌───────────────────────────▼──────────────────────────────┐
 │  BANCO (Postgres/Supabase, São Paulo)                    │
 │  Fonte da verdade do escritório. RLS por papel, gate     │
-│  humano, ledger financeiro, auditoria por ator. A fila   │
-│  (pgmq) `agent_execution` leva só o id de `agent_runs`.  │
+│  humano, ledger financeiro, auditoria por ator. Fila     │
+│  (pgmq) agent_execution; manutenção no pg_cron.          │
 └───────────────────────────▲──────────────────────────────┘
-                            │ claim / update
+                            │ HTTPS (token do computador + token de reserva)
 ┌───────────────────────────┴──────────────────────────────┐
-│  MOTOR DE AGENTES (worker Node, Claude API)              │
-│  Papel dg_worker, sem bypass de RLS. Processo longo,     │
-│  fora do serverless. Reserva a execução, bate enquanto   │
-│  roda, executa o agente CADASTRADO com o catálogo de     │
-│  ferramentas; scripts das skills só no ambiente isolado  │
-│  do provedor. Grava PROPOSTAS, MINUTAS e RESULTADOS de   │
-│  análise em revisão — não fatos consumados.              │
+│  COMPUTADOR DO ESCRITÓRIO (Claude Code + MCP local)      │
+│  Alguém abre o Claude Code e manda processar a fila. O   │
+│  MCP "dg-brasil" (apps/executor) tem catálogo fechado:   │
+│  ler o caso reservado, baixar documentos (checksum),     │
+│  entregar ANÁLISE, MINUTA e PROPOSTA — tudo em revisão,  │
+│  nada consumado. Agentes e skills ficam no Claude Code.  │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -72,7 +75,7 @@ vulneráveis: existe sempre um advogado responsável no registro.
 
 Na V1 não há aprovação automática: toda proposta passa por revisão humana
 ("IA executa. Humano decide."). Se um dia fizer sentido aprovar sozinho algo
-reversível, isso entra como regra explícita no banco, não como atalho no worker.
+reversível, isso entra como regra explícita no banco, não como atalho no executor.
 
 ## Stack escolhida (você pediu que eu decidisse)
 
@@ -80,11 +83,12 @@ reversível, isso entra como regra explícita no banco, não como atalho no work
 |---|---|---|
 | Banco, arquivos, login | **Supabase Pro, região São Paulo (sa-east-1)** | Postgres de verdade (o domínio é relacional: cliente→caso→processo→prazo). RLS nativa dá permissão por papel. Storage privado para PDFs com o mesmo login. Dado de cliente não sai do Brasil. |
 | Painel | **Next.js 16 na Vercel, região gru1** | Você já escreve Next.js — o `esteira-consignado` está em produção de fato. Zero infra para manter. |
-| Motor de agentes | **Worker Node no Fly.io, região gru** | Gerar uma petição leva minutos; função serverless morre no timeout. Worker é processo contínuo, com retry e log. Fly tem São Paulo. |
-| Fila | **Supabase Queues (pgmq), fila `agent_execution`** | Fila dentro do próprio Postgres: sem Redis nem SQS. Reserva atômica da execução e batimento que estende a invisibilidade: execução longa não roda em dobro, worker morto é substituído. O registro auditável continua em `agent_runs`. |
+| Execução dos agentes | **Claude Code do computador do escritório + MCP local** (2026-10-29) | Os agentes e skills do escritório já funcionam lá (Python, Word, pastas). Modo assistido: uma pessoa abre o Claude Code e processa a fila, dentro do uso normal da assinatura. Substituiu o worker no Fly.io, que nunca chegou a rodar. Ver docs/mcp/relatorio-diagnostico.md. |
+| Fila | **Supabase Queues (pgmq), fila `agent_execution`** | Fila dentro do próprio Postgres: sem Redis nem SQS. Reserva atômica da execução e batimento que estende a invisibilidade: execução longa não roda em dobro, computador que parou de responder devolve o trabalho à fila. O registro auditável continua em `agent_runs`. |
 
-**Custo estimado:** Supabase Pro US$25 + Vercel Pro US$20 + Fly ~US$10 ≈ **US$55/mês (~R$ 300)**,
-mais o consumo da API da Anthropic, que varia com o volume de peças.
+**Custo estimado:** Supabase Pro US$25 + Vercel Pro US$20 ≈ **US$45/mês**, sem servidor de agentes.
+O modo assistido usa a assinatura do Claude que o escritório já tem; um modo
+automático (sem ninguém iniciando) exigiria chave de API da Anthropic, paga por uso.
 
 **Alternativa mais barata, se o orçamento apertar:** tudo numa VPS Hetzner com
 Coolify (~R$ 150/mês, Postgres e worker no mesmo host). Troca dinheiro por
