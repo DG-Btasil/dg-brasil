@@ -208,3 +208,24 @@ $$;
 grant usage on schema pgmq to public;
 grant all on all tables in schema pgmq to public;
 alter default privileges in schema pgmq grant all on tables to public;
+
+-- ───────────────────────────── pg_cron (simulado) ─────────────────────────
+-- Só registra o agendamento (nome, horário, comando), como cron.schedule com
+-- nome faz no pg_cron real (repetir o nome atualiza). Nada roda sozinho aqui:
+-- os testes chamam private.maintenance_tick() diretamente.
+create schema cron;
+create table cron.job (
+  jobid    bigserial primary key,
+  jobname  text unique,
+  schedule text not null,
+  command  text not null
+);
+create function cron.schedule(job_name text, schedule text, command text) returns bigint
+language plpgsql as $$
+declare v bigint;
+begin
+  insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
+  on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
+  returning jobid into v;
+  return v;
+end $$;

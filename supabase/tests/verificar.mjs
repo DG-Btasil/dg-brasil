@@ -13,7 +13,7 @@
 
 import { PGlite } from '@electric-sql/pglite'
 import { readFile, readdir } from 'node:fs/promises'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 const raiz = new URL('../', import.meta.url)
 const db = new PGlite()
@@ -3881,19 +3881,12 @@ await deve('aprovar o resultado conclui a análise; a execução fecha quando na
   igual((await um(db, `select status from agent_runs where id = $1`, [ids.run039b])).status, 'COMPLETED', 'execução encerrada')
   igual((await um(db, `select status from legal_analyses where id = $1`, [ids.an039])).status, 'COMPLETED', 'análise segue concluída')
 })
-await deve('registro de skill no provedor: só skill vinculada, uma vez', async () => {
+await deve('registro de skill no provedor: congelado desde a 040 (o worker da Claude API saiu)', async () => {
   const r = await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl039, {}, true)
   await reservar039(r.agent_run_id, 'worker-039c')
-  const reg = (v) => comoWorker((tx) => um(tx, `select * from private.worker_register_skill_upload($1, 'worker-039c', $2, 'skill_01x', 'kit-documentos', $3, $4)`,
-    [r.agent_run_id, ids.sk039v3, v, sha64]))
-  const a = await reg('skver_1')
-  const b = await reg('skver_2')
-  igual([a.created, b.created, b.provider_version_id], [true, false, 'skver_1'], 'primeira gravação vale')
-  const solta = (await um(db, `select id from skills where slug = 'roteiro-hiscon'`))?.id ?? (await salvarSkill(ids.barbara, randomUUID(), {
-    id: randomUUID(), create: true, version_id: randomUUID(), slug: 'skill-solta', name: 'Solta', instructions: 'x' })).skill_id
-  const sv = (await um(db, `select current_version_id v from skills where id = $1`, [solta])).v
-  await comoWorker((tx) => tx.query(`select * from private.worker_register_skill_upload($1, 'worker-039c', $2, 's', 'n', 'v', $3)`, [r.agent_run_id, sv, sha64])).then(
-    () => { throw new Error('skill não vinculada aceita') }, (e) => { if (!/não vinculada/.test(e.message)) throw e })
+  await comoWorker((tx) => tx.query(`select * from private.worker_register_skill_upload($1, 'worker-039c', $2, 'skill_01x', 'kit-documentos', 'v', $3)`,
+    [r.agent_run_id, ids.sk039v3, sha64])).then(
+    () => { throw new Error('dg_worker ainda registra skill no provedor') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
   await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-039c', 'FAILED', 'CONFIGURATION_ERROR')`, [r.agent_run_id]))
   ids.run039fail = r.agent_run_id
 })
@@ -3969,6 +3962,291 @@ await deve('usuário logado não chama as portas do worker; o worker não chama 
   const w = await linhas(db, `select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'private' and p.proname = any ($1) and has_function_privilege('dg_worker', p.oid, 'execute')`, [daTela])
   igual(w.map((x) => x.f), [], 'dg_worker com execute em porta da tela')
+})
+
+// ═════════════════════════════ 040 ═══════════════════════════════════════
+
+secao('Computador do escritório: cadastro, acesso e situação [040]')
+const h040 = (s) => createHash('sha256').update(s).digest('hex')
+const tok040 = { A: 'dgx_' + randomUUID().replaceAll('-', ''), B: 'dgx_' + randomUUID().replaceAll('-', '') }
+const hA = h040(tok040.A), hB = h040(tok040.B)
+const lease = () => h040(randomUUID())
+const ex = (sql, params) => comoWorker(async (tx) => Object.values((await um(tx, sql, params)) ?? {})[0])
+await deve('ADMIN autoriza computador (só o hash vai ao banco); LAWYER não', async () => {
+  ids.exA = (await como(ids.barbara, (tx) => um(tx, `select public.dg_create_executor('Computador A', $1, 'dgx_AAAA') r`, [hA]))).r.id
+  ids.exB = (await como(ids.barbara, (tx) => um(tx, `select public.dg_create_executor('Computador B', $1, 'dgx_BBBB') r`, [hB]))).r.id
+  await como(ids.lucas, (tx) => tx.query(`select public.dg_create_executor('Intruso', $1, 'dgx_CCCC')`, [h040('x')])).then(
+    () => { throw new Error('LAWYER cadastrou') }, (e) => { if (!/Somente ADMIN/.test(e.message)) throw e })
+  const n = await um(db, `select count(*)::int n from executors where token_hash = $1`, [tok040.A])
+  igual(n.n, 0, 'token em claro no banco')
+})
+await deveFalhar('token repetido é recusado', () => como(ids.barbara, (tx) => tx.query(`select public.dg_create_executor('Dup', $1, 'dgx_DDDD')`, [hA])), /duplicate|unique/)
+await deveFalhar('prefixo fora do formato é recusado', () => como(ids.barbara, (tx) => tx.query(`select public.dg_create_executor('X', $1, 'abc')`, [h040('y')])), /check/)
+await deve('computador se autentica pelo hash; hash errado é recusado; contato marca "online"', async () => {
+  const a = await ex(`select private.executor_authenticate($1, 'dg-executor/1.0 claude-code/9.9') r`, [hA])
+  igual([a.name, a.capabilities.includes('jobs.claim')], ['Computador A', true], 'autenticado')
+  await ex(`select private.executor_authenticate($1) r`, [h040('errado')]).then(
+    () => { throw new Error('hash errado aceito') }, (e) => { if (!/inválido ou revogado/.test(e.message)) throw e })
+  const s = (await como(ids.lucas, (tx) => um(tx, `select public.get_executor_status() r`))).r
+  igual([s.online, s.executors], [true, null], 'LAWYER vê "online", sem a lista')
+  const adm = (await como(ids.barbara, (tx) => um(tx, `select public.get_executor_status() r`))).r
+  igual(adm.executors.find((e) => e.id === ids.exA).client_version, 'dg-executor/1.0 claude-code/9.9', 'ADMIN vê a lista')
+  igual(JSON.stringify(adm).includes(hA), false, 'hash fora da tela')
+})
+await deve('usuário logado não chama porta do executor; dg_worker não chama a gestão', async () => {
+  await como(ids.barbara, (tx) => tx.query(`select private.executor_authenticate($1)`, [hA])).then(
+    () => { throw new Error('authenticated chamou executor_authenticate') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  await comoWorker((tx) => tx.query(`select private.dg_create_executor('x', $1, 'dgx_EEEE')`, [h040('z')])).then(
+    () => { throw new Error('dg_worker cadastrou') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  await comoWorker((tx) => tx.query(`select private.maintenance_tick()`)).then(
+    () => { throw new Error('dg_worker chamou a manutenção') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+
+secao('Computador do escritório: fila, reserva exclusiva e escopo [040]')
+const avulsa040 = async (pedido = 'Gere a procuração de teste') => (await como(ids.lucas, (tx) =>
+  um(tx, `select public.request_agent_run_once($1, $2, $3, null, $4, '{}', 'EXECUTE') r`, [randomUUID(), ids.agente, ids.casoA, pedido]))).r.run_id
+const reservar040 = (hash, run, l) => ex(`select private.executor_claim($1, $2, $3) r`, [hash, run, l])
+await deve('agente aponta para o agente local do Claude Code (configuration.local_agent)', async () => {
+  const ag = await um(db, `select a.name, v.instructions from agents a join agent_versions v on v.id = a.current_version_id where a.id = $1`, [ids.agente])
+  await como(ids.barbara, (tx) => tx.query(`select public.dg_save_agent_once($1, $2)`, [randomUUID(), JSON.stringify({
+    id: ids.agente, name: ag.name, instructions: ag.instructions, status: 'ACTIVE', configuration: { local_agent: 'kit-cliente-teste' } })]))
+  igual((await um(db, `select v.configuration ->> 'local_agent' l from agents a join agent_versions v on v.id = a.current_version_id where a.id = $1`, [ids.agente])).l,
+    'kit-cliente-teste', 'versão nova com o agente local')
+  await db.query(`select private.dg_validate_agent_configuration('{"local_agent": "clara-hiscon"}')`)
+  await db.query(`select private.dg_validate_agent_configuration('{"local_agent": "Clara Hiscon"}')`).then(
+    () => { throw new Error('nome inválido aceito') }, (e) => { if (!/agente local inválido/.test(e.message)) throw e })
+})
+await deve('interruptor desligado: não reserva; o pedido fica na fila', async () => {
+  await como(ids.barbara, (tx) => tx.query(`select public.set_ai_execution_enabled(false)`))
+  ids.r040 = await avulsa040()
+  const r = await reservar040(hA, ids.r040, lease())
+  igual([r.claimed, r.reason], [false, 'DISABLED'], 'não reservou')
+  igual((await um(db, `select status from agent_runs where id = $1`, [ids.r040])).status, 'QUEUED', 'na fila')
+  await como(ids.barbara, (tx) => tx.query(`select public.set_ai_execution_enabled(true)`))
+})
+await deve('fila para o computador: sem nome do cliente nem título do caso', async () => {
+  const fila = await ex(`select private.executor_list_jobs($1, 50) r`, [hA])
+  const item = fila.find((j) => j.id === ids.r040)
+  igual([item.kind, item.agent.local_agent, item.has_request_text], ['EXECUTE', 'kit-cliente-teste', true], 'item')
+  const caso = await um(db, `select k.title, coalesce(i.full_name, co.legal_name) cliente from legal_cases k
+    left join individual_client_details i on i.client_id = k.client_id left join company_client_details co on co.client_id = k.client_id where k.id = $1`, [ids.casoA])
+  const txt = JSON.stringify(fila)
+  igual([txt.includes(caso.title), txt.includes(caso.cliente)], [false, false], 'vazou dado do caso')
+})
+await deve('reserva exclusiva: A reserva; B não; contexto traz agente local e orientações', async () => {
+  ids.l040 = lease()
+  const a = await reservar040(hA, ids.r040, ids.l040)
+  const b = await reservar040(hB, ids.r040, lease())
+  igual([a.claimed, b.claimed, b.reason], [true, false, 'NOT_AVAILABLE'], 'uma reserva só')
+  igual([a.context.agent.local_agent, typeof a.context.agent.instructions, a.context.input.request_text, a.context.lease_seconds],
+    ['kit-cliente-teste', 'string', 'Gere a procuração de teste', 300], 'contexto')
+  const r = await um(db, `select status, executor_id, lease_token_hash, claimed_by from agent_runs where id = $1`, [ids.r040])
+  igual([r.status, r.executor_id, r.lease_token_hash, r.claimed_by.startsWith(`executor:${ids.exA}:`)], ['RUNNING', ids.exA, ids.l040, true], 'reserva gravada')
+})
+await deve('sem a reserva certa, nada: outro computador, token de reserva errado', async () => {
+  for (const [h, l] of [[hB, ids.l040], [hA, lease()]])
+    await ex(`select private.executor_get_case($1, $2, $3) r`, [h, ids.r040, l]).then(
+      () => { throw new Error('leu sem reserva') }, (e) => { if (!/não está reservado por este computador/.test(e.message)) throw e })
+})
+await deve('caso do trabalho: lido pela reserva; acesso a dado pessoal registrado como AGENTE', async () => {
+  const c = await ex(`select private.executor_get_case($1, $2, $3) r`, [hA, ids.r040, ids.l040])
+  igual(c.id, ids.casoA, 'caso do trabalho')
+  const ev = await um(db, `select actor_type, agent_run_id from personal_data_access_events where agent_run_id = $1 and resource_type = 'LEGAL_CASE' order by created_at desc limit 1`, [ids.r040])
+  igual([ev.actor_type, ev.agent_run_id], ['AGENT', ids.r040], 'registro de acesso')
+})
+await deve('documentos: só do caso do trabalho; abrir registra QUAL versão (e checksum) foi processada', async () => {
+  const docs = await ex(`select private.executor_list_documents($1, $2, $3) r`, [hA, ids.r040, ids.l040])
+  const doCaso = await linhas(db, `select v.id from document_versions v join case_documents cd on cd.document_id = v.document_id where cd.legal_case_id = $1`, [ids.casoA])
+  if (docs.some((d) => !doCaso.find((x) => x.id === d.version_id))) throw new Error('documento de outro caso na lista')
+  const alheio = await um(db, `select v.id from document_versions v join case_documents cd on cd.document_id = v.document_id
+    where cd.legal_case_id <> $1 and not exists (select 1 from case_documents c2 where c2.document_id = v.document_id and c2.legal_case_id = $1) limit 1`, [ids.casoA])
+  if (!alheio) throw new Error('cenário sem documento de outro caso')
+  await ex(`select private.executor_open_document($1, $2, $3, $4) r`, [hA, ids.r040, ids.l040, alheio.id]).then(
+    () => { throw new Error('abriu documento de outro caso') }, (e) => { if (!/não pertence ao caso/.test(e.message)) throw e })
+  if (!docs.length) throw new Error('cenário sem documento no caso A')
+  const d = await ex(`select private.executor_open_document($1, $2, $3, $4) r`, [hA, ids.r040, ids.l040, docs[0].version_id])
+  if (!d.storage_object_name) throw new Error('sem objeto para assinar')
+  const e = await um(db, `select document_version_id from agent_run_events where agent_run_id = $1 and kind = 'DOCUMENT_OPENED'`, [ids.r040])
+  igual(e.document_version_id, docs[0].version_id, 'versão registrada')
+})
+await deve('propostas: tipo estrutural recusado; sem resumo recusado; prazo aceito e idempotente', async () => {
+  await ex(`select private.executor_create_proposal($1, $2, $3, 'UPDATE_AGENT', '{"summary":"x"}', 'k-040-agente')`, [hA, ids.r040, ids.l040]).then(
+    () => { throw new Error('tipo estrutural aceito') }, (e) => { if (!/não permitido/.test(e.message)) throw e })
+  await ex(`select private.executor_create_proposal($1, $2, $3, 'OTHER', '{"data":{}}', 'k-040-sem')`, [hA, ids.r040, ids.l040]).then(
+    () => { throw new Error('sem resumo aceito') }, (e) => { if (!/resumo/.test(e.message)) throw e })
+  const payload = JSON.stringify({ summary: 'Prazo para juntar procuração', data: { title: 'Juntar procuração (teste)', due_at: '2026-12-01T12:00:00Z' } })
+  const p1 = await ex(`select private.executor_create_proposal($1, $2, $3, 'CREATE_DEADLINE', $4, 'k-040-prazo') r`, [hA, ids.r040, ids.l040, payload])
+  const p2 = await ex(`select private.executor_create_proposal($1, $2, $3, 'CREATE_DEADLINE', $4, 'k-040-prazo') r`, [hA, ids.r040, ids.l040, payload])
+  igual([p1.created, p2.created, p2.proposal_id === p1.proposal_id], [true, false, true], 'idempotente')
+  ids.p040 = p1.proposal_id
+})
+await deve('minuta: caminho no Storage é do cliente do trabalho; não dá para apontar outro; sem arquivo não grava', async () => {
+  const prep = await ex(`select private.executor_prepare_output($1, $2, $3, 'procuracao-teste.pdf', 'application/pdf', 1200) r`, [hA, ids.r040, ids.l040])
+  const cli = (await um(db, `select client_id from legal_cases where id = $1`, [ids.casoA])).client_id
+  igual(prep.storage_object_name.startsWith(`clients/${cli}/documents/${prep.document_id}/${prep.document_version_id}/`), true, 'caminho do cliente')
+  const fin = (obj) => ex(`select private.executor_finalize_output($1, $2, $3, $4, $5, $6, 'procuracao-teste.pdf', 'application/pdf', 1200, $7, 'Procuração (teste)', 'POWER_OF_ATTORNEY') r`,
+    [hA, ids.r040, ids.l040, prep.document_id, prep.document_version_id, obj, sha64])
+  await fin(`clients/${randomUUID()}/documents/${prep.document_id}/${prep.document_version_id}/procuracao-teste.pdf`).then(
+    () => { throw new Error('caminho de outro cliente aceito') }, (e) => { if (!/não corresponde/.test(e.message)) throw e })
+  await fin(prep.storage_object_name).then(() => { throw new Error('gravou sem arquivo') }, (e) => { if (!/não chegou/.test(e.message)) throw e })
+  await db.query(`insert into storage.objects (bucket_id, name) values ('legal-documents', $1)`, [prep.storage_object_name])
+  const f1 = await fin(prep.storage_object_name)
+  const f2 = await fin(prep.storage_object_name)
+  igual([f1.created, f2.created, f1.version_number], [true, false, 1], 'idempotente')
+  const d = await um(db, `select d.visibility, v.source, (select status from reviews where document_version_id = v.id) rv
+    from document_versions v join documents d on d.id = v.document_id where v.id = $1`, [prep.document_version_id])
+  igual([d.visibility, d.source, d.rv], ['INTERNAL', 'AGENT', 'PENDING'], 'versão interna em revisão')
+  ids.v040 = prep.document_version_id
+})
+await deve('progresso renova a reserva e entra na linha do tempo', async () => {
+  const hb = await ex(`select private.executor_heartbeat($1, $2, $3, 'Gerando a procuração') r`, [hA, ids.r040, ids.l040])
+  igual([hb.ok, hb.cancel_requested], [true, false], 'renovado')
+  igual((await um(db, `select progress_message m from agent_runs where id = $1`, [ids.r040])).m, 'Gerando a procuração', 'progresso')
+  igual((await ex(`select private.executor_heartbeat($1, $2, $3) r`, [hA, ids.r040, lease()])).ok, false, 'reserva errada não renova')
+})
+await deve('concluir com entregas pendentes: aguardando decisão humana; reserva some', async () => {
+  const c = await ex(`select private.executor_complete($1, $2, $3, '{"client_version":"dg-executor/1.0","prompt":"segredo"}') r`, [hA, ids.r040, ids.l040])
+  igual(c.status, 'WAITING_HUMAN', 'aguardando')
+  const r = await um(db, `select status, lease_token_hash, metadata -> 'executor' rep from agent_runs where id = $1`, [ids.r040])
+  igual([r.status, r.lease_token_hash, r.rep], ['WAITING_HUMAN', null, { client_version: 'dg-executor/1.0' }], 'só campos permitidos no relatório')
+  await ex(`select private.executor_get_case($1, $2, $3) r`, [hA, ids.r040, ids.l040]).then(
+    () => { throw new Error('leu depois de concluir') }, (e) => { if (!/não está reservado/.test(e.message)) throw e })
+})
+await deve('manutenção (pg_cron): proposta aprovada vira prazo; execução fecha quando tudo foi decidido', async () => {
+  const rvP = (await um(db, `select id from reviews where agent_proposal_id = $1`, [ids.p040])).id
+  const rvD = (await um(db, `select id from reviews where document_version_id = $1`, [ids.v040])).id
+  await decidir(ids.lucas, rvP, 'APPROVE')
+  const t = await db.query(`select private.maintenance_tick() r`)
+  if (t.rows[0].r.proposals < 1) throw new Error('nenhuma proposta aplicada')
+  const p = await um(db, `select status, applied_entity_type from agent_proposals where id = $1`, [ids.p040])
+  igual([p.status, p.applied_entity_type], ['APPLIED', 'deadlines'], 'aplicada')
+  igual((await um(db, `select status from agent_runs where id = $1`, [ids.r040])).status, 'WAITING_HUMAN', 'minuta ainda pendente')
+  await decidir(ids.lucas, rvD, 'APPROVE')
+  await db.query(`select private.maintenance_tick()`)
+  igual((await um(db, `select status from agent_runs where id = $1`, [ids.r040])).status, 'COMPLETED', 'fechou')
+})
+await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo)', async () => {
+  const j = await linhas(db, `select jobname, schedule from cron.job where jobname like 'dg-%' order by jobname`)
+  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
+})
+
+secao('Computador do escritório: interrupção, falha, devolução e queda [040]')
+await deve('interrupção pedida: renovação avisa; escrita recusada; concluir encerra como cancelada', async () => {
+  const run = await avulsa040(); const l = lease()
+  await reservar040(hA, run, l)
+  await como(ids.lucas, (tx) => tx.query(`select public.request_agent_run_cancel($1)`, [run]))
+  igual((await ex(`select private.executor_heartbeat($1, $2, $3) r`, [hA, run, l])).cancel_requested, true, 'avisado')
+  await ex(`select private.executor_create_proposal($1, $2, $3, 'OTHER', '{"summary":"x"}', 'k-040-cancel')`, [hA, run, l]).then(
+    () => { throw new Error('escreveu interrompido') }, (e) => { if (!/interrompido/.test(e.message)) throw e })
+  igual((await ex(`select private.executor_complete($1, $2, $3) r`, [hA, run, l])).status, 'CANCELLED', 'cancelada')
+})
+await deve('falha transitória sem entrega volta à fila; com entrega vira PARTIAL_OUTPUT', async () => {
+  const run = await avulsa040(); let l = lease()
+  await reservar040(hA, run, l)
+  igual((await ex(`select private.executor_fail($1, $2, $3, 'DOCUMENT_UNREADABLE', 'PDF ilegível', true) r`, [hA, run, l])).status, 'QUEUED', 'voltou')
+  l = lease()
+  igual((await reservar040(hA, run, l)).claimed, true, 'reservou de novo')
+  await ex(`select private.executor_create_proposal($1, $2, $3, 'OTHER', '{"summary":"parcial"}', 'k-040-parcial')`, [hA, run, l])
+  await ex(`select private.executor_fail($1, $2, $3, 'QUALQUER', 'x')`, [hA, run, l]).then(
+    () => { throw new Error('código livre aceito') }, (e) => { if (!/desconhecido/.test(e.message)) throw e })
+  const f = await ex(`select private.executor_fail($1, $2, $3, 'TOOL_ERROR', 'erro no script', true) r`, [hA, run, l])
+  igual([f.status, f.error_code], ['FAILED', 'PARTIAL_OUTPUT'], 'com entrega não volta')
+})
+await deve('devolver sem executar: volta à fila sem gastar tentativa', async () => {
+  const run = await avulsa040(); const l = lease()
+  await reservar040(hA, run, l)
+  const antes = (await um(db, `select attempt from agent_runs where id = $1`, [run])).attempt
+  igual((await ex(`select private.executor_release($1, $2, $3) r`, [hA, run, l])).status, 'QUEUED', 'devolvido')
+  igual((await um(db, `select attempt from agent_runs where id = $1`, [run])).attempt, antes - 1, 'tentativa devolvida')
+  ids.r040rel = run
+})
+await deve('computador que some: reserva vence → volta à fila (3x) → falha; a análise acompanha', async () => {
+  const an = await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl039, {}, true)
+  const run = an.agent_run_id
+  for (let i = 1; i <= 3; i++) {
+    const r = await reservar040(hA, run, lease())
+    if (!r.claimed) throw new Error(`tentativa ${i} não reservou: ${r.reason}`)
+    await db.query(`update agent_runs set heartbeat_at = now() - interval '10 minutes' where id = $1`, [run])
+    await db.query(`select private.maintenance_tick()`)
+    const s = await um(db, `select status, error_code from agent_runs where id = $1`, [run])
+    igual([s.status, s.error_code], i < 3 ? ['QUEUED', 'LEASE_EXPIRED'] : ['FAILED', 'EXECUTOR_UNAVAILABLE'], `tentativa ${i}`)
+  }
+  igual((await um(db, `select status from legal_analyses where id = $1`, [an.analysis_id])).status, 'FAILED', 'análise falhou junto')
+  const ev = await linhas(db, `select to_status from agent_run_events where agent_run_id = $1 and kind = 'STATUS' order by id`, [run])
+  igual(ev.map((e) => e.to_status), ['RUNNING', 'QUEUED', 'RUNNING', 'QUEUED', 'RUNNING', 'FAILED'], 'linha do tempo')
+})
+await deve('computador some DEPOIS de entregar: não volta à fila (não duplica); falha como entrega parcial', async () => {
+  const run = await avulsa040(); const l = lease()
+  await reservar040(hA, run, l)
+  await ex(`select private.executor_create_proposal($1, $2, $3, 'OTHER', '{"summary":"entregue antes da queda"}', 'k-040-queda')`, [hA, run, l])
+  await db.query(`update agent_runs set heartbeat_at = now() - interval '10 minutes' where id = $1`, [run])
+  await db.query(`select private.maintenance_tick()`)
+  const s = await um(db, `select status, error_code from agent_runs where id = $1`, [run])
+  igual([s.status, s.error_code], ['FAILED', 'PARTIAL_OUTPUT'], 'parcial')
+  igual((await um(db, `select count(*)::int n from reviews where agent_proposal_id in (select id from agent_proposals where agent_run_id = $1) and status = 'PENDING'`, [run])).n, 1, 'entrega segue em Revisões')
+})
+await deve('análise sem resultado não "conclui": falha; com resultado: aguardando revisão', async () => {
+  const a1 = await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl039, {}, true); const l1 = lease()
+  await reservar040(hA, a1.agent_run_id, l1)
+  const c1 = await ex(`select private.executor_complete($1, $2, $3) r`, [hA, a1.agent_run_id, l1])
+  igual([c1.status, c1.error_code], ['FAILED', 'NO_ANALYSIS_RESULT'], 'sem resultado')
+  const a2 = await iniciar(ids.lucas, randomUUID(), ids.casoA, ids.tpl039, {}, true); const l2 = lease()
+  await reservar040(hA, a2.agent_run_id, l2)
+  const s = await ex(`select private.executor_submit_analysis($1, $2, $3, 'Cabe uma ação.', $4, 1) r`, [hA, a2.agent_run_id, l2, JSON.stringify(resultado039)])
+  igual(s.created, true, 'resultado entregue')
+  igual((await ex(`select private.executor_complete($1, $2, $3) r`, [hA, a2.agent_run_id, l2])).status, 'WAITING_HUMAN', 'aguardando revisão')
+  igual((await um(db, `select status from legal_analyses where id = $1`, [a2.analysis_id])).status, 'WAITING_REVIEW', 'análise em revisão')
+})
+await deve('revogar: acesso para na hora e o que estava reservado volta à fila', async () => {
+  const run = ids.r040rel; const l = lease()
+  igual((await reservar040(hB, run, l)).claimed, true, 'B reservou')
+  const r = (await como(ids.barbara, (tx) => um(tx, `select public.dg_revoke_executor($1) r`, [ids.exB]))).r
+  igual(r.released, 1, 'liberou 1')
+  const s = await um(db, `select status, error_code from agent_runs where id = $1`, [run])
+  igual([s.status, s.error_code], ['QUEUED', 'EXECUTOR_REVOKED'], 'de volta à fila')
+  await ex(`select private.executor_authenticate($1) r`, [hB]).then(
+    () => { throw new Error('revogado autenticou') }, (e) => { if (!/revogado/.test(e.message)) throw e })
+  await db.query(`update executors set revoked_at = null where id = $1`, [ids.exB]).then(
+    () => { throw new Error('revogação desfeita') }, (e) => { if (!/não volta/.test(e.message)) throw e })
+})
+await deve('detalhe da execução mostra computador, progresso e linha do tempo', async () => {
+  const d = (await como(ids.lucas, (tx) => um(tx, `select public.get_agent_run_detail($1) r`, [ids.r040]))).r
+  igual(d.executor.name, 'Computador A', 'computador')
+  const kinds = new Set(d.events.map((e) => e.kind))
+  for (const k of ['STATUS', 'LEASE', 'PROGRESS', 'OUTPUT', 'DOCUMENT_OPENED']) if (!kinds.has(k)) throw new Error(`sem evento ${k}`)
+  igual(d.usage, null, 'LAWYER sem uso')
+})
+await deve('linha do tempo é append-only', async () => {
+  await db.query(`update agent_run_events set message = 'x' where agent_run_id = $1`, [ids.r040]).then(
+    () => { throw new Error('evento editável') }, () => {})
+})
+
+secao('Catálogo: funções da 040')
+const novas040 = ['executors_validate', 'agent_runs_log_status', 'dg_create_executor', 'dg_revoke_executor', 'get_executor_status',
+  'executor_require', 'executor_lease', 'executor_authenticate', 'executor_list_jobs', 'executor_context_of', 'executor_claim',
+  'executor_job_context', 'executor_heartbeat', 'executor_get_case', 'executor_get_process', 'executor_list_documents',
+  'executor_open_document', 'executor_list_theses', 'executor_list_references', 'executor_submit_analysis',
+  'executor_create_proposal', 'executor_prepare_output', 'executor_finalize_output', 'executor_record_config',
+  'executor_complete', 'executor_fail', 'executor_release', 'expire_executor_leases', 'maintenance_tick']
+await deve('toda função nova fixa search_path; anon e service_role não executam', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1)`, [novas040])
+  if (r.length < novas040.length) throw new Error(`funções faltando: ${novas040.length - r.length}`)
+  igual(r.filter((x) => !x.cfg.includes('search_path=')).map((x) => x.f), [], 'sem search_path')
+  igual(r.filter((x) => x.anon || x.srv).map((x) => x.f), [], 'anon/service_role com execute')
+})
+await deve('portas do executor só para dg_worker; internas (require, lease, contexto, manutenção) para ninguém', async () => {
+  const internas = ['executor_require', 'executor_lease', 'executor_context_of', 'expire_executor_leases', 'maintenance_tick']
+  const r = await linhas(db, `select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1)
+      and (has_function_privilege('dg_worker', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'))`, [internas])
+  igual(r.map((x) => x.f), [], 'interna exposta')
+  const portas = novas040.filter((f) => f.startsWith('executor_') && !internas.includes(f))
+  const a = await linhas(db, `select p.proname f from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1) and has_function_privilege('authenticated', p.oid, 'execute')`, [portas])
+  igual(a.map((x) => x.f), [], 'usuário logado com porta do executor')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
