@@ -13,6 +13,7 @@ papéis (ADMIN, LAWYER, ASSISTANT, PARTNER_ADMIN, PARTNER_USER). Domínio centra
 - **[supabase/README.md](supabase/README.md)** — o contrato do banco (RLS, gate humano, ledger, fila, auditoria)
 - **[docs/adicionar-agente.md](docs/adicionar-agente.md)** — como pôr um agente do Claude Code para trabalhar no DG Brasil
 - **[docs/mcp/](docs/mcp/)** — a arquitetura com Claude Code + MCP: diagnóstico, instalação no computador do escritório, Google Drive, validação
+- **[docs/deploy/](docs/deploy/)** — publicação: o passo a passo do deploy de teste e a lista do que mudar quando o DG Brasil entrar em produção (planos pagos, e-mail, domínios)
 
 ## A ideia em um parágrafo
 

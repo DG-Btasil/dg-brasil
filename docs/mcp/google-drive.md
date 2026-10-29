@@ -109,18 +109,21 @@ Apague o arquivo JSON do computador depois de colar.
 
 ## 4. Rodada automática (Vercel Cron)
 
-O arquivo `apps/frontend/vercel.json` agenda `/api/cron/drive-sync` a cada 15
-minutos. Cada rodada:
-1. envia as versões aprovadas que estão na fila;
-2. confere as pastas ligadas, das mais antigas para as mais novas.
+O arquivo `apps/frontend/vercel.json` agenda `/api/cron/drive-sync` **uma vez por
+dia**, por volta das 6h de Brasília (`0 9 * * *`; a Vercel usa UTC e, no plano
+Hobby, chama em algum momento entre 6h00 e 6h59). Cada rodada:
+1. envia até 5 versões aprovadas que estão na fila;
+2. confere até 5 pastas ligadas, das mais antigas para as mais novas.
 
 | Variável | Valor |
 |---|---|
 | `CRON_SECRET` | Um texto aleatório longo. A Vercel envia esse valor na chamada, e a rota recusa sem ele. |
 | `DG_WORKER_DB_URL` | Login `dg_worker` pelo pooler do Supabase (o mesmo da API do computador do escritório) |
 
-> Confira o plano da Vercel: no plano gratuito, a rotina agendada roda no máximo
-> uma vez por dia. Enquanto isso, use **Sincronizar agora** na ficha do cliente.
+> Uma vez por dia é o máximo do plano gratuito da Vercel (Hobby): com agendamento
+> mais frequente, o deploy é recusado. Enquanto isso, use **Sincronizar agora** na
+> ficha do cliente. Na produção, a rodada volta a ser a cada 15 minutos: ver
+> [docs/deploy/producao.md](../deploy/producao.md).
 
 ## 5. Ligar as pastas que já existem
 

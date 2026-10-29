@@ -59,8 +59,9 @@ Data: 2026-10-30. Plano aprovado em 2026-10-29
 - **Google Drive** (`server/integrations/google-drive/`, `server/domain/drive/`):
   - cliente da API v3 com OAuth ou conta de serviço;
   - sincronização (entrada e saída);
-  - rota agendada `/api/cron/drive-sync`, protegida por `CRON_SECRET`, a cada 15
-    min (`vercel.json`);
+  - rota agendada `/api/cron/drive-sync`, protegida por `CRON_SECRET`, uma vez
+    por dia no plano Hobby da Vercel (`vercel.json`); a cada 15 min na produção
+    ([docs/deploy/producao.md](../deploy/producao.md));
   - "Sincronizar agora";
   - sugestões de ligação por nome, com confirmação humana.
 
