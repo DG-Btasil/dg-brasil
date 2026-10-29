@@ -1,0 +1,27 @@
+{
+  "name": "@dgbrasil/executor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ponte entre o Claude Code do computador do escritório e o DG Brasil (servidor MCP local).",
+  "type": "module",
+  "bin": { "dg-executor": "dist/index.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "mcp": "node dist/index.js mcp",
+    "doctor": "node dist/index.js doctor"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
