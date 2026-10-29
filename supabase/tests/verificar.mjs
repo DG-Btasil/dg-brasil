@@ -4249,6 +4249,117 @@ await deve('portas do executor só para dg_worker; internas (require, lease, con
   igual(a.map((x) => x.f), [], 'usuário logado com porta do executor')
 })
 
+// ═════════════════════════════ 041 ═══════════════════════════════════════
+
+secao('Google Drive: pasta do cliente pelo ID, importação sem duplicata, exportação do aprovado [041]')
+const F1 = 'pastaFicticiaA_0001', F2 = 'pastaFicticiaA_0002'
+const md5 = (c) => c.repeat(32).slice(0, 32)
+const exW = (sql, params) => comoWorker(async (tx) => Object.values((await um(tx, sql, params)) ?? {})[0])
+await deve('LAWYER liga a pasta do cliente pelo ID; repetir não muda; a mesma pasta não vai para outro cliente; ASSISTANT não liga', async () => {
+  ids.cli041 = (await um(db, `select client_id from legal_cases where id = $1`, [ids.casoA])).client_id
+  ids.cli041b = (await um(db, `select id from clients where id <> $1 and deleted_at is null limit 1`, [ids.cli041])).id
+  const a = (await como(ids.lucas, (tx) => um(tx, `select public.drive_link_client_folder($1, $2, 'JOSE FICTICIO') r`, [ids.cli041, F1]))).r
+  const b = (await como(ids.lucas, (tx) => um(tx, `select public.drive_link_client_folder($1, $2, 'JOSE FICTICIO (renomeada)') r`, [ids.cli041, F1]))).r
+  igual([a.changed, b.changed, b.id === a.id], [true, false, true], 'idempotente')
+  ids.link041 = a.id
+  await como(ids.lucas, (tx) => tx.query(`select public.drive_link_client_folder($1, $2, 'X')`, [ids.cli041b, F1])).then(
+    () => { throw new Error('mesma pasta em dois clientes') }, (e) => { if (!/outro cliente/.test(e.message)) throw e })
+  await como(ids.ana, (tx) => tx.query(`select public.drive_link_client_folder($1, $2, 'X')`, [ids.cli041, F2])).then(
+    () => { throw new Error('ASSISTANT ligou') }, (e) => { if (!/Somente ADMIN ou advogado/.test(e.message)) throw e })
+  await como(ids.lucas, (tx) => tx.query(`select public.drive_link_client_folder($1, 'nome com espaço', 'X')`, [ids.cli041])).then(
+    () => { throw new Error('ID inválido aceito') }, (e) => { if (!/inválido/.test(e.message)) throw e })
+  const d = (await como(ids.lucas, (tx) => um(tx, `select public.get_client_drive($1) r`, [ids.cli041]))).r
+  igual([d.link.folder_id, d.link.folder_name], [F1, 'JOSE FICTICIO (renomeada)'], 'situação')
+})
+await deve('tabelas do Drive fechadas ao PostgREST; dg_worker não liga pasta; usuário logado não importa', async () => {
+  for (const t of ['external_folder_links', 'external_document_imports']) {
+    await como(ids.barbara, (tx) => tx.query(`select 1 from public.${t} limit 1`)).then(
+      () => { throw new Error(`leu ${t}`) }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  }
+  await comoWorker((tx) => tx.query(`select private.drive_link_client_folder($1, $2, 'x')`, [ids.cli041, F2])).then(
+    () => { throw new Error('dg_worker ligou') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  await como(ids.barbara, (tx) => tx.query(`select private.drive_prepare_import($1, 'x.pdf')`, [ids.link041])).then(
+    () => { throw new Error('usuário importou') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+await deve('importação: caminho do cliente da pasta; sem arquivo no Storage não grava; documento INTERNO, versão IMPORT; repetir não duplica', async () => {
+  const sync = await exW(`select private.drive_links_to_sync(10) r`)
+  if (!sync.some((l) => l.id === ids.link041)) throw new Error('ligação fora da sincronização')
+  const p = await exW(`select private.drive_prepare_import($1, 'HISCON.pdf') r`, [ids.link041])
+  igual(p.storage_object_name.startsWith(`clients/${ids.cli041}/documents/`), true, 'caminho do cliente')
+  const reg = () => exW(`select private.drive_register_import($1, 'arquivoDrive_00001', $2, 'HISCON.pdf', now(), $3, $4, $5, 'application/pdf', 1024, $6) r`,
+    [ids.link041, md5('a'), p.document_id, p.document_version_id, p.storage_object_name, sha64])
+  await reg().then(() => { throw new Error('gravou sem arquivo') }, (e) => { if (!/não chegou/.test(e.message)) throw e })
+  await db.query(`insert into storage.objects (bucket_id, name) values ('legal-documents', $1)`, [p.storage_object_name])
+  const r1 = await reg(), r2 = await reg()
+  igual([r1.created, r2.created, r2.document_version_id], [true, false, p.document_version_id], 'idempotente')
+  const d = await um(db, `select d.visibility, d.category, v.source from document_versions v join documents d on d.id = v.document_id where v.id = $1`, [p.document_version_id])
+  igual([d.visibility, d.category, d.source], ['INTERNAL', 'OTHER', 'IMPORT'], 'documento')
+  igual((await exW(`select private.drive_known_files($1) r`, [ids.link041])).imported, [`arquivoDrive_00001:${md5('a')}`], 'conhecidos')
+  ids.v041 = p.document_version_id
+})
+await deve('aprovação em Revisões põe a versão na fila de exportação; o servidor envia e grava o ID do arquivo', async () => {
+  await db.query(`insert into case_documents (legal_case_id, document_id) select $1, document_id from document_versions where id = $2 on conflict do nothing`, [ids.casoA, ids.v041])
+  const rv = (await como(ids.lucas, (tx) => um(tx, `insert into reviews (legal_case_id, document_version_id) values ($1, $2) returning id`, [ids.casoA, ids.v041]))).id
+  await decidir(ids.lucas, rv, 'APPROVE')
+  const e = await um(db, `select status, folder_link_id, external_file_id from external_document_exports where document_version_id = $1`, [ids.v041])
+  igual([e.status, e.folder_link_id, e.external_file_id], ['PENDING', ids.link041, null], 'na fila')
+  const c = await exW(`select private.drive_claim_exports(5) r`)
+  const item = c.find((x) => x.folder_id === F1)
+  igual([item.attempts, item.filename], [1, 'HISCON.pdf'], 'pego para enviar')
+  await comoWorker((tx) => tx.query(`select private.drive_mark_export($1, 'arquivoExportado_0001')`, [item.id]))
+  const f = await um(db, `select status, external_file_id, exported_at is not null as feito from external_document_exports where id = $1`, [item.id])
+  igual([f.status, f.external_file_id, f.feito], ['EXPORTED', 'arquivoExportado_0001', true], 'exportado')
+  igual((await exW(`select private.drive_known_files($1) r`, [ids.link041])).exported, ['arquivoExportado_0001'], 'exportado não volta como importação')
+})
+await deve('falha de envio tenta de novo até 5 vezes e depois FALHA', async () => {
+  const v = await como(ids.lucas, async (tx) => novaVersao(tx, (await um(tx, `select document_id from document_versions where id = $1`, [ids.v041])).document_id, 'HISCON-v2.pdf'))
+  const rv = (await como(ids.lucas, (tx) => um(tx, `insert into reviews (legal_case_id, document_version_id) values ($1, $2) returning id`, [ids.casoA, v]))).id
+  await decidir(ids.lucas, rv, 'APPROVE')
+  const id = (await um(db, `select id from external_document_exports where document_version_id = $1`, [v])).id
+  for (let i = 0; i < 5; i++) {
+    await exW(`select private.drive_claim_exports(5) r`)
+    await comoWorker((tx) => tx.query(`select private.drive_mark_export($1, null, 'Drive fora do ar')`, [id]))
+  }
+  const e = await um(db, `select status, attempts, last_error from external_document_exports where id = $1`, [id])
+  igual([e.status, e.attempts, e.last_error], ['FAILED', 5, 'Drive fora do ar'], 'falhou')
+})
+await deve('trocar a pasta guarda o histórico; desligar tira da fila o que estava pendente', async () => {
+  const nova = (await como(ids.lucas, (tx) => um(tx, `select public.drive_link_client_folder($1, $2, 'JOSE FICTICIO 2') r`, [ids.cli041, F2]))).r
+  igual(nova.changed, true, 'trocou')
+  const antigas = await um(db, `select count(*)::int n from external_folder_links where client_id = $1 and unlinked_at is not null`, [ids.cli041])
+  igual(antigas.n, 1, 'histórico')
+  const v = await como(ids.lucas, async (tx) => novaVersao(tx, (await um(tx, `select document_id from document_versions where id = $1`, [ids.v041])).document_id, 'HISCON-v3.pdf'))
+  const rv = (await como(ids.lucas, (tx) => um(tx, `insert into reviews (legal_case_id, document_version_id) values ($1, $2) returning id`, [ids.casoA, v]))).id
+  await decidir(ids.lucas, rv, 'APPROVE')
+  await como(ids.lucas, (tx) => tx.query(`select public.drive_unlink_client_folder($1)`, [ids.cli041]))
+  igual((await um(db, `select status from external_document_exports where document_version_id = $1`, [v])).status, 'SKIPPED', 'saiu da fila')
+  igual((await como(ids.lucas, (tx) => um(tx, `select public.get_client_drive($1) r`, [ids.cli041]))).r.link, null, 'sem pasta')
+  const sem = (await como(ids.lucas, (tx) => um(tx, `select public.drive_unlinked_clients(1000) r`))).r
+  if (!sem.some((c) => c.client_id === ids.cli041)) throw new Error('cliente sem pasta fora das sugestões')
+})
+await deve('cliente sem pasta: aprovação não gera exportação', async () => {
+  const v = await como(ids.lucas, async (tx) => novaVersao(tx, (await um(tx, `select document_id from document_versions where id = $1`, [ids.v041])).document_id, 'HISCON-v4.pdf'))
+  const rv = (await como(ids.lucas, (tx) => um(tx, `insert into reviews (legal_case_id, document_version_id) values ($1, $2) returning id`, [ids.casoA, v]))).id
+  await decidir(ids.lucas, rv, 'APPROVE')
+  igual((await um(db, `select count(*)::int n from external_document_exports where document_version_id = $1`, [v])).n, 0, 'sem fila')
+})
+
+secao('Catálogo: funções da 041')
+await deve('funções do Drive fixam search_path; anon e service_role não executam; as do servidor não estão abertas ao usuário logado', async () => {
+  const todas = ['reviews_queue_drive_export', 'drive_link_client_folder', 'drive_unlink_client_folder', 'get_client_drive', 'drive_unlinked_clients',
+    'get_drive_summary', 'drive_links_to_sync', 'drive_known_files', 'drive_prepare_import', 'drive_register_import', 'drive_mark_synced',
+    'drive_claim_exports', 'drive_mark_export']
+  const r = await linhas(db, `select p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'private' and p.proname = any ($1)`, [todas])
+  if (r.length < todas.length) throw new Error('funções faltando')
+  igual(r.filter((x) => !x.cfg.includes('search_path=')).map((x) => x.f), [], 'sem search_path')
+  igual(r.filter((x) => x.anon || x.srv).map((x) => x.f), [], 'anon/service_role')
+  const doServidor = ['drive_links_to_sync', 'drive_known_files', 'drive_prepare_import', 'drive_register_import', 'drive_mark_synced', 'drive_claim_exports', 'drive_mark_export', 'reviews_queue_drive_export']
+  igual(r.filter((x) => doServidor.includes(x.f) && x.usr).map((x) => x.f), [], 'usuário logado com porta do servidor')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

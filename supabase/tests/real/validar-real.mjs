@@ -1014,6 +1014,34 @@ await deve('revogar: token para de valer na hora', async () => {
   }
 })
 
+secao('41g. Google Drive: ligação pelo ID, permissões e fila de exportação [041]')
+await deve('LAWYER liga e desliga a pasta de um cliente pelo PostgREST; parceiro não vê; tabelas fechadas', async () => {
+  const pasta = `pastaValidar_${RODADA}`
+  const l = await r(C.LAWYER.rpc('drive_link_client_folder', { p_client_id: ids.cliA, p_folder_id: pasta, p_folder_name: 'CLIENTE TESTE A' }))
+  igual(l.changed, true, 'ligou')
+  const d = await r(C.LAWYER.rpc('get_client_drive', { p_client_id: ids.cliA }))
+  igual(d.link.folder_id, pasta, 'situação')
+  const p = await C.PARTNER_ADMIN_A.rpc('get_client_drive', { p_client_id: ids.cliA })
+  if (!p.error) throw new Error('parceiro leu a situação do Drive')
+  for (const t of ['external_folder_links', 'external_document_imports']) {
+    const x = await C.ADMIN.from(t).select('id').limit(1)
+    if (!x.error && x.data.length) throw new Error(`${t} legível pelo PostgREST`)
+  }
+  igual((await r(C.LAWYER.rpc('drive_unlink_client_folder', { p_client_id: ids.cliA }))).unlinked, true, 'desligou')
+})
+await deve('dg_worker (login do servidor) chama as funções de sincronização; não liga pasta', async () => {
+  const w = new pg.Client({ connectionString: WORKER_URL, ssl: { rejectUnauthorized: false } })
+  await w.connect()
+  try {
+    await w.query(`select private.drive_links_to_sync(1)`)
+    await w.query(`select private.drive_claim_exports(1)`)
+    try { await w.query(`select private.drive_link_client_folder($1, 'pastaX_0000001', 'x')`, [ids.cliA]); throw new Error('dg_worker ligou pasta') }
+    catch (e) { if (!/permission denied/.test(e.message)) throw e }
+  } finally {
+    await w.end()
+  }
+})
+
 secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')
 await deve('carteira do parceiro A (página + total) em menos de 2 s, mesmo com o DEV cheio de rodadas', async () => {
   const inicio = performance.now()

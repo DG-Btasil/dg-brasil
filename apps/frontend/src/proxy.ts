@@ -20,6 +20,8 @@ export async function proxy(request: NextRequest) {
   // API do computador do escritório: sem sessão de navegador nem cookie. Quem
   // autentica é a própria rota (token do computador + token de reserva).
   if (pathname.startsWith("/api/executor/")) return NextResponse.next();
+  // Rotas agendadas (Vercel Cron): autenticadas pela própria rota (CRON_SECRET).
+  if (pathname.startsWith("/api/cron/")) return NextResponse.next();
   const withPath = () => {
     const headers = new Headers(request.headers);
     headers.set("x-dg-pathname", `${pathname}${request.nextUrl.search}`);

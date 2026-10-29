@@ -16,6 +16,7 @@ import { CasesTab } from "./cases-tab";
 import { ClientHeader } from "./client-header";
 import { OverviewTab } from "./overview/overview-tab";
 import { ProcessesTab } from "./processes-tab";
+import { ClientDrivePanel } from "@/features/drive/components/client-drive-panel";
 
 const TAB_KEYS = ["visao-geral", "documentos", "casos", "processos", "atividade"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
@@ -58,12 +59,15 @@ export function ClientDetail({
       <TabPanel tabKey={tab}>
         {tab === "visao-geral" && <OverviewTab client={client} />}
         {tab === "documentos" && (
-          <DocumentsPanel
-            scope={{ clientId: client.id }}
-            initial={documents}
-            title="Documentos do cliente"
-            description="Todos os documentos do cliente, de qualquer caso ou processo, e os do cadastro."
-          />
+          <>
+            <ClientDrivePanel clientId={client.id} />
+            <DocumentsPanel
+              scope={{ clientId: client.id }}
+              initial={documents}
+              title="Documentos do cliente"
+              description="Todos os documentos do cliente, de qualquer caso ou processo, e os do cadastro."
+            />
+          </>
         )}
         {tab === "casos" && <CasesTab client={client} cases={cases} />}
         {tab === "processos" && <ProcessesTab clientId={client.id} processes={processes} />}
