@@ -50,14 +50,16 @@ npm test          # 13 testes; não fala com o DG Brasil de verdade
 
 ```json
 {
-  "url": "https://ENDERECO-DO-DG-BRASIL",
+  "url": "https://app.dgbrasil.adv.br",
   "token": "dgx_...",
   "pasta_trabalhos": "C:\\DGBrasil\\sessao\\trabalhos"
 }
 ```
 
-- **Endereço:** `url` é o endereço do DG Brasil. Em desenvolvimento local, pode
-  ser `http://localhost:3000`; fora do localhost, só `https://`.
+- **Endereço:** `url` é o endereço do DG Brasil, `https://app.dgbrasil.adv.br`.
+  - Sempre com o `app.`: o domínio sem ele redireciona, e o token não vai junto.
+  - Em desenvolvimento local, pode ser `http://localhost:3000`.
+  - Fora do localhost, só `https://`.
 - **Onde o token NÃO pode ir:** em e-mail, WhatsApp, `.mcp.json` ou repositório.
 
 4. **Rode o diagnóstico:**

@@ -21,7 +21,7 @@ hora de contratar.
 | 3 | Supabase de produção, no plano Pro | O gratuito pausa sem uso e não tem backup | A partir de US$ 25 por mês |
 | 4 | Segurança do login | Recursos do Supabase Pro | Já vem com o Supabase Pro |
 | 5 | E-mail de suporte e envio de e-mails | O envio que recebe e manda é pago | Plano pago do Zoho Mail |
-| 6 | Domínios `app.` e `portal.` | Só com o sistema no ar | O domínio `.adv.br` do escritório |
+| 6 | Domínios `app.` e `portal.dgbrasil.adv.br` (já no ar) | Falta só ligar ao Supabase de produção | Já pago |
 | 7 | Claude com dados de clientes | Hoje só há dados fictícios | Plano Team ou Enterprise |
 | 8 | Variáveis e chaves de produção | Hoje tudo aponta para o DEV | Sem custo |
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
@@ -140,23 +140,29 @@ Ligar no projeto de produção, depois de assinar o Pro (item 3):
   6. **Testar:** convidar uma conta de teste e pedir redefinição de senha. Os dois
      e-mails devem chegar, fora do spam, com a seção de suporte.
 
-## 6. Domínios
+## 6. Domínios (já no ar)
 
-- **Hoje:** o site de teste usa o endereço que a Vercel deu. O Auth do DEV aponta
-  para `http://localhost:3000`.
-- **Na produção:**
-  1. Na Vercel, em **Settings → Domains**, ligar:
-     - `app.barbaracardoso.adv.br`, para a equipe;
-     - `portal.barbaracardoso.adv.br`, para os parceiros.
-  2. Configurar o DNS do domínio como a Vercel pedir.
-  3. Variáveis: `NEXT_PUBLIC_APP_HOST` e `NEXT_PUBLIC_PORTAL_HOST` (ver
-     `apps/frontend/.env.example`).
-  4. No Supabase de produção, em **Authentication → URL Configuration**:
-     - Site URL e Redirect URLs com os dois endereços
-       ([docs/auth.md](../auth.md), item 4);
-     - sem isso, o link do e-mail de convite quebra.
-  5. No computador do escritório, o `url` do `executor.json` passa a ser
-     `https://app.barbaracardoso.adv.br` (item 8).
+- **Hoje, já funcionando na Vercel:**
+  - **`app.dgbrasil.adv.br`**, para a equipe;
+  - **`portal.dgbrasil.adv.br`**, para os parceiros;
+  - `dgbrasil.adv.br` e `www.dgbrasil.adv.br` redirecionam para o `app.`;
+  - o site está ligado ao Supabase **DEV**.
+- **Nomes antigos no código:** os exemplos e textos antigos do repositório ainda
+  citam `app.barbaracardoso.adv.br`. O que vale é o que está gravado em
+  `NEXT_PUBLIC_APP_HOST` e `NEXT_PUBLIC_PORTAL_HOST` na Vercel.
+- **Na produção, os domínios ficam os mesmos.** Falta:
+  1. **Supabase de produção (item 3):** em **Authentication → URL Configuration**,
+     preencher:
+     - Site URL: `https://app.dgbrasil.adv.br`;
+     - Redirect URLs: `https://app.dgbrasil.adv.br/auth/confirm**` e
+       `https://portal.dgbrasil.adv.br/auth/confirm**`
+       ([docs/auth.md](../auth.md), item 4).
+
+     Sem isso, o link do e-mail de convite quebra.
+  2. **Computador do escritório:** o `url` do `executor.json` é
+     `https://app.dgbrasil.adv.br`, sempre com o `app.` (item 8). O domínio sem
+     `app.` redireciona, e o token do computador não vai junto no
+     redirecionamento.
 
 ## 7. Claude com dados de clientes
 

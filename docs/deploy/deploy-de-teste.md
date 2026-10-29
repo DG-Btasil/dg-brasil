@@ -3,14 +3,29 @@
 Pendências e riscos do deploy de 2026-10-29. Vale para a fase de **teste**:
 Supabase DEV e dados fictícios. A produção está em [producao.md](producao.md).
 
-## Onde estamos
+## Onde estamos (2026-10-29, 14h56)
+
+**Endereços do site** (Vercel, servidor em São Paulo), ligados ao **Supabase DEV**,
+com dados fictícios:
+- **https://app.dgbrasil.adv.br**, para a equipe;
+- **https://portal.dgbrasil.adv.br**, para os parceiros.
+
+`dgbrasil.adv.br` e `www.dgbrasil.adv.br` redirecionam para o `app.`. Por isso:
+- use sempre o endereço com `app.` nas rotas de máquina (Vercel e computador do
+  escritório);
+- o redirecionamento não leva a senha junto, e a Vercel não segue
+  redirecionamento.
 
 | O quê | Situação |
 |---|---|
-| Site na Vercel | Ainda na versão `5609165` ("Favicon"), de **antes** da troca para o Claude Code. Os deploys seguintes foram recusados pelo agendamento do Drive a cada 15 minutos. |
-| Correção | Agendamento do Drive passado para uma vez por dia (`apps/frontend/vercel.json`), no commit `fix(vercel): run Drive sync cron daily to fit the Hobby plan`. |
-| Banco DEV | Ainda **sem** as migrations 040 (computador do escritório) e 041 (Google Drive). |
-| Validação | O agente da outra máquina valida tudo no computador dele (`localhost`), **sem depender** da Vercel. |
+| Correção do agendamento (commit `15a89b4`) | **No ar.** Foi para o GitHub às 14h52, e o site já responde com a versão nova. |
+| Migration 040 no DEV | **Aplicada.** O teste do Passo 4, item 5, deu 403: o banco recusou o token de mentira. |
+| `DG_WORKER_DB_URL` na Vercel | **Gravada.** Comprovada pelo mesmo teste. |
+| Migration 041 no DEV | Conferir na tela (Passo 4, item 3) |
+| `CRON_SECRET` na Vercel | **Opcional até configurar o Google Drive.** Sem ele, a rota recusa todas as chamadas (401). |
+| Validação completa | O agente da outra máquina valida tudo no computador dele (`localhost`), **sem depender** da Vercel. |
+
+Os passos abaixo ficam como referência para os próximos deploys.
 
 **Quem faz cada passo:**
 - **Você:** a Barbara;
@@ -40,7 +55,7 @@ este passo vem antes do Passo 3.
 | Variável | Valor | Para quê |
 |---|---|---|
 | `DG_WORKER_DB_URL` | O mesmo valor do `supabase/.env.real` da máquina do validador, que é o já testado | É como o servidor fala com o banco na API do computador do escritório e no Drive |
-| `CRON_SECRET` | Um texto aleatório novo, com 32 caracteres ou mais | Senha da rodada agendada do Drive. A Vercel envia esse valor sozinha. |
+| `CRON_SECRET` | Um texto aleatório novo, com 32 caracteres ou mais | Senha da rodada agendada do Drive. A Vercel envia esse valor sozinha. **Pode esperar a configuração do Google Drive.** |
 
 Sobre o `DG_WORKER_DB_URL`:
 - É o login `dg_worker` do DEV, pelo pooler:
@@ -75,7 +90,7 @@ a Vercel faz o deploy sozinha.
 
 ## Passo 4: conferir o deploy (Você, ou peça ao Claude)
 
-Troque `<site>` pelo endereço do DG Brasil na Vercel.
+Endereço: `https://app.dgbrasil.adv.br`. Use o `app.`, não o domínio sem ele.
 
 1. **Vercel → Deployments:** o último deploy está **Ready**, com o commit `fix(vercel): …`.
 2. **Vercel → Settings → Cron Jobs:** aparece `/api/cron/drive-sync` com `0 9 * * *`.
@@ -87,13 +102,13 @@ Troque `<site>` pelo endereço do DG Brasil na Vercel.
 4. **A rota agendada está protegida.** No PowerShell:
 
    ```powershell
-   curl.exe -i https://<site>/api/cron/drive-sync
+   curl.exe -i https://app.dgbrasil.adv.br/api/cron/drive-sync
    ```
 
    Esperado: **401**. Com a senha:
 
    ```powershell
-   curl.exe -i -H "Authorization: Bearer <CRON_SECRET>" https://<site>/api/cron/drive-sync
+   curl.exe -i -H "Authorization: Bearer <CRON_SECRET>" https://app.dgbrasil.adv.br/api/cron/drive-sync
    ```
 
    Esperado: `{"skipped":"drive não configurado"}`.
@@ -101,7 +116,7 @@ Troque `<site>` pelo endereço do DG Brasil na Vercel.
    mentira, no formato certo:
 
    ```powershell
-   curl.exe -i -H "Authorization: Bearer dgx_teste_que_nao_existe_000000" https://<site>/api/executor/v1/me
+   curl.exe -i -H "Authorization: Bearer dgx_teste_que_nao_existe_000000" https://app.dgbrasil.adv.br/api/executor/v1/me
    ```
 
    | Resposta | O que significa |
