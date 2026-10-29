@@ -18,8 +18,8 @@ import { useToast } from "@/store/ui-store";
 /**
  * Pedir uma execução avulsa deste agente num caso (fora de análise). Só
  * enfileira (request_agent_run_once: valida papel e caso no banco, idempotente);
- * o worker executa se a IA estiver ligada. Tudo o que o agente entregar vai
- * para Revisões.
+ * o computador do escritório executa quando processar a fila (com a execução
+ * ligada). Tudo o que o agente entregar vai para Revisões.
  */
 export function RunAgentDialog({ agent, onClose }: { agent: AgentDetailDTO; onClose: () => void }) {
   const router = useRouter();

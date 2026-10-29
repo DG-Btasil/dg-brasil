@@ -12,7 +12,7 @@ import { EMAIL_METADATA_KEYS } from "./invite-metadata";
 
 const ROOT = resolve(__dirname, "../../../../..");
 const FRONT_SRC = join(ROOT, "apps/frontend/src");
-const WORKER_SRC = join(ROOT, "apps/agentes/src");
+const EXECUTOR_SRC = join(ROOT, "apps/executor/src");
 const MIGRATIONS = join(ROOT, "supabase/migrations");
 const TEMPLATES = join(ROOT, "supabase/templates");
 
@@ -46,9 +46,9 @@ const SENSITIVE = /user_metadata|app_metadata|raw_user_meta_data|invite_role|inv
 const ALLOWED_WRITERS = ["apps/frontend/src/lib/auth/invite-metadata.ts", "apps/frontend/src/server/auth/team-actions.ts"];
 
 describe("user_metadata nunca vira autorização", () => {
-  it("front e worker: só os arquivos de envio de e-mail mencionam os campos", () => {
+  it("front e executor do escritório: só os arquivos de envio de e-mail mencionam os campos", () => {
     const offenders: string[] = [];
-    for (const file of [...files(FRONT_SRC, /\.(ts|tsx)$/), ...files(WORKER_SRC, /\.(ts|mts|js|mjs)$/)]) {
+    for (const file of [...files(FRONT_SRC, /\.(ts|tsx)$/), ...files(EXECUTOR_SRC, /\.(ts|mts|js|mjs)$/)]) {
       const rel = relative(ROOT, file).replace(/\\/g, "/");
       if (ALLOWED_WRITERS.includes(rel) || /\.test\.(ts|tsx)$/.test(rel)) continue;
       for (const { line, n } of codeLines(readFileSync(file, "utf8"))) {

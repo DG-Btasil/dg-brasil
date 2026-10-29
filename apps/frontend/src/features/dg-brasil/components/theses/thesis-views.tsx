@@ -117,10 +117,6 @@ export function ThesisDetail({ thesis, catalog }: { thesis: ThesisDetailDTO; cat
               <LinkedNames ids={thesis.agentIds} catalog={catalog.agents} href={dgRoutes.agent} empty="Nenhum agente." />
             </div>
             <div>
-              <p className="mb-1.5 text-[12px] font-medium text-subtle">Skills</p>
-              <LinkedNames ids={thesis.skillIds} catalog={catalog.skills} href={dgRoutes.skill} empty="Nenhuma skill." />
-            </div>
-            <div>
               <p className="mb-1.5 text-[12px] font-medium text-subtle">Referências</p>
               <LinkedNames ids={thesis.referenceIds} catalog={catalog.references} empty="Nenhuma referência." />
             </div>

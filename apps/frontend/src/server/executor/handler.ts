@@ -167,7 +167,8 @@ async function route_(req: ExecutorRequest, tokenHash: string, deps: ExecutorDep
         "executor_open_document", action[1]);
       const name = d.filename ?? `${d.title}.bin`;
       const url = await deps.storage.signDownload("legal-documents", d.storage_object_name, name);
-      const { storage_object_name: _hidden, ...meta } = d;
+      const meta: Record<string, unknown> = { ...d };
+      delete meta.storage_object_name;
       return ok({ ...meta, filename: name, url, expires_in: 120 });
     }
     case "GET theses":

@@ -84,6 +84,11 @@ export function detailFromJson(d: Record<string, unknown>): AgentRunDetailDTO {
       reviewId: str(x.review_id), reviewStatus: str(x.review_status),
     })),
     analysisResult: result ? { id: String(result.id), summary: String(result.summary ?? ""), reviewId: str(result.review_id), reviewStatus: str(result.review_status) } : undefined,
+    executorName: str((d.executor as Record<string, unknown> | null | undefined)?.name),
+    progress: d.progress ? { message: String((d.progress as Record<string, unknown>).message ?? ""), at: String((d.progress as Record<string, unknown>).at ?? "") } : undefined,
+    events: arr(d.events).map((e) => ({
+      kind: String(e.kind), from: str(e.from), to: str(e.to), message: str(e.message), documentVersionId: str(e.document_version_id), at: String(e.at),
+    })),
     usage: usage
       ? {
           provider: String(usage.provider ?? ""), model: str(usage.model), inputTokens: num(usage.input_tokens), outputTokens: num(usage.output_tokens),
@@ -91,6 +96,7 @@ export function detailFromJson(d: Record<string, unknown>): AgentRunDetailDTO {
           details: (usage.details ?? undefined) as Record<string, unknown> | undefined,
           toolsUsed: (usage.tools_used ?? undefined) as Record<string, number> | undefined,
           errorMessage: str(usage.error_message),
+          executorReport: (usage.executor_report ?? undefined) as Record<string, unknown> | undefined,
         }
       : undefined,
     config: (d.config ?? undefined) as Record<string, unknown> | undefined,

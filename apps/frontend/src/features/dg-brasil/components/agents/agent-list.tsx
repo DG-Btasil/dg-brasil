@@ -8,7 +8,6 @@ import { EmptyState } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { AI_MODEL_LABEL } from "@/lib/constants/ai";
 import { AGENT_STATUS_LABEL, AGENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatEventTime, pluralize } from "@/lib/formatting";
 import type { AgentListItemDTO, DgCatalogDTO } from "@/server/domain/dg/dto";
@@ -77,12 +76,11 @@ function AgentCard({ agent }: { agent: AgentListItemDTO }) {
         <StatusBadge status={agent.status} labels={AGENT_STATUS_LABEL} tones={AGENT_STATUS_TONE} />
       </div>
       <p className="mt-3 text-[12px] text-muted">
-        <span className="text-subtle">Modelo: </span>
-        <span className="text-foreground">{AI_MODEL_LABEL[agent.model] ?? agent.model}</span>
-        {agent.codeExecution && <span className="text-subtle"> · ambiente isolado</span>}
+        <span className="text-subtle">No Claude Code: </span>
+        {agent.localAgent ? <code className="font-mono text-foreground">{agent.localAgent}</code> : <span className="text-warning">não definido</span>}
       </p>
       <dl className="mt-3 grid grid-cols-4 gap-3 border-t border-line pt-3 text-[12px]">
-        <Metric label="Skills" value={pluralize(agent.skillCount, "Skill", "Skills")} />
+        <Metric label="Teses" value={pluralize(agent.thesisCount, "Tese", "Teses")} />
         <Metric label="Última execução" value={agent.lastRunAt ? formatEventTime(agent.lastRunAt) : "Sem execuções"} />
         <Metric label="Execuções (7 dias)" value={String(agent.runsLast7Days)} />
         <Metric label="Versão" value={formatVersion(agent.version)} />

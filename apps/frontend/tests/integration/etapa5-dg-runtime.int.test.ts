@@ -1,33 +1,32 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import * as agents from "@/server/domain/agents/service";
 import * as dg from "@/server/domain/dg/service";
-import { saveAgentSchema, saveReferenceSchema, saveSkillSchema, saveThesisSchema } from "@/server/domain/dg/schemas";
-import { configFromDb } from "@/server/domain/dg/mappers";
+import { saveAgentSchema, saveReferenceSchema, saveThesisSchema } from "@/server/domain/dg/schemas";
 import { ctxFor, dbFor, expectDomainError, serviceDb, world } from "./support/world";
 
 /**
- * Etapa 5 (migration 039) no Supabase DEV real, pelo service (o caminho das
- * Server Actions): área DG Brasil real (agente, skill com ARQUIVO no Storage,
- * tese, referência, histórico, vínculo de template), interruptor geral da IA,
- * detalhe e nova tentativa de execução. Dados FICTÍCIOS. Nenhuma IA roda.
+ * Área DG Brasil (039, ajustada na 040) no Supabase DEV real, pelo service (o
+ * caminho das Server Actions): agente que aponta para o agente local do
+ * Claude Code, tese, referência, histórico, vínculo de template, interruptor
+ * geral, situação do escritório, detalhe e nova tentativa de execução. Dados
+ * FICTÍCIOS. Nenhuma IA roda.
  */
 
 const svc = serviceDb();
 const tag = `e5-${world.run}`;
-const created: { agents: string[]; skills: string[]; templates: string[] } = { agents: [], skills: [], templates: [] };
+const created: { agents: string[]; templates: string[] } = { agents: [], templates: [] };
 
 afterAll(async () => {
   // Interruptor volta DESLIGADO (estado seguro do DEV) e nada deste teste fica ativo.
   const admin = await ctxFor("ADMIN");
   await dg.setAiEnabled(admin, false, "fim do teste de integração 5");
   if (created.agents.length) await svc.from("agents").update({ status: "INACTIVE" }).in("id", created.agents);
-  if (created.skills.length) await svc.from("skills").update({ status: "DEPRECATED" }).in("id", created.skills);
   if (created.templates.length) await svc.from("analysis_templates").update({ active: false }).in("id", created.templates);
   await svc.from("agent_runs").update({ status: "CANCELLED" }).in("agent_id", created.agents.length ? created.agents : [randomUUID()]).in("status", ["QUEUED"]);
 });
 
-describe("interruptor geral da IA (039)", () => {
+describe("interruptor geral e situação do escritório (039/040)", () => {
   it("ADMIN liga e desliga (auditado); LAWYER lê a situação mas não muda", async () => {
     const admin = await ctxFor("ADMIN");
     const on = await dg.setAiEnabled(admin, true, "teste de integração");
@@ -43,56 +42,33 @@ describe("interruptor geral da IA (039)", () => {
   });
   it("parceiro não lê a situação", async () => {
     await expectDomainError(dg.getAiStatus(await ctxFor("PARTNER_ADMIN_A")), "FORBIDDEN");
+    await expectDomainError(dg.getOfficeStatus(await ctxFor("PARTNER_ADMIN_A")), "FORBIDDEN");
+  });
+  it("situação do escritório: LAWYER vê se há computador conectado e a fila, sem a lista; ADMIN vê a lista", async () => {
+    const lawyer = await dg.getOfficeStatus(await ctxFor("LAWYER"));
+    expect(typeof lawyer.online).toBe("boolean");
+    expect(typeof lawyer.queued).toBe("number");
+    expect(lawyer.executors).toBeUndefined();
+    expect(Array.isArray((await dg.getOfficeStatus(await ctxFor("ADMIN"))).executors)).toBe(true);
   });
 });
 
-describe("área DG Brasil real (039)", () => {
-  let skillId = "";
+describe("área DG Brasil real (039/040)", () => {
   let agentId = "";
-
-  it("skill com arquivo: URL assinada pelo servidor, upload write-once, versão 1 com o arquivo", async () => {
-    const admin = await ctxFor("ADMIN");
-    const content = Buffer.from(`print("kit ${tag}")\n`);
-    const prepared = await dg.prepareSkillFiles(admin, { files: [{ path: "scripts/gerar.py", size: content.length }] });
-    expect(prepared.files[0]!.storageObjectName).toBe(`skills/${prepared.skillId}/${prepared.versionId}/scripts/gerar.py`);
-    const up = await dbFor("ADMIN").storage.from(prepared.files[0]!.bucket).uploadToSignedUrl(prepared.files[0]!.storageObjectName, prepared.files[0]!.token, content, { contentType: "text/x-python" });
-    expect(up.error).toBeNull();
-
-    const r = await dg.saveSkill(admin, saveSkillSchema.parse({
-      key: randomUUID(), id: prepared.skillId, create: true, versionId: prepared.versionId, slug: `kit-${tag}`.slice(0, 60),
-      name: `Kit ${tag}`, description: "Gera os documentos do kit (teste).", status: "ACTIVE", instructions: "Rode scripts/gerar.py.",
-      files: [{ path: "scripts/gerar.py", storageObjectName: prepared.files[0]!.storageObjectName, mimeType: "text/x-python", size: content.length, sha256: createHash("sha256").update(content).digest("hex") }],
-    }));
-    expect(r).toMatchObject({ created: true, versionCreated: true, versionNumber: 1 });
-    skillId = r.id;
-    created.skills.push(skillId);
-    const detail = await dg.getSkill(admin, skillId);
-    expect(detail.files.map((f) => f.path)).toEqual(["scripts/gerar.py"]);
-    expect(detail.providerRegistered).toBe(false);
-  });
-
-  it("arquivo que não foi enviado ao Storage é recusado pelo banco", async () => {
-    const admin = await ctxFor("ADMIN");
-    const prepared = await dg.prepareSkillFiles(admin, { skillId, files: [{ path: "nao-enviado.py", size: 10 }] });
-    await expectDomainError(dg.saveSkill(admin, saveSkillSchema.parse({
-      key: randomUUID(), id: skillId, create: false, versionId: prepared.versionId, name: `Kit ${tag}`, description: "x", status: "ACTIVE", instructions: "Rode scripts/gerar.py.",
-      files: [{ path: "nao-enviado.py", storageObjectName: prepared.files[0]!.storageObjectName, mimeType: "text/x-python", size: 10, sha256: "a".repeat(64) }],
-    })), "INVALID_STATE", /não encontrado no Storage/);
-  });
 
   it("LAWYER e ASSISTANT não configuram nada na área DG", async () => {
     for (const role of ["LAWYER", "ASSISTANT"] as const) {
       const ctx = await ctxFor(role);
       await expectDomainError(dg.listAgents(ctx), "FORBIDDEN");
-      await expectDomainError(dg.prepareSkillFiles(ctx, { files: [] }), "FORBIDDEN");
+      await expectDomainError(dg.createExecutor(ctx, "Intruso"), "FORBIDDEN");
     }
   });
 
-  it("agente: cria com versão, skill e configuração; salvar sem mudar o texto não cria versão; mudar cria v2", async () => {
+  it("agente: cria com versão e agente local; salvar sem mudar o texto não cria versão; mudar cria v2", async () => {
     const admin = await ctxFor("ADMIN");
     const base = {
       name: `Agente ${tag}`, status: "ACTIVE" as const, instructions: "Agente fictício de teste. Não executar.",
-      config: { ...configFromDb({}), model: "claude-haiku-5-5" as const, maxBudgetUsd: 0.5 }, skillIds: [skillId], thesisIds: [], referenceIds: [],
+      config: { localAgent: "kit-cliente-teste" }, thesisIds: [], referenceIds: [],
     };
     const r = await dg.saveAgent(admin, saveAgentSchema.parse({ key: randomUUID(), ...base }));
     expect(r).toMatchObject({ created: true, versionNumber: 1 });
@@ -103,7 +79,7 @@ describe("área DG Brasil real (039)", () => {
     const v2 = await dg.saveAgent(admin, saveAgentSchema.parse({ key: randomUUID(), id: agentId, ...base, instructions: `${base.instructions} Confira o CPF.` }));
     expect(v2).toMatchObject({ versionCreated: true, versionNumber: 2 });
     const detail = await dg.getAgent(admin, agentId);
-    expect(detail).toMatchObject({ version: 2, skillIds: [skillId], model: "claude-haiku-5-5", status: "ACTIVE" });
+    expect(detail).toMatchObject({ version: 2, localAgent: "kit-cliente-teste", config: { localAgent: "kit-cliente-teste" }, status: "ACTIVE" });
     expect(detail.versions.map((v) => v.number)).toEqual([2, 1]);
     expect((await dg.listAgents(admin)).some((a) => a.id === agentId)).toBe(true);
   });
@@ -111,7 +87,7 @@ describe("área DG Brasil real (039)", () => {
   it("repetir a mesma chave não duplica (idempotência 027)", async () => {
     const admin = await ctxFor("ADMIN");
     const key = randomUUID();
-    const input = saveAgentSchema.parse({ key, name: `Agente dup ${tag}`, status: "DRAFT", instructions: "x", config: configFromDb({}), skillIds: [], thesisIds: [], referenceIds: [] });
+    const input = saveAgentSchema.parse({ key, name: `Agente dup ${tag}`, status: "DRAFT", instructions: "x", config: { localAgent: "agente-dup" }, thesisIds: [], referenceIds: [] });
     const a = await dg.saveAgent(admin, input);
     const b = await dg.saveAgent(admin, input);
     created.agents.push(a.id);
@@ -147,8 +123,6 @@ describe("área DG Brasil real (039)", () => {
 
 describe("execução: detalhe e nova tentativa (039)", () => {
   it("LAWYER vê o detalhe sem uso/custo; tenta de novo uma execução avulsa que falhou (nova execução ligada, idempotente)", async () => {
-    const agent = await svc.from("agents").select("id").eq("slug", `kit-${tag}`.slice(0, 60)).maybeSingle();
-    void agent;
     const admin = await ctxFor("ADMIN");
     const agentId = created.agents[0]!;
     const caseRow = await dbFor("PARTNER_ADMIN_A").rpc("partner_submit_case", {
@@ -177,9 +151,11 @@ describe("execução: detalhe e nova tentativa (039)", () => {
     await svc.from("agent_runs").update({ status: "CANCELLED" }).eq("id", r1.runId);
   });
 
-  it("uso da IA só para ADMIN", async () => {
-    const u = await dg.getAiUsage(await ctxFor("ADMIN"), 30);
-    expect(typeof u.totals.runs).toBe("number");
-    await expectDomainError(dg.getAiUsage(await ctxFor("LAWYER"), 30), "FORBIDDEN");
+  it("execuções antigas da Claude API continuam legíveis (provider ANTHROPIC); as novas nascem CLAUDE_CODE", async () => {
+    const admin = await ctxFor("ADMIN");
+    const run = await agents.requestAgentRun(admin, { idempotencyKey: randomUUID(), agentId: created.agents[0]!, requestText: "teste", operation: "EXECUTE" });
+    const { data } = await svc.from("agent_runs").select("provider").eq("id", run.runId).single();
+    expect(data?.provider).toBe("CLAUDE_CODE");
+    await svc.from("agent_runs").update({ status: "CANCELLED" }).eq("id", run.runId);
   });
 });

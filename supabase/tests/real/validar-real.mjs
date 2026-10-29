@@ -18,7 +18,8 @@
 // Variáveis (arquivo supabase/.env.real, fora do Git — ver .env.real.example):
 //   DG_ENV, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
 //   SUPABASE_DB_URL (papel postgres, só para montar o cenário e inspecionar
-//   catálogo), DG_WORKER_DB_URL (papel dg_worker, do jeito que o Fly.io conecta).
+//   catálogo), DG_WORKER_DB_URL (papel dg_worker, como o servidor do DG Brasil
+//   conecta para a API do computador do escritório — pooler IPv4).
 
 import { createClient } from '@supabase/supabase-js'
 import pg from 'pg'
@@ -941,6 +942,76 @@ await deve('detalhe da execução: LAWYER vê sem uso/custo/configuração; ADMI
   igual([d.id, d.usage, d.config], [ids.run, null, null], 'LAWYER')
   const a = await r(C.ADMIN.rpc('get_agent_run_detail', { p_agent_run_id: ids.run }))
   if (!a.usage) throw new Error('ADMIN sem uso')
+})
+
+secao('41f. Computador do escritório: token, reserva com o pgmq real e manutenção no pg_cron [040]')
+const h040 = (s) => createHash('sha256').update(s).digest('hex')
+const tok040 = `dgx_${randomBytes(32).toString('base64url')}`
+await deve('pg_cron: manutenção a cada minuto e lembretes de prazo agendados; a manutenção roda sem erro', async () => {
+  const jobs = await sql(`select jobname, schedule, active from cron.job where jobname in ('dg-manutencao', 'dg-lembretes-de-prazo') order by jobname`)
+  igual(jobs.map((j) => [j.jobname, j.schedule, j.active]), [['dg-lembretes-de-prazo', '*/15 * * * *', true], ['dg-manutencao', '* * * * *', true]], 'agendamentos')
+  const t = (await um(`select private.maintenance_tick() t`)).t
+  if (typeof t.expired_leases !== 'number') throw new Error('manutenção sem resultado')
+  const ultima = await um(`select d.status, d.return_message from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+    where j.jobname = 'dg-manutencao' order by d.start_time desc limit 1`)
+  if (ultima && ultima.status === 'failed') throw new Error(`última rodada do pg_cron falhou: ${ultima.return_message}`)
+  console.log(`    última rodada do pg_cron: ${ultima ? ultima.status : 'ainda nenhuma (agendado há menos de 1 min)'}`)
+})
+await deve('ADMIN autoriza computador (só o hash); LAWYER não; LAWYER vê só "conectado" e a fila', async () => {
+  ids.exec040 = (await r(C.ADMIN.rpc('dg_create_executor', { p_name: `Computador ${RODADA}`, p_token_hash: h040(tok040), p_token_prefix: tok040.slice(0, 10) }))).id
+  const l = await C.LAWYER.rpc('dg_create_executor', { p_name: 'X', p_token_hash: h040('x'), p_token_prefix: 'dgx_XXXX' })
+  if (!l.error || !/Somente ADMIN/.test(l.error.message)) throw new Error('LAWYER autorizou computador')
+  const s = await r(C.LAWYER.rpc('get_executor_status'))
+  igual([typeof s.online, s.executors], ['boolean', null], 'LAWYER')
+  const a = await r(C.ADMIN.rpc('get_executor_status'))
+  if (!a.executors.some((e) => e.id === ids.exec040)) throw new Error('ADMIN não vê o computador')
+  const direto = await C.ADMIN.from('executors').select('token_hash').limit(1)
+  if (!direto.error && direto.data.length) throw new Error('tabela executors legível pelo PostgREST')
+})
+await deve('dg_worker (login do servidor): reserva com o pgmq real, renova, devolve e falha; não lê executors nem chama a manutenção', async () => {
+  const w = new pg.Client({ connectionString: WORKER_URL, ssl: { rejectUnauthorized: false } })
+  await w.connect()
+  const q1 = async (q, p) => Object.values((await w.query(q, p)).rows[0] ?? {})[0]
+  try {
+    for (const q of [`select 1 from public.executors limit 1`, `select private.maintenance_tick()`, `select private.dg_create_executor('x', '${h040('y')}', 'dgx_YYYY')`]) {
+      try { await w.query(q); throw new Error(`aceitou: ${q}`) } catch (e) { if (!/permission denied/.test(e.message)) throw e }
+    }
+    igual((await q1(`select private.executor_authenticate($1, 'validar-real') r`, [h040(tok040)])).name, `Computador ${RODADA}`, 'autenticou')
+    await r(C.ADMIN.rpc('set_ai_execution_enabled', { p_enabled: true, p_reason: `validar:real ${RODADA} (040)` }))
+    const run = await r(C.LAWYER.rpc('request_agent_run', { p_agent_id: ids.agente, p_legal_case_id: ids.casoA, p_request_text: 'Pedido fictício 040' }))
+    const lease1 = h040(randomUUID())
+    const c = await q1(`select private.executor_claim($1, $2, $3) r`, [h040(tok040), run, lease1])
+    igual(c.claimed, true, 'reservou')
+    const msg = (await um(`select queue_msg_id m from agent_runs where id = $1`, [run])).m
+    const vt = await um(`select extract(epoch from (vt - now()))::int s from pgmq.q_agent_execution where msg_id = $1`, [msg])
+    if (!vt || vt.s < 200) throw new Error(`mensagem não ficou invisível pela reserva (${vt?.s})`)
+    igual((await q1(`select private.executor_heartbeat($1, $2, $3, 'validar-real') r`, [h040(tok040), run, lease1])).ok, true, 'renovou')
+    igual((await q1(`select private.executor_release($1, $2, $3) r`, [h040(tok040), run, lease1])).status, 'QUEUED', 'devolveu')
+    const vt2 = await um(`select extract(epoch from (vt - now()))::int s from pgmq.q_agent_execution where msg_id = $1`, [msg])
+    if (vt2.s > 5) throw new Error('mensagem devolvida continuou invisível')
+    const lease2 = h040(randomUUID())
+    igual((await q1(`select private.executor_claim($1, $2, $3) r`, [h040(tok040), run, lease2])).claimed, true, 'reservou de novo')
+    const f = await q1(`select private.executor_fail($1, $2, $3, 'DOCUMENT_UNREADABLE', 'validar-real', false) r`, [h040(tok040), run, lease2])
+    igual(f.status, 'FAILED', 'falhou')
+    const arq = await um(`select count(*)::int n from pgmq.a_agent_execution where msg_id = $1`, [msg])
+    igual(arq.n, 1, 'mensagem arquivada')
+    const ev = await sql(`select to_status from agent_run_events where agent_run_id = $1 and kind = 'STATUS' order by id`, [run])
+    igual(ev.map((e) => e.to_status), ['RUNNING', 'QUEUED', 'RUNNING', 'FAILED'], 'linha do tempo')
+  } finally {
+    await r(C.ADMIN.rpc('set_ai_execution_enabled', { p_enabled: false }))
+    await w.end()
+  }
+})
+await deve('revogar: token para de valer na hora', async () => {
+  await r(C.ADMIN.rpc('dg_revoke_executor', { p_executor_id: ids.exec040 }))
+  const w = new pg.Client({ connectionString: WORKER_URL, ssl: { rejectUnauthorized: false } })
+  await w.connect()
+  try {
+    await w.query(`select private.executor_authenticate($1)`, [h040(tok040)]).then(
+      () => { throw new Error('revogado autenticou') }, (e) => { if (!/revogado/.test(e.message)) throw e })
+  } finally {
+    await w.end()
+  }
 })
 
 secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')

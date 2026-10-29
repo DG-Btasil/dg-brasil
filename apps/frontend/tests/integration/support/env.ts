@@ -37,5 +37,8 @@ export function integrationEnv(): IntegrationEnv {
   process.env.NEXT_PUBLIC_SUPABASE_URL ??= url;
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= anonKey;
   process.env.SUPABASE_SERVICE_ROLE_KEY ??= serviceKey;
+  // API do computador do escritório (040): o servidor fala com o banco como dg_worker.
+  const workerUrl = get("DG_WORKER_DB_URL");
+  if (workerUrl) process.env.DG_WORKER_DB_URL ??= workerUrl;
   return { url, anonKey, serviceKey };
 }

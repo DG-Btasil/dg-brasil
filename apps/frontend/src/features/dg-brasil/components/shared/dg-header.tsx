@@ -11,7 +11,7 @@ export function DgHeader({ active, overview }: { active: DgSection; overview?: D
       <header className="mb-5">
         <div className="eyebrow mb-1.5">Central de IA</div>
         <h1 className="font-serif text-[30px] font-medium leading-tight tracking-[-0.01em] text-foreground">DG Brasil</h1>
-        <p className="mt-1 text-[13.5px] text-muted">Equipe digital e conhecimento operacional do escritório.</p>
+        <p className="mt-1 text-[13.5px] text-muted">Agentes do escritório (executados no Claude Code do computador do escritório) e o conhecimento que eles usam.</p>
       </header>
       {overview && <OverviewStrip o={overview} />}
       <SectionNav active={active} />
@@ -22,13 +22,12 @@ export function DgHeader({ active, overview }: { active: DgSection; overview?: D
 function OverviewStrip({ o }: { o: DgOverviewDTO }) {
   const items = [
     { label: "Agentes ativos", value: formatNumber(o.activeAgents), hint: `de ${formatNumber(o.totalAgents)}` },
-    { label: "Skills ativas", value: formatNumber(o.activeSkills) },
     { label: "Teses vigentes", value: formatNumber(o.activeTheses) },
     { label: "Alterações (30 dias)", value: formatNumber(o.changesLast30Days) },
     { label: "Execuções no mês", value: formatNumber(o.monthRuns) },
   ];
   return (
-    <dl className="mb-5 grid grid-cols-2 divide-line rounded-lg border border-line bg-surface shadow-hairline sm:grid-cols-5 sm:divide-x">
+    <dl className="mb-5 grid grid-cols-2 divide-line rounded-lg border border-line bg-surface shadow-hairline sm:grid-cols-4 sm:divide-x">
       {items.map((item) => (
         <div key={item.label} className="px-5 py-3">
           <dt className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-subtle">{item.label}</dt>

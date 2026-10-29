@@ -49,7 +49,7 @@ export function AnalysisPanel({
   current,
   fieldDefs,
   onGoToDocuments,
-  aiEnabled,
+  office,
 }: {
   legalCaseId: string;
   analyses: ActionResult<Page<AnalysisListItem>>;
@@ -58,7 +58,8 @@ export function AnalysisPanel({
   fieldDefs: TemplateFieldDTO[];
   onGoToDocuments: () => void;
   /** Interruptor geral da IA (039). false = execuções ficam na fila. */
-  aiEnabled?: boolean;
+  /** Execução pelo escritório: interruptor e computador conectado (040). */
+  office?: { enabled: boolean; online: boolean };
 }) {
   const newHref = `/casos/${legalCaseId}/analise/nova`;
   const cta = (
@@ -84,7 +85,7 @@ export function AnalysisPanel({
   }
   return (
     <div className="space-y-5">
-      {current && (!current.ok ? <ActionErrorState error={current} title="Não foi possível abrir a análise." /> : <CurrentAnalysis analysis={current.data} fieldDefs={fieldDefs} onGoToDocuments={onGoToDocuments} aiEnabled={aiEnabled} />)}
+      {current && (!current.ok ? <ActionErrorState error={current} title="Não foi possível abrir a análise." /> : <CurrentAnalysis analysis={current.data} fieldDefs={fieldDefs} onGoToDocuments={onGoToDocuments} office={office} />)}
       <Panel>
         <PanelHeader title="Análises do caso" actions={cta} />
         <Table caption="Análises do caso">
@@ -115,7 +116,7 @@ export function AnalysisPanel({
 /** Texto fixo do banco (039) quando a análise volta da revisão humana. */
 const BACK_FROM_REVIEW = /rejeitado na revisão|Alterações pedidas na revisão/;
 
-function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, aiEnabled }: { analysis: AnalysisDetailDTO; fieldDefs: TemplateFieldDTO[]; onGoToDocuments: () => void; aiEnabled?: boolean }) {
+function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, office }: { analysis: AnalysisDetailDTO; fieldDefs: TemplateFieldDTO[]; onGoToDocuments: () => void; office?: { enabled: boolean; online: boolean } }) {
   const router = useRouter();
   const toast = useToast();
   const failed = useActionFeedback();
@@ -154,9 +155,14 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, aiEnabled }: { 
         actions={<StatusBadge status={analysis.status} labels={{ ...ANALYSIS_STATUS_LABEL, [analysis.status]: DB_ANALYSIS_STATUS_LABEL[analysis.dbStatus] }} tones={ANALYSIS_STATUS_TONE} />}
       />
       <PanelBody className="space-y-4">
-        {aiEnabled === false && (withAgent || sendable) && (
-          <Callout tone="warning" title="A execução de IA está desligada pelo administrador.">
-            Pedidos ficam na fila e só começam quando a IA for religada em Configurações → IA.
+        {office?.enabled === false && (withAgent || sendable) && (
+          <Callout tone="warning" title="A execução pelo escritório está desligada pelo administrador.">
+            Pedidos ficam na fila e só começam quando for religada em Configurações → Computador do escritório.
+          </Callout>
+        )}
+        {office?.enabled && !office.online && withAgent && (
+          <Callout tone="info" title="Nenhum computador do escritório conectado agora.">
+            A análise fica na fila até alguém no escritório abrir o Claude Code e processar os trabalhos do DG Brasil.
           </Callout>
         )}
         {analysis.interruptionReason && (

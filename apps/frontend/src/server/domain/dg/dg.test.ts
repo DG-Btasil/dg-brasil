@@ -4,31 +4,30 @@ import { parseMarkdownWithFrontmatter, nameFromSlug } from "@/features/dg-brasil
 import { resultFromRow } from "@/server/domain/analyses/mappers";
 import { detailFromJson } from "@/server/domain/agents/mappers";
 import { agentStatusFromDb, agentStatusToDb, configFromDb, configToDb, lineDiff, slugify } from "./mappers";
-import { agentConfigSchema, saveSkillSchema } from "./schemas";
-import { referenceObjectName, skillObjectName } from "./paths";
+import { agentConfigSchema, createExecutorSchema } from "./schemas";
+import { referenceObjectName } from "./paths";
 
-describe("configuração do agente (039: mesmo contrato do banco e do worker)", () => {
-  it("lê a configuração gravada com os padrões do worker para o que falta", () => {
-    const c = configFromDb({ model: "claude-sonnet-5-5", max_turns: 20 });
-    expect(c).toEqual({ model: "claude-sonnet-5-5", effort: "high", codeExecution: true, maxTurns: 20, maxToolCalls: 120, maxDurationSeconds: 900, maxBudgetUsd: 2, tools: [] });
+describe("configuração do agente (040: o agente local do Claude Code)", () => {
+  it("lê o agente local; versões antigas (Claude API) viram agente vazio, sem quebrar", () => {
+    expect(configFromDb({ local_agent: "clara-hiscon" })).toEqual({ localAgent: "clara-hiscon" });
+    expect(configFromDb({ model: "claude-sonnet-5-5", max_turns: 20 })).toEqual({ localAgent: "" });
+    expect(configToDb({ localAgent: "kit-cliente-teste" })).toEqual({ local_agent: "kit-cliente-teste" });
   });
-  it("modelo fora da lista volta para o padrão; ida e volta preserva as chaves do contrato", () => {
-    expect(configFromDb({ model: "gpt-5" }).model).toBe("claude-opus-5-5");
-    const db = configToDb(configFromDb({ model: "claude-haiku-5-5", code_execution: false, tools: ["ver_caso"] }));
-    expect(Object.keys(db).sort()).toEqual(["code_execution", "effort", "max_budget_usd", "max_duration_seconds", "max_tool_calls", "max_turns", "model", "tools"]);
-    expect(db).toMatchObject({ model: "claude-haiku-5-5", code_execution: false, tools: ["ver_caso"] });
-  });
-  it("o schema recusa campo desconhecido (nada de shell) e limite fora da faixa", () => {
-    const base = configFromDb({});
-    expect(agentConfigSchema.safeParse({ ...base, shell: true }).success).toBe(false);
-    expect(agentConfigSchema.safeParse({ ...base, maxTurns: 0 }).success).toBe(false);
-    expect(agentConfigSchema.safeParse({ ...base, tools: ["executar_sql"] }).success).toBe(false);
-    expect(agentConfigSchema.safeParse(base).success).toBe(true);
+  it("nome do agente local: minúsculas, números e hífen; nada de campo extra (shell, modelo)", () => {
+    expect(agentConfigSchema.safeParse({ localAgent: "clara-hiscon" }).success).toBe(true);
+    for (const bad of ["Clara", "clara hiscon", "../clara", "", "-clara"]) expect(agentConfigSchema.safeParse({ localAgent: bad }).success, bad).toBe(false);
+    expect(agentConfigSchema.safeParse({ localAgent: "clara", shell: true }).success).toBe(false);
+    expect(agentConfigSchema.safeParse({ localAgent: "clara", model: "claude-opus-5-5" }).success).toBe(false);
   });
   it("situação: Pausado na tela = INACTIVE no banco", () => {
     expect(agentStatusToDb("PAUSED")).toBe("INACTIVE");
     expect(agentStatusFromDb("INACTIVE")).toBe("PAUSED");
     expect(agentStatusFromDb("ACTIVE")).toBe("ACTIVE");
+  });
+  it("computador do escritório: nome obrigatório e curto", () => {
+    expect(createExecutorSchema.safeParse({ name: "Computador da recepção" }).success).toBe(true);
+    expect(createExecutorSchema.safeParse({ name: "  " }).success).toBe(false);
+    expect(createExecutorSchema.safeParse({ name: "x".repeat(81) }).success).toBe(false);
   });
 });
 
@@ -38,17 +37,8 @@ describe("identificador e caminhos", () => {
     expect(slugify("Claude Helper", "abc123")).toBe("x-helper-abc123");
     expect(slugify("!!!")).toBe("item");
   });
-  it("arquivo de skill e de referência no caminho da versão (o banco confere)", () => {
-    expect(skillObjectName("s", "v", "scripts/a.py")).toBe("skills/s/v/scripts/a.py");
+  it("arquivo de referência no caminho da versão (o banco confere)", () => {
     expect(referenceObjectName("r", "v", "Petição (1).pdf")).toBe("references/r/v/Peti_o_1_.pdf");
-  });
-  it("caminho de arquivo de skill: sem '..', sem oculto, sem SKILL.md", () => {
-    const base = { key: crypto.randomUUID(), id: crypto.randomUUID(), create: false, name: "X", description: "Quando usar", status: "ACTIVE", instructions: "x" };
-    const file = (path: string) => ({ path, storageObjectName: "skills/a/b/c", mimeType: "text/x-python", size: 1, sha256: "a".repeat(64) });
-    expect(saveSkillSchema.safeParse({ ...base, files: [file("scripts/ok.py")] }).success).toBe(true);
-    for (const bad of ["../x.py", ".env", "a/.git/x", "SKILL.md", "/abs.py"]) {
-      expect(saveSkillSchema.safeParse({ ...base, files: [file(bad)] }).success, bad).toBe(false);
-    }
   });
 });
 
@@ -99,6 +89,8 @@ describe("resultado estruturado da análise (039)", () => {
 
 describe("execução: detalhe e erro amigável", () => {
   it("erro bruto nunca aparece: cada categoria tem texto de usuário", () => {
+    expect(runErrorLabel("LEASE_EXPIRED")).toMatch(/parou de responder/);
+    expect(runErrorLabel("NO_ANALYSIS_RESULT")).toMatch(/sem entregar/);
     expect(runErrorLabel("PROVIDER_RATE_LIMITED")).toMatch(/limitou o uso/);
     expect(runErrorLabel("ALGO_NOVO")).toBe("A execução falhou.");
     expect(runErrorLabel(null)).toBeUndefined();
@@ -112,5 +104,17 @@ describe("execução: detalhe e erro amigável", () => {
     expect(d.usage).toBeUndefined();
     expect(d.config).toBeUndefined();
     expect(d.proposals[0]).toMatchObject({ reviewId: "rv", summary: "x" });
+    expect(d.events).toEqual([]);
+  });
+  it("detalhe: computador, andamento e linha do tempo (040)", () => {
+    const d = detailFromJson({
+      id: "r1", agent: { id: "a", name: "Kit", slug: "kit" }, status: "RUNNING", cancel_requested: false, attempt: 1, created_at: "2026-10-29T10:00:00Z",
+      retried_by: [], proposals: [], documents: [], executor: { name: "Computador A" }, progress: { message: "Lendo o HISCON", at: "2026-10-29T10:01:00Z" },
+      events: [{ kind: "STATUS", from: "QUEUED", to: "RUNNING", at: "2026-10-29T10:00:30Z" }, { kind: "DOCUMENT_OPENED", message: "HISCON", document_version_id: "v1", at: "2026-10-29T10:00:40Z" }],
+    });
+    expect(d.executorName).toBe("Computador A");
+    expect(d.progress).toEqual({ message: "Lendo o HISCON", at: "2026-10-29T10:01:00Z" });
+    expect(d.events.map((e) => e.kind)).toEqual(["STATUS", "DOCUMENT_OPENED"]);
+    expect(d.events[1]!.documentVersionId).toBe("v1");
   });
 });

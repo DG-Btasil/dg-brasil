@@ -142,11 +142,6 @@ export async function skillFiles(db: SupabaseClient, versionIds: string[]): Prom
   return rows<SkillFileRow>(await db.from("skill_version_files").select("skill_version_id, path, mime_type, file_size, checksum_sha256").in("skill_version_id", versionIds).order("path"));
 }
 
-export async function skillProviderRegistered(db: SupabaseClient, versionId: string): Promise<boolean> {
-  const r = unwrap(await db.from("skill_provider_versions").select("skill_version_id").eq("skill_version_id", versionId).maybeSingle());
-  return !!r;
-}
-
 export async function listTheses(db: SupabaseClient): Promise<ThesisRow[]> {
   return rows<ThesisRow>(await db.from("legal_theses").select("id, slug, title, description, legal_area_id, status, current_version_id, updated_at, legal_areas(name)").is("deleted_at", null).order("title"));
 }
@@ -245,8 +240,6 @@ export const saveAgent = (db: SupabaseClient, key: string, payload: Record<strin
   rpc<Record<string, unknown>>(db, "dg_save_agent_once", { p_key: key, p_agent: payload });
 export const setAgentStatus = (db: SupabaseClient, id: string, status: string) =>
   rpc<Record<string, unknown>>(db, "dg_set_agent_status", { p_agent_id: id, p_status: status });
-export const saveSkill = (db: SupabaseClient, key: string, payload: Record<string, unknown>) =>
-  rpc<Record<string, unknown>>(db, "dg_save_skill_once", { p_key: key, p_skill: payload });
 export const saveThesis = (db: SupabaseClient, key: string, payload: Record<string, unknown>) =>
   rpc<Record<string, unknown>>(db, "dg_save_thesis_once", { p_key: key, p_thesis: payload });
 export const saveReference = (db: SupabaseClient, key: string, payload: Record<string, unknown>) =>
@@ -256,4 +249,7 @@ export const setTemplateAgent = (db: SupabaseClient, templateId: string, agentId
 export const aiStatus = (db: SupabaseClient) => rpc<Record<string, unknown>>(db, "get_ai_runtime_status", {});
 export const setAiEnabled = (db: SupabaseClient, enabled: boolean, reason?: string) =>
   rpc<Record<string, unknown>>(db, "set_ai_execution_enabled", { p_enabled: enabled, p_reason: reason ?? null });
-export const aiUsage = (db: SupabaseClient, days: number) => rpc<Record<string, unknown>>(db, "get_ai_usage_summary", { p_days: days });
+export const executorStatus = (db: SupabaseClient) => rpc<Record<string, unknown>>(db, "get_executor_status", {});
+export const createExecutor = (db: SupabaseClient, name: string, tokenHash: string, tokenPrefix: string) =>
+  rpc<Record<string, unknown>>(db, "dg_create_executor", { p_name: name, p_token_hash: tokenHash, p_token_prefix: tokenPrefix });
+export const revokeExecutor = (db: SupabaseClient, id: string) => rpc<Record<string, unknown>>(db, "dg_revoke_executor", { p_executor_id: id });

@@ -1,4 +1,3 @@
-import { AGENT_LIMITS, AI_MODEL_IDS, DEFAULT_AI_MODEL, type AiEffort, type AiModelId } from "@/lib/constants/ai";
 import type { AgentStatus } from "@/lib/constants/status";
 import type { DiffLine } from "@/types";
 import type { AgentConfigInput } from "./schemas";
@@ -9,36 +8,19 @@ import type { AgentConfigInput } from "./schemas";
 export const agentStatusToDb = (s: AgentStatus) => (s === "PAUSED" ? "INACTIVE" : s);
 export const agentStatusFromDb = (s: string): AgentStatus => (s === "INACTIVE" ? "PAUSED" : s === "ACTIVE" ? "ACTIVE" : "DRAFT");
 
-/** agent_versions.configuration → formulário (com os padrões do worker para o que faltar). */
+/**
+ * agent_versions.configuration → formulário. Na execução pelo escritório só
+ * conta o agente local do Claude Code (local_agent). Chaves antigas da Claude
+ * API (modelo, esforço, limites) ficam no histórico das versões.
+ */
 export function configFromDb(raw: unknown): AgentConfigInput {
   const c = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
-  const model = typeof c.model === "string" && (AI_MODEL_IDS as readonly string[]).includes(c.model) ? (c.model as AiModelId) : DEFAULT_AI_MODEL;
-  const effort = (["low", "medium", "high", "xhigh", "max"] as const).includes(c.effort as AiEffort) ? (c.effort as AiEffort) : "high";
-  return {
-    model,
-    effort,
-    codeExecution: typeof c.code_execution === "boolean" ? c.code_execution : true,
-    maxTurns: num(c.max_turns, AGENT_LIMITS.maxTurns.default),
-    maxToolCalls: num(c.max_tool_calls, AGENT_LIMITS.maxToolCalls.default),
-    maxDurationSeconds: num(c.max_duration_seconds, AGENT_LIMITS.maxDurationSeconds.default),
-    maxBudgetUsd: num(c.max_budget_usd, AGENT_LIMITS.maxBudgetUsd.default),
-    tools: Array.isArray(c.tools) ? c.tools.filter((t): t is string => typeof t === "string") : [],
-  };
+  return { localAgent: typeof c.local_agent === "string" ? c.local_agent : "" };
 }
 
-/** Formulário → agent_versions.configuration (chaves do contrato 039). */
+/** Formulário → agent_versions.configuration (contrato 040). */
 export function configToDb(c: AgentConfigInput): Record<string, unknown> {
-  return {
-    model: c.model,
-    effort: c.effort,
-    code_execution: c.codeExecution,
-    max_turns: c.maxTurns,
-    max_tool_calls: c.maxToolCalls,
-    max_duration_seconds: c.maxDurationSeconds,
-    max_budget_usd: c.maxBudgetUsd,
-    tools: c.tools,
-  };
+  return { local_agent: c.localAgent };
 }
 
 /** Identificador estável a partir do nome (sem acento, minúsculo, hífen). */

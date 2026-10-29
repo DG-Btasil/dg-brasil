@@ -4,15 +4,16 @@ import { z } from "zod";
 import { runAction } from "@/server/core/action";
 import * as service from "./service";
 import {
-  historySchema, idSchema, prepareReferenceFileSchema, prepareSkillFilesSchema, saveAgentSchema, saveReferenceSchema,
-  saveSkillSchema, saveThesisSchema, setAgentStatusSchema, setAiEnabledSchema, setTemplateAgentSchema, usageSchema,
+  createExecutorSchema, historySchema, idSchema, prepareReferenceFileSchema, revokeExecutorSchema, saveAgentSchema,
+  saveReferenceSchema, saveThesisSchema, setAgentStatusSchema, setAiEnabledSchema, setTemplateAgentSchema,
 } from "./schemas";
 
 /**
  * Server Actions da área DG Brasil. Tudo exige `dgbrasil.manage` (ADMIN); o
- * banco revalida (RLS só ADMIN + checagem nas RPCs 039). Nenhuma executa IA.
- * Exceção: a situação do interruptor da IA, que qualquer usuário interno lê
- * (a tela de análise avisa quando a IA está desligada).
+ * banco revalida (RLS só ADMIN + checagem nas RPCs 039/040). Nenhuma executa
+ * IA: quem executa é o Claude Code do escritório. Exceção: a situação do
+ * escritório (interruptor, computador conectado, fila), que qualquer usuário
+ * interno lê (a tela de análise avisa quando ninguém está processando).
  */
 
 const empty = z.object({}).default({});
@@ -41,19 +42,6 @@ export async function setDgTemplateAgentAction(input: unknown) {
   return runAction({ name: "dg.template_agent", permission: manage, schema: setTemplateAgentSchema, input, handler: (ctx, v) => service.setTemplateAgent(ctx, v.templateId, v.agentId) });
 }
 
-export async function listDgSkillsAction() {
-  return runAction({ name: "dg.skills", permission: manage, schema: empty, input: {}, handler: (ctx) => service.listSkills(ctx) });
-}
-export async function getDgSkillAction(input: unknown) {
-  return runAction({ name: "dg.skill", permission: manage, schema: idSchema, input, handler: (ctx, { id }) => service.getSkill(ctx, id) });
-}
-export async function prepareDgSkillFilesAction(input: unknown) {
-  return runAction({ name: "dg.skill_prepare_files", permission: manage, schema: prepareSkillFilesSchema, input, handler: (ctx, v) => service.prepareSkillFiles(ctx, v) });
-}
-export async function saveDgSkillAction(input: unknown) {
-  return runAction({ name: "dg.skill_save", permission: manage, schema: saveSkillSchema, input, handler: service.saveSkill });
-}
-
 export async function listDgThesesAction() {
   return runAction({ name: "dg.theses", permission: manage, schema: empty, input: {}, handler: (ctx) => service.listTheses(ctx) });
 }
@@ -78,13 +66,19 @@ export async function getDgHistoryAction(input: unknown) {
   return runAction({ name: "dg.history", permission: manage, schema: historySchema, input, handler: service.history });
 }
 
-/** Situação do interruptor da IA: qualquer usuário interno. */
+/** Situação do interruptor e do escritório: qualquer usuário interno. */
 export async function getAiStatusAction() {
   return runAction({ name: "ai.status", schema: empty, input: {}, handler: (ctx) => service.getAiStatus(ctx) });
+}
+export async function getOfficeStatusAction() {
+  return runAction({ name: "office.status", schema: empty, input: {}, handler: (ctx) => service.getOfficeStatus(ctx) });
 }
 export async function setAiEnabledAction(input: unknown) {
   return runAction({ name: "ai.set_enabled", permission: manage, schema: setAiEnabledSchema, input, handler: (ctx, v) => service.setAiEnabled(ctx, v.enabled, v.reason) });
 }
-export async function getAiUsageAction(input: unknown) {
-  return runAction({ name: "ai.usage", permission: manage, schema: usageSchema, input, handler: (ctx, v) => service.getAiUsage(ctx, v.days) });
+export async function createExecutorAction(input: unknown) {
+  return runAction({ name: "office.executor_create", permission: manage, schema: createExecutorSchema, input, handler: (ctx, v) => service.createExecutor(ctx, v.name) });
+}
+export async function revokeExecutorAction(input: unknown) {
+  return runAction({ name: "office.executor_revoke", permission: manage, schema: revokeExecutorSchema, input, handler: (ctx, v) => service.revokeExecutor(ctx, v.id) });
 }

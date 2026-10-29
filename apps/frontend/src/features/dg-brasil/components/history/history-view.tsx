@@ -14,7 +14,6 @@ const ENTITY_LABEL: Record<HistoryEntryDTO["entityType"], string> = { AGENT: "Ag
 
 function href(e: HistoryEntryDTO): string | undefined {
   if (e.entityType === "AGENT") return dgRoutes.agent(e.entityId);
-  if (e.entityType === "SKILL") return dgRoutes.skill(e.entityId);
   if (e.entityType === "THESIS") return dgRoutes.thesis(e.entityId);
   return undefined;
 }
@@ -25,7 +24,7 @@ export function HistoryView({ result }: { result: ActionResult<HistoryEntryDTO[]
   const entries = result.data;
   return (
     <Panel>
-      <PanelHeader title="Histórico de alterações" description="Toda versão nova de agente, skill, tese ou referência. Execuções antigas continuam ligadas à versão que usaram." />
+      <PanelHeader title="Histórico de alterações" description="Toda versão nova de agente, tese ou referência (e das skills antigas, cadastradas antes do Claude Code do escritório). Execuções antigas continuam ligadas à versão que usaram." />
       {entries.length === 0 ? (
         <EmptyState icon={History} title="Nenhuma alteração registrada." />
       ) : (

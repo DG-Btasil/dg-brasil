@@ -59,6 +59,12 @@ export interface AgentRunDetailDTO {
   proposals: { id: ID; type: string; status: string; summary?: string; reviewId?: ID; applicationError?: string }[];
   documents: { versionId: ID; documentId: ID; title: string; versionNumber: number; reviewId?: ID; reviewStatus?: string }[];
   analysisResult?: { id: ID; summary: string; reviewId?: ID; reviewStatus?: string };
+  /** Computador do escritório que executou (040). */
+  executorName?: string;
+  /** Último andamento informado pelo computador. */
+  progress?: { message: string; at: ISODateTime };
+  /** Linha do tempo: situação, reserva, documentos abertos, entregas. */
+  events: { kind: string; from?: string; to?: string; message?: string; documentVersionId?: ID; at: ISODateTime }[];
   usage?: {
     provider: string;
     model?: string;
@@ -69,6 +75,7 @@ export interface AgentRunDetailDTO {
     details?: Record<string, unknown>;
     toolsUsed?: Record<string, number>;
     errorMessage?: string;
+    executorReport?: Record<string, unknown>;
   };
   config?: Record<string, unknown>;
 }

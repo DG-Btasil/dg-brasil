@@ -12,7 +12,7 @@ export const SECTION_META: Record<SettingsSection, { label: string; description:
   geral: { label: "Geral", description: "Dados do escritório, preferências e identidade", permission: "settings.view" },
   equipe: { label: "Equipe e permissões", description: "Usuários, convites e papéis", permission: "settings.team.manage" },
   integracoes: { label: "Integrações", description: "Integração Judicial, importação de dados (XLSX/CSV), e-mail", permission: "settings.integrations.view" },
-  ia: { label: "IA e uso", description: "Conexão Claude, execuções e limites", permission: "settings.ai.view" },
+  ia: { label: "Computador do escritório", description: "Quem executa os agentes, a fila e o interruptor geral", permission: "settings.ai.view" },
   honorarios: { label: "Modelos de honorários", description: "Modelos usados nos contratos", permission: "settings.fees.manage" },
   notificacoes: { label: "Notificações", description: "Suas preferências de aviso", permission: "settings.notifications.edit" },
   conta: { label: "Sua conta e sessões", description: "Senha, verificação em duas etapas e dispositivos", permission: null },

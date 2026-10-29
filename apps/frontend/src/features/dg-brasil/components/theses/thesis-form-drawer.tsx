@@ -28,7 +28,6 @@ const schema = z.object({
   exclusionCriteria: z.string().max(50_000).optional(),
   notes: z.string().max(20_000).optional(),
   agentIds: z.array(z.string()),
-  skillIds: z.array(z.string()),
   referenceIds: z.array(z.string()),
 });
 type Values = z.infer<typeof schema>;
@@ -48,7 +47,7 @@ export function ThesisFormDrawer({ open, onOpenChange, thesis, catalog }: { open
     title: thesis?.title ?? "", description: thesis?.description ?? "", legalAreaId: thesis?.legalAreaId ?? "",
     status: thesis?.status ?? "DRAFT", foundations: thesis?.foundations ?? "", applicationCriteria: thesis?.applicationCriteria ?? "",
     exclusionCriteria: thesis?.exclusionCriteria ?? "", notes: thesis?.notes ?? "",
-    agentIds: thesis?.agentIds ?? [], skillIds: thesis?.skillIds ?? [], referenceIds: thesis?.referenceIds ?? [],
+    agentIds: thesis?.agentIds ?? [], referenceIds: thesis?.referenceIds ?? [],
   };
   const { register, control, handleSubmit, formState: { errors, isSubmitting } } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: initial });
 
@@ -58,7 +57,7 @@ export function ThesisFormDrawer({ open, onOpenChange, thesis, catalog }: { open
       title: v.title, description: v.description || undefined, legalAreaId: v.legalAreaId, status: v.status,
       foundations: v.foundations || undefined, applicationCriteria: v.applicationCriteria || undefined,
       exclusionCriteria: v.exclusionCriteria || undefined, notes: v.notes || undefined,
-      agentIds: v.agentIds, skillIds: v.skillIds, referenceIds: v.referenceIds,
+      agentIds: v.agentIds, referenceIds: v.referenceIds,
     };
     const r = await callAction(() => saveDgThesisAction({ ...payload, key: idempotency.keyFor(payload) }));
     if (!r.ok) {
@@ -120,9 +119,6 @@ export function ThesisFormDrawer({ open, onOpenChange, thesis, catalog }: { open
         </Field>
         <Controller control={control} name="agentIds" render={({ field }) => (
           <CheckboxList legend="Agentes autorizados" options={opts(catalog.agents)} value={field.value} onChange={field.onChange} />
-        )} />
-        <Controller control={control} name="skillIds" render={({ field }) => (
-          <CheckboxList legend="Skills que operacionalizam a tese" options={opts(catalog.skills)} value={field.value} onChange={field.onChange} />
         )} />
         <Controller control={control} name="referenceIds" render={({ field }) => (
           <CheckboxList legend="Referências" options={opts(catalog.references)} value={field.value} onChange={field.onChange} />

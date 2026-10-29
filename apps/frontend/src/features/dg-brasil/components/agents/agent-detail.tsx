@@ -14,7 +14,6 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
-import { AGENT_READ_TOOLS, AI_EFFORT_LABEL, AI_MODEL_LABEL } from "@/lib/constants/ai";
 import { AGENT_STATUS_LABEL, AGENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatEventTime } from "@/lib/formatting";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
@@ -39,8 +38,8 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
   const [running, setRunning] = useState(false);
   const items: TabItem<AgentTab>[] = [
     { key: "visao-geral", label: "Visão geral" },
-    { key: "instrucoes", label: "Instruções" },
-    { key: "conhecimento", label: "Skills, teses e referências", count: agent.skillIds.length + agent.thesisIds.length + agent.referenceIds.length },
+    { key: "instrucoes", label: "Orientações" },
+    { key: "conhecimento", label: "Teses e referências", count: agent.thesisIds.length + agent.referenceIds.length },
     { key: "execucoes", label: "Execuções" },
     { key: "versoes", label: "Versões", count: agent.versions.length },
   ];
@@ -52,7 +51,10 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
         {tab === "visao-geral" && <Overview agent={agent} catalog={catalog} />}
         {tab === "instrucoes" && (
           <Panel>
-            <PanelHeader title={`Instruções · ${formatVersion(agent.version)}`} description="Texto usado em toda execução desta versão. Editar cria uma versão nova." />
+            <PanelHeader
+              title={`Orientações do DG Brasil · ${formatVersion(agent.version)}`}
+              description="Vão junto com cada trabalho desta versão (o que entregar e como). As instruções do agente ficam no Claude Code do escritório. Editar cria uma versão nova."
+            />
             <PanelBody>
               <InstructionsView text={agent.instructions} />
             </PanelBody>
@@ -60,12 +62,6 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
         )}
         {tab === "conhecimento" && (
           <div className="space-y-5">
-            <Panel>
-              <PanelHeader title="Skills" description="Carregadas no ambiente isolado em cada execução (até 20)." />
-              <PanelBody>
-                <LinkedNames ids={agent.skillIds} catalog={catalog.skills} href={dgRoutes.skill} empty="Nenhuma skill vinculada." />
-              </PanelBody>
-            </Panel>
             <Panel>
               <PanelHeader title="Teses autorizadas" description="O agente consulta só as ativas, quando precisa." />
               <PanelBody>
@@ -161,7 +157,7 @@ function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () =>
         description={
           pausing
             ? "O agente deixa de receber execuções novas. O que já foi entregue continua em Revisões."
-            : "O agente volta a receber execuções (se a IA estiver ligada em Configurações → IA)."
+            : "O agente volta a receber trabalhos (se a execução pelo escritório estiver ligada em Configurações → Computador do escritório)."
         }
         footer={
           <>
@@ -179,29 +175,22 @@ function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () =>
 }
 
 function Overview({ agent, catalog }: { agent: AgentDetailDTO; catalog: DgCatalogDTO }) {
-  const c = agent.config;
   return (
     <div className="space-y-5">
       <Panel>
-        <PanelHeader title="Configuração de execução" />
-        <PanelBody>
+        <PanelHeader title="Quem executa" description="O agente com este nome no Claude Code do computador do escritório faz o trabalho." />
+        <PanelBody className="space-y-3">
           <DefinitionGrid
-            columns={4}
+            columns={2}
             items={[
-              { label: "Modelo", value: AI_MODEL_LABEL[c.model] ?? c.model },
-              { label: "Esforço", value: AI_EFFORT_LABEL[c.effort] },
-              { label: "Ambiente isolado", value: c.codeExecution ? "Ligado" : "Desligado" },
-              { label: "Teto de custo", value: `US$ ${c.maxBudgetUsd.toFixed(2)}` },
-              { label: "Passos (máx.)", value: String(c.maxTurns) },
-              { label: "Chamadas de ferramenta", value: String(c.maxToolCalls) },
-              { label: "Tempo máximo", value: `${Math.round(c.maxDurationSeconds / 60)} min` },
-              {
-                label: "Ferramentas de leitura",
-                value: c.tools.length ? c.tools.map((t) => AGENT_READ_TOOLS.find((x) => x.id === t)?.label ?? t).join(", ") : "Todas",
-              },
+              { label: "Agente no Claude Code", value: agent.localAgent ? <code className="font-mono text-[12.5px]">{agent.localAgent}</code> : "Não definido" },
+              { label: "Versão do registro", value: formatVersion(agent.version) },
               { label: "Objetivo", value: agent.purpose, wide: true },
             ]}
           />
+          {!agent.localAgent && (
+            <Callout tone="warning">Sem agente local definido, os trabalhos deste agente falham no computador do escritório. Edite e informe o nome.</Callout>
+          )}
         </PanelBody>
       </Panel>
       <TemplatesPanel agent={agent} catalog={catalog} />

@@ -172,7 +172,7 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
 
 /* ------------------------------------------------------------------ */
 
-/** Rótulos dos campos de proposta (propostas.ts do worker). */
+/** Rótulos dos campos de proposta (contrato em server/executor/contract.ts). */
 const PAYLOAD_LABEL: Record<string, string> = {
   title: "Título", description: "Descrição", due_at: "Vence em", priority: "Prioridade", legal_process_id: "Processo",
   responsible_user_id: "Responsável", category: "Categoria", label: "Documento", required: "Obrigatório",
@@ -260,7 +260,7 @@ function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: Revi
   const entries = Object.entries(data ?? target.payload).filter(([key]) => data || key !== "summary");
   return (
     <Panel>
-      <PanelHeader title={PROPOSAL_TYPE_LABEL[target.proposalType] ?? "Proposta do agente"} description={`Criada em ${formatDateTime(target.createdAt)}. Aprovar aplica a proposta pelo worker.`} />
+      <PanelHeader title={PROPOSAL_TYPE_LABEL[target.proposalType] ?? "Proposta do agente"} description={`Criada em ${formatDateTime(target.createdAt)}. Aprovar aplica a proposta automaticamente, em até um minuto.`} />
       <PanelBody className="space-y-4">
         {summary && (
           <Callout tone="warning" title="Proposta da IA — não aplicada">

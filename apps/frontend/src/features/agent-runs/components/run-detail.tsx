@@ -12,8 +12,8 @@ import { PageHeader } from "@/components/ui/display";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
-import { AI_MODEL_LABEL, runErrorLabel } from "@/lib/constants/ai";
-import { formatDateTime, formatNumber } from "@/lib/formatting";
+import { runErrorLabel } from "@/lib/constants/ai";
+import { formatDateTime, formatEventTime, formatNumber } from "@/lib/formatting";
 import { useAutoRefresh } from "@/lib/hooks/use-auto-refresh";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { cancelAgentRunAction, retryAgentRunAction } from "@/server/domain/agents/actions";
@@ -44,10 +44,11 @@ const DECISION_LABEL: Record<string, string> = {
 };
 
 /**
- * Detalhe de uma execução: situação, o que o agente entregou (cada item com a
- * sua revisão humana) e as tentativas ligadas. Erro em linguagem de usuário
- * (nunca o erro bruto do provedor). Uso, custo e configuração só para ADMIN.
- * Enquanto na fila ou rodando, a tela se atualiza sozinha.
+ * Detalhe de uma execução: situação, andamento no computador do escritório,
+ * o que o agente entregou (cada item com a sua revisão humana), a linha do
+ * tempo e as tentativas ligadas. Erro em linguagem de usuário (nunca o erro
+ * bruto). Dados técnicos só para ADMIN. Enquanto na fila ou rodando, a tela
+ * se atualiza sozinha.
  */
 export function RunDetail({ result }: { result: ActionResult<AgentRunDetailDTO> }) {
   if (!result.ok) return <ActionErrorState error={result} title="Não foi possível abrir a execução." />;
@@ -112,10 +113,15 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
 
       <div className="space-y-5">
         {active && (
-          <Callout tone="info" title={run.status === "QUEUED" ? "Na fila." : run.cancelRequested ? "Interrupção solicitada." : "O agente está trabalhando."}>
+          <Callout
+            tone="info"
+            title={run.status === "QUEUED" ? "Na fila do escritório." : run.cancelRequested ? "Interrupção solicitada." : `Em andamento${run.executorName ? ` no ${run.executorName}` : ""}.`}
+          >
             {run.cancelRequested
-              ? "O agente foi avisado e vai parar sem entregar nada novo."
-              : "Esta tela se atualiza sozinha. O que o agente entregar vai para Revisões e só vale depois da decisão humana."}
+              ? "O computador do escritório foi avisado e vai parar sem entregar nada novo."
+              : run.status === "QUEUED"
+                ? "O trabalho começa quando alguém do escritório abrir o Claude Code e processar a fila. Esta tela se atualiza sozinha."
+                : `${run.progress?.message ? `${run.progress.message}. ` : ""}Esta tela se atualiza sozinha. O que o agente entregar vai para Revisões e só vale depois da decisão humana.`}
           </Callout>
         )}
         {error && run.status !== "CANCELLED" && (
@@ -159,6 +165,8 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
           </PanelBody>
         </Panel>
 
+        {run.events.length > 0 && <Timeline events={run.events} />}
+
         {(run.retryOfId || run.retriedByIds.length > 0) && (
           <Panel>
             <PanelHeader title="Tentativas" />
@@ -187,17 +195,22 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
 
         {isAdmin && run.usage && (
           <Panel>
-            <PanelHeader title="Uso e configuração (administrador)" description="Custo estimado pelos tokens; não inclui as horas do ambiente isolado do provedor." />
+            <PanelHeader title="Dados técnicos (administrador)" description="Execuções pelo computador do escritório no modo assistido não medem tokens nem custo." />
             <PanelBody className="space-y-4">
               <DefinitionGrid
                 columns={4}
                 items={[
-                  { label: "Provedor", value: run.usage.provider },
-                  { label: "Modelo", value: run.usage.model ? (AI_MODEL_LABEL[run.usage.model] ?? run.usage.model) : undefined },
+                  { label: "Executado por", value: run.usage.provider === "CLAUDE_CODE" ? `Claude Code${run.executorName ? ` · ${run.executorName}` : ""}` : run.usage.provider },
+                  { label: "Modelo", value: run.usage.model },
                   { label: "Tokens (entrada / saída)", value: run.usage.inputTokens !== undefined ? `${formatNumber(run.usage.inputTokens)} / ${formatNumber(run.usage.outputTokens ?? 0)}` : undefined },
                   { label: "Custo estimado", value: run.usage.estimatedCost !== undefined ? `US$ ${run.usage.estimatedCost.toFixed(4)}` : undefined },
                   { label: "Ferramentas usadas", value: run.usage.toolsUsed ? Object.entries(run.usage.toolsUsed).map(([k, v]) => `${k} ×${v}`).join(", ") : undefined, wide: true },
                   { label: "Mensagem técnica (sanitizada)", value: run.usage.errorMessage, wide: true },
+                  {
+                    label: "Relatório do computador",
+                    value: run.usage.executorReport ? Object.entries(run.usage.executorReport).map(([k, v]) => `${k}: ${String(v)}`).join(" · ") : undefined,
+                    wide: true,
+                  },
                 ]}
               />
               {run.config && Object.keys(run.config).length > 0 && (
@@ -235,5 +248,33 @@ function Item({ title, detail, status, href, note }: { title: string; detail?: s
         )}
       </div>
     </div>
+  );
+}
+
+const EVENT_STATUS_LABEL: Record<string, string> = {
+  QUEUED: "Na fila", RUNNING: "Em andamento", WAITING_HUMAN: "Aguardando decisão humana", COMPLETED: "Concluída", FAILED: "Falhou", CANCELLED: "Interrompida",
+};
+
+/** Linha do tempo (agent_run_events, 040): situação, reserva, documentos abertos (com a versão), entregas. */
+function Timeline({ events }: { events: AgentRunDetailDTO["events"] }) {
+  const text = (e: AgentRunDetailDTO["events"][number]) => {
+    if (e.kind === "STATUS") return `${EVENT_STATUS_LABEL[e.to ?? ""] ?? e.to}${e.message ? ` · ${runErrorLabel(e.message) ?? e.message}` : ""}`;
+    if (e.kind === "DOCUMENT_OPENED") return `Documento aberto: ${e.message ?? "documento do caso"}`;
+    return e.message ?? e.kind;
+  };
+  return (
+    <Panel>
+      <PanelHeader title="Linha do tempo" description="O que aconteceu nesta execução, inclusive quais versões de documento foram processadas." />
+      <PanelBody>
+        <ol className="space-y-1.5 text-[12.5px]">
+          {events.map((e, i) => (
+            <li key={`${e.at}-${i}`} className="flex gap-3">
+              <span className="w-28 shrink-0 tabular text-subtle">{formatEventTime(e.at)}</span>
+              <span className={e.kind === "STATUS" ? "font-medium text-foreground" : "text-muted"}>{text(e)}</span>
+            </li>
+          ))}
+        </ol>
+      </PanelBody>
+    </Panel>
   );
 }
