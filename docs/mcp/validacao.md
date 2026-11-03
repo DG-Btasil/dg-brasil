@@ -39,8 +39,8 @@ devolva o relatório no formato da seção final.
    direto `db.<ref>.supabase.co` (ENV-01).
 3. **Crie ou atualize o `apps/frontend/.env.local`.** Precisa ter
    `DG_WORKER_DB_URL` com o mesmo valor (ver `apps/frontend/.env.example`).
-4. **Confira as versões:** Node 22 ou mais novo e a Supabase CLI logada no projeto
-   DEV.
+4. **Confira as versões:** Node 24 (o site fixa `24.x`, o mesmo da Vercel) e a
+   Supabase CLI logada no projeto DEV.
 
 ## Parte 1: Migrations 040 e 041 no DEV
 

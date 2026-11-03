@@ -14,7 +14,7 @@ processual nem chamada à Claude a partir do front.
 
 ## Como rodar
 
-Requer Node.js 20.9+ (desenvolvido com Node 24).
+Requer Node.js 24 (`engines: "24.x"` no `package.json`, o mesmo que a Vercel usa no build).
 
 ```bash
 cd apps/frontend
