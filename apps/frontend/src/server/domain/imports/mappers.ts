@@ -120,19 +120,41 @@ export interface ImportRowRow {
   outcome: unknown;
 }
 
-export function toRow(r: ImportRowRow): ImportRowDTO {
+/** Colunas da planilha mapeadas para nome, CPF/CNPJ e CNJ (para ler a linha crua). */
+export interface RowColumns {
+  name?: string;
+  document?: string;
+  cnj?: string;
+}
+
+export function rowColumns(mapping: { sourceColumn: string; targetField: string }[]): RowColumns {
+  const col = (f: string) => mapping.find((m) => m.targetField === f)?.sourceColumn;
+  return { name: col("client.name"), document: col("client.document"), cnj: col("process.cnj") };
+}
+
+/**
+ * Linha → DTO. Linha com erro não tem `payload`: nome, documento e CNJ saem da
+ * linha original pela coluna MAPEADA (nunca pela "primeira" chave do jsonb,
+ * que o Postgres reordena — QA 7, IMP-02).
+ */
+export function toRow(r: ImportRowRow, cols: RowColumns = {}): ImportRowDTO {
   const payload = (r.payload && typeof r.payload === "object" ? r.payload : {}) as { client?: Json; process?: Json };
   const o = r.outcome && typeof r.outcome === "object" ? (r.outcome as Json) : undefined;
   const raw = r.raw_data && typeof r.raw_data === "object" ? (r.raw_data as Record<string, string>) : undefined;
+  const fromRaw = (c?: string) => (c && raw ? str(raw[c]) : undefined);
+  const clientDocument = str(payload.client?.document);
+  const processCnj = str(payload.process?.cnj);
   return {
     rowNumber: r.row_number,
     status: r.status,
     errors: strings(r.errors),
     warnings: strings(r.warnings),
     raw,
-    clientName: str(payload.client?.name),
-    clientDocument: str(payload.client?.document),
-    processCnj: str(payload.process?.cnj),
+    clientName: str(payload.client?.name) ?? fromRaw(cols.name),
+    clientDocument,
+    processCnj,
+    rawDocument: clientDocument ? undefined : fromRaw(cols.document),
+    rawCnj: processCnj ? undefined : fromRaw(cols.cnj),
     outcome: o && {
       result: str(o.result),
       clientAction: str(o.client_action),

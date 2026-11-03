@@ -18,7 +18,7 @@ import type {
   SameFileJobDTO,
   StartedImportDTO,
 } from "./dto";
-import { buildReportCsv, toBatch, toConflicts, toJobSummary, toMapping, toOptions, toPlan, toRow } from "./mappers";
+import { buildReportCsv, rowColumns, toBatch, toConflicts, toJobSummary, toMapping, toOptions, toPlan, toRow } from "./mappers";
 import { normalizeRows, type ImportUser } from "./normalize";
 import { ImportFileError, readSpreadsheet, type ReadResult } from "./parse";
 import * as repo from "./repository";
@@ -116,7 +116,10 @@ export async function readColumns(ctx: ServiceContext, input: { jobId: string; s
     if (!(e instanceof ImportFileError)) throw e;
     // Primeira leitura: arquivo ilegível encerra o job (FAILED, com o motivo).
     // Troca de aba que falha: só avisa, o job continua.
-    if (!input.sheetName) await repo.failJob(ctx.db, input.jobId, e.message);
+    if (!input.sheetName) {
+      await repo.failJob(ctx.db, input.jobId, e.message);
+      await removeFile(ctx, deps, input.jobId).catch((err: unknown) => ctx.log.warn("import.file_delete_failed", { jobId: input.jobId, error: err instanceof Error ? err.message : String(err) }));
+    }
     throw new DomainError("VALIDATION", e.message);
   }
   const { table, checksum } = read;
@@ -268,8 +271,12 @@ const FILTER_STATUSES: Record<string, string[] | null> = {
 export async function listRows(ctx: ServiceContext, input: PageInput & { jobId: string; filter: string }): Promise<Page<ImportRowDTO>> {
   requireAdmin(ctx);
   const from = (input.page - 1) * input.pageSize;
-  const { rows, total } = await repo.listRows(ctx.db, input.jobId, FILTER_STATUSES[input.filter] ?? null, { from, to: from + input.pageSize - 1 });
-  return toPage(rows.map(toRow), total, input);
+  const [{ rows, total }, mappings] = await Promise.all([
+    repo.listRows(ctx.db, input.jobId, FILTER_STATUSES[input.filter] ?? null, { from, to: from + input.pageSize - 1 }),
+    repo.getMappings(ctx.db, input.jobId),
+  ]);
+  const cols = rowColumns(toMapping(mappings));
+  return toPage(rows.map((r) => toRow(r, cols)), total, input);
 }
 
 export async function getConflicts(ctx: ServiceContext, input: { jobId: string; offset: number; limit: number }): Promise<ImportConflictsDTO> {
@@ -326,7 +333,7 @@ export async function buildReport(ctx: ServiceContext, input: { jobId: string; o
   const rows: ImportRowDTO[] = [];
   for (let from = 0; ; from += REPORT_PAGE) {
     const page = await repo.listRows(ctx.db, input.jobId, statuses, { from, to: from + REPORT_PAGE - 1 });
-    rows.push(...page.rows.map(toRow));
+    rows.push(...page.rows.map((r) => toRow(r)));
     if (page.rows.length < REPORT_PAGE) break;
   }
   const columns = Array.isArray(job.detected_columns) ? (job.detected_columns as string[]) : [];

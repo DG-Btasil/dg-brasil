@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { FileSpreadsheet, X } from "lucide-react";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -55,7 +54,6 @@ const STEP_OF: Record<ImportJobStatus, number> = {
 const CANCELLABLE: ImportJobStatus[] = ["UPLOADED", "COLUMNS_DETECTED", "MAPPED", "VALIDATED", "CONFLICTS_PENDING"];
 
 export function ImportJobView({ jobId }: { jobId: string }) {
-  const router = useRouter();
   const toast = useToast();
   const failed = useActionFeedback();
   const [job, setJob] = useState<ActionResult<ImportJobDTO> | null>(null);
@@ -83,29 +81,37 @@ export function ImportJobView({ jobId }: { jobId: string }) {
   const status = job?.ok ? job.data.status : undefined;
   const mappingNeeded = status === "UPLOADED" || status === "COLUMNS_DETECTED" || status === "MAPPED" || (remap && (status === "VALIDATED" || status === "CONFLICTS_PENDING"));
 
-  // Colunas: primeira leitura (registra) ou prévia (só leitura) ao reabrir o mapeamento.
+  // Áreas e equipe (opções do mapeamento): uma vez por importação.
   useEffect(() => {
-    if (!mappingNeeded || columns) return;
     let alive = true;
-    const read = status === "UPLOADED" ? readImportColumnsAction({ jobId }) : previewImportColumnsAction({ jobId });
-    Promise.all([callAction(() => read), reference ? Promise.resolve(null) : callAction(() => getImportReferenceAction())]).then(async ([c, ref]) => {
+    callAction(() => getImportReferenceAction()).then((r) => {
       if (!alive) return;
-      if (ref) {
-        if (ref.ok) setReference(ref.data);
-        else setColumnsError(ref);
-      }
-      if (!c.ok) {
-        setColumnsError(c);
-        if (status === "UPLOADED") await reload();
-        return;
-      }
-      setColumns(c.data);
-      if (status === "UPLOADED") await reload();
+      if (r.ok) setReference(r.data);
+      else setColumnsError(r);
     });
     return () => {
       alive = false;
     };
-  }, [mappingNeeded, columns, status, jobId, reference, reload]);
+  }, [jobId]);
+
+  // Colunas: primeira leitura (registra) ou prévia (só leitura) ao reabrir o
+  // mapeamento. Uma vez por situação; depois de erro, só com "Tentar novamente".
+  // (Antes dependia também da referência e rodava duas vezes: QA 7, IMP-04.)
+  useEffect(() => {
+    if (!mappingNeeded || columns || columnsError) return;
+    let alive = true;
+    const first = status === "UPLOADED";
+    callAction(() => (first ? readImportColumnsAction({ jobId }) : previewImportColumnsAction({ jobId }))).then(async (c) => {
+      // A primeira leitura muda a situação (colunas lidas, ou falhou): relê a importação.
+      if (first) setJob(await callAction(() => getImportJobAction({ jobId })));
+      if (!alive) return;
+      if (c.ok) setColumns(c.data);
+      else setColumnsError(c);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [mappingNeeded, columns, columnsError, status, jobId]);
 
   async function changeSheet(sheet: string) {
     setBusy(true);
@@ -245,7 +251,7 @@ export function ImportJobView({ jobId }: { jobId: string }) {
 
       {mappingNeeded &&
         (columnsError ? (
-          <ActionErrorState error={columnsError} title="Não foi possível ler o arquivo." onRetry={() => router.refresh()} />
+          <ActionErrorState error={columnsError} title="Não foi possível ler o arquivo." onRetry={() => setColumnsError(null)} />
         ) : !columns || !reference || j.status === "UPLOADED" ? (
           <Callout tone="info" title="Lendo o arquivo…">
             Conferindo o cabeçalho e as linhas. Planilhas grandes levam alguns segundos.

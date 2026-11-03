@@ -27,8 +27,14 @@ devolva o relatório no formato da seção final.
 
 ```bash
 cd supabase
-npx supabase db push --dry-run    # deve listar SÓ 20261031000042_spreadsheet_import.sql
-npx supabase db push
+npx supabase db push --remote --dry-run    # deve listar SÓ 20261031000042_spreadsheet_import.sql
+npx supabase db push --remote
+```
+
+(A Supabase CLI 3.x manda o `db push` para o banco LOCAL sem o `--remote`;
+sem Docker dá `ECONNREFUSED 127.0.0.1:54322` — QA 7, G-01.)
+
+```bash
 ```
 
 - [ ] **Push sem erro.**
@@ -46,7 +52,10 @@ npx supabase db push
   select private.import_housekeeping();
   ```
 
-  Esperado: algo como `{"cancelled": 0, "purged_rows": 0}`, sem erro.
+  Esperado: `{"cancelled": N, "purged_rows": 0}`, sem erro. Na primeira vez, N
+  pode ser maior que 0: jobs `x.csv` antigos do `validar:real` (a tabela existe
+  desde a 013), parados há mais de 7 dias, são cancelados — é o comportamento
+  certo (QA 7, G-02).
 
 ## Parte 2: Banco
 

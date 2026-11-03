@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { IMPORT_FIELD_KEYS, mapsProcess, suggestMapping } from "@/lib/domain/import-fields";
-import { buildReportCsv, toRow } from "./mappers";
+import { buildReportCsv, rowColumns, toRow } from "./mappers";
 import { isValidCnj, matchUser, normalizeRows, parseDate, parseMoney, parseStatus, parseUf, type ImportUser } from "./normalize";
 import { ImportFileError, readSpreadsheet } from "./parse";
 import { decodeText, detectDelimiter, parseCsv } from "./parse/csv";
@@ -288,6 +288,22 @@ describe("validação linha a linha (simulação)", () => {
     );
     expect(a!.errors[0]).toMatch(/sem número CNJ/);
     expect(b!.payload!.client.kind).toBe("COMPANY");
+  });
+});
+
+describe("linha com erro na tela (QA 7, IMP-02)", () => {
+  it("nome, CPF e CNJ vêm da coluna MAPEADA, não da primeira chave do jsonb (que o Postgres reordena)", () => {
+    const cols = rowColumns([
+      { sourceColumn: "Nome Completo", targetField: "client.name" },
+      { sourceColumn: "CPF/CNPJ", targetField: "client.document" },
+      { sourceColumn: "Nº Processo", targetField: "process.cnj" },
+    ]);
+    // Ordem do jsonb devolvido: chaves mais curtas primeiro.
+    const raw = { "Ação": "Revisional", "CPF/CNPJ": "999.700.000", "Nº Processo": "7000006-xx", "Nome Completo": "Paulo CPF Curto" };
+    const r = toRow({ row_number: 7, status: "ERROR", errors: ["x"], warnings: [], raw_data: raw, payload: null, outcome: null }, cols);
+    expect([r.clientName, r.clientDocument, r.rawDocument, r.processCnj, r.rawCnj]).toEqual(["Paulo CPF Curto", undefined, "999.700.000", undefined, "7000006-xx"]);
+    const empty = toRow({ row_number: 11, status: "ERROR", errors: ["x"], warnings: [], raw_data: { "Ação": "Revisional" }, payload: null, outcome: null }, cols);
+    expect(empty.clientName).toBeUndefined();
   });
 });
 

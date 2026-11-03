@@ -121,6 +121,9 @@ export interface ImportRowDTO {
   clientName?: string;
   clientDocument?: string;
   processCnj?: string;
+  /** Linha com erro (sem payload): CPF/CNPJ e CNJ como estão na planilha. */
+  rawDocument?: string;
+  rawCnj?: string;
   outcome?: {
     result?: string;
     clientAction?: string;

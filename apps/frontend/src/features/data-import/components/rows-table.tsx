@@ -119,15 +119,17 @@ export function RowsTable({ jobId, filters, initial, version = 0 }: { jobId: str
             </THead>
             <TBody>
               {data.data.items.map((r) => {
-                const name = r.clientName ?? Object.values(r.raw ?? {})[0];
+                const name = r.clientName;
                 return (
                   <Tr key={r.rowNumber}>
                     <Td className="align-top tabular text-muted">{r.rowNumber}</Td>
                     <Td className="max-w-60 align-top">
                       <span className="block truncate">{name ?? <span className="text-subtle">—</span>}</span>
-                      {r.clientDocument && <span className="block text-[12px] tabular text-muted">{formatDocument(r.clientDocument)}</span>}
+                      {(r.clientDocument || r.rawDocument) && (
+                        <span className="block text-[12px] tabular text-muted">{r.clientDocument ? formatDocument(r.clientDocument) : r.rawDocument}</span>
+                      )}
                     </Td>
-                    <Td className="align-top text-[12px] tabular">{r.processCnj ? formatCNJ(r.processCnj) : <span className="text-subtle">—</span>}</Td>
+                    <Td className="align-top text-[12px] tabular">{r.processCnj ? formatCNJ(r.processCnj) : (r.rawCnj ?? <span className="text-subtle">—</span>)}</Td>
                     <Td className="align-top">
                       <Badge tone={ROW_STATUS_TONE[r.status]} dot>
                         {ROW_STATUS_LABEL[r.status]}

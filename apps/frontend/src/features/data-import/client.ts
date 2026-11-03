@@ -3,6 +3,7 @@
 import { callAction, type ActionError, type ActionResult } from "@/lib/actions/result";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { cancelImportAction, startImportAction } from "@/server/domain/imports/actions";
+import { csvBlob } from "./csv-blob";
 
 /** Igual ao limite do bucket `imports` (017). */
 export const MAX_IMPORT_BYTES = 20_971_520;
@@ -43,9 +44,9 @@ export async function uploadImportFile(file: File): Promise<ActionResult<{ jobId
   return { ok: true, data: { jobId: s.jobId }, requestId: started.requestId };
 }
 
-/** Baixa um texto (CSV do relatório) como arquivo. */
-export function downloadText(fileName: string, content: string, type = "text/csv;charset=utf-8") {
-  const url = URL.createObjectURL(new Blob([content], { type }));
+/** Baixa o CSV do relatório como arquivo. */
+export function downloadText(fileName: string, content: string) {
+  const url = URL.createObjectURL(csvBlob(content));
   const a = document.createElement("a");
   a.href = url;
   a.download = fileName;
