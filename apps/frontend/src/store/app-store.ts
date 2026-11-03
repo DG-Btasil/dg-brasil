@@ -3,7 +3,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { createSeedData } from "@/mocks";
-import { createImportSlice } from "./slices/data-import";
 import { createDgSlice } from "./slices/finance-dg";
 import { nowISO } from "@/lib/clock";
 import { syncCaseStatuses } from "@/lib/domain/legal-case";
@@ -59,7 +58,6 @@ export const useAppStore = create<AppStore>()(
         preferences: {},
         ...createSessionSlice(set, get),
         ...createOfficeSlice(set, get),
-        ...createImportSlice(set, get),
         ...createDgSlice(set, get),
         ...createReferenceSlice(set, get),
       };

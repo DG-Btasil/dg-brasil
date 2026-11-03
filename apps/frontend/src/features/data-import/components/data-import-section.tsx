@@ -1,39 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import { FileSpreadsheet, FileUp } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { ArrowRight, FileSpreadsheet, FileUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button";
 import { Panel, PanelFooter } from "@/components/ui/panel";
+import { usePermission } from "@/features/auth/hooks";
+import { callAction } from "@/lib/actions/result";
 import { formatDateTime } from "@/lib/formatting";
-import { useLastImport } from "../hooks";
-import { ImportWizard } from "./import-wizard";
+import { listImportJobsAction } from "@/server/domain/imports/actions";
+import type { ImportJobSummaryDTO } from "@/server/domain/imports/dto";
+import { JOB_STATUS_LABEL, JOB_STATUS_TONE } from "../labels";
+import { IMPORTS_HREF, NewImportButton } from "./imports-page";
 
 const IMPORTABLE = [
   "Clientes (pessoa física e jurídica)",
-  "Processos e números CNJ",
-  "Telefones, e-mails e endereços",
-  "Responsáveis",
-  "Datas e status",
-  "Valores da causa",
-  "Informações financeiras (referência)",
+  "Telefone, e-mail e endereço",
+  "Processos (número CNJ, vara, parte contrária…)",
+  "Caso de cada processo, já em andamento",
+  "Responsável pelo cliente e pelo processo",
+  "Próximo vencimento, como prazo",
 ];
 
-/** Migração de outros sistemas/planilhas para o DG Brasil. */
-export function DataImportSection({ canManage }: { canManage: boolean }) {
-  const [open, setOpen] = useState(false);
-  const last = useLastImport();
+/** Configurações → Integrações: atalho para a importação de planilhas (real, Etapa 7). */
+export function DataImportSection() {
+  const canImport = usePermission("imports.manage");
+  const [last, setLast] = useState<ImportJobSummaryDTO | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!canImport) return;
+    let alive = true;
+    callAction(() => listImportJobsAction({ page: 1, pageSize: 1 })).then((r) => alive && setLast(r.ok ? (r.data.items[0] ?? null) : null));
+    return () => {
+      alive = false;
+    };
+  }, [canImport]);
+
   return (
     <section aria-labelledby="import-title" className="space-y-3">
       <div className="flex items-start gap-3">
         <FileUp className="mt-0.5 size-4 text-navy-700" aria-hidden />
         <div>
           <h3 id="import-title" className="text-[15px] font-semibold text-foreground">
-            Importação de Dados
+            Importação de planilhas
           </h3>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            Para escritórios que já usam outros sistemas ou planilhas. Uma importação pode criar clientes, processos e os vínculos entre eles, com validação e prévia antes
-            de gravar.
+            Para trazer clientes e processos de outro sistema ou de planilhas. Simulação antes de gravar, decisão em cada conflito e relatório do que entrou e do que falhou.
           </p>
         </div>
       </div>
@@ -48,12 +61,20 @@ export function DataImportSection({ canManage }: { canManage: boolean }) {
               <Badge tone="navy" icon={<FileSpreadsheet className="size-3" aria-hidden />}>
                 CSV
               </Badge>
-              <Badge tone="neutral">Outros sistemas — próxima etapa</Badge>
+              <Badge tone="neutral">até 5.000 linhas · 20 MB</Badge>
             </div>
             <p className="mt-3 text-[12px] text-muted">
-              {last ? (
+              {!canImport ? (
+                "Só o administrador importa planilhas."
+              ) : last === undefined ? (
+                "Carregando…"
+              ) : last ? (
                 <>
-                  Última importação: <span className="tabular">{formatDateTime(last.at)}</span> por {last.actor.name}.
+                  Última:{" "}
+                  <Link href={`${IMPORTS_HREF}/${last.id}`} className="text-navy-700 hover:underline">
+                    {last.fileName}
+                  </Link>{" "}
+                  · <Badge tone={JOB_STATUS_TONE[last.status]}>{JOB_STATUS_LABEL[last.status]}</Badge> · <span className="tabular">{formatDateTime(last.createdAt)}</span>
                 </>
               ) : (
                 "Nenhuma importação realizada ainda."
@@ -72,16 +93,16 @@ export function DataImportSection({ canManage }: { canManage: boolean }) {
             </ul>
           </div>
         </div>
-        {canManage && (
+        {canImport && (
           <PanelFooter className="justify-start">
-            <Button icon={<FileUp className="size-4" aria-hidden />} onClick={() => setOpen(true)}>
-              Importar dados
-            </Button>
-            <span className="text-[12px] text-muted">Linhas com erro nunca são importadas; duplicatas exigem sua decisão.</span>
+            <NewImportButton size="sm" />
+            <ButtonLink href={IMPORTS_HREF} variant="ghost" size="sm" icon={<ArrowRight className="size-3.5" aria-hidden />}>
+              Ver importações
+            </ButtonLink>
+            <span className="text-[12px] text-muted">Linhas com erro nunca são gravadas; duplicatas exigem sua decisão.</span>
           </PanelFooter>
         )}
       </Panel>
-      {canManage && <ImportWizard open={open} onClose={() => setOpen(false)} />}
     </section>
   );
 }

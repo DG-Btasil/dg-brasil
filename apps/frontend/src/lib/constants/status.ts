@@ -687,22 +687,6 @@ export const JUDICIAL_CAPABILITY_LABEL: Record<JudicialCapability, string> = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Importação de dados                                                 */
-/* ------------------------------------------------------------------ */
-
-export const IMPORT_ISSUE_SEVERITIES = ["ERROR", "WARNING"] as const;
-export type ImportIssueSeverity = (typeof IMPORT_ISSUE_SEVERITIES)[number];
-
-/** Ações possíveis para uma linha que conflita com registro já existente. */
-export const IMPORT_CONFLICT_ACTIONS = ["UPDATE", "IGNORE", "CREATE_NEW"] as const;
-export type ImportConflictAction = (typeof IMPORT_CONFLICT_ACTIONS)[number];
-export const IMPORT_CONFLICT_ACTION_LABEL: Record<ImportConflictAction, string> = {
-  UPDATE: "Atualizar o existente",
-  IGNORE: "Ignorar esta linha",
-  CREATE_NEW: "Criar novo registro",
-};
-
-/* ------------------------------------------------------------------ */
 /* Usuários                                                            */
 /* ------------------------------------------------------------------ */
 

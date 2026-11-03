@@ -5,7 +5,6 @@
 import {
   mockReferenceRepository,
   mockDgRepository,
-  mockImportRepository,
   mockIntegrationRepository,
   mockUserRepository,
 } from "./mock";
@@ -14,7 +13,6 @@ export const repositories = {
   users: mockUserRepository,
   dg: mockDgRepository,
   integrations: mockIntegrationRepository,
-  imports: mockImportRepository,
   references: mockReferenceRepository,
 } as const;
 

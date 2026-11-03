@@ -4125,9 +4125,9 @@ await deve('manutenção (pg_cron): proposta aprovada vira prazo; execução fec
   await db.query(`select private.maintenance_tick()`)
   igual((await um(db, `select status from agent_runs where id = $1`, [ids.r040])).status, 'COMPLETED', 'fechou')
 })
-await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo)', async () => {
+await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo; importações diária [042])', async () => {
   const j = await linhas(db, `select jobname, schedule from cron.job where jobname like 'dg-%' order by jobname`)
-  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
+  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-importacoes', '17 6 * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
 })
 
 secao('Computador do escritório: interrupção, falha, devolução e queda [040]')
@@ -4358,6 +4358,335 @@ await deve('funções do Drive fixam search_path; anon e service_role não execu
   igual(r.filter((x) => x.anon || x.srv).map((x) => x.f), [], 'anon/service_role')
   const doServidor = ['drive_links_to_sync', 'drive_known_files', 'drive_prepare_import', 'drive_register_import', 'drive_mark_synced', 'drive_claim_exports', 'drive_mark_export', 'reviews_queue_drive_export']
   igual(r.filter((x) => doServidor.includes(x.f) && x.usr).map((x) => x.f), [], 'usuário logado com porta do servidor')
+})
+
+// ═════════════════════════════ 042 ═══════════════════════════════════════
+
+secao('Importação de planilhas: arquivo, colunas e mapeamento [042]')
+const imp = {}
+const rpc042 = (uid, sql, params) => como(uid, (tx) => um(tx, sql, params)).then((x) => x?.r)
+const cpf042 = (n) => `99904${String(n).padStart(6, '0')}`
+const cnj042 = (n) => cnj(9042000 + n, '2026', '8', '26', '0042')
+const amanha042 = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10)
+
+await deveFalhar('advogado não opera importação', () =>
+  rpc042(ids.lucas, `select public.import_create_job('x.csv', 'CSV') r`), /administrador/)
+await deveFalhar('formato fora de CSV/XLSX é recusado', () =>
+  rpc042(ids.barbara, `select public.import_create_job('x.json', 'JSON') r`), /Formato não aceito/)
+await deve('ADMIN cria o job: UPLOADED, caminho decidido pelo banco (sem o nome do arquivo)', async () => {
+  const r = await rpc042(ids.barbara, `select public.import_create_job('Clientes ADVBOX.xlsx', 'xlsx') r`)
+  imp.job = r.import_job_id
+  igual(r.storage_object_name, `jobs/${imp.job}/source.xlsx`, 'caminho')
+  const j = await um(db, `select status, file_type, created_by, organization_id from import_jobs where id = $1`, [imp.job])
+  igual([j.status, j.file_type, j.created_by, j.organization_id], ['UPLOADED', 'XLSX', ids.barbara, ids.owner], 'job')
+  igual((await rpc042(ids.barbara, `select public.import_authorize_file($1) r`, [imp.job])).storage_object_name, r.storage_object_name, 'autorização')
+})
+const colunas042 = ['Nome', 'CPF', 'Telefone', 'Cidade', 'UF', 'Processo', 'Ação', 'Vara', 'Status', 'Responsável', 'Vencimento']
+await deveFalhar('cabeçalho com coluna repetida é recusado', () =>
+  rpc042(ids.barbara, `select public.import_register_columns($1, $2, 'Plan1', '["Nome","Nome"]', 3) r`, [imp.job, sha('a')]), /mesmo nome/)
+await deveFalhar('mais de 5.000 linhas é recusado', () =>
+  rpc042(ids.barbara, `select public.import_register_columns($1, $2, 'Plan1', '["Nome"]', 5001) r`, [imp.job, sha('a')]), /limite é 5.000/)
+await deve('colunas lidas → COLUMNS_DETECTED; o mesmo arquivo em outro job gera aviso', async () => {
+  const r = await rpc042(ids.barbara, `select public.import_register_columns($1, $2, 'Plan1', $3, 8) r`, [imp.job, sha('4'), JSON.stringify(colunas042)])
+  igual([r.status, r.same_file_jobs.length], ['COLUMNS_DETECTED', 0], 'primeiro')
+  const outro = (await rpc042(ids.barbara, `select public.import_create_job('copia.xlsx', 'XLSX') r`)).import_job_id
+  const r2 = await rpc042(ids.barbara, `select public.import_register_columns($1, $2, null, '["Nome"]', 1) r`, [outro, sha('4')])
+  igual(r2.same_file_jobs.map((x) => x.id), [imp.job], 'aviso de arquivo repetido')
+  await como(ids.barbara, (tx) => tx.query(`select public.import_cancel($1)`, [outro]))
+})
+const map042 = [['Nome', 'client.name'], ['CPF', 'client.document'], ['Telefone', 'client.phone'], ['Cidade', 'client.city'],
+  ['UF', 'client.state'], ['Processo', 'process.cnj'], ['Ação', 'process.actionType'], ['Vara', 'process.court'],
+  ['Status', 'process.status'], ['Responsável', 'process.responsible'], ['Vencimento', 'process.dueDate']]
+  .map(([source_column, target_field]) => ({ source_column, target_field }))
+await deveFalhar('campo de destino fora da lista é recusado', () =>
+  rpc042(ids.barbara, `select public.import_save_mapping($1, '[{"source_column":"Nome","target_field":"client.senha"}]') r`, [imp.job]), /desconhecido/)
+await deveFalhar('sem o nome do cliente não há importação', () =>
+  rpc042(ids.barbara, `select public.import_save_mapping($1, '[{"source_column":"Processo","target_field":"process.cnj"}]') r`, [imp.job]), /nome do cliente/)
+await deveFalhar('com processo, área e advogado padrão são obrigatórios', () =>
+  rpc042(ids.barbara, `select public.import_save_mapping($1, $2, '{}') r`, [imp.job, JSON.stringify(map042)]), /área jurídica/)
+await deveFalhar('advogado padrão precisa ser ADMIN ou LAWYER (assistente não)', () =>
+  rpc042(ids.barbara, `select public.import_save_mapping($1, $2, $3) r`,
+    [imp.job, JSON.stringify(map042), JSON.stringify({ legal_area_id: ids.banking, lawyer_id: ids.ana })]), /advogado responsável padrão/)
+await deve('mapeamento salvo → MAPPED, com as opções', async () => {
+  const r = await rpc042(ids.barbara, `select public.import_save_mapping($1, $2, $3) r`,
+    [imp.job, JSON.stringify(map042), JSON.stringify({ legal_area_id: ids.banking, lawyer_id: ids.lucas })])
+  igual([r.status, r.has_processes], ['MAPPED', true], 'mapeado')
+  const j = await um(db, `select options from import_jobs where id = $1`, [imp.job])
+  igual([j.options.legal_area_id, j.options.lawyer_id], [ids.banking, ids.lucas], 'opções')
+})
+
+secao('Importação de planilhas: simulação e conflitos (nada gravado) [042]')
+await deve('cenário: cliente e processo existentes para conflitar', async () => {
+  const c = await um(db, `select c.id, c.cpf, i.full_name from clients c join individual_client_details i on i.client_id = c.id
+    where c.deleted_at is null order by c.created_at limit 1`)
+  imp.existente = c
+  const outro = await um(db, `select c.id, i.full_name from clients c join individual_client_details i on i.client_id = c.id
+    where c.deleted_at is null and c.id <> $1 order by c.created_at limit 1`, [c.id])
+  imp.homonimo = outro
+  const p = await um(db, `select lp.id, lp.cnj_number, lp.court from legal_processes lp where lp.cnj_number is not null and lp.deleted_at is null order by lp.created_at limit 1`)
+  imp.processo = p
+  if (!c || !outro || !p) throw new Error('cenário sem cliente/processo existente')
+})
+const pf042 = (n, nome, extra = {}) => ({ kind: 'INDIVIDUAL', document: cpf042(n), name: nome, ...extra })
+const linhas042 = () => [
+  { row_number: 2, status: 'VALID', raw_data: { Nome: 'Ana Importada' }, payload: {
+    client: pf042(1, 'Ana Importada', { phone: '11900000001', address: { city: 'Campinas', state: 'SP' }, responsible_user_id: ids.lucas }),
+    process: { cnj: cnj042(1), legal_class: 'Revisional de consignado', court: 'TJSP', status: 'ACTIVE', phase: 'PLEADINGS', due_date: amanha042, responsible_user_id: ids.lucas } } },
+  { row_number: 3, status: 'WARNING', warnings: ['Dados do cliente diferentes da linha 2: vale a primeira.'], payload: {
+    client: pf042(1, 'Ana Importada Outra Grafia'),
+    process: { cnj: cnj042(2), legal_class: 'Repetição de indébito', status: 'FILED' } } },
+  { row_number: 4, status: 'VALID', payload: {
+    client: { kind: 'INDIVIDUAL', document: imp.existente.cpf, name: imp.existente.full_name, phone: '11955554444' },
+    process: { cnj: cnj042(3), legal_class: 'Declaratória' } } },
+  { row_number: 5, status: 'VALID', payload: {
+    client: pf042(5, imp.homonimo.full_name.toUpperCase()),
+    process: { cnj: cnj042(5), legal_class: 'Revisional' } } },
+  { row_number: 6, status: 'VALID', payload: {
+    client: pf042(6, 'Carlos Importado'),
+    process: { cnj: imp.processo.cnj_number, court: 'TJSP — 3ª Vara Cível (importado)' } } },
+  { row_number: 7, status: 'ERROR', errors: ['CPF inválido.'], raw_data: { Nome: 'Sem CPF' } },
+  { row_number: 8, status: 'VALID', payload: { client: pf042(8, 'Dora Só Cliente', { email: 'dora@exemplo.com.br' }) } },
+  { row_number: 9, status: 'VALID', payload: {
+    client: pf042(9, 'Eva Encerrada'),
+    process: { cnj: cnj042(9), legal_class: 'Cobrança', status: 'CLOSED', phase: 'ARCHIVED' } } },
+]
+await deveFalhar('lote com linha sem CPF/CNPJ válido no payload é recusado', () =>
+  rpc042(ids.barbara, `select public.import_stage_rows($1, $2, true) r`,
+    [imp.job, JSON.stringify([{ row_number: 2, status: 'VALID', payload: { client: { document: '123' } } }])]), /Lote de linhas inválido/)
+await deveFalhar('simulação não fecha com linhas faltando', async () => {
+  await rpc042(ids.barbara, `select public.import_stage_rows($1, $2, true) r`, [imp.job, JSON.stringify(linhas042().slice(0, 3))])
+  await rpc042(ids.barbara, `select public.import_finish_dry_run($1) r`, [imp.job])
+}, /incompleta/)
+await deve('simulação: conflitos de CPF, homônimo e CNJ; nada criado em clientes/processos', async () => {
+  const antes = await um(db, `select (select count(*) from clients)::int c, (select count(*) from legal_processes)::int p, (select count(*) from legal_cases)::int k`)
+  const todas = linhas042()
+  igual(await rpc042(ids.barbara, `select public.import_stage_rows($1, $2, true) r`, [imp.job, JSON.stringify(todas.slice(0, 4))]), 4, 'lote 1')
+  igual(await rpc042(ids.barbara, `select public.import_stage_rows($1, $2, false) r`, [imp.job, JSON.stringify(todas.slice(4))]), 4, 'lote 2')
+  const r = await rpc042(ids.barbara, `select public.import_finish_dry_run($1) r`, [imp.job])
+  igual([r.status, r.open_conflicts], ['CONFLICTS_PENDING', 3], 'conflitos')
+  const k = await linhas(db, `select row_number, conflict_kind, existing_entity_id from import_conflicts where import_job_id = $1 order by row_number`, [imp.job])
+  igual(k.map((x) => [x.row_number, x.conflict_kind]), [[4, 'CLIENT_DOCUMENT'], [5, 'POSSIBLE_DUPLICATE'], [6, 'PROCESS_CNJ']], 'tipos')
+  igual([k[0].existing_entity_id, k[1].existing_entity_id, k[2].existing_entity_id], [imp.existente.id, imp.homonimo.id, imp.processo.id], 'existentes')
+  const depois = await um(db, `select (select count(*) from clients)::int c, (select count(*) from legal_processes)::int p, (select count(*) from legal_cases)::int k`)
+  igual(depois, antes, 'simulação não grava')
+  const w = await um(db, `select status, warnings from import_row_results where import_job_id = $1 and row_number = 6`, [imp.job])
+  igual([w.status, w.warnings.some((x) => /outro cliente/.test(x))], ['WARNING', true], 'aviso de processo de outro cliente')
+  const j = await um(db, `select successful_rows, warning_rows, failed_rows, dry_run_at is not null d from import_jobs where id = $1`, [imp.job])
+  igual([j.successful_rows, j.warning_rows, j.failed_rows, j.d], [5, 2, 1, true], 'contagens da simulação')
+})
+await deve('tela de conflitos traz o que já existe e quantas linhas do cliente', async () => {
+  const r = await rpc042(ids.barbara, `select public.get_import_conflicts($1) r`, [imp.job])
+  igual([r.total, r.open, r.items.length], [3, 3, 3], 'totais')
+  const c = r.items[0]
+  igual([c.kind, c.existing_label, c.existing_document, c.rows_with_same_client], ['CLIENT_DOCUMENT', imp.existente.full_name, imp.existente.cpf, 1], 'CPF')
+  igual(r.items[2].existing_client_name !== null, true, 'cliente do processo existente')
+})
+await deveFalhar('não confirma com conflito aberto', () => rpc042(ids.barbara, `select public.import_confirm($1) r`, [imp.job]), /outra etapa/)
+await deveFalhar('CPF já cadastrado nunca vira cliente novo (CREATE_NEW recusado)', () =>
+  rpc042(ids.barbara, `select public.import_resolve_conflicts($1, $2) r`, [imp.job, JSON.stringify([{ kind: 'CLIENT_DOCUMENT', resolution: 'CREATE_NEW' }])]), /não permitida/)
+await deveFalhar('possível duplicata não aceita "Atualizar"', () =>
+  rpc042(ids.barbara, `select public.import_resolve_conflicts($1, $2) r`, [imp.job, JSON.stringify([{ kind: 'POSSIBLE_DUPLICATE', resolution: 'UPDATE' }])]), /não permitida/)
+await deve('decisões: atualizar CPF, ignorar homônimo, atualizar CNJ → VALIDATED; desfazer volta a pendente', async () => {
+  const ks = await linhas(db, `select id, conflict_kind from import_conflicts where import_job_id = $1`, [imp.job])
+  const id = (k) => ks.find((x) => x.conflict_kind === k).id
+  let r = await rpc042(ids.barbara, `select public.import_resolve_conflicts($1, $2) r`, [imp.job, JSON.stringify([
+    { conflict_id: id('CLIENT_DOCUMENT'), resolution: 'UPDATE' }, { conflict_id: id('POSSIBLE_DUPLICATE'), resolution: 'IGNORE' }])])
+  igual([r.open_conflicts, r.status], [1, 'CONFLICTS_PENDING'], 'um aberto')
+  r = await rpc042(ids.barbara, `select public.import_resolve_conflicts($1, $2) r`, [imp.job, JSON.stringify([{ kind: 'PROCESS_CNJ', resolution: 'UPDATE' }])])
+  igual([r.open_conflicts, r.status], [0, 'VALIDATED'], 'todos resolvidos')
+  r = await rpc042(ids.barbara, `select public.import_resolve_conflicts($1, $2) r`, [imp.job, JSON.stringify([{ conflict_id: id('PROCESS_CNJ'), resolution: null }])])
+  igual(r.status, 'CONFLICTS_PENDING', 'desfeito')
+  r = await rpc042(ids.barbara, `select public.import_resolve_conflicts($1, $2) r`, [imp.job, JSON.stringify([{ conflict_id: id('PROCESS_CNJ'), resolution: 'UPDATE' }])])
+  igual(r.status, 'VALIDATED', 'de novo')
+  igual((await um(db, `select resolved_by from import_conflicts where id = $1`, [id('PROCESS_CNJ')])).resolved_by, ids.barbara, 'quem decidiu')
+})
+await deve('prévia calculada pela mesma regra da gravação', async () => {
+  imp.plano = await rpc042(ids.barbara, `select public.get_import_plan($1) r`, [imp.job])
+  const p = imp.plano
+  igual([p.rows_total, p.rows_error, p.rows_to_import, p.rows_to_skip], [8, 1, 6, 1], 'linhas')
+  igual([p.clients_create, p.clients_update, p.clients_keep, p.clients_skip], [4, 1, 0, 1], 'clientes')
+  igual([p.processes_create, p.processes_update, p.processes_skip, p.cases_create, p.deadlines_create], [4, 1, 1, 4, 1], 'processos')
+})
+await deveFalhar('advogado não lê a prévia', () => rpc042(ids.lucas, `select public.get_import_plan($1) r`, [imp.job]), /administrador/)
+
+secao('Importação de planilhas: confirmação, gravação em lotes e relatório [042]')
+await deve('confirma: autor e hora registrados', async () => {
+  await rpc042(ids.barbara, `select public.import_confirm($1) r`, [imp.job])
+  const j = await um(db, `select status, confirmed_by, confirmed_at is not null c from import_jobs where id = $1`, [imp.job])
+  igual([j.status, j.confirmed_by, j.c], ['CONFIRMED', ids.barbara, true], 'confirmado')
+})
+await deveFalhar('confirmado: o mapeamento não muda mais', () => como(ids.barbara, (tx) =>
+  tx.query(`insert into import_column_mappings (import_job_id, source_column, target_field) values ($1, 'Vara', 'process.courtUnit')`, [imp.job])), /não pode mais ser alterado/)
+await deve('grava em lotes até concluir; contagens batem com a prévia', async () => {
+  let r = await rpc042(ids.barbara, `select public.import_process_batch($1, 2) r`, [imp.job])
+  igual([r.status, r.processed, r.remaining], ['PROCESSING', 2, 5], 'primeiro lote')
+  let voltas = 0
+  while (r.status !== 'COMPLETED' && voltas++ < 10) r = await rpc042(ids.barbara, `select public.import_process_batch($1, 2) r`, [imp.job])
+  igual([r.status, r.imported, r.skipped, r.failed, r.failed_on_save], ['COMPLETED', 6, 1, 1, 0], 'resultado')
+  igual([r.clients_created, r.clients_updated, r.processes_created, r.processes_updated, r.deadlines_created],
+    [imp.plano.clients_create, imp.plano.clients_update, imp.plano.processes_create, imp.plano.processes_update, imp.plano.deadlines_create], 'igual à prévia')
+  const j = await um(db, `select status, successful_rows, failed_rows, completed_at is not null c from import_jobs where id = $1`, [imp.job])
+  igual([j.status, j.successful_rows, j.failed_rows, j.c], ['COMPLETED', 6, 1, true], 'job')
+  const a = await um(db, `select metadata from audit_events where action = 'IMPORT_JOB_SUMMARY' and entity_id = $1`, [imp.job])
+  igual(a.metadata.processes_created, 4, 'auditoria do resumo')
+})
+await deve('mesmo CPF em duas linhas = um cliente com dois casos/processos; origem IMPORT, caso em andamento com advogado', async () => {
+  const c = await um(db, `select id, responsible_user_id from clients where cpf = $1`, [cpf042(1)])
+  const ps = await linhas(db, `select lp.technical_origin, lp.status, lp.responsible_user_id, lc.status cs, lc.assigned_lawyer_id, lc.origin_organization_id, lc.legal_area_id
+    from legal_processes lp join legal_cases lc on lc.id = lp.legal_case_id where lc.client_id = $1 order by lp.cnj_number`, [c.id])
+  igual(ps.length, 2, 'dois processos')
+  igual(ps.map((p) => [p.technical_origin, p.cs, p.assigned_lawyer_id, p.origin_organization_id, p.legal_area_id]),
+    [['IMPORT', 'IN_PROGRESS', ids.lucas, ids.owner, ids.banking], ['IMPORT', 'IN_PROGRESS', ids.lucas, ids.owner, ids.banking]], 'casos')
+  igual(c.responsible_user_id, ids.lucas, 'responsável pelo cliente')
+  const r2 = await um(db, `select status, entity_type, outcome from import_row_results where import_job_id = $1 and row_number = 2`, [imp.job])
+  const r3 = await um(db, `select status, outcome from import_row_results where import_job_id = $1 and row_number = 3`, [imp.job])
+  igual([r2.status, r2.entity_type, r2.outcome.client_action, r3.outcome.client_action, r3.outcome.client_id], ['IMPORTED', 'legal_processes', 'CREATE', 'LINK', c.id], 'procedência')
+  const d = await um(db, `select d.title, d.source, d.responsible_user_id, (d.due_at at time zone 'America/Sao_Paulo')::date::text dia
+    from deadlines d where d.id = $1`, [r2.outcome.deadline_id])
+  igual([d.source, d.responsible_user_id, d.dia], ['MANUAL', ids.lucas, amanha042], 'prazo do vencimento')
+  const ev = await um(db, `select source, event_type from process_events where legal_process_id = $1`, [r2.outcome.legal_process_id])
+  igual([ev.source, ev.event_type], ['IMPORT', 'IMPORT'], 'movimentação de procedência')
+  const notas = await um(db, `select notes from client_internal_details where client_id = $1`, [c.id])
+  igual(/linha 2/.test(notas.notes), true, 'origem nas observações internas')
+})
+await deve('CPF existente atualizado só no que veio; homônimo ignorado; CNJ existente atualizado sem trocar cliente', async () => {
+  const fone = await um(db, `select value from client_contacts where client_id = $1 and type = 'PHONE' and is_primary`, [imp.existente.id])
+  igual(fone.value, '11955554444', 'telefone atualizado')
+  const nome = await um(db, `select full_name from individual_client_details where client_id = $1`, [imp.existente.id])
+  igual(nome.full_name, imp.existente.full_name, 'nome mantido')
+  igual((await um(db, `select count(*)::int n from clients where cpf = $1`, [cpf042(5)])).n, 0, 'homônimo não criado')
+  const r5 = await um(db, `select status, outcome from import_row_results where import_job_id = $1 and row_number = 5`, [imp.job])
+  igual([r5.status, r5.outcome.client_action], ['SKIPPED', 'SKIP'], 'linha ignorada')
+  const p = await um(db, `select lp.court, lc.client_id from legal_processes lp join legal_cases lc on lc.id = lp.legal_case_id where lp.id = $1`, [imp.processo.id])
+  igual(p.court, 'TJSP — 3ª Vara Cível (importado)', 'processo atualizado')
+  igual(p.client_id === (await um(db, `select id from clients where cpf = $1`, [cpf042(6)])).id, false, 'cliente do processo não muda')
+  const e = await um(db, `select count(*)::int n from process_events where legal_process_id = $1 and source = 'IMPORT'`, [imp.processo.id])
+  igual(e.n, 1, 'atualização registrada na linha do tempo')
+})
+await deve('processo encerrado → caso encerrado; cliente sem processo só cadastra o cliente', async () => {
+  const c = await um(db, `select lc.status from legal_cases lc join clients c on c.id = lc.client_id where c.cpf = $1`, [cpf042(9)])
+  igual(c.status, 'CLOSED', 'caso encerrado')
+  const d = await um(db, `select c.id, (select count(*)::int from legal_cases lc where lc.client_id = c.id) casos,
+    (select value from client_contacts cc where cc.client_id = c.id and cc.type = 'EMAIL') email from clients c where c.cpf = $1`, [cpf042(8)])
+  igual([d.casos, d.email], [0, 'dora@exemplo.com.br'], 'só cliente')
+})
+await deve('processar de novo depois de concluído não grava nada', async () => {
+  const antes = (await um(db, `select count(*)::int n from legal_processes`)).n
+  const r = await rpc042(ids.barbara, `select public.import_process_batch($1) r`, [imp.job])
+  igual([r.status, r.processed, (await um(db, `select count(*)::int n from legal_processes`)).n], ['COMPLETED', 0, antes], 'idempotente')
+})
+
+secao('Importação de planilhas: falha por linha não derruba o lote [042]')
+const fluxo042 = async (nome, linhas, decisoes = []) => {
+  const job = (await rpc042(ids.barbara, `select public.import_create_job($1, 'CSV') r`, [nome])).import_job_id
+  await rpc042(ids.barbara, `select public.import_register_columns($1, $2, null, $3, $4) r`, [job, createHash('sha256').update(nome).digest('hex'), JSON.stringify(colunas042), linhas.length])
+  await rpc042(ids.barbara, `select public.import_save_mapping($1, $2, $3) r`, [job, JSON.stringify(map042), JSON.stringify({ legal_area_id: ids.banking, lawyer_id: ids.barbara })])
+  await rpc042(ids.barbara, `select public.import_stage_rows($1, $2, true) r`, [job, JSON.stringify(linhas)])
+  await rpc042(ids.barbara, `select public.import_finish_dry_run($1) r`, [job])
+  if (decisoes.length) await rpc042(ids.barbara, `select public.import_resolve_conflicts($1, $2) r`, [job, JSON.stringify(decisoes)])
+  return job
+}
+await deve('CPF cadastrado entre a simulação e a gravação: só aquela linha (e as do mesmo cliente) falham, com motivo', async () => {
+  const job = await fluxo042('corrida.csv', [
+    { row_number: 2, status: 'VALID', payload: { client: pf042(20, 'Fabio Corrida'), process: { cnj: cnj042(20), legal_class: 'Revisional' } } },
+    { row_number: 3, status: 'VALID', payload: { client: pf042(20, 'Fabio Corrida'), process: { cnj: cnj042(21), legal_class: 'Revisional' } } },
+    { row_number: 4, status: 'VALID', payload: { client: pf042(22, 'Gina Sem Corrida') } },
+  ])
+  await rpc042(ids.barbara, `select public.import_confirm($1) r`, [job])
+  // Alguém cadastra o mesmo CPF pela tela, depois da simulação.
+  await como(ids.lucas, (tx) => tx.query(`select public.save_client(null, $1)`, [JSON.stringify({ kind: 'INDIVIDUAL', document: cpf042(20), full_name: 'Fabio Cadastrado Antes', origin_organization_id: ids.owner })]))
+  const r = await rpc042(ids.barbara, `select public.import_process_batch($1) r`, [job])
+  igual([r.status, r.imported, r.failed, r.failed_on_save], ['COMPLETED', 1, 2, 2], 'resultado')
+  const e = await linhas(db, `select row_number, status, errors from import_row_results where import_job_id = $1 order by row_number`, [job])
+  igual(e.map((x) => x.status), ['ERROR', 'ERROR', 'IMPORTED'], 'por linha')
+  igual([/depois da simulação/.test(e[0].errors.at(-1)), /linha 2/.test(e[1].errors.at(-1))], [true, true], 'motivos')
+  igual((await um(db, `select count(*)::int n from legal_processes where cnj_number in ($1, $2)`, [cnj042(20), cnj042(21)])).n, 0, 'nada pela metade')
+})
+await deve('CPF de cliente excluído vira erro na simulação (não reaproveita cadastro excluído)', async () => {
+  const x = await um(db, `insert into clients (kind, cpf, origin_organization_id, deleted_at) values ('INDIVIDUAL', $1, $2, now()) returning id`, [cpf042(30), ids.owner])
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Excluído Teste')`, [x.id])
+  const job = await fluxo042('excluido.csv', [{ row_number: 2, status: 'VALID', payload: { client: pf042(30, 'Excluído Teste') } }])
+  const r = await um(db, `select status, errors from import_row_results where import_job_id = $1`, [job])
+  igual([r.status, /excluído/.test(r.errors[0])], ['ERROR', true], 'erro')
+  await deveFalhar('sem linha gravável não confirma', () => rpc042(ids.barbara, `select public.import_confirm($1) r`, [job]), /Nada para gravar/)
+  await como(ids.barbara, (tx) => tx.query(`select public.import_cancel($1)`, [job]))
+})
+
+secao('Importação de planilhas: processos sem CPF ligados ao cliente já cadastrado pelo nome [042]')
+await deveFalhar('sem CPF/CNPJ e sem processo não há o que importar', async () => {
+  const job = (await rpc042(ids.barbara, `select public.import_create_job('so-nomes.csv', 'CSV') r`)).import_job_id
+  await rpc042(ids.barbara, `select public.import_register_columns($1, $2, null, '["Nome"]', 1) r`, [job, sha('9')])
+  await rpc042(ids.barbara, `select public.import_save_mapping($1, '[{"source_column":"Nome","target_field":"client.name"}]') r`, [job])
+}, /sem ela só dá para importar processos/)
+await deve('um homônimo: liga ao cadastro (decisão já "Manter"); nenhum ou dois: erro com motivo; nada de cliente novo', async () => {
+  // Dois clientes com o mesmo nome, para o caso ambíguo.
+  for (const n of [40, 41]) {
+    const x = await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', $1, $2) returning id`, [cpf042(n), ids.owner])
+    await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Gêmeo Homônimo')`, [x.id])
+  }
+  const semCpf = (n, nome) => ({ row_number: n, status: 'VALID', payload: { client: { name: nome, by_name: true }, process: { cnj: cnj042(n + 50), legal_class: 'Revisional' } } })
+  const lote = [semCpf(2, imp.existente.full_name.toLowerCase()), semCpf(3, 'Ninguém Com Este Nome 042'), semCpf(4, 'GEMEO HOMONIMO')]
+  const job = (await rpc042(ids.barbara, `select public.import_create_job('advbox-processos.xlsx', 'XLSX') r`)).import_job_id
+  await rpc042(ids.barbara, `select public.import_register_columns($1, $2, null, '["Nome do cliente","Número do processo","Tipo de ação"]', 3) r`, [job, sha('8')])
+  await rpc042(ids.barbara, `select public.import_save_mapping($1, $2, $3) r`, [job,
+    JSON.stringify([{ source_column: 'Nome do cliente', target_field: 'client.name' }, { source_column: 'Número do processo', target_field: 'process.cnj' }, { source_column: 'Tipo de ação', target_field: 'process.actionType' }]),
+    JSON.stringify({ legal_area_id: ids.banking, lawyer_id: ids.lucas })])
+  await rpc042(ids.barbara, `select public.import_stage_rows($1, $2, true) r`, [job, JSON.stringify(lote)])
+  const r = await rpc042(ids.barbara, `select public.import_finish_dry_run($1) r`, [job])
+  igual([r.status, r.open_conflicts], ['VALIDATED', 0], 'decisão já tomada')
+  const rows = await linhas(db, `select row_number, status, errors, payload #>> '{client,document}' doc from import_row_results where import_job_id = $1 order by row_number`, [job])
+  igual(rows.map((x) => [x.row_number, x.status, x.doc]), [[2, 'WARNING', imp.existente.cpf], [3, 'ERROR', null], [4, 'ERROR', null]], 'linhas')
+  igual([/não encontrado/.test(rows[1].errors[0]), /há 2 clientes/.test(rows[2].errors[0])], [true, true], 'motivos')
+  const k = await um(db, `select conflict_kind, resolution, existing_entity_id from import_conflicts where import_job_id = $1`, [job])
+  igual([k.conflict_kind, k.resolution, k.existing_entity_id], ['CLIENT_DOCUMENT', 'IGNORE', imp.existente.id], 'conflito já decidido')
+  const plano = await rpc042(ids.barbara, `select public.get_import_plan($1) r`, [job])
+  igual([plano.clients_create, plano.clients_keep, plano.processes_create], [0, 1, 1], 'prévia')
+  await rpc042(ids.barbara, `select public.import_confirm($1) r`, [job])
+  const fim = await rpc042(ids.barbara, `select public.import_process_batch($1) r`, [job])
+  igual([fim.status, fim.imported, fim.clients_created, fim.processes_created, fim.failed], ['COMPLETED', 1, 0, 1, 2], 'gravou só o vínculo')
+  const p = await um(db, `select lc.client_id from legal_processes lp join legal_cases lc on lc.id = lp.legal_case_id where lp.cnj_number = $1`, [cnj042(52)])
+  igual(p.client_id, imp.existente.id, 'processo no cliente existente')
+})
+
+secao('Importação de planilhas: arquivo, retenção e catálogo [042]')
+await deve('arquivo dos jobs encerrados: lista para apagar e marca apagado', async () => {
+  const lista = await rpc042(ids.barbara, `select public.import_files_to_delete(100) r`)
+  if (!lista.some((x) => x.id === imp.job)) throw new Error('job concluído fora da lista')
+  await como(ids.barbara, (tx) => tx.query(`select public.import_mark_file_deleted($1)`, [imp.job]))
+  igual((await rpc042(ids.barbara, `select public.import_files_to_delete(100) r`)).some((x) => x.id === imp.job), false, 'saiu da lista')
+})
+await deve('rotina diária: cancela importação parada há 7 dias e apaga linha original e normalizada depois de 30', async () => {
+  const parado = (await rpc042(ids.barbara, `select public.import_create_job('parado.csv', 'CSV') r`)).import_job_id
+  await db.query(`alter table import_jobs disable trigger import_jobs_set_updated_at`)
+  await db.query(`update import_jobs set updated_at = now() - interval '8 days' where id = $1`, [parado])
+  await db.query(`update import_jobs set completed_at = now() - interval '31 days' where id = $1`, [imp.job])
+  await db.query(`alter table import_jobs enable trigger import_jobs_set_updated_at`)
+  const r = (await um(db, `select private.import_housekeeping() r`)).r
+  igual(r.cancelled >= 1, true, 'cancelou')
+  igual((await um(db, `select status from import_jobs where id = $1`, [parado])).status, 'CANCELLED', 'parado')
+  const linha = await um(db, `select raw_data, payload, outcome from import_row_results where import_job_id = $1 and row_number = 2`, [imp.job])
+  igual([linha.raw_data, linha.payload, linha.outcome.client_action], [null, null, 'CREATE'], 'dado pessoal apagado, procedência mantida')
+})
+await deve('funções da 042 fixam search_path; anon e service_role não executam; as internas não estão abertas ao usuário', async () => {
+  const internas = ['import_lock_job', 'import_row_actions', 'import_client_patch', 'import_apply_row', 'import_housekeeping', 'import_error_text']
+  const tela = ['import_create_job', 'import_authorize_file', 'import_register_columns', 'import_fail', 'import_save_mapping', 'import_stage_rows',
+    'import_finish_dry_run', 'import_resolve_conflicts', 'get_import_plan', 'get_import_conflicts', 'get_import_reference_data', 'import_confirm',
+    'import_process_batch', 'import_cancel', 'import_files_to_delete', 'import_mark_file_deleted']
+  const r = await linhas(db, `select n.nspname s, p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('private', 'public') and p.proname = any ($1)`, [[...internas, ...tela]])
+  if (r.length < internas.length + tela.length * 2) throw new Error(`funções faltando: ${r.length}`)
+  igual(r.filter((x) => !x.cfg.includes('search_path=')).map((x) => x.f), [], 'sem search_path')
+  igual(r.filter((x) => x.anon || x.srv).map((x) => `${x.s}.${x.f}`), [], 'anon/service_role')
+  igual(r.filter((x) => internas.includes(x.f) && x.usr).map((x) => x.f), [], 'interna aberta')
+  igual(r.filter((x) => x.s === 'public' && x.def).map((x) => x.f), [], 'pública como definer')
+})
+await deve('referência para o mapeamento: áreas ativas e equipe interna (sem parceiros)', async () => {
+  const r = await rpc042(ids.barbara, `select public.get_import_reference_data() r`)
+  igual(r.areas.some((a) => a.id === ids.banking), true, 'área')
+  igual([r.users.some((u) => u.id === ids.lucas), r.users.some((u) => u.id === ids.almeidaAdm)], [true, false], 'equipe')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

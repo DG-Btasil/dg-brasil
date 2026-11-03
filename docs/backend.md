@@ -110,10 +110,11 @@ Dado jurídico nunca passa por cache compartilhado: o client do servidor usa
 | `server/auth/team-actions.ts` → envio do convite | `auth.admin.inviteUserByEmail` / `updateUserById` / `resetPasswordForEmail` | Admin API do Auth | Convite já criado e autorizado pelo banco | Convite auditado |
 | `server/auth/team-actions.ts` → `resetUserMfa` | `auth.admin.mfa.listFactors/deleteFactor` + `record_auth_event` | Admin API do Auth | Só ADMIN, nunca a si mesmo; o banco revalida | `MFA_RESET_REQUESTED/COMPLETED` |
 | `server/domain/documents/signed-storage.ts` | `createSignedUploadUrl`, `info`, `createSignedUrl(60 s)` no bucket `legal-documents` | Buckets privados sem política para o usuário (017) | `authorize_document_upload/download` com o JWT do usuário devolve o caminho exato; o servidor confere e só assina esse caminho | `DOCUMENT_DOWNLOADED` + acesso LGPD gravados pela RPC, ator USER |
+| `server/domain/imports/storage.ts` (Etapa 7) | `createSignedUploadUrl`, `download` e `remove` no bucket `imports` | Bucket privado com política RESTRICTIVE para o usuário (017) | `import_create_job` / `import_authorize_file` / `import_files_to_delete` (042) com o JWT do ADMIN devolvem o caminho exato (`jobs/{id}/source.{csv\|xlsx}`); o servidor recalcula a regra e só usa esse caminho | Job e conflitos auditados por gatilho (013); resumo `IMPORT_JOB_SUMMARY` ao concluir |
 
 Nenhuma consulta ou gravação de domínio usa a service role. A Etapa 4.3.2
 (sessões) **não** acrescentou uso: listar e encerrar as próprias sessões usa o
-JWT do usuário (`auth.signOut({ scope: "others" | "global" })` e RPCs da 038). `grep createSupabaseAdminClient src` lista exatamente estes arquivos.
+JWT do usuário (`auth.signOut({ scope: "others" | "global" })` e RPCs da 038). A importação (042) lê e grava tudo com o JWT do ADMIN; só o arquivo no Storage passa pela service role, como os documentos. `grep createSupabaseAdminClient src` lista exatamente estes arquivos.
 
 ## Domínios
 

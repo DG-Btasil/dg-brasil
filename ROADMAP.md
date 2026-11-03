@@ -92,8 +92,15 @@ rodado). Decidido em 2026-10-29 (docs/mcp/relatorio-diagnostico.md):
 
 ### Etapa 7 — Importação
 
-Parser CSV/XLSX no backend sobre o schema já pronto: colunas → mapeamento →
-validação → dry-run → conflitos → confirmação → processamento → relatório.
+- **Código pronto (2026-11-03); falta validar no Supabase DEV** — migration 042
+  (operações `import_*`, só ADMIN; simulação e conflitos no banco; gravação em
+  lotes com falha por linha; retenção no `pg_cron`), leitura de CSV/XLSX no
+  servidor (sem dependência nova), telas em Configurações → Integrações →
+  Importações. Como funciona: [docs/importacao.md](docs/importacao.md). Guia de
+  validação: [docs/etapa-7-validacao.md](docs/etapa-7-validacao.md).
+- Fora da V1, por decisão: importar contratos de honorários/lançamentos
+  (financeiro tem ciclo de vida próprio), documentos (PDF/DOCX) e integração
+  direta com a API do ADVBOX (a migração é pela planilha exportada).
 
 ### Etapa 8 — Integrações judiciais e prazos
 

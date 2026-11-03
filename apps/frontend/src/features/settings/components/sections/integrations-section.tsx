@@ -16,14 +16,14 @@ export function IntegrationsSection() {
         title="Integrações"
         description="Serviços conectados ao escritório. Status, última sincronização e ações disponíveis para o seu perfil."
       />
-      <div className="mb-8">
+      <div className="mb-8 space-y-8">
         <DriveSettingsPanel />
+        <DataImportSection />
       </div>
-      {/* O Google Drive, acima, já é real; o aviso vale só para o que vem abaixo. */}
-      <DemoAreaNotice area="A parte abaixo (Integração Judicial, importação de dados e outros serviços)" />
+      {/* O Google Drive e a importação, acima, já são reais; o aviso vale só para o que vem abaixo. */}
+      <DemoAreaNotice area="A parte abaixo (Integração Judicial e outros serviços)" />
       <div className="space-y-8">
         <JudicialIntegrationSection canManage={canManage} />
-        <DataImportSection canManage={canManage} />
         <section aria-labelledby="other-integrations-title" className="space-y-3">
           <h3 id="other-integrations-title" className="text-[15px] font-semibold text-foreground">
             Outros serviços

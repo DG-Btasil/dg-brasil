@@ -97,6 +97,8 @@ export const OWNER_PERMISSIONS = [
   "settings.team.manage",
   "settings.integrations.view",
   "settings.integrations.manage",
+  // Importação de planilhas (Etapa 7): só ADMIN — o banco (042) também confere.
+  "imports.manage",
   "settings.ai.view",
   "settings.fees.manage",
   "settings.security.view",

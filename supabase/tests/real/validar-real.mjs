@@ -1042,6 +1042,35 @@ await deve('dg_worker (login do servidor) chama as funções de sincronização;
   }
 })
 
+secao('41h. Importação de planilhas: operações pelo PostgREST, pg_cron e Storage [042]')
+await deve('ADMIN cria e cancela importação pelo PostgREST; LAWYER e parceiro são recusados; caminho decidido pelo banco', async () => {
+  const j = await r(C.ADMIN.rpc('import_create_job', { p_file_name: `validar-${RODADA}.csv`, p_file_type: 'CSV' }))
+  igual(j.storage_object_name, `jobs/${j.import_job_id}/source.csv`, 'caminho')
+  for (const papel of ['LAWYER', 'ASSISTANT', 'PARTNER_ADMIN_A']) {
+    const x = await C[papel].rpc('import_create_job', { p_file_name: 'x.csv', p_file_type: 'CSV' })
+    if (!x.error || !/administrador/.test(x.error.message)) throw new Error(`${papel} criou importação`)
+  }
+  const n = await C.ADMIN.rpc('import_create_job', { p_file_name: 'x.json', p_file_type: 'JSON' })
+  if (!n.error) throw new Error('JSON aceito')
+  await r(C.ADMIN.rpc('import_cancel', { p_job_id: j.import_job_id }))
+  igual((await um(`select status from import_jobs where id = $1`, [j.import_job_id])).status, 'CANCELLED', 'cancelada')
+})
+await deve('pg_cron: rotina diária das importações agendada; roda sem erro', async () => {
+  const job = await um(`select schedule, active from cron.job where jobname = 'dg-importacoes'`)
+  igual([job?.schedule, job?.active], ['17 6 * * *', true], 'agendamento')
+  const h = (await um(`select private.import_housekeeping() h`)).h
+  if (typeof h.cancelled !== 'number' || typeof h.purged_rows !== 'number') throw new Error('rotina sem resultado')
+})
+await deve('bucket imports continua privado e fechado ao navegador; funções internas fechadas', async () => {
+  const up = await C.ADMIN.storage.from('imports').upload(`jobs/${randomUUID()}/source.csv`, new Blob(['a;b']), { contentType: 'text/csv' })
+  if (!up.error) throw new Error('ADMIN gravou direto no bucket imports')
+  const f = await sql(`select p.proname f, has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('service_role', p.oid, 'execute') srv
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname in ('import_apply_row', 'import_row_actions', 'import_lock_job', 'import_client_patch', 'import_housekeeping')`)
+  igual(f.length, 5, 'funções')
+  igual(f.filter((x) => x.usr || x.srv).map((x) => x.f), [], 'abertas')
+})
+
 secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')
 await deve('carteira do parceiro A (página + total) em menos de 2 s, mesmo com o DEV cheio de rodadas', async () => {
   const inicio = performance.now()

@@ -30,7 +30,7 @@ produz efeito.
 
 | Caminho | Papel |
 |---|---|
-| `supabase/` | **Banco** (migrations 001–041): RLS, Storage, fila pgmq, manutenção no pg_cron e 673 verificações. Ver [supabase/README.md](supabase/README.md) |
+| `supabase/` | **Banco** (migrations 001–042): RLS, Storage, fila pgmq, manutenção no pg_cron e 712 verificações. Ver [supabase/README.md](supabase/README.md) |
 | `apps/executor/` | O pacote do **computador do escritório**: servidor MCP local `dg-brasil` para o Claude Code (catálogo fechado de ferramentas) e o diagnóstico `doctor`. Ver [docs/mcp/instalacao.md](docs/mcp/instalacao.md) |
 | `apps/frontend/` | **Front-end V1 (protótipo navegável, dados fictícios).** Escritório proprietário + portal do parceiro, RBAC, Revisões, DG Brasil. Ver [apps/frontend/README.md](apps/frontend/README.md) |
 | `packages/dominio/` | Motor de classificação da esteira, vindo do `esteira-consignado` *(fase 3)* |
@@ -144,6 +144,7 @@ conversa, não commit.
 |---|---|
 | Banco V1 (`supabase/`) | **Validado em Supabase real de desenvolvimento (Etapa 3.3, 2026-10-09).** Baseline 001–019 + 020–021; 261 verificações locais e 110 reais (Auth, JWT/PostgREST, Storage, pgmq, `dg_worker`) passando, inclusive depois de `db reset` — o banco se reconstrói só pelo repositório |
 | Execução dos agentes (040, 2026-10-29) | Claude Code do escritório + MCP local (`apps/executor`), API `/api/executor/v1`, reserva por trabalho, linha do tempo, manutenção no `pg_cron`. **Banco DEV validado em 2026-11-03** ([docs/qa/mcp/](docs/qa/mcp/qa-supabase-dev-040-041.md)); a ponta a ponta no computador do escritório fica para o fim ([docs/mcp/validacao.md](docs/mcp/validacao.md), Parte 6). O worker na nuvem da Etapa 5 foi removido sem nunca ter rodado |
+| Importação de planilhas (042, Etapa 7) | CSV/XLSX → mapeamento de colunas → simulação sem gravar → conflitos (CPF/CNJ já cadastrado, homônimo) → confirmação → gravação em lotes → relatório por linha. Só ADMIN, em Configurações → Integrações → Importações. **Aguardando validação no Supabase DEV** ([docs/etapa-7-validacao.md](docs/etapa-7-validacao.md)) |
 | Google Drive (041) | Pasta do cliente pelo ID, importação sem duplicata, exportação do aprovado, pelo servidor. **Falta a credencial do Google** ([docs/mcp/google-drive.md](docs/mcp/google-drive.md)) |
 | Domínio consignado (HISCON, benefício, esteira), WhatsApp, leads | Fora do banco V1; entram como migrations `020+` quando especificados |
 | Disparador dos gatilhos (`cron`, `evento`) | **Não existe.** Trabalho entra na fila por `request_agent_run` e é processado no modo assistido |

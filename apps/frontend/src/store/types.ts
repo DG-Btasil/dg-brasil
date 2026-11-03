@@ -212,54 +212,6 @@ export type NewReferenceInput = Pick<ReferenceMaterial, "title" | "description" 
   type: ReferenceMaterialType;
 };
 
-/* ------------------------------------------------------------------ */
-/* Importação                                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * Plano de importação já validado e com os conflitos resolvidos. Uma única
- * importação pode criar clientes, processos e os vínculos entre eles.
- * `ref` liga um processo ao cliente criado/atualizado na mesma importação.
- */
-export interface ImportClientOperation {
-  ref: string;
-  action: "CREATE" | "UPDATE";
-  existingId?: ID;
-  input: NewClientInput;
-}
-
-interface ImportProcessLink {
-  /** Cliente da mesma importação (ref) ou já existente (clientId). */
-  clientRef?: string;
-  clientId?: ID;
-}
-
-/** CREATE traz o processo completo; UPDATE traz só os campos presentes na planilha. */
-export type ImportProcessOperation =
-  | (ImportProcessLink & { action: "CREATE"; input: Omit<NewProcessInput, "legalCaseId">; missingResponsible: boolean })
-  | (ImportProcessLink & { action: "UPDATE"; existingId: ID; patch: Partial<Omit<NewProcessInput, "legalCaseId" | "nextDeadline">> });
-
-export interface ImportPlan {
-  fileName: string;
-  clients: ImportClientOperation[];
-  processes: ImportProcessOperation[];
-  /** Linhas descartadas por decisão do usuário (conflito → ignorar). */
-  ignoredRows: number;
-  /** Linhas com erro, que não foram importadas. */
-  errorRows: number;
-}
-
-export interface ImportResult {
-  clientsCreated: number;
-  clientsUpdated: number;
-  processesCreated: number;
-  processesUpdated: number;
-  linksCreated: number;
-  ignoredRows: number;
-  errorRows: number;
-  processesWithoutResponsible: number;
-}
-
 /** Proposta do Tutor DG, aplicada somente após confirmação explícita. */
 export interface SkillChangeProposal {
   skillId: ID;
@@ -291,10 +243,6 @@ export interface OfficeActions {
   updateUserPreferences: (userId: ID, prefs: UserPreferences) => void;
 }
 
-export interface ImportActions {
-  importData: (plan: ImportPlan) => ImportResult;
-}
-
 export interface DgActions {
   createAgent: (input: NewAgentInput) => ID;
   updateAgent: (id: ID, patch: Partial<Pick<Agent, "status" | "autonomy" | "rules" | "skillIds" | "thesisIds" | "description">>) => void;
@@ -315,7 +263,6 @@ export interface ReferenceActions {
 
 export type AppActions = SessionActions &
   OfficeActions &
-  ImportActions &
   DgActions &
   ReferenceActions;
 

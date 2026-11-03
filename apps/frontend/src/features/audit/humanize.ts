@@ -119,6 +119,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   INTEGRATION_UPDATED: "Integração atualizada",
   JUDICIAL_SOURCE_CONFIGURED: "Fonte judicial configurada",
   IMPORT_JOB_CREATED: "Importação iniciada",
+  IMPORT_JOB_SUMMARY: "Importação concluída (resumo)",
   IMPORT_CONFLICT_RESOLVED: "Conflito de importação resolvido",
 };
 

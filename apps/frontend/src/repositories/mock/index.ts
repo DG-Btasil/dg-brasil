@@ -9,7 +9,6 @@ import { selectScoped } from "@/store/scope";
 import type {
   ReferenceRepository,
   DgRepository,
-  ImportRepository,
   IntegrationRepository,
   UserRepository,
 } from "../contracts";
@@ -55,10 +54,6 @@ export const mockIntegrationRepository: IntegrationRepository = {
     state().recordJudicialSync(id, result);
     return result;
   },
-};
-
-export const mockImportRepository: ImportRepository = {
-  run: async (plan) => state().importData(plan),
 };
 
 export const mockReferenceRepository: ReferenceRepository = {

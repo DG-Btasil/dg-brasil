@@ -28,8 +28,6 @@ import type {
 import type { JudicialSyncResult } from "@/services/judicial-integration";
 import type {
   NewReferenceInput,
-  ImportPlan,
-  ImportResult,
   JudicialSourceConfigInput,
   NewAgentInput,
   NewSkillInput,
@@ -69,12 +67,6 @@ export interface IntegrationRepository {
   configureJudicialSource(id: ID, config: JudicialSourceConfigInput): Promise<void>;
   /** Dispara a sincronização da fonte pelo provedor registrado e grava o resultado. */
   syncJudicialSource(id: ID): Promise<JudicialSyncResult>;
-}
-
-/** Migração de dados de outros sistemas/planilhas. */
-export interface ImportRepository {
-  /** Aplica um plano já validado (dry run feito na interface). */
-  run(plan: ImportPlan): Promise<ImportResult>;
 }
 
 /**

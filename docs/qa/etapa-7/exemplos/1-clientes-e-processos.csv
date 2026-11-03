@@ -1,0 +1,11 @@
+﻿Nome Completo;CPF/CNPJ;Telefone;E-mail;Cidade;UF;Nº Processo;Ação;Tribunal;Vara;Parte contrária;Responsável;Status;Vencimento;Valor da causa
+Maria Validação Etapa Sete;999.700.000-01;(11) 99700-0001;maria.e7@exemplo.com;São Paulo;SP;7000001-60.2026.8.26.0742;Revisional de consignado;TJSP;1ª Vara Cível;Banco Fictício S.A.;;Em andamento;13/12/2026;R$ 18.500,00
+Maria Validação Etapa Sete;999.700.000-01;;;;;7000002-45.2026.8.26.0742;Repetição de indébito;TJSP;;Banco Fictício S.A.;;Distribuído;;
+José Validação Etapa Sete;99970000002;11997000002;jose.e7@exemplo;Campinas;São Paulo;7000003-30.2026.8.26.0742;Declaratória;TJSP;2ª Vara Cível;Banco Fictício S.A.;Fulano Inexistente;Em andamento;01/01/2020;9800,50
+Comércio Validação Etapa Sete Ltda.;99.970.000/0001-03;(11) 3970-0003;;Santos;SP;7000004-15.2026.8.26.0742;Revisional de capital de giro;TJSP;;Banco Fictício S.A.;;Suspenso;;
+Ana Só Cliente Etapa Sete;999.700.000-05;(31) 99700-0005;ana.e7@exemplo.com;Belo Horizonte;MG;;;;;;;;;
+Paulo CPF Curto Etapa Sete;999.700.000;;;;;7000006-82.2026.8.26.0742;Revisional;TJSP;;;;;;
+Lúcia CNJ Errado Etapa Sete;999.700.000-07;;;;;7000007-68.2026.8.26.0742;Revisional;TJSP;;;;;;
+Rui CNJ Repetido Etapa Sete;999.700.000-08;;;;;7000001-60.2026.8.26.0742;Revisional;TJSP;;;;;;
+Eva Arquivada Etapa Sete;999.700.000-09;;;;;7000009-37.2026.8.26.0742;Cobrança;TJSP;;;;Arquivado;;
+;999.700.000-10;;;;;7000010-22.2026.8.26.0742;Revisional;;;;;;;
