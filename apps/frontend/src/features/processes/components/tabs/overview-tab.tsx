@@ -11,6 +11,7 @@ import type { Page } from "@/server/core/pagination";
 import type { ProcessInternalDTO, ProcessPartyDTO } from "@/server/domain/processes/dto";
 import type { PartyType } from "@/server/domain/processes/schemas";
 import { usePermission } from "@/features/auth/hooks";
+import { ProcessJudicialCard } from "@/features/judicial/components/process-judicial-card";
 import { CnjText } from "../cnj-text";
 
 const PARTY_TYPE_LABEL: Record<PartyType, string> = {
@@ -180,6 +181,7 @@ export function OverviewTab({
             />
           </PanelBody>
         </Panel>
+        <ProcessJudicialCard processId={p.id} />
         <OriginPanel process={p} />
       </div>
     </div>

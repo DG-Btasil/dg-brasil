@@ -18,6 +18,7 @@ import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/display";
+import { ProcessJudicialCard } from "@/features/judicial/components/process-judicial-card";
 import { Field, Input, MaskedInput, Select } from "@/components/ui/form";
 import { DefinitionGrid, Panel, PanelBody, PanelFooter, PanelHeader } from "@/components/ui/panel";
 import { TabPanel, Tabs, type TabItem } from "@/components/ui/tabs";
@@ -151,6 +152,11 @@ export function PortalProcessDetail({
               />
             </PanelBody>
           </Panel>
+        )}
+        {tab === "visao-geral" && (
+          <div className="mt-5 max-w-[560px]">
+            <ProcessJudicialCard processId={process.id} />
+          </div>
         )}
         {tab === "movimentacoes" && <EventsTab processId={process.id} initial={events} onAdd={() => undefined} />}
         {tab === "documentos" && (

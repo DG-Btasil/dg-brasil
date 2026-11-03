@@ -135,6 +135,7 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Financeiro | modelos, acordos, obrigações, lançamentos (recebimento, ajuste, estorno — append-only), divisões (leitura), parcerias, repasses, visão do parceiro | ledger + views; chaves de idempotência e `create_partner_transfer` (026) |
 | Organizações | escritório proprietário, parceiros (listar, cadastrar atômico, editar, status, divisão padrão), usuários (leitura), divisão do próprio escritório (administrador do parceiro) | `create_partner_office` (026), `get_my_partner_settings` (027); gestão de equipe segue em `server/auth/team-actions.ts` |
 | Notificações | listar, contar não lidas, marcar lida(s) | RLS do próprio usuário (aal2) |
+| Integração judicial (043) | visão e configuração; OABs (ADMIN e administrador do parceiro); cobertura; publicações (listar, abrir, criar prazo, sem prazo, reabrir); prévia da contagem; calendário; situação e pausa do processo; buscar agora | RPCs `*_judicial_*` (invoker → definer, papel conferido no banco); busca no DJEN/DataJud pelo servidor com `dg_worker` (`docs/judicial.md`) |
 | Conta (`server/domain/account`) | sessões da própria conta (lista, MFA), sair dos outros dispositivos, sair de todos — toda sessão liberada, qualquer papel, sem `userId` no input | `get_my_sessions`, `record_account_security_event` (038) + `auth.signOut({ scope })` com o JWT do usuário |
 | Auditoria | eventos e acessos a dado pessoal (ADMIN, paginado, metadata por whitelist, sem IP/navegador) | `audit_events`, `personal_data_access_events` |
 

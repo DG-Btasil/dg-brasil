@@ -19,7 +19,7 @@ export interface NotificationDTO {
   processId?: ID;
   partnerRequestId?: ID;
   /** Destino específico (037): revisão, análise, prazo, documento, repasse ou execução. */
-  relatedType?: "review" | "analysis" | "deadline" | "document" | "transfer" | "agent_run";
+  relatedType?: "review" | "analysis" | "deadline" | "document" | "transfer" | "agent_run" | "publication";
   relatedId?: ID;
 }
 

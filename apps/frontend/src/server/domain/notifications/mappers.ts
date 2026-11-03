@@ -19,7 +19,7 @@ export interface NotificationRow {
 }
 
 const opt = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v);
-const RELATED_TYPES = new Set(["review", "analysis", "deadline", "document", "transfer", "agent_run"]);
+const RELATED_TYPES = new Set(["review", "analysis", "deadline", "document", "transfer", "agent_run", "publication"]);
 
 export function notificationFromRow(row: NotificationRow): NotificationDTO {
   return {

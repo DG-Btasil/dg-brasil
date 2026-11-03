@@ -28,6 +28,7 @@ import type { ProcessEventDTO, ProcessInternalDTO, ProcessPartyDTO } from "@/ser
 import { useCan } from "@/features/auth/hooks";
 import { CaseOriginLabel } from "@/features/cases/components/case-detail";
 import { useDirectoryUser } from "@/features/directory/directory-context";
+import { PublicationsInbox } from "@/features/judicial/components/publications-inbox";
 import { AddDeadlineDialog } from "./add-deadline-dialog";
 import { AddEventDialog } from "./add-event-dialog";
 import { CnjText } from "./cnj-text";
@@ -37,7 +38,7 @@ import { DeadlinesTab } from "./tabs/deadlines-tab";
 import { EventsTab } from "./tabs/events-tab";
 import { OverviewTab } from "./tabs/overview-tab";
 
-const TAB_KEYS = ["visao-geral", "movimentacoes", "documentos", "prazos", "revisoes", "financeiro"] as const;
+const TAB_KEYS = ["visao-geral", "movimentacoes", "publicacoes", "documentos", "prazos", "revisoes", "financeiro"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 type DialogState = { kind: "event" } | { kind: "deadline"; deadline?: DeadlineDTO } | { kind: "delete" } | null;
 
@@ -78,6 +79,7 @@ export function ProcessDetail({
     const items: TabItem<TabKey>[] = [
       { key: "visao-geral", label: "Visão geral" },
       { key: "movimentacoes", label: "Movimentações", count: events.ok ? events.data.total : undefined },
+      { key: "publicacoes", label: "Publicações" },
       { key: "documentos", label: "Documentos", count: documents.ok ? documents.data.total : undefined },
       { key: "prazos", label: "Prazos", count: openDeadlines.length, attention: urgent },
     ];
@@ -138,6 +140,7 @@ export function ProcessDetail({
       <TabPanel tabKey={active}>
         {active === "visao-geral" && <OverviewTab process={process} parties={parties} responsibleName={responsible?.name} lastMovementAt={lastMovementAt} />}
         {active === "movimentacoes" && <EventsTab processId={process.id} initial={events} onAdd={() => setDialog({ kind: "event" })} />}
+        {active === "publicacoes" && <PublicationsInbox processId={process.id} />}
         {active === "documentos" && (
           <DocumentsPanel
             scope={{ legalProcessId: process.id }}

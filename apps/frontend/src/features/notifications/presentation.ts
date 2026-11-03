@@ -28,6 +28,7 @@ export function notificationTarget(
     if (n.relatedType === "agent_run" && audience === "INTERNAL") {
       return n.legalCaseId ? { href: `/casos/${n.legalCaseId}?aba=analise`, label: "Ver execução" } : { href: "/dg-brasil/execucoes", label: "Ver execuções" };
     }
+    if (n.relatedType === "publication" && audience === "INTERNAL") return { href: `/publicacoes?id=${n.relatedId}`, label: "Abrir publicação" };
     if (n.relatedType === "deadline" && audience === "INTERNAL") {
       if (n.processId) return { href: `/processos/${n.processId}?aba=prazos`, label: "Ver prazo" };
       if (n.legalCaseId) return { href: `/casos/${n.legalCaseId}`, label: "Ver caso" };

@@ -532,6 +532,10 @@ export const NOTIFICATION_TYPES = [
   "PARTNER_TRANSFER_PAID",
   "MFA_RESET",
   "ROLE_CHANGED",
+  // Integração judicial (043).
+  "PUBLICATION_RECEIVED",
+  "PUBLICATION_CANCELLED",
+  "JUDICIAL_SYNC_FAILED",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
@@ -574,6 +578,9 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   PARTNER_TRANSFER_PAID: "Repasse pago",
   MFA_RESET: "Segurança da conta",
   ROLE_CHANGED: "Perfil de acesso",
+  PUBLICATION_RECEIVED: "Publicação no DJEN",
+  PUBLICATION_CANCELLED: "Publicação cancelada",
+  JUDICIAL_SYNC_FAILED: "Busca de publicações",
 };
 
 /* ------------------------------------------------------------------ */

@@ -1071,6 +1071,46 @@ await deve('bucket imports continua privado e fechado ao navegador; funções in
   igual(f.filter((x) => x.usr || x.srv).map((x) => x.f), [], 'abertas')
 })
 
+secao('41i. Integração judicial: telas pelo PostgREST, servidor e agendador do banco [043]')
+await deve('visão da integração: ADMIN e advogado leem; assistente e parceiro não; parceiro lê só as OABs do próprio escritório', async () => {
+  const o = await r(C.ADMIN.rpc('get_judicial_overview'))
+  igual([o.can_manage, typeof o.settings.lookback_days], [true, 'number'], 'ADMIN')
+  igual((await r(C.LAWYER.rpc('get_judicial_overview'))).can_manage, false, 'advogado')
+  for (const papel of ['ASSISTANT', 'PARTNER_ADMIN_A']) {
+    const x = await C[papel].rpc('get_judicial_overview')
+    if (!x.error) throw new Error(`${papel} leu a visão da integração`)
+  }
+  const m = await r(C.PARTNER_ADMIN_A.rpc('get_my_judicial_monitors'))
+  igual(m.can_manage, true, 'administrador do parceiro gerencia')
+  if (m.monitors.some((x) => x.organization_id !== m.monitors[0].organization_id)) throw new Error('OAB de outro escritório')
+})
+await deve('publicações e calendário fechados ao acesso direto; prévia de prazo pelo banco (sexta 13/11/2026 + 15 dias úteis = 08/12)', async () => {
+  for (const t of ['judicial_publications', 'judicial_settings', 'judicial_capture_days', 'court_calendar_days', 'judicial_sync_runs']) {
+    const x = await C.ADMIN.from(t).select('*').limit(1)
+    if (!x.error) throw new Error(`${t} aberta ao navegador`)
+  }
+  const p = await r(C.LAWYER.rpc('judicial_deadline_preview', { p_available_on: '2026-11-13', p_court: 'ZZZZ', p_days: 15 }))
+  igual([p.published_on, p.due_on], ['2026-11-16', '2026-12-08'], 'contagem')
+})
+await deve('servidor (dg_worker) só nas portas da busca; usuário logado e service_role fora', async () => {
+  const f = await sql(`select p.proname f, has_function_privilege('dg_worker', p.oid, 'execute') wrk,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('service_role', p.oid, 'execute') srv
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname in ('judicial_sync_begin', 'judicial_datajud_queue', 'judicial_ingest_datajud',
+      'judicial_ingest_djen', 'judicial_sync_finish', 'judicial_request_deadline_proposal', 'judicial_cron_kick')`)
+  igual(f.length, 7, 'funções')
+  igual(f.filter((x) => x.wrk).map((x) => x.f).sort(), ['judicial_datajud_queue', 'judicial_ingest_datajud', 'judicial_ingest_djen', 'judicial_sync_begin', 'judicial_sync_finish'], 'portas')
+  igual(f.filter((x) => x.usr || x.srv).map((x) => x.f), [], 'abertas')
+})
+await deve('agendador do banco: dg-datajud a cada 20 min; a chamada roda e diz o que fez (pg_net, segredos do Vault)', async () => {
+  const job = await um(`select schedule, active from cron.job where jobname = 'dg-datajud'`)
+  igual([job?.schedule, job?.active], ['*/20 * * * *', true], 'agendamento')
+  const net = await um(`select count(*)::int n from pg_extension where extname = 'pg_net'`)
+  const k = (await um(`select private.judicial_cron_kick() k`)).k
+  console.log(`    pg_net ${net.n ? 'instalado' : 'NÃO instalado'} · resultado: ${k}`)
+  if (!['chamado', 'nada a ler', 'segredos dg_app_url/dg_cron_secret ausentes', 'pg_net ou Vault indisponível'].includes(k)) throw new Error(`resultado inesperado: ${k}`)
+})
+
 secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')
 await deve('carteira do parceiro A (página + total) em menos de 2 s, mesmo com o DEV cheio de rodadas', async () => {
   const inicio = performance.now()

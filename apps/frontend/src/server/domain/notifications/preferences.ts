@@ -14,7 +14,7 @@ import { fromDbError } from "@/server/core/db-errors";
  * banco recusa (constraint) e este service nem tenta.
  */
 
-export const NOTIFICATION_CATEGORIES = ["CASES", "DEADLINES", "DOCUMENTS", "REVIEWS", "PARTNER_REQUESTS", "ANALYSES", "FINANCE", "SECURITY"] as const;
+export const NOTIFICATION_CATEGORIES = ["CASES", "DEADLINES", "DOCUMENTS", "REVIEWS", "PARTNER_REQUESTS", "ANALYSES", "FINANCE", "JUDICIAL", "SECURITY"] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 export const DIGEST_FREQUENCIES = ["NONE", "DAILY", "WEEKLY"] as const;
 export type DigestFrequency = (typeof DIGEST_FREQUENCIES)[number];

@@ -4125,9 +4125,9 @@ await deve('manutenção (pg_cron): proposta aprovada vira prazo; execução fec
   await db.query(`select private.maintenance_tick()`)
   igual((await um(db, `select status from agent_runs where id = $1`, [ids.r040])).status, 'COMPLETED', 'fechou')
 })
-await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo; importações diária [042])', async () => {
+await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo; importações diária [042]; DataJud a cada 20 min [043])', async () => {
   const j = await linhas(db, `select jobname, schedule from cron.job where jobname like 'dg-%' order by jobname`)
-  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-importacoes', '17 6 * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
+  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-datajud', '*/20 * * * *'], ['dg-importacoes', '17 6 * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
 })
 
 secao('Computador do escritório: interrupção, falha, devolução e queda [040]')
@@ -4687,6 +4687,341 @@ await deve('referência para o mapeamento: áreas ativas e equipe interna (sem p
   const r = await rpc042(ids.barbara, `select public.get_import_reference_data() r`)
   igual(r.areas.some((a) => a.id === ids.banking), true, 'área')
   igual([r.users.some((u) => u.id === ids.lucas), r.users.some((u) => u.id === ids.almeidaAdm)], [true, false], 'equipe')
+})
+
+// ═════════════════════════════ 043: integrações judiciais e prazos ═══════
+
+const rpc043 = async (uid, sql, params) => (await como(uid, (tx) => um(tx, sql, params))).r
+const worker043 = async (sql, params) => (await comoWorker((tx) => um(tx, sql, params))).r
+const j043 = {}
+// CNJs do TJSP (8.26) para os cenários da 043.
+const cnj043 = (n) => cnj(4300 + n, '2025', '8', '26', '0100')
+
+secao('Integração judicial: processo com CNJ fica acompanhado [043]')
+await deve('cenário: processo do escritório (Lucas) e processo de caso do Almeida, com CNJ', async () => {
+  const cli = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '52998224725', $1) returning id`, [ids.owner])).id
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Odete Integração')`, [cli])
+  j043.caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Consignado Odete', 'IN_PROGRESS', $3, $3, $4) returning id`, [cli, ids.banking, ids.owner, ids.lucas])).id
+  j043.proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, legal_class) values ($1, $2, 'Odete x Banco', 'Procedimento do Juizado') returning id`,
+    [j043.caso, cnj043(1)])).id
+  j043.procA = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, 'João x BMG') returning id`, [ids.casoA, cnj043(2)])).id
+  j043.semCnj = (await um(db, `insert into legal_processes (legal_case_id, title) values ($1, 'Em preparação') returning id`, [j043.caso])).id
+  const refs = await linhas(db, `select legal_process_id, external_id from process_external_refs where provider = 'DATAJUD' and legal_process_id = any ($1)`,
+    [[j043.proc, j043.procA, j043.semCnj]])
+  igual(refs.map((r) => r.external_id).sort(), [cnj043(1), cnj043(2)].sort(), 'uma referência por processo com CNJ')
+  j043.ref = (await um(db, `select id from process_external_refs where provider = 'DATAJUD' and legal_process_id = $1`, [j043.proc])).id
+})
+await deve('CNJ preenchido depois e CNJ trocado: a referência acompanha e refaz a linha de base', async () => {
+  await db.query(`update legal_processes set cnj_number = $1 where id = $2`, [cnj043(3), j043.semCnj])
+  await db.query(`update process_external_refs set baseline_at = now(), last_synced_at = now() where legal_process_id = $1`, [j043.semCnj])
+  await db.query(`update legal_processes set cnj_number = $1 where id = $2`, [cnj043(4), j043.semCnj])
+  const r = await um(db, `select external_id, baseline_at, last_synced_at from process_external_refs where legal_process_id = $1 and provider = 'DATAJUD'`, [j043.semCnj])
+  igual([r.external_id, r.baseline_at, r.last_synced_at], [cnj043(4), null, null], 'referência')
+})
+
+secao('Integração judicial: OABs acompanhadas (escritório e parceiros) [043]')
+await deve('ADMIN cadastra OAB do escritório (normaliza pontuação e zeros) e de um parceiro', async () => {
+  const a = await rpc043(ids.barbara, `select public.save_judicial_monitor(' 0225.006 ', 'rj', 'Barbara Cardoso', null, $1) r`, [ids.lucas])
+  igual(a.created, true, 'criada')
+  j043.monOwner = a.id
+  const m = await um(db, `select oab_number, oab_state, organization_id, responsible_user_id from judicial_monitors where id = $1`, [a.id])
+  igual([m.oab_number, m.oab_state, m.organization_id, m.responsible_user_id], ['225006', 'RJ', ids.owner, ids.lucas], 'OAB')
+  const b = await rpc043(ids.barbara, `select public.save_judicial_monitor('225006', 'RJ', null, null, null) r`)
+  igual([b.created, b.id], [false, a.id], 'repetida reativa/atualiza, não duplica')
+  j043.monFerreira = (await rpc043(ids.barbara, `select public.save_judicial_monitor('77001', 'SP', 'Dr. Ferreira', $1) r`, [ids.ferreira])).id
+})
+await deve('administrador do parceiro cadastra a OAB do próprio escritório (a mesma OAB pode estar em dois escritórios)', async () => {
+  j043.monAlmeida = (await rpc043(ids.almeidaAdm, `select public.save_judicial_monitor('123456', 'SP', 'Roberto Almeida') r`)).id
+  await rpc043(ids.almeidaAdm, `select public.save_judicial_monitor('225006', 'RJ') r`)
+  igual((await um(db, `select organization_id from judicial_monitors where id = $1`, [j043.monAlmeida])).organization_id, ids.almeida, 'escritório da sessão')
+})
+await deveFalhar('usuário do parceiro (não administrador) não cadastra OAB', () =>
+  rpc043(ids.almeidaUsr, `select public.save_judicial_monitor('9999', 'SP') r`), /Somente o ADMIN/)
+await deveFalhar('parceiro não cadastra OAB em outro escritório', () =>
+  rpc043(ids.almeidaAdm, `select public.save_judicial_monitor('9999', 'SP', null, $1) r`, [ids.ferreira]), /próprio escritório/)
+await deveFalhar('advogado interno não cadastra OAB', () =>
+  rpc043(ids.lucas, `select public.save_judicial_monitor('9999', 'SP') r`), /Somente o ADMIN/)
+await deveFalhar('OAB inválida é recusada', () =>
+  rpc043(ids.barbara, `select public.save_judicial_monitor('ABC', 'SP') r`), /OAB inválido/)
+await deveFalhar('parceiro não pausa OAB de outro escritório (não revela que existe)', () =>
+  rpc043(ids.almeidaAdm, `select public.set_judicial_monitor_active($1, false) r`, [j043.monFerreira]), /não encontrada/)
+await deve('parceiro vê só as OABs do próprio escritório; a equipe vê todas com o escritório', async () => {
+  const p = await rpc043(ids.almeidaUsr, `select public.get_my_judicial_monitors() r`)
+  igual([p.can_manage, p.monitors.map((m) => m.oab_number).sort()], [false, ['123456', '225006']], 'parceiro')
+  igual(p.monitors.every((m) => m.organization_name == null), true, 'sem nome de outros escritórios')
+  const o = await rpc043(ids.lucas, `select public.get_judicial_overview() r`)
+  igual(o.can_manage, false, 'advogado só lê')
+  igual(o.monitors.filter((m) => m.oab_number === '225006').map((m) => m.organization_name).sort(), ['Almeida Advogados', 'Bárbara Cardoso Advocacia'].sort(), 'mesma OAB em dois escritórios')
+})
+await deveFalhar('assistente não abre a visão da integração', () => rpc043(ids.ana, `select public.get_judicial_overview() r`), /Somente advogado ou ADMIN/)
+await deveFalhar('a tela não escreve direto em judicial_monitors', () => como(ids.barbara, (tx) =>
+  tx.query(`update judicial_monitors set active = false where id = $1`, [j043.monOwner])), /permission denied/)
+
+secao('Integração judicial: rodada do servidor e DJEN [043]')
+await deve('rodada agendada: uma consulta por OAB (repetida entre escritórios conta uma vez); segunda rodada simultânea = busy', async () => {
+  const r = await worker043(`select private.judicial_sync_begin('CRON') r`)
+  igual(r.busy, false, 'abriu')
+  j043.run = r.run_id
+  igual(r.oabs.map((o) => `${o.oab_state}${o.oab_number}`), ['RJ225006', 'SP123456', 'SP77001'], 'OABs distintas')
+  igual(r.lookback_days, 5, 'janela (atraso de até 5 dias do DJEN)')
+  igual((await worker043(`select private.judicial_sync_begin('CRON') r`)).busy, true, 'busy')
+})
+await deveFalhar('busca manual sem quem pediu é recusada', () => worker043(`select private.judicial_sync_begin('MANUAL') r`), /Busca manual/)
+await deveFalhar('busca manual pedida por assistente é recusada', () => worker043(`select private.judicial_sync_begin('MANUAL', $1) r`, [ids.ana]), /Busca manual/)
+await deveFalhar('usuário logado não chama as funções do servidor', () => como(ids.barbara, (tx) =>
+  tx.query(`select private.judicial_ingest_djen(null, '1', 'SP', current_date, current_date, true, null, '[]')`)), /permission denied/)
+
+const pub043 = (id, cnjN, dia, extra = {}) => ({ external_id: String(id), cnj: cnjN, court: 'TJSP', organ: '1ª Vara do Juizado Especial Cível',
+  communication_type: 'Intimação', class_name: 'Procedimento do Juizado Especial Cível', available_on: dia,
+  content: `Fica a parte autora intimada para se manifestar sobre a contestação no prazo de 15 dias. (${id})`, link: `https://comunica.pje.jus.br/x/${id}`, ...extra })
+
+await deve('DJEN: só a publicação de processo cadastrado entra; da outra fica só o número', async () => {
+  const itens = [pub043(910001, cnj043(1), '2026-11-02'), pub043(910002, cnj043(9), '2026-11-02'), { external_id: 'x', cnj: '123' }]
+  const r = await worker043(`select private.judicial_ingest_djen($1, '225006', 'RJ', '2026-10-31', '2026-11-02', true, null, $2) r`, [j043.run, JSON.stringify(itens)])
+  igual([r.found, r.matched, r.new, r.duplicates, r.unmatched], [3, 1, 1, 0, 1], 'contagem')
+  const p = await um(db, `select id, legal_process_id, triage_status, found_by, process_event_id from judicial_publications where external_id = '910001'`)
+  igual([p.legal_process_id, p.triage_status, p.found_by], [j043.proc, 'PENDING', ['RJ 225006']], 'publicação')
+  j043.pub = p.id
+  const ev = await um(db, `select event_type, source, external_provider, important from process_events where id = $1`, [p.process_event_id])
+  igual([ev.event_type, ev.source, ev.external_provider, ev.important], ['PUBLICATION', 'JUDICIAL_INTEGRATION', 'DJEN', true], 'movimentação')
+  igual((await um(db, `select count(*)::int n from judicial_publications where cnj_number = $1`, [cnj043(9)])).n, 0, 'nada do processo não cadastrado')
+  igual((await um(db, `select count(*)::int n from process_events where description like '%(910002)%'`)).n, 0, 'teor não guardado')
+  const st = await um(db, `select unmatched_cnjs, last_found, last_matched, last_error from judicial_monitor_status where judicial_monitor_id = $1`, [j043.monOwner])
+  igual([st.unmatched_cnjs, st.last_found, st.last_matched, st.last_error], [[cnj043(9)], 3, 1, null], 'situação da OAB')
+})
+await deve('aviso de publicação ao advogado do caso (categoria JUDICIAL), com chave única', async () => {
+  const n = await linhas(db, `select user_id, type, severity, related_type from notifications where event_key = $1`, ['pub:' + j043.pub])
+  igual(n.map((x) => [x.user_id, x.type, x.severity, x.related_type]), [[ids.lucas, 'PUBLICATION_RECEIVED', 'WARNING', 'publication']], 'aviso')
+  igual((await um(db, `select private.notification_category('PUBLICATION_RECEIVED') c`)).c, 'JUDICIAL', 'categoria')
+})
+await deve('mesma publicação de novo (outra OAB, outra rodada): não duplica; só anota quem trouxe', async () => {
+  const r = await worker043(`select private.judicial_ingest_djen($1, '123456', 'SP', '2026-11-02', '2026-11-02', true, null, $2) r`,
+    [j043.run, JSON.stringify([pub043(910001, cnj043(1), '2026-11-02')])])
+  igual([r.new, r.duplicates], [0, 1], 'duplicada')
+  igual((await um(db, `select found_by from judicial_publications where id = $1`, [j043.pub])).found_by, ['RJ 225006', 'SP 123456'], 'quem trouxe')
+  igual((await um(db, `select count(*)::int n from process_events where external_provider = 'DJEN' and external_id = '910001'`)).n, 1, 'uma movimentação')
+  igual((await um(db, `select count(*)::int n from notifications where event_key = $1`, ['pub:' + j043.pub])).n, 1, 'um aviso')
+})
+await deve('publicação em processo de parceiro avisa a equipe do parceiro, que vê a movimentação (e não a triagem)', async () => {
+  await worker043(`select private.judicial_ingest_djen($1, '123456', 'SP', '2026-11-03', '2026-11-03', true, null, $2) r`,
+    [j043.run, JSON.stringify([pub043(910003, cnj043(2), '2026-11-03')])])
+  const pid = (await um(db, `select id from judicial_publications where external_id = '910003'`)).id
+  const dest = (await linhas(db, `select user_id from notifications where event_key = $1`, ['pub:' + pid])).map((x) => x.user_id)
+  igual([dest.includes(ids.almeidaAdm), dest.includes(ids.almeidaUsr), dest.includes(ids.ferreiraAdm)], [true, true, false], 'destinatários')
+  const ev = await como(ids.almeidaUsr, (tx) => linhas(tx, `select event_type from process_events where legal_process_id = $1`, [j043.procA]))
+  igual(ev.map((x) => x.event_type), ['PUBLICATION'], 'parceiro vê a movimentação')
+})
+await deve('tribunal cancela depois: a publicação é marcada e a equipe é avisada (uma vez)', async () => {
+  const cancelada = pub043(910003, cnj043(2), '2026-11-03', { cancelled: true, cancel_reason: 'Publicada por engano', hash: 'abcDEF123456789xyz', content: 'Cancelada: publicada por engano' })
+  await worker043(`select private.judicial_ingest_djen($1, '123456', 'SP', '2026-11-03', '2026-11-03', true, null, $2) r`, [j043.run, JSON.stringify([cancelada])])
+  await worker043(`select private.judicial_ingest_djen($1, '123456', 'SP', '2026-11-03', '2026-11-03', true, null, $2) r`, [j043.run, JSON.stringify([cancelada])])
+  const p = await um(db, `select id, cancelled_at is not null c, cancel_reason, djen_hash, content from judicial_publications where external_id = '910003'`)
+  igual([p.c, p.cancel_reason, p.djen_hash, p.content.includes('15 dias')], [true, 'Publicada por engano', 'abcDEF123456789xyz', true], 'cancelamento registrado; teor original preservado')
+  igual((await um(db, `select count(*)::int n from notifications where event_key = $1 and type = 'PUBLICATION_CANCELLED'`, ['pubc:' + p.id])).n > 0, true, 'aviso')
+  const d = await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [p.id])
+  igual(d.certificate_url, 'https://comunicaapi.pje.jus.br/api/v1/comunicacao/abcDEF123456789xyz/certidao', 'certidão')
+})
+await deveFalhar('parceiro não lê a tabela de publicações', () => como(ids.almeidaUsr, (tx) => tx.query(`select * from judicial_publications`)), /permission denied/)
+await deveFalhar('parceiro não lista a triagem', () => rpc043(ids.almeidaUsr, `select public.list_judicial_publications('{}') r`), /Somente a equipe/)
+await deve('falha na consulta registra o erro sem apagar o que já foi conferido', async () => {
+  await worker043(`select private.judicial_ingest_djen($1, '225006', 'RJ', '2026-11-02', '2026-11-03', false, 'HTTP 503', null) r`, [j043.run])
+  const d = await linhas(db, `select day::text, last_ok_at is not null ok, last_error from judicial_capture_days where oab_number = '225006' and day between '2026-11-02' and '2026-11-03' order by day`)
+  igual(d.map((x) => [x.day, x.ok, x.last_error]), [['2026-11-02', true, 'HTTP 503'], ['2026-11-03', false, 'HTTP 503']], 'dias')
+  igual((await um(db, `select last_error from judicial_monitor_status where judicial_monitor_id = $1`, [j043.monOwner])).last_error, 'HTTP 503', 'situação')
+})
+await deve('prova de diligência dia a dia (consultado, assentado, quantidade); parceiro só da própria OAB', async () => {
+  const c = await rpc043(ids.lucas, `select public.get_judicial_coverage('225006', 'RJ', '2026-10-31', '2026-11-03') r`)
+  igual(c.map((x) => [x.day, x.checked, x.found]), [['2026-10-31', true, 0], ['2026-11-01', true, 0], ['2026-11-02', true, 2], ['2026-11-03', false, null]], 'cobertura')
+  igual(c[3].last_error, 'HTTP 503', 'erro do dia não conferido')
+  await rpc043(ids.almeidaUsr, `select public.get_judicial_coverage('123456', 'SP') r`)
+})
+await deveFalhar('parceiro não vê a cobertura de OAB de outro escritório', () =>
+  rpc043(ids.almeidaUsr, `select public.get_judicial_coverage('77001', 'SP') r`), /não encontrada/)
+
+secao('Integração judicial: DataJud e movimentações sem duplicar [043]')
+const mov043 = (n, nome, dia) => ({ external_id: createHash('sha256').update(`m${n}`).digest('hex'), occurred_at: `${dia}T10:00:00-03:00`, code: n, name: nome, description: nome, grau: 'JE' })
+await deve('fila do DataJud: processos com CNJ, os sem tentativa primeiro', async () => {
+  const q = await worker043(`select private.judicial_datajud_queue(500) r`)
+  igual([j043.proc, j043.procA, j043.semCnj].every((id) => q.some((x) => x.legal_process_id === id)), true, 'na fila')
+})
+await deve('primeira leitura = linha de base: grava o histórico, preenche só o vazio e não avisa', async () => {
+  const meta = { court: 'TJSP', court_unit: '1ª Vara do JEC de Santos', legal_class: 'Outra classe', distribution_date: '2025-03-10', alias: 'tjsp', graus: ['JE'] }
+  const r = await worker043(`select private.judicial_ingest_datajud($1, $2, true, null, $3, $4) r`,
+    [j043.run, j043.ref, JSON.stringify(meta), JSON.stringify([mov043(1, 'Distribuído por sorteio', '2025-03-10'), mov043(2, 'Conclusos', '2025-04-01'), { external_id: 'curto', occurred_at: '2025-01-01', name: 'x' }])])
+  igual([r.ok, r.inserted, r.baseline], [true, 2, true], 'linha de base')
+  const p = await um(db, `select court, court_unit, legal_class, distribution_date::text d from legal_processes where id = $1`, [j043.proc])
+  igual([p.court, p.court_unit, p.legal_class, p.d], ['TJSP', '1ª Vara do JEC de Santos', 'Procedimento do Juizado', '2025-03-10'], 'não sobrescreve o que a equipe digitou')
+  igual((await um(db, `select count(*)::int n from notifications where type = 'PROCESS_MOVEMENT' and legal_process_id = $1`, [j043.proc])).n, 0, 'sem aviso')
+})
+await deve('leitura seguinte: só a movimentação nova entra e avisa', async () => {
+  const r = await worker043(`select private.judicial_ingest_datajud($1, $2, true, null, '{}', $3) r`,
+    [j043.run, j043.ref, JSON.stringify([mov043(1, 'Distribuído por sorteio', '2025-03-10'), mov043(2, 'Conclusos', '2025-04-01'), mov043(3, 'Julgado procedente', '2026-11-02')])])
+  igual([r.inserted, r.baseline], [1, false], 'só a nova')
+  igual((await um(db, `select count(*)::int n from process_events where legal_process_id = $1 and external_provider = 'DATAJUD'`, [j043.proc])).n, 3, 'sem duplicar')
+  const n = await linhas(db, `select user_id, message from notifications where type = 'PROCESS_MOVEMENT' and legal_process_id = $1`, [j043.proc])
+  igual(n.map((x) => [x.user_id, x.message]), [[ids.lucas, 'Julgado procedente']], 'aviso')
+})
+await deve('falha no DataJud fica registrada no processo; tentado há pouco sai da fila; pausado não entra', async () => {
+  await worker043(`select private.judicial_ingest_datajud($1, $2, false, 'Tribunal não encontrado', null, null) r`,
+    [j043.run, (await um(db, `select id from process_external_refs where legal_process_id = $1 and provider = 'DATAJUD'`, [j043.procA])).id])
+  const s = await rpc043(ids.lucas, `select public.get_process_judicial_status($1) r`, [j043.procA])
+  igual([s.tracked, s.last_error], [true, 'Tribunal não encontrado'], 'situação interna')
+  const sp = await rpc043(ids.almeidaUsr, `select public.get_process_judicial_status($1) r`, [j043.procA])
+  igual([sp.tracked, sp.last_error, sp.publications], [true, null, null], 'parceiro: sem detalhe técnico')
+  await rpc043(ids.lucas, `select public.set_process_judicial_sync($1, false) r`, [j043.semCnj])
+  const q = await worker043(`select private.judicial_datajud_queue(500) r`)
+  igual([q.some((x) => x.legal_process_id === j043.proc), q.some((x) => x.legal_process_id === j043.semCnj)], [false, false], 'fora da fila')
+  igual((await worker043(`select private.judicial_datajud_queue(5, $1) r`, [j043.proc])).length, 1, 'busca de um processo ignora o intervalo')
+})
+await deveFalhar('assistente não pausa o acompanhamento', () => rpc043(ids.ana, `select public.set_process_judicial_sync($1, true) r`, [j043.semCnj]), /Somente advogado/)
+await deve('rodada com falha avisa os ADMIN uma vez', async () => {
+  await worker043(`select private.judicial_sync_finish($1, 'PARTIAL', '{"djen_errors":1}', 'OAB RJ 225006: HTTP 503') r`, [j043.run])
+  await worker043(`select private.judicial_sync_finish($1, 'PARTIAL', '{}', 'de novo') r`, [j043.run])
+  igual((await um(db, `select count(*)::int n from notifications where event_key = $1`, ['jsync:' + j043.run])).n, 1, 'aviso')
+  igual((await um(db, `select status from judicial_sync_runs where id = $1`, [j043.run])).status, 'PARTIAL', 'situação')
+})
+
+await deve('lote extra do DataJud (agendador do banco): sem DJEN; DataJud desligado = nem abre rodada', async () => {
+  const r = await worker043(`select private.judicial_sync_begin('CRON', null, null, true) r`)
+  igual([r.busy, r.idle, r.djen_enabled, r.oabs], [false, false, false, []], 'lote')
+  igual((await um(db, `select scope from judicial_sync_runs where id = $1`, [r.run_id])).scope, 'DATAJUD', 'escopo')
+  igual((await worker043(`select private.judicial_sync_begin('CRON', null, null, true) r`)).busy, true, 'um lote por vez')
+  await worker043(`select private.judicial_sync_finish($1, 'COMPLETED', '{}') r`, [r.run_id])
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"datajud_enabled":false}') r`)
+  const n0 = (await um(db, `select count(*)::int n from judicial_sync_runs`)).n
+  igual((await worker043(`select private.judicial_sync_begin('CRON', null, null, true) r`)).idle, true, 'ocioso')
+  igual((await um(db, `select count(*)::int n from judicial_sync_runs`)).n, n0, 'sem rodada nova')
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"datajud_enabled":true}') r`)
+  igual((await um(db, `select private.judicial_cron_kick() r`)).r, 'pg_net ou Vault indisponível', 'sem pg_net não chama nada')
+})
+
+secao('Integração judicial: contagem do prazo em dias úteis [043]')
+await deve('Páscoa e Sexta-feira Santa', async () => {
+  const r = await um(db, `select private.easter_sunday(2026)::text a, private.easter_sunday(2027)::text b, private.non_business_reason('2027-03-26', 'TJSP') c`)
+  igual([r.a, r.b, r.c], ['2026-04-05', '2027-03-28', 'Sexta-feira Santa'], 'datas')
+})
+await deve('disponibilizada na sexta 13/11/2026: publicada 16/11, prazo começa 17/11, pula 20/11 (Consciência Negra), 15 dias úteis = 08/12', async () => {
+  const r = await rpc043(ids.ana, `select public.judicial_deadline_preview('2026-11-13', 'TJSP', 15) r`)
+  igual([r.published_on, r.first_day, r.due_on, r.skipped.map((s) => s.day)], ['2026-11-16', null, '2026-12-08', ['2026-11-20']], 'contagem')
+})
+await deve('recesso do art. 220 do CPC suspende; dia cadastrado para o tribunal também', async () => {
+  const r = await um(db, `select private.judicial_deadline_dates('2026-12-15', 'TJSP', 5, 5) r`)
+  igual([r.r.published_on, r.r.list, r.r.due_on], ['2026-12-16', ['2026-12-17', '2026-12-18', '2027-01-21', '2027-01-22', '2027-01-25'], '2027-01-25'], 'recesso')
+  await rpc043(ids.barbara, `select public.save_court_calendar_day('tjsp', '2027-01-25', 'HOLIDAY', 'Aniversário de São Paulo') r`)
+  const s = await um(db, `select private.judicial_deadline_dates('2026-12-15', 'TJSP', 5, 0) r`)
+  const o = await um(db, `select private.judicial_deadline_dates('2026-12-15', 'TJRJ', 5, 0) r`)
+  igual([s.r.due_on, o.r.due_on], ['2027-01-26', '2027-01-25'], 'feriado só do TJSP')
+})
+await deveFalhar('advogado não mexe no calendário', () => rpc043(ids.lucas, `select public.save_court_calendar_day(null, '2027-02-15', 'SUSPENSION', 'Carnaval') r`), /Somente ADMIN/)
+await deveFalhar('parceiro não usa a prévia de prazo', () => rpc043(ids.almeidaUsr, `select public.judicial_deadline_preview('2026-11-13', 'TJSP', 15) r`), /Somente a equipe/)
+
+secao('Integração judicial: triagem humana e prazo [043]')
+await deve('fila de triagem (a minha) e detalhe com sugestão de contagem', async () => {
+  const l = await rpc043(ids.lucas, `select public.list_judicial_publications('{"status":"OPEN","mine":true}') r`)
+  // O caso do Almeida (casoA) também é do Lucas; mais recente primeiro.
+  igual(l.items.map((x) => x.external_id), ['910003', '910001'], 'minhas abertas')
+  igual([l.items[1].client_name, l.items[1].content], ['Odete Integração', null], 'lista sem o teor')
+  const outro = await rpc043(ids.barbara, `select public.list_judicial_publications($1) r`, [JSON.stringify({ status: 'OPEN', legal_process_id: j043.proc })])
+  igual([outro.total, outro.items.map((x) => x.external_id)], [1, ['910001']], 'por processo')
+  const d = await rpc043(ids.ana, `select public.get_judicial_publication($1) r`, [j043.pub])
+  igual([d.content.includes('15 dias'), d.suggestion.published_on], [true, '2026-11-03'], 'detalhe')
+})
+await deveFalhar('"sem prazo" exige o motivo', () => rpc043(ids.lucas, `select public.judicial_publication_decide($1, 'NO_DEADLINE', ' ') r`, [j043.pub]), /por que/)
+await deveFalhar('assistente não fecha a triagem', () => rpc043(ids.ana, `select public.create_deadline_from_publication($1, '{"title":"x","due_on":"2026-11-24"}') r`, [j043.pub]), /Somente advogado/)
+await deve('advogado cria o prazo a partir da publicação: prazo + triagem juntos, vencimento no fim do dia (Brasília)', async () => {
+  const r = await rpc043(ids.lucas, `select public.create_deadline_from_publication($1, $2) r`,
+    [j043.pub, JSON.stringify({ title: 'Manifestação sobre a contestação', due_on: '2026-11-24', deadline_type: 'REPLY' })])
+  const d = await um(db, `select source, deadline_type, responsible_user_id, legal_process_id, to_char(due_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI') due from deadlines where id = $1`, [r.deadline_id])
+  igual([d.source, d.deadline_type, d.responsible_user_id, d.legal_process_id, d.due], ['JUDICIAL_INTEGRATION', 'REPLY', ids.lucas, j043.proc, '2026-11-24 23:59'], 'prazo')
+  const p = await um(db, `select triage_status, triage_outcome, deadline_id, triaged_by from judicial_publications where id = $1`, [j043.pub])
+  igual([p.triage_status, p.triage_outcome, p.deadline_id, p.triaged_by], ['DONE', 'DEADLINE', r.deadline_id, ids.lucas], 'triagem')
+})
+await deveFalhar('publicação já tratada não gera segundo prazo', () =>
+  rpc043(ids.lucas, `select public.create_deadline_from_publication($1, '{"title":"x","due_on":"2026-11-24"}') r`, [j043.pub]), /já foi tratada/)
+await deve('reabrir e fechar como "sem prazo", com motivo', async () => {
+  await rpc043(ids.lucas, `select public.judicial_publication_decide($1, 'REOPEN', 'Revisar') r`, [j043.pub])
+  await rpc043(ids.lucas, `select public.judicial_publication_decide($1, 'NO_DEADLINE', 'Prazo já controlado no outro prazo') r`, [j043.pub])
+  const p = await um(db, `select triage_status, triage_outcome, deadline_id from judicial_publications where id = $1`, [j043.pub])
+  igual([p.triage_status, p.triage_outcome, p.deadline_id], ['DONE', 'NO_DEADLINE', null], 'sem prazo')
+})
+
+secao('Integração judicial: agente propõe o prazo, humano decide em Revisões [043]')
+await deveFalhar('advogado não escolhe o agente de prazos', () => rpc043(ids.lucas, `select public.save_judicial_settings($1) r`, [JSON.stringify({ deadline_agent_id: ids.agente })]), /Somente ADMIN/)
+await deve('ADMIN escolhe o agente; publicação nova vira trabalho do agente, pedido em nome do advogado do caso', async () => {
+  await rpc043(ids.barbara, `select public.save_judicial_settings($1) r`, [JSON.stringify({ deadline_agent_id: ids.agente })])
+  const run2 = (await worker043(`select private.judicial_sync_begin('MANUAL', $1) r`, [ids.lucas])).run_id
+  await worker043(`select private.judicial_ingest_djen($1, '225006', 'RJ', '2026-11-03', '2026-11-03', true, null, $2) r`,
+    [run2, JSON.stringify([pub043(910004, cnj043(1), '2026-11-03'), pub043(910005, cnj043(1), '2026-11-03')])])
+  const p = await um(db, `select id, triage_status, agent_run_id, agent_error from judicial_publications where external_id = '910004'`)
+  igual([p.triage_status, p.agent_error, !!p.agent_run_id], ['WITH_AGENT', null, true], 'com o agente')
+  j043.pubAg = p.id
+  j043.runAg = p.agent_run_id
+  const r = await um(db, `select r.status, r.requested_by, r.legal_process_id, i.parameters, i.request_text from agent_runs r join agent_run_inputs i on i.agent_run_id = r.id where r.id = $1`, [p.agent_run_id])
+  igual([r.status, r.requested_by, r.legal_process_id, r.parameters.kind, r.parameters.business_days.length], ['QUEUED', ids.lucas, j043.proc, 'JUDICIAL_PUBLICATION', 30], 'trabalho')
+  igual(r.request_text.includes('(910004)'), true, 'teor no pedido')
+  igual([r.request_text.includes('dia 1: 05/11/2026'), r.request_text.includes('dia 15: 26/11/2026'), r.request_text.includes('publicada em 04/11/2026')], [true, true, true], 'contagem no texto que o agente lê')
+  // O ator da transação foi limpo: o advogado recebeu o aviso das duas publicações.
+  const outra = (await um(db, `select id from judicial_publications where external_id = '910005'`)).id
+  igual((await um(db, `select count(*)::int n from notifications where user_id = $1 and event_key = any ($2)`, [ids.lucas, ['pub:' + p.id, 'pub:' + outra]])).n, 2, 'avisos')
+  j043.pubAg2 = outra
+  j043.runAg2 = (await um(db, `select agent_run_id from judicial_publications where id = $1`, [outra])).agent_run_id
+})
+await deve('proposta CREATE_DEADLINE aprovada em Revisões e aplicada → publicação tratada com o prazo', async () => {
+  const prop = (await um(db, `insert into agent_proposals (agent_run_id, legal_case_id, legal_process_id, proposal_type, payload, idempotency_key)
+    values ($1, $2, $3, 'CREATE_DEADLINE', $4, 'prop:j043a') returning id`,
+    [j043.runAg, j043.caso, j043.proc, JSON.stringify({ summary: 'Manifestação', data: { title: 'Manifestação (15 dias úteis)', due_at: '2026-11-25T23:59:00-03:00' } })])).id
+  const rev = (await um(db, `insert into reviews (agent_proposal_id, legal_case_id) values ($1, $2) returning id`, [prop, j043.caso])).id
+  const d = await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [j043.pubAg])
+  igual(d.pending_review_id, rev, 'revisão pendente aparece na publicação')
+  await decidir(ids.barbara, rev, 'APPROVE')
+  for (let i = 0; i < 10; i++) {
+    const r = await comoWorker((tx) => linhas(tx, `select * from private.worker_apply_next_proposal('worker-j043')`))
+    if (!r.length || r.some((x) => x.proposal_id === prop)) break
+  }
+  const ap = await um(db, `select status, applied_entity_id from agent_proposals where id = $1`, [prop])
+  const p = await um(db, `select triage_status, triage_outcome, deadline_id, triaged_by from judicial_publications where id = $1`, [j043.pubAg])
+  igual([ap.status, p.triage_status, p.triage_outcome, p.deadline_id, p.triaged_by], ['APPLIED', 'DONE', 'DEADLINE', ap.applied_entity_id, ids.barbara], 'tratada')
+})
+await deve('proposta rejeitada devolve a publicação à triagem humana', async () => {
+  const prop = (await um(db, `insert into agent_proposals (agent_run_id, legal_case_id, legal_process_id, proposal_type, payload, idempotency_key)
+    values ($1, $2, $3, 'CREATE_DEADLINE', $4, 'prop:j043b') returning id`,
+    [j043.runAg2, j043.caso, j043.proc, JSON.stringify({ summary: 'x', data: { title: 'x', due_at: '2026-11-25T23:59:00-03:00' } })])).id
+  const rev = (await um(db, `insert into reviews (agent_proposal_id, legal_case_id) values ($1, $2) returning id`, [prop, j043.caso])).id
+  await decidir(ids.lucas, rev, 'REJECT', 'Contagem errada')
+  for (let i = 0; i < 10; i++) {
+    const r = await comoWorker((tx) => linhas(tx, `select * from private.worker_apply_next_proposal('worker-j043')`))
+    if (!r.length || r.some((x) => x.proposal_id === prop)) break
+  }
+  igual((await um(db, `select triage_status from judicial_publications where id = $1`, [j043.pubAg2])).triage_status, 'PENDING', 'de volta')
+})
+await deve('sem agente configurado a publicação fica para a equipe', async () => {
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_agent_id":null}') r`)
+  const run3 = (await worker043(`select private.judicial_sync_begin('MANUAL', $1) r`, [ids.barbara])).run_id
+  await worker043(`select private.judicial_ingest_djen($1, '225006', 'RJ', '2026-11-03', '2026-11-03', true, null, $2) r`,
+    [run3, JSON.stringify([pub043(910006, cnj043(1), '2026-11-03')])])
+  const p = await um(db, `select triage_status, agent_run_id from judicial_publications where external_id = '910006'`)
+  igual([p.triage_status, p.agent_run_id], ['PENDING', null], 'pendente')
+})
+
+secao('Integração judicial: catálogo [043]')
+await deve('funções da 043 fixam search_path; anon e service_role não executam; servidor só nas portas da busca', async () => {
+  const servidor = ['judicial_sync_begin', 'judicial_datajud_queue', 'judicial_ingest_datajud', 'judicial_ingest_djen', 'judicial_sync_finish']
+  const internas = ['judicial_connection_id', 'judicial_cron_kick', 'judicial_request_deadline_proposal', 'judicial_recipients', 'judicial_deadline_dates', 'non_business_reason']
+  const tela = ['save_judicial_monitor', 'set_judicial_monitor_active', 'get_my_judicial_monitors', 'get_judicial_coverage', 'get_judicial_overview',
+    'save_judicial_settings', 'save_court_calendar_day', 'delete_court_calendar_day', 'judicial_deadline_preview', 'list_judicial_publications',
+    'get_judicial_publication', 'judicial_publication_decide', 'create_deadline_from_publication', 'get_process_judicial_status', 'set_process_judicial_sync']
+  const r = await linhas(db, `select n.nspname s, p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('private', 'public') and p.proname = any ($1)`, [[...servidor, ...internas, ...tela]])
+  if (r.length < servidor.length + internas.length + tela.length * 2) throw new Error(`funções faltando: ${r.length}`)
+  igual(r.filter((x) => !x.cfg.includes('search_path=')).map((x) => x.f), [], 'sem search_path')
+  igual(r.filter((x) => x.anon || x.srv).map((x) => `${x.s}.${x.f}`), [], 'anon/service_role')
+  igual(r.filter((x) => [...servidor, ...internas].includes(x.f) && x.usr).map((x) => x.f), [], 'aberta ao usuário')
+  igual(r.filter((x) => x.wrk).map((x) => x.f).sort(), [...servidor].sort(), 'portas do servidor')
+  igual(r.filter((x) => x.s === 'public' && x.def).map((x) => x.f), [], 'pública como definer')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

@@ -44,9 +44,9 @@ describe("preferências de notificação (4.3.1, 037)", () => {
 
   it("cada perfil vê só as categorias que pode receber", () => {
     const of = (role: Parameters<typeof can>[0], surface: "INTERNAL" | "PARTNER") => visibleCategories(surface, (p) => can(role, p));
-    expect(of("LAWYER", "INTERNAL")).toEqual(["CASES", "DEADLINES", "DOCUMENTS", "REVIEWS", "PARTNER_REQUESTS", "ANALYSES", "SECURITY"]);
+    expect(of("LAWYER", "INTERNAL")).toEqual(["CASES", "DEADLINES", "JUDICIAL", "DOCUMENTS", "REVIEWS", "PARTNER_REQUESTS", "ANALYSES", "SECURITY"]);
     expect(of("ASSISTANT", "INTERNAL")).not.toContain("REVIEWS");
-    expect(of("PARTNER_ADMIN", "PARTNER")).toEqual(["CASES", "DOCUMENTS", "PARTNER_REQUESTS", "FINANCE", "SECURITY"]);
+    expect(of("PARTNER_ADMIN", "PARTNER")).toEqual(["CASES", "JUDICIAL", "DOCUMENTS", "PARTNER_REQUESTS", "FINANCE", "SECURITY"]);
     expect(of("PARTNER_USER", "PARTNER")).not.toContain("FINANCE");
   });
 });

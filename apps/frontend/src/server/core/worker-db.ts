@@ -4,8 +4,8 @@ import pg from "pg";
 
 /**
  * Conexão do SERVIDOR do DG Brasil com o banco para o que não tem usuário
- * logado: a API do computador do escritório (040) e a sincronização do Google
- * Drive (041). Login dg_worker (DG_WORKER_DB_URL, só no servidor): não ignora
+ * logado: a API do computador do escritório (040), a sincronização do Google
+ * Drive (041) e a busca no DJEN/DataJud (043). Login dg_worker (DG_WORKER_DB_URL, só no servidor): não ignora
  * RLS, não lê tabela com dado de cliente e só executa funções private.* que
  * receberam grant explícito — cada chamador passa a SUA lista permitida.
  *

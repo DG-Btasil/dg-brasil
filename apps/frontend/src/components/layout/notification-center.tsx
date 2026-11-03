@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlarmClock,
   Banknote,
+  Newspaper,
   Bell,
   Bot,
   BriefcaseBusiness,
@@ -75,6 +76,9 @@ export const NOTIFICATION_TYPE_ICON: Record<NotificationType, LucideIcon> = {
   PARTNER_TRANSFER_PAID: Banknote,
   MFA_RESET: ShieldAlert,
   ROLE_CHANGED: ShieldAlert,
+  PUBLICATION_RECEIVED: Newspaper,
+  PUBLICATION_CANCELLED: Newspaper,
+  JUDICIAL_SYNC_FAILED: PlugZap,
 };
 
 /** Ícone do tipo; tipo novo do banco (texto aberto) usa o sino. */

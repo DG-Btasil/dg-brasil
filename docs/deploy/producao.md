@@ -25,6 +25,7 @@ hora de contratar.
 | 7 | Claude com dados de clientes | Hoje só há dados fictícios | Plano Team ou Enterprise |
 | 8 | Variáveis e chaves de produção | Hoje tudo aponta para o DEV | Sem custo |
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
+| 10 | Integração judicial: mais buscas por dia e lotes do DataJud | Hobby: 1 rodada por dia, 60 s | Já vem com o Vercel Pro |
 
 ---
 
@@ -215,6 +216,37 @@ verdade:
 - **Prazos em dupla:** enquanto os prazos também forem controlados fora do DG
   Brasil, conferir item a item por um ciclo completo antes de o DG Brasil virar a
   fonte única ([ROADMAP.md](../../ROADMAP.md), "Onde o risco realmente mora").
+
+## 10. Integração judicial (DJEN e DataJud): frequência
+
+- **Hoje:**
+  - publicações do DJEN uma vez por dia, às 06:30 de Brasília
+    (`30 9 * * *` em `apps/frontend/vercel.json`), revendo os últimos 5 dias;
+  - cada rodada tem 60 s;
+  - o DataJud (lento: até ~50 s por consulta) também roda em lotes a cada 20 min,
+    chamados pelo pg_cron do Supabase (`dg-datajud`, migration 043).
+- **Para os lotes do DataJud funcionarem** (DEV e produção), no projeto Supabase:
+  1. **Database → Extensions:** ligar `pg_net`.
+  2. **SQL Editor**, com o mesmo `CRON_SECRET` da Vercel daquele ambiente:
+
+     ```sql
+     select vault.create_secret('https://app.dgbrasil.adv.br', 'dg_app_url');
+     select vault.create_secret('<CRON_SECRET>', 'dg_cron_secret');
+     select private.judicial_cron_kick();   -- 'chamado' ou 'nada a ler'
+     ```
+
+  Para trocar um segredo depois: `select vault.update_secret(id, '<novo>') from
+  vault.secrets where name = 'dg_cron_secret';`.
+- **Na produção, com o Vercel Pro (item 1):**
+  1. Mais buscas de publicações por dia, se o escritório quiser. Por exemplo:
+     `"30 9,13,17 * * *"` (06:30, 10:30 e 14:30).
+  2. `maxDuration` da rota `/api/cron/judicial-sync` de 60 para 300 s e o prazo
+     interno (`started + 48_000`) para ~280 s: cabem muito mais processos por lote.
+  3. Atualizar o texto "uma vez por dia" em `route.ts`, em
+     [docs/judicial.md](../judicial.md) e nas telas (Configurações → Integrações).
+- **Chave do DataJud:** é a pública da wiki do CNJ e pode mudar. Se a tela
+  mostrar "DataJud recusou a chave pública", pôr a nova em `DATAJUD_API_KEY`
+  na Vercel.
 
 ---
 

@@ -11,6 +11,7 @@ import type { MyPartnerSettingsDTO, PartnerDetailDTO } from "@/server/domain/org
 import { useClientSession } from "@/features/auth/session-context";
 import { AccountSecurity } from "@/features/account/components/account-security";
 import { NotificationPreferences } from "@/features/notifications/components/notification-preferences";
+import { PartnerOabsPanel } from "@/features/judicial/components/partner-oabs-panel";
 import { UsersPanel } from "./portal-users";
 
 /**
@@ -94,6 +95,9 @@ export function PortalAccount({
             <UsersPanel />
           </div>
         </Can>
+        <div className="col-span-12">
+          <PartnerOabsPanel />
+        </div>
         <section aria-labelledby="notification-preferences-title" className="col-span-12">
           <h2 id="notification-preferences-title" className="mb-3 text-[15px] font-semibold text-foreground">
             Notificações

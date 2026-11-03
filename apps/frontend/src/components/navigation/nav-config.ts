@@ -8,6 +8,7 @@ import {
   Handshake,
   Home,
   Landmark,
+  Newspaper,
   UserRoundCog,
   Users,
   type LucideIcon,
@@ -19,6 +20,7 @@ export type NavKey =
   | "clients"
   | "cases"
   | "processes"
+  | "publications"
   | "reviews"
   | "finance"
   | "partners"
@@ -47,6 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: "clients", label: "Clientes", href: "/clientes", description: "Cadastro, documentos e casos de cada cliente", icon: Users, permission: "clients.view", audience: "OWNER" },
   { key: "cases", label: "Casos", href: "/casos", description: "Demandas dos clientes: origem, análise, aceite e processos", icon: FolderOpen, permission: "cases.view", audience: "OWNER" },
   { key: "processes", label: "Processos", href: "/processos", description: "Acompanhamento, movimentações e prazos", icon: Briefcase, permission: "processes.view", audience: "OWNER" },
+  { key: "publications", label: "Publicações", href: "/publicacoes", description: "Intimações do DJEN a tratar: prazo ou sem prazo", icon: Newspaper, permission: "processes.view", audience: "OWNER" },
   { key: "reviews", label: "Revisões", href: "/revisoes", description: "Materiais dos agentes aguardando decisão", icon: ClipboardCheck, permission: "reviews.view", audience: "OWNER" },
   { key: "finance", label: "Financeiro", href: "/financeiro", description: "Honorários, recebimentos e contratos", icon: Banknote, permission: "finance.view", audience: "OWNER" },
   { key: "partners", label: "Parceiros", href: "/parceiros", description: "Escritórios parceiros, casos enviados e parcerias", icon: Handshake, permission: "partners.view", audience: "OWNER" },

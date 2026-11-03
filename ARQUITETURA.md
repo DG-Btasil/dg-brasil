@@ -114,4 +114,8 @@ Anotado para não virar escopo por acidente:
   importação é genérica (CSV/XLSX), sem campo de fornecedor no schema.
 - App móvel — o painel é responsivo, basta.
 - Motor de assinatura eletrônica própria — integra ZapSign/Docusign.
-- Captura própria de DJEN — usa o conector de publicações que já existe.
+- ~~Captura própria de DJEN~~ — revisto em 2026-11-03 (Etapa 8): o DG Brasil lê o
+  DJEN e o DataJud direto (gratuitos e oficiais), porque cada parceiro acompanha a
+  própria OAB e o serviço pago tem teto de OABs. Continua fora: importar clientes
+  ou processos a partir da OAB — a integração só atualiza o que já está cadastrado
+  ([docs/judicial.md](docs/judicial.md)).
