@@ -117,8 +117,11 @@ describe("importação de planilhas (042) — Supabase DEV", () => {
     expect(job.fileAvailable).toBe(false);
     const { data: jr } = await svc.from("import_jobs").select("source_file_deleted_at, storage_object_name").eq("id", state.jobCsv).single();
     expect(jr!.source_file_deleted_at).not.toBeNull();
-    const dl = await svc.storage.from("imports").download(jr!.storage_object_name!);
-    expect(dl.error).not.toBeNull();
+    // list() lê o catálogo; download() pode servir o cache do Storage por até ~60 s depois do remove().
+    const folder = jr!.storage_object_name!.split("/").slice(0, -1).join("/");
+    const { data: left, error: listError } = await svc.storage.from("imports").list(folder);
+    expect(listError).toBeNull();
+    expect(left).toEqual([]);
 
     const report = await imports.buildReport(ctx, { jobId: state.jobCsv, only: "all" });
     expect(report.rows).toBe(4);
