@@ -71,9 +71,14 @@ afterAll(async () => {
 
 describe("computador do escritório: acesso", () => {
   it("token só aparece na criação; o banco guarda o hash; LAWYER não autoriza computador", async () => {
-    const { data } = await svc.from("executors").select("token_hash, token_prefix").eq("id", state.executorA).single();
-    expect(data?.token_hash).toBe(createHash("sha256").update(state.tokenA).digest("hex"));
-    expect(state.tokenA.startsWith(data!.token_prefix)).toBe(true);
+    // A 040 fecha a tabela até para a service_role: o hash só é conferido pela porta do servidor.
+    const direto = await svc.from("executors").select("token_hash").eq("id", state.executorA);
+    expect(direto.error?.message).toMatch(/permission denied/);
+    const me = await deps.db.call<{ executor_id: string }>("executor_authenticate", [createHash("sha256").update(state.tokenA).digest("hex"), null]);
+    expect(me.executor_id).toBe(state.executorA);
+    await expect(deps.db.call("executor_authenticate", [state.tokenA, null])).rejects.toThrow(/inválido ou revogado/);
+    const s = await dg.getOfficeStatus(await ctxFor("ADMIN"));
+    expect(state.tokenA.startsWith(s.executors!.find((e) => e.id === state.executorA)!.tokenPrefix)).toBe(true);
     await expectDomainError(dg.createExecutor(await ctxFor("LAWYER"), "Intruso"), "FORBIDDEN");
   });
 
@@ -121,6 +126,18 @@ describe("computador do escritório: trabalho de ponta a ponta", () => {
     expect((ok.body as { id: string }).id).toBe(state.caseId);
     expect((await job("GET", "case", undefined, state.tokenB)).status).toBe(403);
     expect((await job("GET", "case", undefined, state.tokenA, `dgl_${"x".repeat(43)}`)).status).toBe(403);
+  });
+
+  it("isolamento: com a reserva válida, documento de OUTRO cliente não abre e nada fica registrado", async () => {
+    const { data: c } = await svc.from("legal_cases").select("client_id").eq("id", state.caseId).single();
+    const { data: alheio } = await svc.from("document_versions").select("id, documents!inner(client_id)")
+      .neq("documents.client_id", c!.client_id).limit(1).single();
+    expect(alheio?.id).toBeTruthy();
+    const r = await job("POST", `documents/${alheio!.id}/download`);
+    expect([403, 404]).toContain(r.status);
+    expect(JSON.stringify(r.body)).not.toContain("http");
+    const d = await agents.getAgentRunDetail(await ctxFor("LAWYER"), state.runId);
+    expect(d.events.some((e) => e.kind === "DOCUMENT_OPENED" && e.documentVersionId === alheio!.id)).toBe(false);
   });
 
   it("minuta: envio pela URL assinada, versão INTERNA em revisão; baixar de volta confere o checksum", async () => {

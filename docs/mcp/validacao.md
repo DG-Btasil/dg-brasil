@@ -84,6 +84,9 @@ npm run validar:real
 
 - [ ] **`verificar`:** **673 verificações, todas passaram**.
 - [ ] **`validar:real`:**
+  - o pré-flight para se houver cliente com CPF/CNPJ fora do padrão `999…` (ex.:
+    cliente criado à mão pela tela). Não apague: confira com o responsável e,
+    se for teste, corrija só o CPF para um `999…`;
   - todas ✓;
   - as seções **41f** (computador do escritório: pg_cron, token, reserva com o
     pgmq real, devolução, falha, revogação) e **41g** (Google Drive: ligação,
@@ -121,13 +124,24 @@ npm run test:integration
 
 - [ ] **Unitários:** 42 arquivos, **479/479**.
 - [ ] **`lint` e `tsc`:** sem erro.
+  - Se o `tsc` acusar `.next/dev/types/validator.ts` procurando
+    `dg-brasil/skills/[id]/page.js`, é cache de um `next dev` antigo: apague
+    `.next/dev` (e as pastas vazias `src/app/(app)/dg-brasil/skills`, se o `git
+    pull` as deixou). O OneDrive pode restaurar a pasta apagada.
 - [ ] **`build`:** sem erro. Na lista de rotas aparecem `/api/executor/v1/[...path]`
   e `/api/cron/drive-sync`.
-- [ ] **Integração:** 28 arquivos, todos passaram (≈ 222 testes). Em especial:
-  - `mcp-executor.int.test.ts`: **10/10**. É a API do computador contra o DEV:
-    token em hash, interruptor, fila sem nome do cliente, reserva exclusiva,
-    escopo, minuta enviada ao Storage e baixada de volta com checksum, proposta,
-    conclusão, linha do tempo, revogação.
+- [ ] **Integração:** 30 arquivos, todos passaram (≈ 229 testes). Em especial:
+  - `mcp-executor.int.test.ts`: **11/11**. É a API do computador contra o DEV:
+    tabela fechada até para a service_role, autenticação pelo hash, interruptor,
+    fila sem nome do cliente, reserva exclusiva, escopo, documento de outro
+    cliente recusado, minuta enviada ao Storage e baixada de volta com checksum,
+    proposta, conclusão, linha do tempo, revogação.
+  - `mcp-maintenance.int.test.ts`: **2/2**, cerca de 2 minutos. Espera o
+    **pg_cron real** agir: reserva vencida volta à fila, proposta aprovada vira
+    pendência no caso e a execução decidida conclui.
+  - `drive-sync.int.test.ts`: **4/4**. Google Drive simulado, com banco, Storage
+    e código de sincronização reais: ligação pelo ID, importação sem duplicata,
+    exportação pela aprovação, pasta pública e desligar.
   - `etapa5-dg-runtime.int.test.ts`: **10/10**.
 
 ## Parte 5: Telas (ADMIN e LAWYER)
