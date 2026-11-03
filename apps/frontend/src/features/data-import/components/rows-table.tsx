@@ -123,7 +123,7 @@ export function RowsTable({ jobId, filters, initial, version = 0 }: { jobId: str
                 return (
                   <Tr key={r.rowNumber}>
                     <Td className="align-top tabular text-muted">{r.rowNumber}</Td>
-                    <Td className="max-w-[240px] align-top">
+                    <Td className="max-w-60 align-top">
                       <span className="block truncate">{name ?? <span className="text-subtle">—</span>}</span>
                       {r.clientDocument && <span className="block text-[12px] tabular text-muted">{formatDocument(r.clientDocument)}</span>}
                     </Td>
