@@ -46,7 +46,7 @@ export function AgentList({ agents, catalog }: { agents: AgentListItemDTO[]; cat
           <h2 id="dg-agents-title" className="text-[15px] font-semibold text-foreground">
             Equipe digital
           </h2>
-          <p className="mt-0.5 text-[12.5px] text-muted">Cada agente executa dentro do DG Brasil e propõe; toda entrega passa por Revisões.</p>
+          <p className="mt-0.5 text-[12.5px] text-muted">Cada agente trabalha no Claude Code do computador do escritório e propõe; toda entrega passa por Revisões.</p>
         </div>
         {createButton}
       </div>

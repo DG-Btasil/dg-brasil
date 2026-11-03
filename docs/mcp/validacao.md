@@ -142,6 +142,10 @@ npm run test:integration
   - `drive-sync.int.test.ts`: **4/4**. Google Drive simulado, com banco, Storage
     e código de sincronização reais: ligação pelo ID, importação sem duplicata,
     exportação pela aprovação, pasta pública e desligar.
+    - Se houver envio ao Drive pendente de **outro** cliente no DEV, o teste para
+      com o aviso "o teste não roda para não mexer neles". Não é falha do código:
+      pegar um envio conta uma tentativa, e o teste não toca no que não é dele.
+      Confira esses envios antes de rodar de novo.
   - `etapa5-dg-runtime.int.test.ts`: **10/10**.
 
 ## Parte 5: Telas (ADMIN e LAWYER)

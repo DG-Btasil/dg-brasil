@@ -93,6 +93,21 @@ async function approveVersion(versionId: string) {
   return data!;
 }
 
+/**
+ * A fila de envio é a do DEV inteiro, e pegar um envio já conta uma tentativa.
+ * Só processa se não houver envio pendente de OUTRO cliente: o teste não mexe no
+ * que não é dele.
+ */
+async function processOurExports() {
+  const { data, error } = await svc.from("external_document_exports")
+    .select("id, document_versions!inner(documents!inner(client_id))")
+    .eq("status", "PENDING").lt("attempts", 5).is("exported_at", null).not("folder_link_id", "is", null)
+    .neq("document_versions.documents.client_id", state.clientA);
+  if (error) throw new Error(error.message);
+  if (data.length) throw new Error(`Há ${data.length} envio(s) ao Drive pendente(s) de outros clientes no DEV; o teste não roda para não mexer neles.`);
+  return processExports(deps());
+}
+
 beforeAll(async () => {
   const a = await newCase("A");
   const b = await newCase("B");
@@ -156,7 +171,7 @@ describe("Google Drive no banco real (041), Drive simulado", () => {
     const queued = await approveVersion(state.firstVersion);
     expect(queued).toMatchObject({ status: "PENDING", folder_link_id: state.linkId, attempts: 0 });
 
-    expect(await processExports(deps())).toEqual({ exported: 1, failed: 0 });
+    expect(await processOurExports()).toEqual({ exported: 1, failed: 0 });
     expect(uploaded).toHaveLength(1);
     expect(uploaded[0]).toMatchObject({ folder: state.folder2, name: "extrato-ficticio.pdf (v1, DG Brasil).pdf" });
     const { data: done } = await svc.from("external_document_exports").select("status, external_file_id, exported_at").eq("id", queued.id).single();
@@ -173,7 +188,7 @@ describe("Google Drive no banco real (041), Drive simulado", () => {
     const queued = await approveVersion(state.secondVersion);
     expect(queued.status).toBe("PENDING");
     publicFolder = true;
-    expect(await processExports(deps())).toEqual({ exported: 0, failed: 1 });
+    expect(await processOurExports()).toEqual({ exported: 0, failed: 1 });
     expect(uploaded).toHaveLength(1);
     const { data: blocked } = await svc.from("external_document_exports").select("status, attempts, last_error").eq("id", queued.id).single();
     expect(blocked).toMatchObject({ status: "PENDING", attempts: 1 });

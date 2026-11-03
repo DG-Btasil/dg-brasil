@@ -19,7 +19,8 @@ export function IntegrationsSection() {
       <div className="mb-8">
         <DriveSettingsPanel />
       </div>
-      <DemoAreaNotice area="Integrações e importação de dados" />
+      {/* O Google Drive, acima, já é real; o aviso vale só para o que vem abaixo. */}
+      <DemoAreaNotice area="A parte abaixo (Integração Judicial, importação de dados e outros serviços)" />
       <div className="space-y-8">
         <JudicialIntegrationSection canManage={canManage} />
         <DataImportSection canManage={canManage} />

@@ -1,8 +1,12 @@
 # Agentes via Claude Code + MCP e Google Drive: relatório final
 
-**Status: CÓDIGO PRONTO E TESTADO LOCALMENTE. VALIDAÇÃO NO SUPABASE DEV E NO
-COMPUTADOR DO ESCRITÓRIO PENDENTE** ([validacao.md](validacao.md)).
-Data: 2026-10-30. Plano aprovado em 2026-10-29
+**Status (2026-11-03): BANCO DEV VALIDADO**
+([qa-supabase-dev-040-041.md](../qa/mcp/qa-supabase-dev-040-041.md)): as telas de
+ADMIN foram conferidas no site. **Ficaram para o fim do projeto, por decisão da
+Barbara:** a ponta a ponta no computador do escritório e o Google Drive real
+(Partes 6 e 7 de [validacao.md](validacao.md)), porque exigem estar no computador
+que vai ser usado.
+Código: 2026-10-30. Plano aprovado em 2026-10-29
 ([relatorio-diagnostico.md](relatorio-diagnostico.md)).
 
 ## Decisões da Barbara (2026-10-29)

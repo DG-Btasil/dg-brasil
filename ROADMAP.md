@@ -77,7 +77,9 @@ qualquer dado real.
 Substitui o "agente na nuvem" (worker no Fly.io, Etapa 5 — removido sem nunca ter
 rodado). Decidido em 2026-10-29 (docs/mcp/relatorio-diagnostico.md):
 
-- **Código pronto (2026-10-30), validação no DEV pendente** — migrations 040
+- **Código pronto (2026-10-30); banco DEV validado (2026-11-03,
+  `docs/qa/mcp/`). Ponta a ponta no computador do escritório e Google Drive real
+  ficam para o fim do projeto** — migrations 040
   (computador do escritório: token, reserva por trabalho, linha do tempo,
   manutenção no `pg_cron`) e 041 (Google Drive); API `/api/executor/v1`; pacote
   `apps/executor` (MCP local, modo assistido); telas "Computador do escritório",
