@@ -17,9 +17,8 @@ export interface JudicialMonitorDTO {
   lastSuccessAt?: ISODateTime;
   lastError?: string;
   lastFound?: number;
+  /** Das publicações da última busca, quantas são de processos do DG Brasil (das outras, nada é guardado). */
   lastMatched?: number;
-  /** Publicações da última busca em processos que não estão no DG Brasil (só o número). */
-  unmatchedCnjs: string[];
 }
 
 export interface JudicialRunDTO {

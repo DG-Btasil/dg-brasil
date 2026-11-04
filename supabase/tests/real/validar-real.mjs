@@ -1102,13 +1102,13 @@ await deve('servidor (dg_worker) só nas portas da busca; usuário logado e serv
   igual(f.filter((x) => x.wrk).map((x) => x.f).sort(), ['judicial_datajud_queue', 'judicial_ingest_datajud', 'judicial_ingest_djen', 'judicial_sync_begin', 'judicial_sync_finish'], 'portas')
   igual(f.filter((x) => x.usr || x.srv).map((x) => x.f), [], 'abertas')
 })
-await deve('agendador do banco: dg-datajud a cada 20 min; a chamada roda e diz o que fez (pg_net, segredos do Vault)', async () => {
-  const job = await um(`select schedule, active from cron.job where jobname = 'dg-datajud'`)
-  igual([job?.schedule, job?.active], ['*/20 * * * *', true], 'agendamento')
+await deve('agendador do banco: dg-judicial a cada 5 min; a chamada roda e diz o que fez (pg_net, segredos do Vault)', async () => {
+  const job = await um(`select schedule, active from cron.job where jobname = 'dg-judicial'`)
+  igual([job?.schedule, job?.active], ['*/5 * * * *', true], 'agendamento')
   const net = await um(`select count(*)::int n from pg_extension where extname = 'pg_net'`)
   const k = (await um(`select private.judicial_cron_kick() k`)).k
   console.log(`    pg_net ${net.n ? 'instalado' : 'NÃO instalado'} · resultado: ${k}`)
-  if (!['chamado', 'nada a ler', 'segredos dg_app_url/dg_cron_secret ausentes', 'pg_net ou Vault indisponível'].includes(k)) throw new Error(`resultado inesperado: ${k}`)
+  if (!['chamado: publicações', 'chamado: andamentos', 'nada a ler', 'segredos dg_app_url/dg_cron_secret ausentes', 'pg_net ou Vault indisponível'].includes(k)) throw new Error(`resultado inesperado: ${k}`)
 })
 
 secao('42. Portal: lista de clientes não depende do tamanho do banco [032]')

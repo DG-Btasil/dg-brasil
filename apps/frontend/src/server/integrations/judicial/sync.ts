@@ -9,11 +9,14 @@ import { addDays, safeError } from "./text";
  * login dg_worker); aqui só se consulta o DJEN e o DataJud e se entrega o
  * resultado normalizado.
  *
- *  1. judicial_sync_begin: abre a rodada (ou devolve busy) com as OABs ativas
- *     (cada OAB uma vez, a consultada há mais tempo primeiro) e a janela de dias.
+ *  1. judicial_sync_begin: abre a rodada (ou devolve busy/idle) com as OABs a
+ *     consultar (cada OAB uma vez, a consultada há mais tempo primeiro) e a
+ *     janela de dias. Agendada: só as OABs ainda não conferidas hoje; o
+ *     agendador do banco chama a cada 5 min até todas darem certo.
  *  2. DJEN: para cada OAB, as comunicações de [hoje − janela, hoje]. O banco só
- *     guarda as de processos cadastrados. Limite de consultas (429): encerra o
- *     DJEN desta rodada; as OABs restantes ficam para a próxima.
+ *     guarda as de processos cadastrados (das outras, só conta). Limite de
+ *     consultas (429): encerra o DJEN desta rodada; as OABs restantes ficam
+ *     para o próximo lote.
  *  3. DataJud: processos cadastrados com CNJ, os há mais tempo sem leitura
  *     primeiro, em paralelo curto, até o tempo da rodada acabar.
  *  4. judicial_sync_finish: COMPLETED, PARTIAL (alguma falha) ou FAILED.
@@ -27,7 +30,7 @@ export const JUDICIAL_DB_FUNCTIONS: readonly JudicialDbFunction[] = [
 
 export interface JudicialSyncDeps {
   db: <T>(fn: JudicialDbFunction, args: unknown[]) => Promise<T>;
-  djen: { byOab(oabNumber: string, oabState: string, from: string, to: string): Promise<DjenItem[]> };
+  djen: { byOab(oabNumber: string, oabState: string, from: string, to: string, deadline?: number): Promise<DjenItem[]> };
   datajud: { process(cnj: string): Promise<DatajudResult> };
   log: Logger;
   /** Não começa trabalho novo depois deste instante (ms). */
@@ -37,13 +40,15 @@ export interface JudicialSyncDeps {
   datajudConcurrency?: number;
   /** Tempo máximo de uma consulta ao DataJud: só começa outra se couber até o prazo da rodada. */
   datajudCallBudgetMs?: number;
+  /** Tempo mínimo para começar uma OAB no DJEN (uma página com intervalo e resposta). */
+  djenCallBudgetMs?: number;
 }
 
 export interface JudicialSyncOptions {
   trigger: "CRON" | "MANUAL";
   requestedBy?: string | null;
   processId?: string | null;
-  /** Lote extra só do DataJud (agendador do banco, a cada 20 min). */
+  /** Lote só do DataJud (agendador do banco, quando não há OAB pendente no dia). */
   onlyDatajud?: boolean;
 }
 
@@ -55,6 +60,7 @@ export interface JudicialSyncStats {
   publicationsFound: number;
   publicationsNew: number;
   publicationsDuplicate: number;
+  /** Só a contagem: de processo que não está no DG Brasil nada é guardado. */
   publicationsOutsideDgBrasil: number;
   processesQueued: number;
   processesRead: number;
@@ -112,13 +118,15 @@ export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOpt
       const oabs = begin.oabs ?? [];
       stats.oabs = oabs.length;
       let stop = false;
+      let started = 0;
       for (const o of oabs) {
-        if (stop || outOfTime()) {
+        if (stop || outOfTime() || (d.deadline !== undefined && now() + (d.djenCallBudgetMs ?? 12_000) > d.deadline)) {
           stats.oabsLeftForNextRun++;
           continue;
         }
+        started++;
         try {
-          const items = await d.djen.byOab(o.oab_number, o.oab_state, from, to);
+          const items = await d.djen.byOab(o.oab_number, o.oab_state, from, to, d.deadline);
           const r = await d.db<{ found: number; new: number; duplicates: number; unmatched: number }>(
             "judicial_ingest_djen", [runId, o.oab_number, o.oab_state, from, to, true, null, items]);
           stats.oabsChecked++;
@@ -127,6 +135,13 @@ export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOpt
           stats.publicationsDuplicate += r.duplicates ?? 0;
           stats.publicationsOutsideDgBrasil += r.unmatched ?? 0;
         } catch (e) {
+          // Não coube no fim da rodada: fica para o próximo lote, sem falha. Só é
+          // falha quando nem com a rodada inteira (primeira OAB) ela coube.
+          if (e instanceof DjenError && e.outOfTime && started > 1) {
+            stats.oabsLeftForNextRun++;
+            stop = true;
+            continue;
+          }
           const msg = safeError(e);
           stats.djenErrors++;
           errors.push(`OAB ${o.oab_state} ${o.oab_number}: ${msg}`);

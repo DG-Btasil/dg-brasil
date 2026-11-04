@@ -118,7 +118,7 @@ export function JudicialSettingsPanel() {
       <Panel>
         <PanelHeader
           title="OABs acompanhadas"
-          description="Do escritório (cadastradas aqui) e dos parceiros (cada parceiro cadastra a própria OAB no portal). Publicação de processo que não está no DG Brasil não é importada: aparece só o número, para o advogado decidir se cadastra."
+          description="Do escritório (cadastradas aqui) e dos parceiros (cada parceiro cadastra a própria OAB no portal). Só os processos cadastrados no DG Brasil recebem as publicações; das outras, nada é guardado. A conferência roda em lotes a partir das 05:00, até todas as OABs darem certo no dia."
           actions={
             d.canManage && (
               <Button size="sm" icon={<Plus className="size-4" aria-hidden />} onClick={() => setAdding(true)}>

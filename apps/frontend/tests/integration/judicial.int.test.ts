@@ -121,7 +121,7 @@ describe("Integração judicial no banco real (043), DJEN e DataJud simulados", 
     expect(o.canManage).toBe(false);
   });
 
-  it("DJEN: só entra publicação de processo cadastrado; do resto fica só o número; repetida não duplica", async () => {
+  it("DJEN: só entra publicação de processo cadastrado; do resto só a contagem (nem o número); repetida não duplica", async () => {
     const outside = fakeCnj();
     const sameId = djenId();
     const items = [raw(state.partnerCnj, sameId), raw(state.internalCnj), raw(outside)].map((r) => normalizeDjenItem(r)!);
@@ -137,7 +137,8 @@ describe("Integração judicial no banco real (043), DJEN e DataJud simulados", 
     expect(pa.content).not.toMatch(/<p>/);
     expect((await svc.from("judicial_publications").select("id").eq("cnj_number", outside)).data!.length).toBe(0);
     const st = (await judicial.getOverview(await ctxFor("ADMIN"))).monitors.find((m) => m.id === state.monitors[0])!;
-    expect(st.unmatchedCnjs).toEqual([outside]);
+    expect([st.lastFound, st.lastMatched]).toEqual([3, 2]);
+    expect(JSON.stringify(st)).not.toContain(outside);
     state.publication = pubs!.find((p) => p.legal_process_id === state.internalProcess)!.id;
   });
 

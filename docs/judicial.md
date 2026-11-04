@@ -14,8 +14,14 @@ cliente (decisão da Barbara, 2026-11-03).
 2. Daí em diante, o processo recebe sozinho:
    - as publicações do DJEN, pelas OABs acompanhadas;
    - os andamentos do DataJud, pelo número CNJ.
-3. Publicação de processo que **não** está no DG Brasil não entra. Fica só o
-   número, na situação da OAB, para o advogado decidir se cadastra o processo.
+3. Publicação de processo que **não** está no DG Brasil não entra e nada dela
+   é guardado, nem o número. Fica só a contagem do dia (prova de diligência).
+
+A **OAB** é a chave de busca no DJEN: uma consulta por OAB traz as publicações
+de todos os processos dela, e o servidor descarta na hora as de processos não
+cadastrados. Buscar pelo número de cada processo também funciona (testado em
+2026-11-04), mas seriam muitas consultas (uma por processo, com limite de 20
+por minuto). A Barbara escolheu manter a OAB (2026-11-04).
 
 ## Fontes (oficiais e gratuitas)
 
@@ -25,7 +31,7 @@ cliente (decisão da Barbara, 2026-11-03).
 | **DataJud** — API pública do CNJ | Dados do processo e movimentações | `POST api-publica.datajud.cnj.jus.br/api_publica_<tribunal>/_search`, chave pública | Ver lista abaixo |
 
 **DJEN:**
-- 20 consultas por minuto por IP. O servidor faz uma por vez, com intervalo mínimo.
+- 20 consultas por minuto por IP. O servidor faz uma por vez, com 3 s de intervalo.
 - Páginas de 100 itens.
 - O texto chega puro, com `<br>` ou como HTML inteiro; o servidor converte para texto.
 - Parte das publicações sai com até 5 dias de atraso. Por isso cada busca revê os últimos 5 dias (configurável de 1 a 7).
@@ -49,17 +55,31 @@ cliente (decisão da Barbara, 2026-11-03).
 
 | O quê | Quando | Quem chama |
 |---|---|---|
-| Publicações (DJEN) + andamentos (DataJud) | Uma vez por dia, 06:30 de Brasília (`30 9 * * *` UTC) | Vercel Cron → `/api/cron/judicial-sync` |
-| Lote extra só do DataJud | A cada 20 min; sem processo vencido, nem abre rodada | pg_cron `dg-datajud` → `private.judicial_cron_kick()` → pg_net → `/api/cron/judicial-sync?only=datajud` |
-| "Buscar agora" (tudo) | Na tela, ADMIN | Server Action |
+| Lotes: publicações (DJEN) das OABs ainda não conferidas no dia e, no tempo que sobrar, andamentos (DataJud) | A cada 5 min, a partir das 05:00 de Brasília, até todas as OABs darem certo no dia | pg_cron `dg-judicial` → `private.judicial_cron_kick()` → pg_net → `/api/cron/judicial-sync` |
+| Lotes só do DataJud | A cada 5 min, quando não há OAB pendente; sem processo vencido, nem chama | o mesmo, com `?only=datajud` |
+| Reserva | 06:30 de Brasília (`30 9 * * *` UTC) | Vercel Cron → `/api/cron/judicial-sync` |
+| "Buscar agora" (todas as OABs + DataJud) | Na tela, ADMIN | Server Action |
 | "Buscar andamentos agora" (um processo) | Na tela, ADMIN ou advogado | Server Action |
 
-- **Limite por rodada:** 60 s no plano Hobby. A rodada para de começar trabalho novo aos 48 s e deixa o resto para a próxima:
-  - as OABs consultadas há mais tempo vão primeiro;
-  - os processos lidos há mais tempo vão primeiro.
+- **Por que em lotes:** cada rodada tem 60 s no plano Hobby e o DJEN aceita 20
+  consultas por minuto. Cabem umas 15 consultas, ou umas 5 OABs, por rodada.
+  Com as OABs do escritório e as dos parceiros (50, por exemplo), são uns 10
+  lotes: a conferência termina por volta das 06:00.
+- **OAB pendente no dia** (`private.judicial_djen_due`): a partir das 05:00, sem
+  busca com sucesso naquele dia. Depois de uma falha, espera 10 min e tenta de
+  novo. Cada OAB é consultada uma vez, mesmo que esteja em dois escritórios.
+- **Limite por rodada:** a rodada para de começar trabalho novo perto dos 50 s e
+  deixa o resto para o próximo lote:
+  - uma OAB só começa se ainda houver ~12 s;
+  - uma OAB com páginas demais para uma rodada (mais de ~1.500 publicações em 5
+    dias) fica com falha visível na tela; nesse caso, reduzir "Dias revistos" ou
+    passar para o plano Pro (deploy/producao.md, item 10);
+  - os processos lidos há mais tempo no DataJud vão primeiro.
 - **Leitura do DataJud:** cada processo é lido no máximo uma vez a cada 20 h.
 - **Rodadas ao mesmo tempo:** duas rodadas não correm juntas; a segunda recebe "busy".
-- **O lote a cada 20 min precisa de** `pg_net` e de dois segredos no Vault (`dg_app_url`, `dg_cron_secret`); ver [deploy/producao.md](deploy/producao.md), item 10. Sem eles, `judicial_cron_kick()` não faz nada e o DataJud fica só na rodada da manhã.
+- **Os lotes precisam de** `pg_net` e de dois segredos no Vault (`dg_app_url`,
+  `dg_cron_secret`); ver [deploy/producao.md](deploy/producao.md), item 10.
+  Sem eles, só a rodada das 06:30 roda, e nela cabem umas 5 OABs.
 
 ## OABs acompanhadas
 
@@ -118,7 +138,7 @@ ciclo completo, de um mês com pelo menos uma publicação por semana em cada OA
 
 ```
 Vercel Cron 06:30 ─┐            ┌─ DJEN (por OAB, janela de 5 dias)
-pg_cron 20 min ────┼─► /api/cron/judicial-sync ─► runJudicialSync ─┤
+pg_cron 5 min ─────┼─► /api/cron/judicial-sync ─► runJudicialSync ─┤
 Buscar agora ──────┘     (CRON_SECRET)              │             └─ DataJud (por CNJ, fila)
                                                     ▼
                                private.judicial_* (login dg_worker)

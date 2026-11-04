@@ -36,7 +36,8 @@ export interface DjenItem {
 }
 
 export class DjenError extends Error {
-  constructor(message: string, readonly rateLimited = false) {
+  /** outOfTime: a OAB não coube no tempo da rodada (não é falha do DJEN). */
+  constructor(message: string, readonly rateLimited = false, readonly outOfTime = false) {
     super(message);
     this.name = "DjenError";
   }
@@ -76,7 +77,7 @@ export function normalizeDjenItem(raw: RawItem): DjenItem | null {
 export interface DjenClientOptions {
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
-  /** Intervalo mínimo entre requisições (ms). Padrão 1,5 s (≈ 40/min no pior caso; na prática bem menos). */
+  /** Intervalo mínimo entre requisições (ms). Padrão 3 s: o DJEN aceita 20 por minuto por IP. */
   minIntervalMs?: number;
   timeoutMs?: number;
 }
@@ -91,7 +92,7 @@ export class DjenClient {
   constructor(opts: DjenClientOptions = {}) {
     this.f = opts.fetch ?? fetch;
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-    this.gap = opts.minIntervalMs ?? 1500;
+    this.gap = opts.minIntervalMs ?? 3000;
     this.timeout = opts.timeoutMs ?? 20_000;
   }
 
@@ -117,10 +118,19 @@ export class DjenClient {
     return body.items as RawItem[];
   }
 
-  /** Comunicações de uma OAB num período (datas AAAA-MM-DD, inclusivas), sem repetição. */
-  async byOab(oabNumber: string, oabState: string, from: string, to: string): Promise<DjenItem[]> {
+  /**
+   * Comunicações de uma OAB num período (datas AAAA-MM-DD, inclusivas), sem
+   * repetição. `deadline` (ms): não pede a página seguinte se ela não couber
+   * até lá; a OAB fica com falha e é tentada de novo no próximo lote.
+   */
+  async byOab(oabNumber: string, oabState: string, from: string, to: string, deadline?: number): Promise<DjenItem[]> {
     const out = new Map<string, DjenItem>();
     for (let page = 1; page <= MAX_PAGES; page++) {
+      // Reserva: o intervalo + 8 s de resposta (o DJEN costuma responder em < 1 s;
+      // a rota ainda tem ~10 s de folga depois do prazo).
+      if (page > 1 && deadline !== undefined && Date.now() + this.gap + 8_000 > deadline) {
+        throw new DjenError(`DJEN: a OAB tem mais de ${(page - 1) * PAGE_SIZE} comunicações na janela e não coube numa rodada`, false, true);
+      }
       const items = await this.get({
         numeroOab: oabNumber,
         ufOab: oabState.toUpperCase(),

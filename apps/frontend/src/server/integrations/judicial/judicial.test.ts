@@ -103,6 +103,20 @@ describe("DJEN", () => {
     await expect(c(new Response("", { status: 500 })).byOab("1", "SP", "2026-11-01", "2026-11-03")).rejects.toThrow(/HTTP 500/);
     await expect(c(json({ status: "success" })).byOab("1", "SP", "2026-11-01", "2026-11-03")).rejects.toThrow(/sem a lista/);
   });
+  it("padrão: 3 s entre requisições (o DJEN aceita 20 por minuto)", async () => {
+    const sleeps: number[] = [];
+    const c = new DjenClient({ fetch: (async () => json({ items: [] })) as unknown as typeof fetch, sleep: async (ms) => void sleeps.push(ms) });
+    await c.byOab("1", "SP", "2026-11-01", "2026-11-03");
+    await c.byOab("2", "SP", "2026-11-01", "2026-11-03");
+    expect(sleeps[0]).toBeGreaterThan(2500);
+  });
+  it("OAB com muitas páginas: não pede a próxima se ela não couber no tempo da rodada", async () => {
+    const full = Array.from({ length: 100 }, (_, i) => rawDjen({ id: 5000 + i }));
+    const f = vi.fn(async () => json({ items: full }));
+    const c = new DjenClient({ fetch: f as unknown as typeof fetch, sleep: noSleep });
+    await expect(c.byOab("1", "SP", "2026-11-01", "2026-11-03", Date.now() + 10_000)).rejects.toThrow(/não coube numa rodada/);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
   it("respeita o intervalo mínimo entre requisições", async () => {
     const sleeps: number[] = [];
     const f = (async () => json({ items: [] })) as unknown as typeof fetch;
@@ -192,7 +206,7 @@ describe("rodada", () => {
     const r = await runJudicialSync(d, { trigger: "CRON" });
     expect(r.busy).toBe(false);
     if (r.busy || r.idle) return;
-    expect(byOab.mock.calls).toEqual([["225006", "RJ", "2026-10-29", "2026-11-03"], ["548089", "SP", "2026-10-29", "2026-11-03"]]);
+    expect(byOab.mock.calls).toEqual([["225006", "RJ", "2026-10-29", "2026-11-03", undefined], ["548089", "SP", "2026-10-29", "2026-11-03", undefined]]);
     expect([r.status, r.stats.oabsChecked, r.stats.publicationsNew, r.stats.processesRead, r.stats.processesNotFound, r.stats.movementsNew]).toEqual(["COMPLETED", 2, 2, 1, 1, 3]);
     const fin = calls.find((c) => c.fn === "judicial_sync_finish")!;
     expect(fin.args.slice(0, 2)).toEqual(["run-1", "COMPLETED"]);
@@ -217,6 +231,29 @@ describe("rodada", () => {
     if (r.busy || r.idle) throw new Error("busy");
     expect(r.stats.oabsLeftForNextRun).toBeGreaterThan(0);
     expect(calls.at(-1)!.fn).toBe("judicial_sync_finish");
+  });
+  it("DJEN só começa uma OAB se couber no tempo da rodada; as outras ficam para o próximo lote", async () => {
+    const byOab = vi.fn(async () => [] as DjenItem[]);
+    const { d } = deps({ djen: { byOab }, now: () => 30_000, deadline: 40_000, djenCallBudgetMs: 12_000 }, { datajud_enabled: false });
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect(byOab).not.toHaveBeenCalled();
+    expect([r.status, r.stats.oabsLeftForNextRun]).toEqual(["COMPLETED", 2]);
+  });
+  it("OAB que não coube no fim da rodada fica para o próximo lote sem falha; a primeira da rodada, com falha", async () => {
+    const byOab = vi.fn(async (n: string) => {
+      if (n === "548089" || n === "1") throw new DjenError("não coube", false, true);
+      return [] as DjenItem[];
+    });
+    const { d, calls } = deps({ djen: { byOab } }, { datajud_enabled: false });
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect([r.status, r.stats.oabsChecked, r.stats.oabsLeftForNextRun, r.stats.djenErrors]).toEqual(["COMPLETED", 1, 1, 0]);
+    expect(calls.filter((c) => c.fn === "judicial_ingest_djen").map((c) => c.args[5])).toEqual([true]);
+    const big = deps({ djen: { byOab } }, { datajud_enabled: false, oabs: [{ oab_number: "1", oab_state: "SP" }] });
+    const r2 = await runJudicialSync(big.d, { trigger: "CRON" });
+    if (r2.busy || r2.idle) throw new Error("busy");
+    expect([r2.status, r2.stats.djenErrors]).toEqual(["PARTIAL", 1]);
   });
   it("DataJud só começa consulta que cabe no tempo da rodada", async () => {
     const process = vi.fn(async (c: string) => normalizeDatajud("tjsp", c, hits(c)));
@@ -249,6 +286,6 @@ describe("rodada", () => {
 
 describe("DTO", () => {
   it("snake_case → camelCase, null some", () => {
-    expect(camel({ last_ok_at: null, unmatched_cnjs: ["1"], a_b: { c_d: 1 } })).toEqual({ unmatchedCnjs: ["1"], aB: { cD: 1 } });
+    expect(camel({ last_ok_at: null, found_by: ["1"], a_b: { c_d: 1 } })).toEqual({ foundBy: ["1"], aB: { cD: 1 } });
   });
 });

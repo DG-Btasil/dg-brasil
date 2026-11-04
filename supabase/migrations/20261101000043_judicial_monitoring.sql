@@ -135,10 +135,9 @@ create table public.judicial_monitor_status (
   last_success_at     timestamptz,
   last_error          text check (last_error is null or length(last_error) <= 500),
   last_found          integer,
+  -- Só contagens: de processo que não está no DG Brasil não se guarda nada,
+  -- nem o número (decisão da Barbara, 2026-11-04).
   last_matched        integer,
-  -- Publicações da última busca em processos que NÃO estão no DG Brasil: só o
-  -- número CNJ (nunca o teor, nunca partes).
-  unmatched_cnjs      text[] not null default '{}',
   updated_at          timestamptz not null default now()
 );
 
@@ -546,8 +545,7 @@ as $$
     'organization_name', case when p_with_org then (select o.name from public.organizations o where o.id = m.organization_id) end,
     'organization_type', case when p_with_org then (select o.type::text from public.organizations o where o.id = m.organization_id) end,
     'last_attempt_at', s.last_attempt_at, 'last_success_at', s.last_success_at, 'last_error', s.last_error,
-    'last_found', s.last_found, 'last_matched', s.last_matched,
-    'unmatched_cnjs', coalesce(to_jsonb(s.unmatched_cnjs), '[]'::jsonb))
+    'last_found', s.last_found, 'last_matched', s.last_matched)
   from (select 1) one
   left join public.judicial_monitor_status s on s.judicial_monitor_id = m.id
 $$;
@@ -1109,6 +1107,29 @@ $$;
 
 -- ═════════════════════════════ servidor (dg_worker) ══════════════════════
 
+-- OABs que o agendador ainda precisa conferir HOJE no DJEN (Brasília): a
+-- partir das 05:00, cada OAB sem busca com sucesso no dia. Depois de uma
+-- falha, espera 10 min antes de tentar de novo. Cada OAB uma vez, mesmo que
+-- vários escritórios a acompanhem; a tentada há mais tempo primeiro.
+create or replace function private.judicial_djen_due(p_now timestamptz default now())
+returns table (oab_number text, oab_state text, last_attempt timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select m.oab_number, m.oab_state::text, min(s.last_attempt_at)
+  from public.judicial_monitors m
+  join public.organizations o on o.id = m.organization_id and o.status = 'ACTIVE' and o.deleted_at is null
+  left join public.judicial_monitor_status s on s.judicial_monitor_id = m.id
+  where m.active
+    and (p_now at time zone 'America/Sao_Paulo')::time >= time '05:00'
+  group by m.oab_number, m.oab_state
+  having bool_or(s.last_success_at is null
+                 or (s.last_success_at at time zone 'America/Sao_Paulo')::date < (p_now at time zone 'America/Sao_Paulo')::date)
+     and coalesce(max(s.last_attempt_at), '-infinity'::timestamptz) < p_now - interval '10 minutes'
+$$;
+
 -- Abre uma rodada. Outra rodada em andamento há menos de 15 min: devolve
 -- busy (cron e botão não rodam juntos). Mais antiga: marcada como interrompida.
 -- MANUAL exige quem pediu (ADMIN ou advogado ativo; o servidor já conferiu a sessão).
@@ -1147,8 +1168,10 @@ begin
   end if;
 
   select * into v_s from public.judicial_settings where id;
-  -- Lote extra do DataJud sem nada vencido: não abre rodada (não polui o histórico).
-  if coalesce(p_only_datajud, false) and p_process_id is null
+  -- Agendada sem nada a fazer (nenhuma OAB pendente hoje, nenhum processo
+  -- vencido no DataJud): não abre rodada (não polui o histórico).
+  if p_trigger = 'CRON'
+     and (coalesce(p_only_datajud, false) or not v_s.djen_enabled or not exists (select 1 from private.judicial_djen_due()))
      and (not v_s.datajud_enabled or jsonb_array_length(private.judicial_datajud_queue(1, null)) = 0) then
     return jsonb_build_object('busy', false, 'idle', true);
   end if;
@@ -1164,7 +1187,13 @@ begin
     'lookback_days', v_s.lookback_days,
     'today', (now() at time zone 'America/Sao_Paulo')::date,
     -- Uma consulta por OAB, mesmo que vários escritórios a acompanhem.
-    'oabs', case when p_process_id is null and not coalesce(p_only_datajud, false) then coalesce((
+    -- Agendada: só as OABs ainda não conferidas hoje (lotes até todas darem certo).
+    'oabs', case when p_trigger = 'CRON' and not coalesce(p_only_datajud, false) then coalesce((
+      select jsonb_agg(jsonb_build_object('oab_number', x.oab_number, 'oab_state', x.oab_state)
+                       order by x.last_attempt nulls first, x.oab_state, x.oab_number)
+      from private.judicial_djen_due() x), '[]'::jsonb)
+    -- Manual ("Buscar agora"): todas as OABs ativas.
+    when p_process_id is null and not coalesce(p_only_datajud, false) then coalesce((
       -- A OAB consultada há mais tempo primeiro: se o tempo da rodada acabar,
       -- a próxima começa pelas que ficaram de fora.
       select jsonb_agg(jsonb_build_object('oab_number', x.oab_number, 'oab_state', x.oab_state)
@@ -1411,7 +1440,7 @@ declare
   v_dup       integer := 0;
   v_matched   integer := 0;
   v_found     integer := 0;
-  v_unmatched text[] := '{}';
+  v_outside   integer := 0;
   v_new_ids   uuid[] := '{}';
   v_to        uuid;
   v_old       record;
@@ -1443,9 +1472,8 @@ begin
     select lp.id, lp.legal_case_id, lp.title into v_proc
     from public.legal_processes lp where lp.cnj_number = i ->> 'cnj' and lp.deleted_at is null;
     if v_proc.id is null then
-      if not (i ->> 'cnj' = any (v_unmatched)) and coalesce(array_length(v_unmatched, 1), 0) < 100 then
-        v_unmatched := v_unmatched || (i ->> 'cnj');
-      end if;
+      -- Processo que não está no DG Brasil: só conta; nada é gravado.
+      v_outside := v_outside + 1;
       continue;
     end if;
     v_matched := v_matched + 1;
@@ -1531,15 +1559,15 @@ begin
   end loop;
 
   insert into public.judicial_monitor_status
-    (judicial_monitor_id, last_attempt_at, last_success_at, last_error, last_found, last_matched, unmatched_cnjs, updated_at)
-  select m.id, now(), now(), null, v_found, v_matched, v_unmatched, now()
+    (judicial_monitor_id, last_attempt_at, last_success_at, last_error, last_found, last_matched, updated_at)
+  select m.id, now(), now(), null, v_found, v_matched, now()
   from public.judicial_monitors m where m.oab_number = v_oab and m.oab_state = v_uf and m.active
   on conflict (judicial_monitor_id) do update
     set last_attempt_at = now(), last_success_at = now(), last_error = null, last_found = excluded.last_found,
-        last_matched = excluded.last_matched, unmatched_cnjs = excluded.unmatched_cnjs, updated_at = now();
+        last_matched = excluded.last_matched, updated_at = now();
 
   return jsonb_build_object('ok', true, 'found', v_found, 'matched', v_matched, 'new', v_new, 'duplicates', v_dup,
-                            'unmatched', coalesce(array_length(v_unmatched, 1), 0));
+                            'unmatched', v_outside);
 end
 $$;
 
@@ -1635,19 +1663,23 @@ create trigger agent_runs_judicial_publications
   after update of status on public.agent_runs
   for each row execute function private.judicial_publications_follow_runs();
 
--- ═════════════════════════════ 9. agendador do banco (DataJud) ══════════
+-- ═════════════════════════════ 9. agendador do banco (lotes) ════════════
 
--- A cópia pública do DataJud responde devagar (30–50 s por consulta em alguns
--- tribunais, medido em 2026-11-03) e a rota do servidor tem 60 s no plano
--- Hobby: uma rodada por dia não dá conta de todos os processos. O pg_cron chama
--- a rota a cada 20 min só para o DataJud (cada processo continua sendo lido no
--- máximo uma vez a cada 20 h; sem processo vencido, a rota nem abre rodada).
--- As publicações (DJEN) continuam uma vez por dia, de manhã.
+-- Uma rodada da rota do servidor tem no máximo 60 s (plano Hobby) e o DJEN
+-- aceita 20 consultas por minuto: cabem umas 15 consultas por rodada. Com
+-- muitas OABs (as do escritório e as dos parceiros) e com o DataJud lento
+-- (30–50 s por consulta, medido em 2026-11-03), uma rodada por dia não dá
+-- conta. O pg_cron chama a rota a cada 5 min:
+--   - a partir das 05:00, enquanto houver OAB não conferida hoje: publicações
+--     (DJEN) dessas OABs e, no tempo que sobrar, andamentos (DataJud);
+--   - depois, só o DataJud (cada processo lido no máximo uma vez a cada 20 h);
+--   - sem nada pendente, nem chama a rota.
+-- A rodada das 06:30 da Vercel continua como reserva.
 --
 -- Precisa de pg_net e de dois segredos no Vault (docs/deploy/producao.md):
 --   select vault.create_secret('https://app.dgbrasil.adv.br', 'dg_app_url');
 --   select vault.create_secret('<o mesmo CRON_SECRET da Vercel>', 'dg_cron_secret');
--- Sem eles, não faz nada.
+-- Sem eles, não faz nada (e o DJEN fica só na rodada das 06:30).
 create or replace function private.judicial_cron_kick()
 returns text
 language plpgsql
@@ -1657,6 +1689,8 @@ as $$
 declare
   v_url    text;
   v_secret text;
+  v_s      public.judicial_settings;
+  v_djen   boolean;
 begin
   if to_regnamespace('net') is null or to_regclass('vault.decrypted_secrets') is null then
     return 'pg_net ou Vault indisponível';
@@ -1666,23 +1700,24 @@ begin
   if nullif(btrim(coalesce(v_url, '')), '') is null or nullif(btrim(coalesce(v_secret, '')), '') is null then
     return 'segredos dg_app_url/dg_cron_secret ausentes';
   end if;
-  if not (select datajud_enabled from public.judicial_settings where id)
-     or jsonb_array_length(private.judicial_datajud_queue(1, null)) = 0 then
+  select * into v_s from public.judicial_settings where id;
+  v_djen := v_s.djen_enabled and exists (select 1 from private.judicial_djen_due());
+  if not v_djen and (not v_s.datajud_enabled or jsonb_array_length(private.judicial_datajud_queue(1, null)) = 0) then
     return 'nada a ler';
   end if;
   execute 'select net.http_get(url := $1, headers := $2, timeout_milliseconds := 60000)'
-    using rtrim(v_url, '/') || '/api/cron/judicial-sync?only=datajud',
+    using rtrim(v_url, '/') || '/api/cron/judicial-sync' || case when v_djen then '' else '?only=datajud' end,
           jsonb_build_object('Authorization', 'Bearer ' || v_secret);
-  return 'chamado';
+  return case when v_djen then 'chamado: publicações' else 'chamado: andamentos' end;
 end
 $$;
 
 do $$
 begin
   if to_regnamespace('cron') is not null then
-    perform cron.schedule('dg-datajud', '*/20 * * * *', 'select private.judicial_cron_kick()');
+    perform cron.schedule('dg-judicial', '*/5 * * * *', 'select private.judicial_cron_kick()');
   else
-    raise notice 'pg_cron indisponível: o DataJud fica só na rodada diária';
+    raise notice 'pg_cron indisponível: publicações e andamentos ficam só na rodada diária';
   end if;
 end
 $$;
@@ -1769,7 +1804,8 @@ begin
              'judicial_publication_decide', 'create_deadline_from_publication', 'get_process_judicial_status',
              'set_process_judicial_sync', 'judicial_sync_begin', 'judicial_datajud_queue', 'judicial_ingest_datajud',
              'format_cnj', 'judicial_request_deadline_proposal', 'judicial_ingest_djen', 'judicial_sync_finish',
-             'judicial_publications_follow_proposals', 'judicial_publications_follow_runs', 'judicial_cron_kick'))
+             'judicial_publications_follow_proposals', 'judicial_publications_follow_runs', 'judicial_cron_kick',
+             'judicial_djen_due'))
        or (n.nspname = 'public' and p.proname in (
              'save_judicial_monitor', 'set_judicial_monitor_active', 'get_my_judicial_monitors', 'get_judicial_coverage',
              'get_judicial_overview', 'save_judicial_settings', 'save_court_calendar_day', 'delete_court_calendar_day',

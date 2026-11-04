@@ -107,11 +107,13 @@ rodado). Decidido em 2026-10-29 (docs/mcp/relatorio-diagnostico.md):
 - **Código pronto (2026-11-03); falta validar no Supabase DEV** — migration 043.
   DJEN (publicações por OAB) e DataJud (andamentos por CNJ), lidos direto das
   fontes oficiais e gratuitas, **só para processos já cadastrados** (nada é
-  importado da OAB). OABs do escritório (ADMIN) e de cada parceiro (o próprio
-  administrador). Caixa **Publicações** com triagem humana: criar prazo (contagem
-  em dias úteis com calendário por tribunal) ou "não há prazo". Agente opcional
-  que propõe o prazo em Revisões. Busca diária às 06:30 + lotes do DataJud a cada
-  20 min pelo pg_cron. Como funciona: [docs/judicial.md](docs/judicial.md). Guia de
+  importado da OAB; de processo não cadastrado não se guarda nem o número). OABs
+  do escritório (ADMIN) e de cada parceiro (o próprio administrador). Caixa
+  **Publicações** com triagem humana: criar prazo (contagem em dias úteis com
+  calendário por tribunal) ou "não há prazo". Agente opcional que propõe o prazo
+  em Revisões. Lotes a cada 5 min pelo pg_cron a partir das 05:00, até todas as
+  OABs serem conferidas no dia (2026-11-04, para aguentar muitas OABs), com a
+  rodada das 06:30 da Vercel como reserva. Como funciona: [docs/judicial.md](docs/judicial.md). Guia de
   validação: [docs/etapa-8-validacao.md](docs/etapa-8-validacao.md).
 - Depois da validação: o ciclo de conferência em dupla (docs/judicial.md) antes
   de o DG Brasil virar a fonte única de prazos.

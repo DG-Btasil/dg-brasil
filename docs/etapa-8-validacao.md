@@ -44,8 +44,8 @@ npx supabase db push --remote
   ```
 
   Esperado, todos ativos:
-  - `dg-datajud` (`*/20 * * * *`);
   - `dg-importacoes`;
+  - `dg-judicial` (`*/5 * * * *`);
   - `dg-lembretes-de-prazo`;
   - `dg-manutencao`.
 - [ ] **Processos com CNJ viraram "acompanhados"**: a contagem abaixo é igual à de processos não excluídos com CNJ.
@@ -58,13 +58,14 @@ npx supabase db push --remote
 
 ```bash
 cd supabase
-npm run verificar        # esperado: 763 verificações, todas passaram
+npm run verificar        # esperado: 765 verificações, todas passaram
 npm run validar:real     # esperado: todas passaram (148 anteriores + 4 novas da seção 41i)
 ```
 
-- [ ] `verificar`: 763/763. As seções "Integração judicial … [043]" cobrem:
+- [ ] `verificar`: 765/765. As seções "Integração judicial … [043]" cobrem:
   - OABs por escritório;
-  - DJEN só para processo cadastrado;
+  - DJEN só para processo cadastrado (de outro processo, só a contagem, nem o número);
+  - agendador: OABs pendentes no dia a partir das 05:00, nova tentativa 10 min depois de uma falha;
   - sem duplicar;
   - cancelamento;
   - cobertura;
@@ -73,29 +74,30 @@ npm run validar:real     # esperado: todas passaram (148 anteriores + 4 novas da
   - triagem;
   - agente → Revisões;
   - catálogo.
-- [ ] `validar:real`: a seção **41i** passa. Anote a linha `pg_net … · resultado: …`. Sem pg_net ou sem os segredos do Vault ainda, o resultado esperado é `pg_net ou Vault indisponível` ou `segredos … ausentes` (a Parte 6 resolve).
+- [ ] `validar:real`: a seção **41i** passa. Anote a linha `pg_net … · resultado: …`. Sem pg_net ou sem os segredos do Vault ainda, o resultado esperado é `pg_net ou Vault indisponível` ou `segredos … ausentes` (a Parte 6 resolve). Com tudo ligado: `chamado: publicações`, `chamado: andamentos` ou `nada a ler`.
 
 ## Parte 3: Site (front e servidor)
 
 ```bash
 cd apps/frontend
-npm test                    # esperado: 45 arquivos, 526 testes
+npm test                    # esperado: 45 arquivos, 530 testes
 npm run lint && npx tsc --noEmit -p .
 npm run build               # a rota /publicacoes aparece na lista
 npm run test:integration    # esperado: 32 arquivos (31 anteriores + judicial.int.test.ts com 7 testes)
 ```
 
-- [ ] Unit 526/526. O arquivo `src/server/integrations/judicial/judicial.test.ts` (20 testes) cobre:
+- [ ] Unit 530/530. O arquivo `src/server/integrations/judicial/judicial.test.ts` (24 testes) cobre:
   - HTML do DJEN vira texto;
   - índice do DataJud por CNJ (inclusive `tre-df`);
-  - paginação e limite 429 do DJEN;
+  - paginação, limite 429 e 3 s entre consultas no DJEN;
+  - OAB que não cabe no tempo da rodada fica para o próximo lote;
   - hash de movimentação;
   - rodada.
 - [ ] Lint, tsc e build sem erro.
 - [ ] Integração 32 arquivos. Em `judicial.int.test.ts`:
   - processo acompanhado;
   - OABs (ADMIN, parceiro A, parceiro B isolado);
-  - DJEN só no processo cadastrado;
+  - DJEN só no processo cadastrado; do outro, nem o número chega à tela;
   - parceiro A vê e é avisado, B não;
   - prazo a partir da publicação;
   - DataJud com linha de base e aviso;
@@ -128,7 +130,7 @@ npm run test:integration    # esperado: 32 arquivos (31 anteriores + judicial.in
   - mensagem "Busca concluída" (ou "com falhas", com o motivo);
   - na tabela "Últimas buscas", uma linha "Publicações e andamentos · pedida na tela";
   - na OAB RJ, a última busca com "N publicação(ões) na janela · 0 de processos do DG Brasil";
-  - o link "N processo(s) com publicação que não estão no DG Brasil", que abre a lista só com números CNJ.
+  - **nenhum** número de processo de fora do DG Brasil aparece na tela (só as contagens).
 
   Anote N. Em 2026-11-03, a OAB RJ tinha cerca de 280 publicações em 6 dias.
   - **Se der falha de rede ou HTTP 403 no DJEN:** é o risco de bloqueio por IP do servidor. Registre a mensagem exata no relatório. **Bloqueia.**
@@ -161,7 +163,10 @@ Use o usuário de teste PARTNER_ADMIN, como nas validações 4.3.x.
 - [ ] Com o PARTNER_USER, a lista aparece **sem** o botão "Adicionar OAB" e sem "Pausar".
 - [ ] De volta como ADMIN, a OAB do parceiro aparece na tabela com o escritório e "Parceiro". **Pause** essa OAB fictícia no fim.
 
-## Parte 6: Agendador do banco (lotes do DataJud) — com a Barbara
+## Parte 6: Agendador do banco (lotes de publicações e andamentos) — com a Barbara
+
+**Agora é obrigatório:** sem os lotes, só a rodada das 06:30 roda, e nela cabem
+umas 5 OABs por dia (a Barbara tem cerca de 10 OABs, mais as dos parceiros).
 
 A Barbara faz no Supabase DEV ([deploy/producao.md](deploy/producao.md), item 10):
 1. Liga `pg_net` em **Database → Extensions**.
@@ -169,9 +174,12 @@ A Barbara faz no Supabase DEV ([deploy/producao.md](deploy/producao.md), item 10
 
 Depois:
 
-- [ ] `select private.judicial_cron_kick();` devolve `chamado` ou `nada a ler`.
-- [ ] Se `chamado`: após ~1 min, `select status_code from net._http_response order by created desc limit 1;` devolve `200`, e em "Últimas buscas" aparece "Andamentos (lote)".
-- [ ] Se faltar algo, registre e siga. Não bloqueia: o DataJud continua na rodada da manhã.
+- [ ] `select private.judicial_cron_kick();` devolve `chamado: publicações`, `chamado: andamentos` ou `nada a ler`.
+  - Antes das 05:00 de Brasília, ou com todas as OABs já conferidas no dia, não há publicações a buscar: o normal é `chamado: andamentos` ou `nada a ler`.
+- [ ] Se `chamado: …`: após ~1 min, `select status_code from net._http_response order by created desc limit 1;` devolve `200`, e em "Últimas buscas" aparece a rodada nova.
+- [ ] `select oab_state, oab_number from private.judicial_djen_due();` depois das 05:00: lista só as OABs ainda não conferidas hoje. Com a Parte 5 feita, fica vazia.
+- [ ] **No dia seguinte** (se der): em "Últimas buscas", várias rodadas agendadas a partir das 05:00, e todas as OABs ativas com a última busca do dia, sem falha.
+- [ ] Se faltar algo, registre. **Bloqueia** se `pg_net` ou os segredos não puderem ser criados.
 
 ## Parte 7: Conferência com o APOGEU (um dia)
 
@@ -207,7 +215,7 @@ Commit: <hash>. Data: <data>. Supabase DEV (<ref mascarado>). Máquina: <Windows
 | 3 — front (unit, lint, tsc, build, integração) | | totais |
 | 4 — deploy e crons | | |
 | 5.1–5.4 — telas e DJEN real | | N publicações na janela, tempo da busca |
-| 6 — agendador do banco | | resultado do kick |
+| 6 — agendador do banco (lotes) | | resultado do kick; OABs conferidas no dia seguinte |
 | 7 — conferência com o APOGEU | | dia, números |
 
 ## Problemas encontrados

@@ -4127,7 +4127,7 @@ await deve('manutenção (pg_cron): proposta aprovada vira prazo; execução fec
 })
 await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo; importações diária [042]; DataJud a cada 20 min [043])', async () => {
   const j = await linhas(db, `select jobname, schedule from cron.job where jobname like 'dg-%' order by jobname`)
-  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-datajud', '*/20 * * * *'], ['dg-importacoes', '17 6 * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
+  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
 })
 
 secao('Computador do escritório: interrupção, falha, devolução e queda [040]')
@@ -4759,8 +4759,13 @@ await deveFalhar('a tela não escreve direto em judicial_monitors', () => como(i
   tx.query(`update judicial_monitors set active = false where id = $1`, [j043.monOwner])), /permission denied/)
 
 secao('Integração judicial: rodada do servidor e DJEN [043]')
-await deve('rodada agendada: uma consulta por OAB (repetida entre escritórios conta uma vez); segunda rodada simultânea = busy', async () => {
-  const r = await worker043(`select private.judicial_sync_begin('CRON') r`)
+await deve('agendador: de manhã (a partir das 05:00) todas as OABs ainda não conferidas no dia; antes das 05:00, nenhuma', async () => {
+  const due = async (t) => (await linhas(db, `select oab_state || oab_number o from private.judicial_djen_due($1) order by 1`, [t])).map((x) => x.o)
+  igual(await due('2026-11-04 06:00-03'), ['RJ225006', 'SP123456', 'SP77001'], 'manhã: todas (repetida entre escritórios conta uma vez)')
+  igual(await due('2026-11-04 04:59-03'), [], 'madrugada: nenhuma')
+})
+await deve('rodada: uma consulta por OAB (repetida entre escritórios conta uma vez); segunda rodada simultânea = busy', async () => {
+  const r = await worker043(`select private.judicial_sync_begin('MANUAL', $1) r`, [ids.barbara])
   igual(r.busy, false, 'abriu')
   j043.run = r.run_id
   igual(r.oabs.map((o) => `${o.oab_state}${o.oab_number}`), ['RJ225006', 'SP123456', 'SP77001'], 'OABs distintas')
@@ -4776,7 +4781,7 @@ const pub043 = (id, cnjN, dia, extra = {}) => ({ external_id: String(id), cnj: c
   communication_type: 'Intimação', class_name: 'Procedimento do Juizado Especial Cível', available_on: dia,
   content: `Fica a parte autora intimada para se manifestar sobre a contestação no prazo de 15 dias. (${id})`, link: `https://comunica.pje.jus.br/x/${id}`, ...extra })
 
-await deve('DJEN: só a publicação de processo cadastrado entra; da outra fica só o número', async () => {
+await deve('DJEN: só a publicação de processo cadastrado entra; da outra não fica nada (nem o número), só a contagem', async () => {
   const itens = [pub043(910001, cnj043(1), '2026-11-02'), pub043(910002, cnj043(9), '2026-11-02'), { external_id: 'x', cnj: '123' }]
   const r = await worker043(`select private.judicial_ingest_djen($1, '225006', 'RJ', '2026-10-31', '2026-11-02', true, null, $2) r`, [j043.run, JSON.stringify(itens)])
   igual([r.found, r.matched, r.new, r.duplicates, r.unmatched], [3, 1, 1, 0, 1], 'contagem')
@@ -4787,8 +4792,22 @@ await deve('DJEN: só a publicação de processo cadastrado entra; da outra fica
   igual([ev.event_type, ev.source, ev.external_provider, ev.important], ['PUBLICATION', 'JUDICIAL_INTEGRATION', 'DJEN', true], 'movimentação')
   igual((await um(db, `select count(*)::int n from judicial_publications where cnj_number = $1`, [cnj043(9)])).n, 0, 'nada do processo não cadastrado')
   igual((await um(db, `select count(*)::int n from process_events where description like '%(910002)%'`)).n, 0, 'teor não guardado')
-  const st = await um(db, `select unmatched_cnjs, last_found, last_matched, last_error from judicial_monitor_status where judicial_monitor_id = $1`, [j043.monOwner])
-  igual([st.unmatched_cnjs, st.last_found, st.last_matched, st.last_error], [[cnj043(9)], 3, 1, null], 'situação da OAB')
+  const st = await um(db, `select last_found, last_matched, last_error from judicial_monitor_status where judicial_monitor_id = $1`, [j043.monOwner])
+  igual([st.last_found, st.last_matched, st.last_error], [3, 1, null], 'situação da OAB')
+  igual((await um(db, `select count(*)::int n from information_schema.columns where table_name = 'judicial_monitor_status' and column_name like '%cnj%'`)).n, 0, 'sem coluna de números de fora')
+  const ov = await rpc043(ids.barbara, `select public.get_judicial_overview() r`)
+  igual(JSON.stringify(ov).includes(cnj043(9)), false, 'a tela não recebe o número')
+})
+await deve('agendador: OAB conferida hoje sai da lista; com falha, volta 10 min depois', async () => {
+  const due = async (t) => (await linhas(db, `select oab_state || oab_number o from private.judicial_djen_due($1::timestamptz) order by 1`, [t])).map((x) => x.o)
+  const t = await um(db, `select (now() at time zone 'America/Sao_Paulo')::date::text hoje,
+    ((now() at time zone 'America/Sao_Paulo')::date + 1)::text amanha,
+    ((now() + interval '11 minutes') at time zone 'America/Sao_Paulo')::time >= time '05:00' manha`)
+  igual((await due(`${t.hoje} 23:30-03`)).includes('RJ225006'), false, 'conferida hoje: fora')
+  igual((await due(`${t.amanha} 06:00-03`)).includes('RJ225006'), true, 'amanhã: de novo')
+  await worker043(`select private.judicial_ingest_djen($1, '77001', 'SP', '2026-11-01', '2026-11-02', false, 'HTTP 503', null) r`, [j043.run])
+  igual((await due(new Date(Date.now() + 5 * 60e3).toISOString())).includes('SP77001'), false, 'falhou há 5 min: espera')
+  if (t.manha) igual((await due(new Date(Date.now() + 11 * 60e3).toISOString())).includes('SP77001'), true, 'falhou há 11 min: tenta de novo')
 })
 await deve('aviso de publicação ao advogado do caso (categoria JUDICIAL), com chave única', async () => {
   const n = await linhas(db, `select user_id, type, severity, related_type from notifications where event_key = $1`, ['pub:' + j043.pub])

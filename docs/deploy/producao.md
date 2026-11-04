@@ -220,29 +220,38 @@ verdade:
 ## 10. Integração judicial (DJEN e DataJud): frequência
 
 - **Hoje:**
-  - publicações do DJEN uma vez por dia, às 06:30 de Brasília
-    (`30 9 * * *` em `apps/frontend/vercel.json`), revendo os últimos 5 dias;
-  - cada rodada tem 60 s;
-  - o DataJud (lento: até ~50 s por consulta) também roda em lotes a cada 20 min,
-    chamados pelo pg_cron do Supabase (`dg-datajud`, migration 043).
-- **Para os lotes do DataJud funcionarem** (DEV e produção), no projeto Supabase:
+  - o pg_cron do Supabase (`dg-judicial`, a cada 5 min, migration 043) chama a
+    rota `/api/cron/judicial-sync` em lotes:
+    - a partir das 05:00 de Brasília, enquanto houver OAB não conferida no dia,
+      busca as publicações do DJEN dessas OABs (revendo os últimos 5 dias);
+    - depois, só os andamentos do DataJud (cada processo uma vez a cada 20 h);
+    - sem nada pendente, nem chama a rota;
+  - cada lote tem 60 s, e o DJEN aceita 20 consultas por minuto: cabem umas 15
+    consultas (umas 5 OABs) por lote. Com 50 OABs, a conferência termina por
+    volta das 06:00;
+  - a Vercel Cron às 06:30 (`30 9 * * *` em `apps/frontend/vercel.json`) fica
+    como reserva.
+- **Obrigatório para os lotes** (DEV e produção), no projeto Supabase. Sem isto,
+  só a rodada das 06:30 roda, e nela cabem umas 5 OABs por dia:
   1. **Database → Extensions:** ligar `pg_net`.
   2. **SQL Editor**, com o mesmo `CRON_SECRET` da Vercel daquele ambiente:
 
      ```sql
      select vault.create_secret('https://app.dgbrasil.adv.br', 'dg_app_url');
      select vault.create_secret('<CRON_SECRET>', 'dg_cron_secret');
-     select private.judicial_cron_kick();   -- 'chamado' ou 'nada a ler'
+     select private.judicial_cron_kick();   -- 'chamado: publicações', 'chamado: andamentos' ou 'nada a ler'
      ```
 
   Para trocar um segredo depois: `select vault.update_secret(id, '<novo>') from
   vault.secrets where name = 'dg_cron_secret';`.
 - **Na produção, com o Vercel Pro (item 1):**
-  1. Mais buscas de publicações por dia, se o escritório quiser. Por exemplo:
-     `"30 9,13,17 * * *"` (06:30, 10:30 e 14:30).
+  1. Mais conferências de publicações por dia, se o escritório quiser: trocar a
+     regra "uma vez com sucesso por dia" de `private.judicial_djen_due()` (por
+     exemplo, também à tarde).
   2. `maxDuration` da rota `/api/cron/judicial-sync` de 60 para 300 s e o prazo
-     interno (`started + 48_000`) para ~280 s: cabem muito mais processos por lote.
-  3. Atualizar o texto "uma vez por dia" em `route.ts`, em
+     interno (`started + 50_000`) para ~280 s: cabem muito mais OABs e processos
+     por lote.
+  3. Atualizar os textos de frequência em `route.ts`, em
      [docs/judicial.md](../judicial.md) e nas telas (Configurações → Integrações).
 - **Chave do DataJud:** é a pública da wiki do CNJ e pode mudar. Se a tela
   mostrar "DataJud recusou a chave pública", pôr a nova em `DATAJUD_API_KEY`
