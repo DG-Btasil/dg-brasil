@@ -9,14 +9,14 @@ Nenhum problema bloqueia a etapa: o DJEN real funcionou pelo servidor, sem bloqu
 
 | ID | Problema | Gravidade | Situação |
 |---|---|---|---|
-| JUD-04 | DataJud esgota o tempo | Atrapalha | Mitigado na 044 (nova tentativa em 1 h; para após 3 falhas); a lentidão é do CNJ. Falta reconferir |
-| JUD-06 | Rodada do DataJud fica presa como `RUNNING` | Atrapalha | Corrigido na 044 (consulta cortada no prazo; presa vira FAILED em 6 min). Falta reconferir |
-| JUD-05 | Texto do portal contradiz a regra da etapa | Cosmético | Corrigido. Falta reconferir |
-| JUD-02 | Contagem da Parte 1 do guia inclui processos excluídos | Cosmético | Corrigido no guia |
+| JUD-04 | DataJud esgota o tempo | Atrapalha | Mitigado na 044 e reconferido na Rodada 2 (nova tentativa em 1 h; para após 3 falhas). A lentidão do CNJ continua; 429 não observado depois da 044 |
+| JUD-06 | Rodada do DataJud fica presa como `RUNNING` | Atrapalha | Corrigido na 044 e reconferido na Rodada 2 (rodadas de 45 a 47 s, nenhuma presa). O encerramento em 6 min não foi observado |
+| JUD-05 | Texto do portal contradiz a regra da etapa | Cosmético | Corrigido e reconferido na Rodada 2 |
+| JUD-02 | Contagem da Parte 1 do guia inclui processos excluídos | Cosmético | Corrigido no guia e reconferido (217 × 217) |
 | JUD-01 | Teste de integração lia tabela fechada com o `service_role` | Atrapalha | Corrigido |
 | JUD-03 | `drive-sync` não aparecia nos Cron Jobs da Vercel | Atrapalha | Resolvido, causa não apurada |
 
-## Abertos
+## Corrigidos na Rodada 2
 
 ### JUD-04: DataJud esgota o tempo
 
@@ -26,7 +26,7 @@ Nenhum problema bloqueia a etapa: o DJEN real funcionou pelo servidor, sem bloqu
 - **O que já se sabe:** fora da Vercel, o índice TJSP também não respondeu em 40 s, e o TJRJ devolveu `429`. Isso aponta para instabilidade ou limite do CNJ, não para bloqueio do nosso servidor.
 - **O que funcionou:** a falha ficou registrada, a rodada saiu como "com falhas" e o DJEN não foi afetado.
 - **Impacto:** cada chamada travada consome 35 s da rodada, e os andamentos não chegam enquanto durar. As intimações vêm do DJEN e não dependem dele.
-- **Falta:** repetir "Buscar andamentos agora" com o DataJud respondendo, para ver o aviso esperado.
+- **Rodada 2:** o aviso "Processo ainda não aparece no DataJud" foi gravado nas rodadas agendadas. Falhas de "tempo esgotado" voltam em 1 h, e a rodada para depois de 3. A tela "Buscar andamentos agora" não foi repetida.
 
 ### JUD-06: rodada do DataJud fica presa como `RUNNING`
 
@@ -35,7 +35,7 @@ Nenhum problema bloqueia a etapa: o DJEN real funcionou pelo servidor, sem bloqu
 - **O que aconteceu:** a rodada `CRON`/`DATAJUD` de 00:38:54 UTC levou 57 s e terminou `PARTIAL`. A de 00:40:00 deu `Timeout of 60000 ms reached` no `pg_net` e seguia `RUNNING` quase 6 minutos depois.
 - **Causa provável:** com o DataJud lento (JUD-04), a rodada passa do limite de 60 s da Vercel e é encerrada antes de gravar o fim. O prazo interno de 50 s nem sempre segurou. A causa exata não foi apurada.
 - **Impacto:** a chamada das 00:45 voltou `200` sem abrir rodada nova, o que é compatível com a trava de rodada em andamento. Pelo código de `judicial_sync_begin`, a trava barra só os lotes do DataJud, as buscas do DJEN seguem e, depois de 15 min, a rodada vira `FAILED`. Esse encerramento não foi observado.
-- **Falta:** confirmar que a rodada vira `FAILED` e descobrir por que o prazo interno de 50 s não segurou.
+- **Rodada 2:** a rodada presa de 21:40 virou `FAILED` depois de 901 s, pela regra antiga de 15 min. Com a 044, as rodadas levaram de 45 a 47 s, sem nenhuma presa, então a regra de 6 min ainda não foi exercitada.
 
 ### JUD-05: texto do portal contradiz a regra da etapa
 
@@ -72,5 +72,5 @@ Nenhum problema bloqueia a etapa: o DJEN real funcionou pelo servidor, sem bloqu
 
 Não são problemas, mas ainda não foram feitas:
 
-- **Parte 6:** conferir em 2026-11-05, depois das 05:00, as rodadas agendadas e as OABs RJ e SP com a busca do dia.
+- **Rodada 2, item 7, e Parte 6:** conferir em 2026-11-05, depois das 05:00, as rodadas agendadas e as OABs RJ e SP com a busca do dia.
 - **Parte 7:** conferência com o APOGEU, adiada ([producao.md](../../deploy/producao.md), item 11).
