@@ -9,10 +9,10 @@ Nenhum problema bloqueia a etapa: o DJEN real funcionou pelo servidor, sem bloqu
 
 | ID | Problema | Gravidade | Situação |
 |---|---|---|---|
-| JUD-04 | DataJud esgota o tempo | Atrapalha | **Aberto** (depende do CNJ) |
-| JUD-06 | Rodada do DataJud fica presa como `RUNNING` | Atrapalha | **Aberto** |
-| JUD-05 | Texto do portal contradiz a regra da etapa | Cosmético | **Aberto** |
-| JUD-02 | Contagem da Parte 1 do guia inclui processos excluídos | Cosmético | **Aberto** (texto do guia) |
+| JUD-04 | DataJud esgota o tempo | Atrapalha | Mitigado na 044 (nova tentativa em 1 h; para após 3 falhas); a lentidão é do CNJ. Falta reconferir |
+| JUD-06 | Rodada do DataJud fica presa como `RUNNING` | Atrapalha | Corrigido na 044 (consulta cortada no prazo; presa vira FAILED em 6 min). Falta reconferir |
+| JUD-05 | Texto do portal contradiz a regra da etapa | Cosmético | Corrigido. Falta reconferir |
+| JUD-02 | Contagem da Parte 1 do guia inclui processos excluídos | Cosmético | Corrigido no guia |
 | JUD-01 | Teste de integração lia tabela fechada com o `service_role` | Atrapalha | Corrigido |
 | JUD-03 | `drive-sync` não aparecia nos Cron Jobs da Vercel | Atrapalha | Resolvido, causa não apurada |
 

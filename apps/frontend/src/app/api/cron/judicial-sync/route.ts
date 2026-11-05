@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   // ?only=datajud: lote só do DataJud (agendador do banco, sem OAB pendente no dia).
   const onlyDatajud = new URL(request.url).searchParams.get("only") === "datajud";
   // Lote só do DataJud: mais paralelo (as consultas demoram, quase não usam CPU).
-  const deps = { ...judicialSyncDeps(log, started + 50_000), datajudConcurrency: onlyDatajud ? 4 : 2 };
+  const deps = { ...judicialSyncDeps(log, started + 48_000), datajudConcurrency: onlyDatajud ? 4 : 2 };
   const r = await runJudicialSync(deps, { trigger: "CRON", onlyDatajud });
   if (r.busy || ("idle" in r && r.idle)) {
     log.info(r.busy ? "judicial.cron_busy" : "judicial.cron_idle", { onlyDatajud });

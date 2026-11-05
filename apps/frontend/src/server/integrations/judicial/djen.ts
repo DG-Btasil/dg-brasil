@@ -96,16 +96,18 @@ export class DjenClient {
     this.timeout = opts.timeoutMs ?? 20_000;
   }
 
-  private async get(params: Record<string, string>): Promise<RawItem[]> {
+  private async get(params: Record<string, string>, deadline?: number): Promise<RawItem[]> {
     const wait = this.last + this.gap - Date.now();
     if (wait > 0) await this.sleep(wait);
     this.last = Date.now();
+    // Nenhuma consulta passa do prazo da rodada (JUD-06): 1,5 s de folga, mínimo 3 s.
+    const ms = Math.max(3_000, Math.min(this.timeout, deadline === undefined ? Infinity : deadline - Date.now() - 1_500));
     const url = `${DJEN_BASE}/comunicacao?${new URLSearchParams(params).toString()}`;
     let res: Response;
     try {
       res = await this.f(url, {
         headers: { Accept: "application/json", "User-Agent": "DG-Brasil/1.0 (sistema interno de escritorio de advocacia)" },
-        signal: AbortSignal.timeout(this.timeout),
+        signal: AbortSignal.timeout(ms),
         cache: "no-store",
       });
     } catch (e) {
@@ -138,7 +140,7 @@ export class DjenClient {
         dataDisponibilizacaoFim: to,
         pagina: String(page),
         itensPorPagina: String(PAGE_SIZE),
-      });
+      }, deadline);
       for (const raw of items) {
         const n = normalizeDjenItem(raw);
         if (n) out.set(n.external_id, n);

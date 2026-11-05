@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLogger } from "@/server/core/logger";
 import { camel } from "@/server/domain/judicial/service";
-import { DatajudClient, normalizeDatajud } from "./datajud";
+import { DatajudClient, DatajudError, normalizeDatajud } from "./datajud";
 import { DjenClient, DjenError, normalizeDjenItem, type DjenItem } from "./djen";
 import { runJudicialSync, type JudicialDbFunction, type JudicialSyncDeps } from "./sync";
 import { addDays, datajudAlias, fixCase, formatCnj, htmlToText, isValidCnj, parseDatajudDate } from "./text";
@@ -143,6 +143,32 @@ const hits = (c: string) => [
 ];
 
 describe("DataJud", () => {
+  it("prazo da rodada: tentativa cortada no prazo; sem tempo nem começa (JUD-06)", async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ hits: { hits: [] } }), { status: 200 }));
+    const c = new DatajudClient({ fetch: f as unknown as typeof fetch, sleep: noSleep });
+    await expect(c.process(cnj(1), Date.now() + 5_000)).rejects.toMatchObject({ outOfTime: true, transient: true });
+    expect(f).not.toHaveBeenCalled();
+    const timeouts: number[] = [];
+    const spy = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+      timeouts.push(ms);
+      return new AbortController().signal;
+    });
+    try {
+      await c.process(cnj(1), Date.now() + 20_000);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(timeouts[0]).toBeLessThanOrEqual(18_500);
+    expect(timeouts[0]).toBeGreaterThan(15_000);
+  });
+  it("tempo esgotado, 429 e 5xx são falhas passageiras; chave recusada não é", async () => {
+    const timeout = new DatajudClient({ fetch: (async () => { throw Object.assign(new Error("t"), { name: "TimeoutError" }); }) as unknown as typeof fetch, sleep: noSleep });
+    await expect(timeout.process(cnj(1))).rejects.toMatchObject({ transient: true, outOfTime: false });
+    const busy = new DatajudClient({ fetch: (async () => new Response("", { status: 503 })) as unknown as typeof fetch, sleep: noSleep });
+    await expect(busy.process(cnj(1))).rejects.toMatchObject({ transient: true });
+    const key = new DatajudClient({ fetch: (async () => new Response("", { status: 401 })) as unknown as typeof fetch, sleep: noSleep });
+    await expect(key.process(cnj(1))).rejects.toMatchObject({ transient: false });
+  });
   it("junta os graus, preenche os dados pelo 1º grau, deduplica movimento idêntico e mantém o que difere no complemento", () => {
     const r = normalizeDatajud("tjsp", cnj(1), hits(cnj(1)));
     if (r.kind !== "ok") throw new Error(r.kind);
@@ -254,6 +280,30 @@ describe("rodada", () => {
     const r2 = await runJudicialSync(big.d, { trigger: "CRON" });
     if (r2.busy || r2.idle) throw new Error("busy");
     expect([r2.status, r2.stats.djenErrors]).toEqual(["PARTIAL", 1]);
+  });
+  it("DataJud instável: falha passageira vai ao banco como passageira; depois de 3, para a rodada (JUD-04)", async () => {
+    const process = vi.fn(async () => {
+      throw new DatajudError("DataJud não respondeu (tempo esgotado)", true);
+    });
+    const queue = Array.from({ length: 6 }, (_, i) => ({ ref_id: `r${i}`, legal_process_id: `p${i}`, cnj: cnj(1), baseline: false }));
+    const { d, calls } = deps({ datajud: { process }, datajudConcurrency: 1 }, { djen_enabled: false, oabs: [] });
+    const db = d.db;
+    d.db = (async (fn: JudicialDbFunction, args: unknown[]) => (fn === "judicial_datajud_queue" ? queue : db(fn, args))) as JudicialSyncDeps["db"];
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect(process).toHaveBeenCalledTimes(3);
+    expect([r.status, r.stats.datajudErrors, r.stats.processesLeftForNextRun]).toEqual(["PARTIAL", 3, 3]);
+    expect(calls.filter((c) => c.fn === "judicial_ingest_datajud").map((c) => c.args[6])).toEqual([true, true, true]);
+  });
+  it("DataJud sem tempo para começar: fica para o próximo lote, sem falha", async () => {
+    const process = vi.fn(async () => {
+      throw new DatajudError("Sem tempo", true, true);
+    });
+    const { d, calls } = deps({ datajud: { process }, datajudConcurrency: 1 }, { djen_enabled: false, oabs: [] });
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect([r.status, r.stats.datajudErrors, r.stats.processesLeftForNextRun]).toEqual(["COMPLETED", 0, 2]);
+    expect(calls.some((c) => c.fn === "judicial_ingest_datajud")).toBe(false);
   });
   it("DataJud só começa consulta que cabe no tempo da rodada", async () => {
     const process = vi.fn(async (c: string) => normalizeDatajud("tjsp", c, hits(c)));

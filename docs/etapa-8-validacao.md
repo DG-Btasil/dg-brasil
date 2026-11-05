@@ -4,7 +4,7 @@
 devolva o relatório no formato da seção final.
 
 - **Escopo:**
-  - migration 043;
+  - migrations 043 e 044 (correções da primeira validação: ver "Rodada 2" no fim);
   - busca no DJEN e no DataJud pelo servidor (`/api/cron/judicial-sync`);
   - actions `judicial.*`;
   - telas: Configurações → Integrações → Integração judicial, menu **Publicações**, processo (quadro "Acompanhamento automático" e aba "Publicações") e portal do parceiro (Minha Conta → OABs acompanhadas).
@@ -48,10 +48,13 @@ npx supabase db push --remote
   - `dg-judicial` (`*/5 * * * *`);
   - `dg-lembretes-de-prazo`;
   - `dg-manutencao`.
-- [ ] **Processos com CNJ viraram "acompanhados"**: a contagem abaixo é igual à de processos não excluídos com CNJ.
+- [ ] **Processos com CNJ viraram "acompanhados"**: as duas contagens abaixo são iguais. Processo excluído mantém a referência, mas não entra na fila (JUD-02).
 
   ```sql
-  select count(*) from process_external_refs where provider = 'DATAJUD';
+  select count(*) from process_external_refs r
+    join legal_processes p on p.id = r.legal_process_id and p.deleted_at is null and p.cnj_number = r.external_id
+   where r.provider = 'DATAJUD';
+  select count(*) from legal_processes where deleted_at is null and cnj_number is not null;
   ```
 
 ## Parte 2: Banco
@@ -197,6 +200,41 @@ Só se você tiver o conector APOGEU DJEN disponível. Se não tiver, marque "n�
   - o caminho no banco (trabalho → proposta → Revisões → prazo) já é coberto pelo `verificar`.
 
 ---
+
+## Rodada 2: correções da validação (migration 044)
+
+Depois da primeira validação ([qa/etapa-8/problemas-etapa-8.md](qa/etapa-8/problemas-etapa-8.md)), foram corrigidos:
+- **JUD-04:** falha passageira do DataJud (tempo esgotado, 429, 5xx, rede) volta em 1 h, e não no dia seguinte. Depois de 3 falhas passageiras numa rodada, a rodada para de consultar o DataJud.
+- **JUD-06:** cada consulta ao DataJud e ao DJEN é cortada no prazo da rodada (48 s na rota). Se a rota ainda assim morrer, a rodada vira "Interrompida" em 6 min (era 15).
+- **JUD-05:** texto do portal. **JUD-02:** consulta da Parte 1 deste guia.
+
+Para conferir:
+
+1. `git pull`; `cd supabase`; `npx supabase db push --remote --dry-run` lista **só** `20261101000044_judicial_sync_fixes.sql`; depois `npx supabase db push --remote`.
+2. `npm run verificar`: **768**, todas passaram (seção "correções da validação [044]").
+3. `cd apps/frontend`; `npm test`: 45 arquivos, **534** testes; lint, tsc e build sem erro.
+4. Esperar o deploy na Vercel. Depois, no SQL Editor:
+
+   ```sql
+   select started_at, scope, status, round(extract(epoch from finished_at - started_at)) s, left(error, 80) erro
+     from judicial_sync_runs order by started_at desc limit 15;
+   ```
+
+   - [ ] Nenhuma rodada nova com `s` acima de **55** nem presa em `RUNNING` por mais de 2 min.
+   - [ ] Rodada antiga presa aparece `FAILED` com "Interrompida (sem conclusão em 6 min)."
+5. Se o DataJud estiver falhando:
+
+   ```sql
+   select count(*) filter (where next_attempt_at - last_attempt_at < interval '2 hours') em_1h,
+          count(*) filter (where next_attempt_at - last_attempt_at >= interval '2 hours') em_20h
+     from process_external_refs where provider = 'DATAJUD' and last_error is not null;
+   ```
+
+   - [ ] Falhas de "tempo esgotado" ou HTTP 429/5xx contam em `em_1h`; "ainda não aparece" conta em `em_20h`.
+6. Portal → Minha Conta → OABs acompanhadas: o texto diz "De processo que não está no DG Brasil nada é guardado, nem o número."
+7. **Pendência da Parte 6:** depois das 05:00, as OABs RJ e SP com a busca do dia e as rodadas agendadas sem falha.
+
+Registre o resultado em `docs/qa/etapa-8/qa-etapa-8.md`, numa seção "Rodada 2", e atualize a situação dos JUD-02, 04, 05 e 06 em `problemas-etapa-8.md`.
 
 ## Relatório (formato de entrega)
 

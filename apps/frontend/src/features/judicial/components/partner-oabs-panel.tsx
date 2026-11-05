@@ -49,7 +49,7 @@ export function PartnerOabsPanel() {
     <Panel>
       <PanelHeader
         title="OABs acompanhadas"
-        description="O DG Brasil busca todo dia, de manhã, as publicações do DJEN destas OABs e as coloca nos processos do seu escritório já cadastrados aqui. Publicação de processo que não está no DG Brasil não é importada: aparece só o número."
+        description="O DG Brasil busca todo dia, de manhã, as publicações do DJEN destas OABs e as coloca nos processos do seu escritório já cadastrados aqui. De processo que não está no DG Brasil nada é guardado, nem o número."
         actions={
           d.canManage && (
             <Button size="sm" icon={<Plus className="size-4" aria-hidden />} onClick={() => setAdding(true)}>

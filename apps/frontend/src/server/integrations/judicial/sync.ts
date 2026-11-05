@@ -1,5 +1,5 @@
 import type { Logger } from "@/server/core/logger";
-import type { DatajudResult } from "./datajud";
+import { DatajudError, type DatajudResult } from "./datajud";
 import { DjenError, type DjenItem } from "./djen";
 import { addDays, safeError } from "./text";
 
@@ -31,15 +31,17 @@ export const JUDICIAL_DB_FUNCTIONS: readonly JudicialDbFunction[] = [
 export interface JudicialSyncDeps {
   db: <T>(fn: JudicialDbFunction, args: unknown[]) => Promise<T>;
   djen: { byOab(oabNumber: string, oabState: string, from: string, to: string, deadline?: number): Promise<DjenItem[]> };
-  datajud: { process(cnj: string): Promise<DatajudResult> };
+  datajud: { process(cnj: string, deadline?: number): Promise<DatajudResult> };
   log: Logger;
   /** Não começa trabalho novo depois deste instante (ms). */
   deadline?: number;
   now?: () => number;
   datajudLimit?: number;
   datajudConcurrency?: number;
-  /** Tempo máximo de uma consulta ao DataJud: só começa outra se couber até o prazo da rodada. */
+  /** Tempo mínimo para começar uma consulta ao DataJud (a consulta é cortada no prazo da rodada). */
   datajudCallBudgetMs?: number;
+  /** Falhas passageiras do DataJud numa rodada a partir das quais não se começa consulta nova (CNJ instável). */
+  datajudMaxTransient?: number;
   /** Tempo mínimo para começar uma OAB no DJEN (uma página com intervalo e resposta). */
   djenCallBudgetMs?: number;
 }
@@ -157,13 +159,17 @@ export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOpt
       const queue = await d.db<QueueItem[]>("judicial_datajud_queue", [d.datajudLimit ?? 150, opts.processId ?? null]);
       stats.processesQueued = queue.length;
       let next = 0;
+      let transient = 0;
+      let skipped = 0;
       const worker = async () => {
         while (next < queue.length) {
-          // Consulta que não termina antes do prazo estouraria o limite da rota (60 s).
-          if (outOfTime() || (d.deadline !== undefined && now() + (d.datajudCallBudgetMs ?? 35_000) > d.deadline)) return;
+          // Pouco tempo sobrando: nem começa (a consulta costuma levar dezenas de segundos).
+          if (outOfTime() || (d.deadline !== undefined && now() + (d.datajudCallBudgetMs ?? 20_000) > d.deadline)) return;
+          // CNJ instável: para de insistir nesta rodada (JUD-04); os que falharam voltam em 1 h.
+          if (transient >= (d.datajudMaxTransient ?? 3)) return;
           const q = queue[next++];
           try {
-            const r = await d.datajud.process(q.cnj);
+            const r = await d.datajud.process(q.cnj, d.deadline);
             if (r.kind === "ok") {
               const x = await d.db<{ ok: boolean; inserted?: number }>(
                 "judicial_ingest_datajud", [runId, q.ref_id, true, null, r.meta, r.movements]);
@@ -175,16 +181,23 @@ export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOpt
               await d.db("judicial_ingest_datajud", [runId, q.ref_id, false, r.message, null, null]);
             }
           } catch (e) {
+            // Faltou tempo antes de começar: fica para o próximo lote, sem falha.
+            if (e instanceof DatajudError && e.outOfTime) {
+              skipped++;
+              return;
+            }
             const msg = safeError(e);
+            const isTransient = e instanceof DatajudError && e.transient;
+            if (isTransient) transient++;
             stats.datajudErrors++;
             if (errors.length < 20) errors.push(`DataJud: ${msg}`);
-            await d.db("judicial_ingest_datajud", [runId, q.ref_id, false, msg, null, null]).catch(() => undefined);
+            await d.db("judicial_ingest_datajud", [runId, q.ref_id, false, msg, null, null, isTransient]).catch(() => undefined);
           }
         }
       };
       // O DataJud responde devagar (até ~50 s por consulta): poucas em paralelo.
       await Promise.all(Array.from({ length: Math.max(1, d.datajudConcurrency ?? 2) }, worker));
-      stats.processesLeftForNextRun = Math.max(0, queue.length - next);
+      stats.processesLeftForNextRun = Math.max(0, queue.length - next) + skipped;
     }
     if (errors.length) status = "PARTIAL";
   } catch (e) {

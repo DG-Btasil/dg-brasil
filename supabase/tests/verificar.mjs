@@ -5043,6 +5043,33 @@ await deve('funções da 043 fixam search_path; anon e service_role não executa
   igual(r.filter((x) => x.s === 'public' && x.def).map((x) => x.f), [], 'pública como definer')
 })
 
+secao('Integração judicial: correções da validação [044]')
+await deve('DataJud: falha passageira volta em 1 h; "não encontrado" e leitura com sucesso, em 20 h (JUD-04)', async () => {
+  const ref = (await um(db, `select id from process_external_refs where provider = 'DATAJUD' and legal_process_id = $1`, [j043.procA])).id
+  await db.query(`update process_external_refs set sync_enabled = true where id = $1`, [ref])
+  const horas = async () => Number((await um(db, `select round(extract(epoch from next_attempt_at - now()) / 3600) h from process_external_refs where id = $1`, [ref])).h)
+  const naFila = async () => (await worker043(`select private.judicial_datajud_queue(500) r`)).some((x) => x.ref_id === ref)
+  await worker043(`select private.judicial_ingest_datajud($1, $2, false, 'DataJud não respondeu (tempo esgotado)', null, null, true) r`, [j043.run, ref])
+  igual([await horas(), await naFila()], [1, false], 'passageira: 1 h, fora da fila até lá')
+  await worker043(`select private.judicial_ingest_datajud($1, $2, false, 'Processo ainda não aparece no DataJud', null, null) r`, [j043.run, ref])
+  igual(await horas(), 20, 'não encontrado (chamada antiga, sem o 7º argumento): 20 h')
+  await worker043(`select private.judicial_ingest_datajud($1, $2, true, null, '{}', '[]') r`, [j043.run, ref])
+  igual(await horas(), 20, 'leitura com sucesso: 20 h')
+  await db.query(`update process_external_refs set next_attempt_at = now() - interval '1 minute' where id = $1`, [ref])
+  igual(await naFila(), true, 'liberada: volta à fila')
+})
+await deve('rodada presa (a rota morreu antes de gravar o fim) vira interrompida depois de 6 min, e não 15 (JUD-06)', async () => {
+  const velha = (await um(db, `insert into judicial_sync_runs (trigger, scope, started_at) values ('CRON', 'DATAJUD', now() - interval '7 minutes') returning id`)).id
+  const nova = (await um(db, `insert into judicial_sync_runs (trigger, scope, started_at) values ('CRON', 'DATAJUD', now() - interval '5 minutes') returning id`)).id
+  const r = await worker043(`select private.judicial_sync_begin('CRON', null, null, true) r`)
+  igual(r.busy, true, 'a de 5 min ainda conta como em andamento')
+  const st = await linhas(db, `select id, status, error from judicial_sync_runs where id = any ($1)`, [[velha, nova]])
+  igual(st.find((x) => x.id === velha).status, 'FAILED', 'a de 7 min foi encerrada')
+  igual(st.find((x) => x.id === velha).error, 'Interrompida (sem conclusão em 6 min).', 'motivo')
+  igual(st.find((x) => x.id === nova).status, 'RUNNING', 'a de 5 min segue')
+  await db.query(`update judicial_sync_runs set status = 'FAILED', finished_at = now() where id = $1`, [nova])
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

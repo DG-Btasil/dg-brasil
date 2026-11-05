@@ -75,8 +75,9 @@ por minuto). A Barbara escolheu manter a OAB (2026-11-04).
     dias) fica com falha visível na tela; nesse caso, reduzir "Dias revistos" ou
     passar para o plano Pro (deploy/producao.md, item 10);
   - os processos lidos há mais tempo no DataJud vão primeiro.
-- **Leitura do DataJud:** cada processo é lido no máximo uma vez a cada 20 h.
-- **Rodadas ao mesmo tempo:** duas rodadas não correm juntas; a segunda recebe "busy".
+- **Leitura do DataJud** (044): cada processo é lido no máximo uma vez a cada 20 h. Falha passageira (tempo esgotado, 429, 5xx, rede) volta em 1 h; "ainda não aparece no DataJud" volta em 20 h. Depois de 3 falhas passageiras, a rodada para de consultar o DataJud (o CNJ costuma estar instável).
+- **Prazo de cada consulta:** nenhuma consulta ao DJEN ou ao DataJud passa do prazo da rodada (48 s na rota de 60 s), para a rodada sempre gravar o fim.
+- **Rodadas ao mesmo tempo:** duas rodadas não correm juntas; a segunda recebe "busy". Rodada sem fim gravado há 6 min vira "Interrompida".
 - **Os lotes precisam de** `pg_net` e de dois segredos no Vault (`dg_app_url`,
   `dg_cron_secret`); ver [deploy/producao.md](deploy/producao.md), item 10.
   Sem eles, só a rodada das 06:30 roda, e nela cabem umas 5 OABs.

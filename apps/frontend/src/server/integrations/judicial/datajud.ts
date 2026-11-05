@@ -45,7 +45,11 @@ export type DatajudResult =
   | { kind: "not_found" | "unsupported"; message: string };
 
 export class DatajudError extends Error {
-  constructor(message: string) {
+  /**
+   * transient: falha passageira (tempo esgotado, 429, 5xx, rede): o banco tenta
+   * de novo em 1 h. outOfTime: nem começou, faltou tempo na rodada.
+   */
+  constructor(message: string, readonly transient = false, readonly outOfTime = false) {
     super(message);
     this.name = "DatajudError";
   }
@@ -122,6 +126,9 @@ export interface DatajudClientOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
+/** Tentativa com menos tempo que isto nem começa (a consulta costuma levar dezenas de segundos). */
+const MIN_ATTEMPT_MS = 10_000;
+
 export class DatajudClient {
   private readonly f: typeof fetch;
   private readonly key: string;
@@ -131,32 +138,46 @@ export class DatajudClient {
   constructor(opts: DatajudClientOptions = {}) {
     this.f = opts.fetch ?? fetch;
     this.key = opts.apiKey || process.env.DATAJUD_API_KEY || DATAJUD_PUBLIC_KEY;
-    // Medido em 2026-11-03: 30–50 s por consulta no TJRJ. Tempo esgotado não
-    // tenta de novo (comeria a rodada); o processo volta na próxima.
-    this.timeout = opts.timeoutMs ?? 35_000;
+    // Medido em 2026-11-03: 30–54 s por consulta no TJRJ. O tempo de cada
+    // tentativa também é cortado no prazo da rodada (process(cnj, deadline)).
+    // Tempo esgotado não tenta de novo (comeria a rodada): volta em 1 h.
+    this.timeout = opts.timeoutMs ?? 45_000;
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
-  async process(cnj: string): Promise<DatajudResult> {
+  /**
+   * Um processo pelo CNJ. `deadline` (ms): nenhuma tentativa passa dele (a rota
+   * tem 60 s e a rodada precisa de tempo para gravar o fim — JUD-06).
+   */
+  async process(cnj: string, deadline?: number): Promise<DatajudResult> {
     const alias = datajudAlias(cnj);
     if (!alias) return { kind: "unsupported", message: "Tribunal sem índice público no DataJud (ex.: STF)." };
     const body = JSON.stringify({ size: 20, query: { match: { numeroProcesso: cnj } } });
+    // Tempo desta tentativa: o padrão, cortado no prazo da rodada (1,5 s de folga).
+    const budget = () => Math.min(this.timeout, deadline === undefined ? Infinity : deadline - Date.now() - 1_500);
     for (let attempt = 1; ; attempt++) {
+      const ms = budget();
+      if (ms < MIN_ATTEMPT_MS) {
+        throw attempt === 1
+          ? new DatajudError("Sem tempo na rodada para consultar o DataJud", true, true)
+          : new DatajudError("DataJud falhou e não houve tempo para tentar de novo nesta rodada", true);
+      }
       let res: Response;
       try {
         res = await this.f(`${DATAJUD_BASE}/api_publica_${alias}/_search`, {
           method: "POST",
           headers: { Authorization: `APIKey ${this.key}`, "Content-Type": "application/json", Accept: "application/json" },
           body,
-          signal: AbortSignal.timeout(this.timeout),
+          signal: AbortSignal.timeout(ms),
           cache: "no-store",
         });
       } catch (e) {
-        if (attempt < 2 && !(e instanceof Error && e.name === "TimeoutError")) {
+        const timedOut = e instanceof Error && e.name === "TimeoutError";
+        if (attempt < 2 && !timedOut) {
           await this.sleep(1500);
           continue;
         }
-        throw new DatajudError(`DataJud não respondeu (${e instanceof Error && e.name === "TimeoutError" ? "tempo esgotado" : "falha de rede"})`);
+        throw new DatajudError(`DataJud não respondeu (${timedOut ? "tempo esgotado" : "falha de rede"})`, true);
       }
       if ((res.status === 429 || res.status >= 500) && attempt < 2) {
         await this.sleep(3000);
@@ -164,8 +185,15 @@ export class DatajudClient {
       }
       if (res.status === 401 || res.status === 403) throw new DatajudError("DataJud recusou a chave pública (o CNJ pode tê-la trocado: atualize DATAJUD_API_KEY)");
       if (res.status === 404) return { kind: "unsupported", message: `Índice ${alias} não existe no DataJud.` };
-      if (!res.ok) throw new DatajudError(`DataJud respondeu HTTP ${res.status}`);
-      const json = (await res.json().catch(() => null)) as { hits?: { hits?: Hit[] } } | null;
+      if (!res.ok) throw new DatajudError(`DataJud respondeu HTTP ${res.status}`, res.status === 429 || res.status >= 500);
+      let json: { hits?: { hits?: Hit[] } } | null;
+      try {
+        json = (await res.json()) as { hits?: { hits?: Hit[] } } | null;
+      } catch (e) {
+        // O corpo também é cortado pelo tempo da tentativa.
+        if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) throw new DatajudError("DataJud não respondeu (tempo esgotado)", true);
+        json = null;
+      }
       if (!json?.hits || !Array.isArray(json.hits.hits)) throw new DatajudError("DataJud devolveu resposta inesperada");
       return normalizeDatajud(alias, cnj, json.hits.hits);
     }
