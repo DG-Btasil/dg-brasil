@@ -18,6 +18,28 @@ Guia: [`docs/etapa-8-validacao.md`](../../etapa-8-validacao.md).
 
 O build passou no caminho com "Programação". Ele mostra logs `action.crashed … Dynamic server usage` de `/dg-brasil/*` durante a coleta de páginas. É o aviso do Next para rotas que usam cookies, e o build termina sem erro (código 0).
 
+## Rodada 2 (migration 044)
+
+Commit `819bb9c`. Data: 2026-11-04, até 22:26 de Brasília. Push da 044 feito pelo Miguel (o do agente foi bloqueado pela permissão). Só falta o item 7.
+
+| Item | Status | Evidência |
+|---|---|---|
+| 1 — migration 044 | **PASS** | `--dry-run` listou só `20261101000044_judicial_sync_fixes.sql`; 044 registrada no DEV e `judicial_ingest_datajud` com `p_transient` |
+| 2 — verificar | **PASS** | "768 verificações, todas passaram." |
+| 3 — front | **PASS** | unit 45 arquivos, 534/534; lint, tsc e build sem erro; deploy verde |
+| 4 — rodadas no banco | **PASS com ressalva** | rodadas das 22:20 e 22:25 com 47 s e 45 s, abaixo de 55 s, nenhuma presa. "6 min" não observado |
+| 5 — falhas em 1 h × 20 h | **PASS com ressalva** | `em_1h` = 6 ("tempo esgotado" às 22:20 e 22:25); "ainda não aparece" em `em_20h`. Nenhum 429 ocorreu depois da 044 |
+| 6 — texto do portal | **PASS** | PARTNER_USER vê "De processo que não está no DG Brasil nada é guardado, nem o número." |
+| 7 — pendência da Parte 6 | **pendente** | só depois das 05:00 de 2026-11-05 |
+
+Observações:
+- **Corte depois de 3 falhas:** as rodadas das 22:20 e 22:25 pararam com 3 falhas cada, como previsto no JUD-04.
+- **Rodada presa antiga:** a de 21:40 virou `FAILED` depois de 901 s, com "Interrompida (sem conclusão em 15 min).". Isso confirma o encerramento automático, mas pela regra antiga. O texto "6 min" só aparece se outra rodada ficar presa, e nenhuma ficou.
+- **`em_20h` inclui falhas antigas:** os 11 "tempo esgotado" e os 3 `429` das 21:55 são anteriores à 044, que os deixou na regra de 20 h. Não é defeito.
+- **Rodada das 22:15:** 3 falhas sem registro, porque rodou antes do push da 044.
+- **DataJud:** ainda instável. A rodada das 22:25 leu 1 processo; as demais não leram nenhum.
+- **JUD-02:** a consulta nova do guia foi conferida no DEV: 217 refs × 217 processos.
+
 ## Detalhe das telas (Parte 5)
 
 Sessão ADMIN: login feito na janela do Playwright pelo responsável humano (usuário "adm"). Portal: PARTNER_ADMIN e PARTNER_USER fictícios, em contextos isolados, em `portal.dgbrasil.adv.br`.
