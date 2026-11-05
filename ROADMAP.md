@@ -118,10 +118,13 @@ rodado). Decidido em 2026-10-29 (docs/mcp/relatorio-diagnostico.md):
 - Depois da validação: o ciclo de conferência em dupla (docs/judicial.md) antes
   de o DG Brasil virar a fonte única de prazos.
 
-### Etapa 9 — Domínio consignado
+### Futuro (fora do MVP) — Domínio consignado
 
-Benefício INSS, extrato HISCON, contratos e a esteira de classificação
-(`packages/dominio`), como migrations `020+`, depois de especificados.
+Adiada em 2026-11-05: a análise do HISCON continua com a Clara e a skill
+`roteiro-peticao-consignado`. Benefício INSS, extrato HISCON, contratos e a
+classificação em blocos como código (`packages/dominio`) ficam para uma
+atualização futura. Regras atuais, desenho proposto e pontos em aberto em
+[docs/futuro/dominio-consignado.md](docs/futuro/dominio-consignado.md).
 
 ---
 
