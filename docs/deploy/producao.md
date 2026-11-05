@@ -26,6 +26,7 @@ hora de contratar.
 | 8 | Variáveis e chaves de produção | Hoje tudo aponta para o DEV | Sem custo |
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
 | 10 | Integração judicial: mais buscas por dia e lotes do DataJud | Hobby: 1 rodada por dia, 60 s | Já vem com o Vercel Pro |
+| 11 | Conferir as publicações com o APOGEU | Adiado na validação da Etapa 8 | Sem custo |
 
 ---
 
@@ -256,6 +257,18 @@ verdade:
 - **Chave do DataJud:** é a pública da wiki do CNJ e pode mudar. Se a tela
   mostrar "DataJud recusou a chave pública", pôr a nova em `DATAJUD_API_KEY`
   na Vercel.
+
+---
+
+## 11. Conferência das publicações com o APOGEU
+
+- **Hoje:** a Parte 7 de [docs/etapa-8-validacao.md](../etapa-8-validacao.md) não foi feita. O relatório da etapa está em [docs/qa/etapa-8/qa-etapa-8.md](../qa/etapa-8/qa-etapa-8.md).
+- **Por que não agora:** o Miguel deixou para depois da validação. Não bloqueia a Etapa 8.
+- **Na produção:** antes de confiar só no DG Brasil para as publicações:
+  1. Escolha um dia útil já "assentado" (2 ou mais dias atrás).
+  2. No DG Brasil, veja a quantidade daquele dia em Configurações → Integrações → OAB RJ `225006` → Cobertura.
+  3. No conector APOGEU DJEN, rode `resumo_publicacoes` (ou `listar_publicacoes`) da mesma OAB, no mesmo dia.
+- **Como conferir:** os dois números batem. Se não baterem, anote o dia e a quantidade de cada lado. Isso é o começo do ciclo de conferência em dupla ([docs/judicial.md](../judicial.md)).
 
 ---
 

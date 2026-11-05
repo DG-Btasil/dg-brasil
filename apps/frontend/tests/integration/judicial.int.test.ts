@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createLogger } from "@/server/core/logger";
 import { callPrivate } from "@/server/core/worker-db";
@@ -37,6 +38,16 @@ if (!process.env.DG_WORKER_DB_URL) {
 }
 
 const svc = serviceDb();
+// As tabelas judiciais não abrem nem para o service_role (043); a conferência lê como postgres.
+async function adminRows<T extends pg.QueryResultRow>(sql: string, params: unknown[]): Promise<T[]> {
+  const c = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  try {
+    return (await c.query<T>(sql, params)).rows;
+  } finally {
+    await c.end();
+  }
+}
 const db = <T>(fn: JudicialDbFunction, args: unknown[]) => callPrivate<T>(JUDICIAL_DB_FUNCTIONS, fn, args);
 const fakeOab = () => `9${String(Math.floor(Math.random() * 1e6)).padStart(6, "0")}`;
 const state = {
@@ -130,16 +141,18 @@ describe("Integração judicial no banco real (043), DJEN e DataJud simulados", 
     const again = await ingest(state.oabPartner, [normalizeDjenItem(raw(state.partnerCnj, sameId))!]);
     expect([again.new, again.duplicates]).toEqual([0, 1]);
 
-    const { data: pubs } = await svc.from("judicial_publications").select("id, legal_process_id, found_by, content").in("legal_process_id", [state.partnerProcess, state.internalProcess]);
-    expect(pubs!.length).toBe(2);
-    const pa = pubs!.find((p) => p.legal_process_id === state.partnerProcess)!;
+    const pubs = await adminRows<{ id: string; legal_process_id: string; found_by: string[]; content: string }>(
+      "select id, legal_process_id, found_by, content from public.judicial_publications where legal_process_id = any($1::uuid[])",
+      [[state.partnerProcess, state.internalProcess]]);
+    expect(pubs.length).toBe(2);
+    const pa = pubs.find((p) => p.legal_process_id === state.partnerProcess)!;
     expect(pa.found_by).toEqual([`AC ${state.oabOffice}`, `AC ${state.oabPartner}`]);
     expect(pa.content).not.toMatch(/<p>/);
-    expect((await svc.from("judicial_publications").select("id").eq("cnj_number", outside)).data!.length).toBe(0);
+    expect((await adminRows("select id from public.judicial_publications where cnj_number = $1", [outside])).length).toBe(0);
     const st = (await judicial.getOverview(await ctxFor("ADMIN"))).monitors.find((m) => m.id === state.monitors[0])!;
     expect([st.lastFound, st.lastMatched]).toEqual([3, 2]);
     expect(JSON.stringify(st)).not.toContain(outside);
-    state.publication = pubs!.find((p) => p.legal_process_id === state.internalProcess)!.id;
+    state.publication = pubs.find((p) => p.legal_process_id === state.internalProcess)!.id;
   });
 
   it("parceiro A vê a publicação do próprio processo e recebe o aviso; parceiro B não vê; nenhum parceiro lê a triagem", async () => {

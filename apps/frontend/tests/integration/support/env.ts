@@ -40,5 +40,8 @@ export function integrationEnv(): IntegrationEnv {
   // API do computador do escritório (040): o servidor fala com o banco como dg_worker.
   const workerUrl = get("DG_WORKER_DB_URL");
   if (workerUrl) process.env.DG_WORKER_DB_URL ??= workerUrl;
+  // Conferência de tabelas fechadas até para o service_role (judicial, 043).
+  const adminUrl = get("SUPABASE_DB_URL");
+  if (adminUrl) process.env.SUPABASE_DB_URL ??= adminUrl;
   return { url, anonKey, serviceKey };
 }
