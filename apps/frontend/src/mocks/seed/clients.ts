@@ -1,6 +1,6 @@
 import { dateFromNow, daysFromNowISO } from "@/lib/clock";
 import type { Address, Client, CompanyClient, IndividualClient } from "@/types";
-import { C, OFFICE_ID, U } from "../ids";
+import { C, OFFICE_ID } from "../ids";
 
 /*
  * Todos os nomes, CPFs, CNPJs, endereços e contatos abaixo são fictícios.
@@ -33,7 +33,6 @@ export function buildClients(): Client[] {
       birthplace: "Ribeirão Preto/SP",
       maritalStatus: "WIDOWED",
       profession: "Aposentada",
-      responsibleUserId: U.claudio,
       contact: { email: "helena.ribeiro@email.exemplo", phone: "(16) 99000-1101" },
       address: addr("Rua das Acácias", "210", "Jardim Paulista", "Ribeirão Preto", "SP", "14000-001"),
       legalSummary:
@@ -52,7 +51,6 @@ export function buildClients(): Client[] {
       nationality: "Brasileiro",
       maritalStatus: "MARRIED",
       profession: "Motorista aposentado",
-      responsibleUserId: U.claudio,
       contact: { email: "joao.ferreira@email.exemplo", phone: "(31) 99000-2202", secondaryPhone: "(31) 3000-2202" },
       address: addr("Rua Minas Novas", "88", "Santa Efigênia", "Belo Horizonte", "MG", "30000-002"),
       legalSummary: "Relata descontos em benefício sem reconhecer a contratação. Análise aguardando extrato e contrato.",
@@ -69,7 +67,6 @@ export function buildClients(): Client[] {
       nationality: "Brasileira",
       maritalStatus: "DIVORCED",
       profession: "Professora",
-      responsibleUserId: U.beatriz,
       contact: { email: "ana.lima@email.exemplo", phone: "(11) 99000-3303" },
       address: addr("Rua Vergueiro", "3050", "Vila Mariana", "São Paulo", "SP", "04000-003"),
       legalSummary: "Cliente recém-cadastrada. Documentação básica entregue; análise ainda não iniciada.",
@@ -84,9 +81,7 @@ export function buildClients(): Client[] {
       birthDate: "1958-01-22",
       nationality: "Brasileiro",
       maritalStatus: "MARRIED",
-      stableUnion: false,
       profession: "Comerciante aposentado",
-      responsibleUserId: U.claudio,
       contact: { email: "roberto.menezes@email.exemplo", phone: "(19) 99000-4404" },
       address: addr("Avenida Andrade Neves", "1400", "Centro", "Campinas", "SP", "13000-004"),
       legalSummary: "Análise bancária concluída pelo agente; resultado aguardando revisão humana.",
@@ -102,7 +97,6 @@ export function buildClients(): Client[] {
       nationality: "Brasileira",
       maritalStatus: "WIDOWED",
       profession: "Pensionista",
-      responsibleUserId: U.beatriz,
       contact: { phone: "(41) 99000-5505" },
       address: addr("Rua XV de Novembro", "700", "Centro", "Curitiba", "PR", "80000-005"),
       legalSummary: "Recurso em andamento em ação anterior. Nova análise bancária em execução pelo agente.",
@@ -118,7 +112,6 @@ export function buildClients(): Client[] {
       nationality: "Brasileiro",
       maritalStatus: "MARRIED",
       profession: "Eletricista",
-      responsibleUserId: U.claudio,
       contact: { email: "francisco.pereira@email.exemplo", phone: "(11) 99000-6606" },
       address: addr("Rua Bresser", "455", "Brás", "São Paulo", "SP", "03000-006"),
       legalSummary: "Duas ações importadas pela integração processual. Prazo de réplica vence hoje.",
@@ -135,7 +128,6 @@ export function buildClients(): Client[] {
       nationality: "Brasileira",
       maritalStatus: "SINGLE",
       profession: "Analista administrativa",
-      responsibleUserId: U.beatriz,
       contact: { email: "luiza.barros@email.exemplo", phone: "(11) 99000-7707" },
       address: addr("Rua Augusta", "1200", "Consolação", "São Paulo", "SP", "01000-007"),
       legalSummary: "Análise interrompida: contrato apresentado diverge do extrato. Ação de consumo em andamento.",
@@ -151,7 +143,6 @@ export function buildClients(): Client[] {
       nationality: "Brasileiro",
       maritalStatus: "MARRIED",
       profession: "Engenheiro civil",
-      responsibleUserId: U.beatriz,
       contact: { email: "pedro.tavares@email.exemplo", phone: "(11) 99000-8808" },
       address: addr("Alameda Santos", "900", "Cerqueira César", "São Paulo", "SP", "01000-008"),
       legalSummary: "Processo encerrado e honorários quitados. Relacionamento inativo.",
@@ -164,12 +155,8 @@ export function buildClients(): Client[] {
       legalName: "Ferragens Horizonte Comércio Ltda. (fictícia)",
       tradeName: "Ferragens Horizonte",
       cnpj: "00.010.203/0001-40",
-      registrationStatus: "Ativa",
       openingDate: "2009-05-14",
       legalNature: "Sociedade Empresária Limitada",
-      mainCnae: "4744-0/01 — Comércio varejista de ferragens e ferramentas",
-      secondaryCnaes: ["4744-0/99 — Comércio varejista de materiais de construção em geral"],
-      responsibleUserId: U.claudio,
       contact: { email: "financeiro@ferragenshorizonte.exemplo", phone: "(11) 3000-9909", website: "ferragenshorizonte.exemplo" },
       address: addr("Avenida do Estado", "5000", "Cambuci", "São Paulo", "SP", "01500-009"),
       representatives: [
@@ -197,11 +184,8 @@ export function buildClients(): Client[] {
       legalName: "Transportadora Via Sul Ltda. (fictícia)",
       tradeName: "Via Sul Transportes",
       cnpj: "00.020.304/0001-50",
-      registrationStatus: "Ativa",
       openingDate: "2003-02-01",
       legalNature: "Sociedade Empresária Limitada",
-      mainCnae: "4930-2/02 — Transporte rodoviário de carga intermunicipal",
-      responsibleUserId: U.beatriz,
       contact: { email: "juridico@viasul.exemplo", phone: "(51) 3000-1010" },
       address: addr("Rodovia Exemplo", "km 12", "Distrito Industrial", "Porto Alegre", "RS", "90000-010"),
       representatives: [
@@ -222,11 +206,8 @@ export function buildClients(): Client[] {
       legalName: "Panificadora Bom Grão Ltda. ME (fictícia)",
       tradeName: "Padaria Bom Grão",
       cnpj: "00.040.506/0001-70",
-      registrationStatus: "Ativa",
       openingDate: "2018-10-10",
       legalNature: "Sociedade Empresária Limitada",
-      mainCnae: "1091-1/02 — Fabricação de produtos de padaria e confeitaria",
-      responsibleUserId: U.claudio,
       contact: { email: "contato@bomgrao.exemplo", phone: "(11) 99000-1212" },
       representatives: [
         { id: "rep_bg_1", name: "Antônio Correia", cpf: "000.121.323-05", role: "Sócio administrador", isPrimary: true },
@@ -242,11 +223,8 @@ export function buildClients(): Client[] {
       legalName: "Clínica Vida Plena Serviços Médicos S/S (fictícia)",
       tradeName: "Clínica Vida Plena",
       cnpj: "00.050.607/0001-80",
-      registrationStatus: "Ativa",
       openingDate: "2014-07-21",
       legalNature: "Sociedade Simples",
-      mainCnae: "8630-5/03 — Atividade médica ambulatorial",
-      responsibleUserId: U.beatriz,
       contact: { email: "administrativo@vidaplena.exemplo", phone: "(11) 3000-1313" },
       address: addr("Rua Pamplona", "300", "Jardim Paulista", "São Paulo", "SP", "01400-013"),
       representatives: [

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ACQUISITION_CHANNELS } from "@/lib/constants/legal";
 import { LEGAL_CASE_STATUSES } from "@/lib/constants/status";
 import { pageInputSchema, sortSchema } from "@/server/core/pagination";
 import { zCep, zCnpj, zCpf, zEmailOptional, zIsoDate, zOptionalText, zText, zUf, zUuid } from "@/server/core/validation";
@@ -99,6 +100,9 @@ export const createCaseSchema = z
     notes: zOptionalText(10_000),
     /** Observações compartilhadas com o parceiro vinculado. */
     partnerNotes: zOptionalText(5000),
+    /** Canal de aquisição do caso; ausente = herda o do cliente (banco). */
+    acquisitionChannel: z.enum(ACQUISITION_CHANNELS).optional(),
+    acquisitionDetail: zOptionalText(300),
     /** true = já envia para análise; false = rascunho. */
     submit: z.boolean().default(false),
     /**
@@ -129,6 +133,9 @@ export const updateCaseSchema = z.object({
       /** Observações internas. Parceiro não envia (recusado no service). */
       notes: zOptionalText(10_000).nullable(),
       partnerNotes: zOptionalText(5000).nullable(),
+      /** Interno. null = sem canal. */
+      acquisitionChannel: z.enum(ACQUISITION_CHANNELS).nullable(),
+      acquisitionDetail: zOptionalText(300).nullable(),
     })
     .partial()
     .superRefine((v, ctx) => {
@@ -204,19 +211,58 @@ const partnerAddressSchema = z.object({
 const partnerClientCommon = {
   /** Origem do CADASTRO do cliente (só usada se o CPF/CNPJ ainda não existe). */
   origin: partnerOriginSchema,
+  /** Canal de aquisição: como o cliente chegou (Roadmap 2.0). */
+  acquisitionChannel: z.enum(ACQUISITION_CHANNELS).optional(),
+  acquisitionDetail: zOptionalText(300),
   email: zEmailOptional(),
   phone: zOptionalText(20),
   address: partnerAddressSchema.optional(),
 };
 
 /**
+ * Cadastro NOVO pelo portal (veio com nome/razão social): mesmos obrigatórios
+ * do escritório — e-mail, endereço completo e, na PF, nacionalidade, estado
+ * civil e profissão. Cliente que já existe vai só com o documento e o banco
+ * usa o cadastro canônico.
+ */
+function refineNewPartnerClient(v: Record<string, unknown>, ctx: z.RefinementCtx) {
+  const isNew = !!(v.fullName || v.legalName);
+  if (!isNew) return;
+  const need = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
+  if (!v.email) need(["email"], "Informe o e-mail.");
+  const a = (v.address ?? {}) as Record<string, unknown>;
+  if (!a.zipCode) need(["address", "zipCode"], "Informe o CEP.");
+  if (!a.street) need(["address", "street"], "Informe o logradouro.");
+  if (!a.number) need(["address", "number"], "Informe o número (ou S/N).");
+  if (!a.district) need(["address", "district"], "Informe o bairro.");
+  if (!a.city) need(["address", "city"], "Informe o município.");
+  if (!a.state) need(["address", "state"], "Selecione a UF.");
+  if (v.kind === "INDIVIDUAL") {
+    if (!v.nationality) need(["nationality"], "Informe a nacionalidade.");
+    if (!v.maritalStatus) need(["maritalStatus"], "Selecione o estado civil.");
+    if (!v.profession) need(["profession"], "Informe a profissão.");
+  }
+}
+
+/**
  * Cliente do envio. Se o CPF/CNPJ já existe, o banco usa o cadastro canônico
  * e ignora os demais campos (nunca sobrescreve dado de outro escritório).
  */
-export const partnerClientSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("INDIVIDUAL"), document: zCpf(), fullName: zOptionalText(200), birthDate: zIsoDate().optional(), ...partnerClientCommon }),
-  z.object({ kind: z.literal("COMPANY"), document: zCnpj(), legalName: zOptionalText(200), tradeName: zOptionalText(200), ...partnerClientCommon }),
-]);
+export const partnerClientSchema = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("INDIVIDUAL"),
+      document: zCpf(),
+      fullName: zOptionalText(200),
+      birthDate: zIsoDate().optional(),
+      nationality: zOptionalText(80),
+      maritalStatus: z.enum(["SINGLE", "MARRIED", "DIVORCED", "WIDOWED", "SEPARATED"]).optional(),
+      profession: zOptionalText(120),
+      ...partnerClientCommon,
+    }),
+    z.object({ kind: z.literal("COMPANY"), document: zCnpj(), legalName: zOptionalText(200), tradeName: zOptionalText(200), ...partnerClientCommon }),
+  ])
+  .superRefine((v, ctx) => refineNewPartnerClient(v as unknown as Record<string, unknown>, ctx));
 
 export const partnerSubmitCaseSchema = z.object({
   /**

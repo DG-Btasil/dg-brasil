@@ -38,6 +38,8 @@ export const startAnalysisSchema = z.object({
   send: z.boolean().default(false),
   /** Pedido em texto ao agente (vai para agent_run_inputs; nunca para log). */
   requestText: zOptionalText(20_000),
+  /** Informações adicionais da equipe para os agentes; ficam na análise (045). */
+  additionalInfo: zOptionalText(10_000),
 });
 export type StartAnalysisInput = z.infer<typeof startAnalysisSchema>;
 

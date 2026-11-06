@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { processSubtitle } from "./subtitle";
+import { processHeading, processSubtitle } from "./subtitle";
 import { stableStringify } from "@/lib/hooks/use-idempotency-key";
 import { listCasesSchema, updateCaseSchema } from "@/server/domain/cases/schemas";
 import { orQuoted, likePattern } from "@/server/domain/cases/repository";
@@ -8,7 +8,7 @@ import { createProcessSchema, listProcessesSchema, updateProcessSchema } from "@
 import { caseQueryFromSearchParams, caseQueryToInput, caseQueryToSearchParams, DEFAULT_CASE_QUERY, type CaseListQuery } from "@/features/cases/list-query";
 import { DEFAULT_PROCESS_QUERY, processQueryFromSearchParams, processQueryToInput, processQueryToSearchParams, type ProcessListQuery } from "./list-query";
 import { processCreateInput, processEditPatch } from "./server-input";
-import type { ProcessFormValues } from "./schemas";
+import { parsePercentInput, processFormSchema, type ProcessFormValues } from "./schemas";
 
 const UUID_A = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
 const UUID_B = "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b";
@@ -55,7 +55,7 @@ describe("lista de casos — URL e entrada da action", () => {
 
 describe("lista de processos — URL e entrada da action", () => {
   it("ida e volta pela URL", () => {
-    const q: ProcessListQuery = { search: "Revisional", status: "ACTIVE", phase: "EVIDENCE", court: "TJSP", responsible: UUID_A, clientId: UUID_B, origin: "MANUAL", caseOrigin: UUID_A, deadline: "OVERDUE", sort: "cnj", direction: "asc", page: 3 };
+    const q: ProcessListQuery = { search: "Revisional", status: "SENTENCED", phase: "PROCEEDINGS", court: "TJSP", responsible: UUID_A, clientId: UUID_B, origin: "MANUAL", caseOrigin: UUID_A, deadline: "OVERDUE", sort: "cnj", direction: "asc", page: 3 };
     expect(processQueryFromSearchParams(Object.fromEntries(processQueryToSearchParams(q)))).toEqual(q);
   });
   it("CNJ/CPF digitado não vai para a URL; tribunal fora da lista é ignorado", () => {
@@ -63,8 +63,12 @@ describe("lista de processos — URL e entrada da action", () => {
     expect(processQueryFromSearchParams({ tribunal: "XYZ" }).court).toBe("");
   });
   it("entrada passa no schema REAL do servidor", () => {
-    const parsed = listProcessesSchema.parse(processQueryToInput({ ...DEFAULT_PROCESS_QUERY, phase: "EVIDENCE", court: "TJSP", origin: "INTEGRATION", caseOrigin: UUID_A }));
-    expect(parsed).toMatchObject({ phase: "EVIDENCE", court: "TJSP", technicalOrigin: "INTEGRATION", caseOriginOrganizationId: UUID_A });
+    const parsed = listProcessesSchema.parse(processQueryToInput({ ...DEFAULT_PROCESS_QUERY, phase: "PROCEEDINGS", court: "TJSP", origin: "INTEGRATION", caseOrigin: UUID_A }));
+    expect(parsed).toMatchObject({ phase: "PROCEEDINGS", court: "TJSP", technicalOrigin: "INTEGRATION", caseOriginOrganizationId: UUID_A });
+  });
+  it("status e fases da 045 na URL; valores antigos caem no padrão (sem filtro)", () => {
+    for (const status of ["RECEIVED", "ARCHIVED", "FINAL_JUDGMENT"] as const) expect(processQueryFromSearchParams({ status }).status).toBe(status);
+    expect(processQueryFromSearchParams({ status: "CLOSED", fase: "EVIDENCE" })).toMatchObject({ status: "", phase: "" });
   });
 });
 
@@ -75,7 +79,6 @@ describe("lista de processos — URL e entrada da action", () => {
 const formValues = (o: Partial<ProcessFormValues> = {}): ProcessFormValues => ({
   legalCaseId: UUID_A,
   cnj: "",
-  title: "Revisional",
   court: "TJSP",
   unit: "",
   district: "",
@@ -87,33 +90,57 @@ const formValues = (o: Partial<ProcessFormValues> = {}): ProcessFormValues => ({
   responsibleUserId: UUID_B,
   distributionDate: "",
   caseValue: "12.345,67",
+  feeAmount: "",
+  feePercentage: "",
   status: "PRE_FILING",
   phase: "PRELIMINARY",
-  deadlineTitle: "",
-  deadlineType: "",
-  deadlineDueDate: "2026-12-15",
   notes: "",
   ...o,
 });
 
 describe("processo — formulário → schema real", () => {
-  it("cadastro: campos vazios ausentes, valor em reais, prazo inicial com padrão", () => {
-    const parsed = createProcessSchema.parse({ ...processCreateInput(formValues()), idempotencyKey: UUID_B });
+  it("cadastro: campos vazios ausentes, valor em reais, sem nome próprio nem prazo inicial", () => {
+    const input = processCreateInput(formValues());
+    expect("title" in input).toBe(false);
+    expect("nextDeadline" in input).toBe(false);
+    const parsed = createProcessSchema.parse({ ...input, idempotencyKey: UUID_B });
     expect(parsed.cnj).toBeUndefined();
     expect(parsed.distributionDate).toBeUndefined();
     expect(parsed.caseValue).toBe(12345.67);
-    expect(parsed.nextDeadline).toEqual({ title: "Acompanhamento do processo", type: "INTERNAL", dueDate: "2026-12-15" });
+    expect(parsed.title).toBeUndefined();
+    expect(parsed.nextDeadline).toBeUndefined();
+    expect(parsed.feeAmount).toBeUndefined();
+    expect(parsed.feePercentage).toBeUndefined();
+  });
+  it("cadastro: honorários em reais e de êxito em %", () => {
+    const parsed = createProcessSchema.parse({ ...processCreateInput(formValues({ feeAmount: "R$ 5.000,00", feePercentage: "12,5" })), idempotencyKey: UUID_B });
+    expect(parsed).toMatchObject({ feeAmount: 5000, feePercentage: 12.5 });
+  });
+  it("honorários de êxito: só 0–100 (formulário e servidor)", () => {
+    expect(processFormSchema.safeParse(formValues({ feePercentage: "101" })).success).toBe(false);
+    expect(processFormSchema.safeParse(formValues({ feePercentage: "abc" })).success).toBe(false);
+    expect(processFormSchema.safeParse(formValues({ feePercentage: "30%" })).success).toBe(true);
+    expect(createProcessSchema.safeParse({ ...processCreateInput(formValues()), feePercentage: 150, idempotencyKey: UUID_B }).success).toBe(false);
+    expect(parsePercentInput("")).toBeUndefined();
+    expect(parsePercentInput(" 7,25 % ")).toBe(7.25);
   });
   it("cadastro com CNJ inválido (dígito verificador) é recusado pelo servidor", () => {
     expect(createProcessSchema.safeParse({ ...processCreateInput(formValues({ cnj: "0001234-00.2026.8.26.0100" })), idempotencyKey: UUID_B }).success).toBe(false);
   });
-  it("edição: vazio limpa (null) nos campos com formato; texto vazio também apaga", () => {
+  it("edição: vazio limpa (null) nos campos com formato; texto vazio também apaga; título não é enviado", () => {
     const { patch } = updateProcessSchema.parse({ id: UUID_A, patch: processEditPatch(formValues({ state: "", caseValue: "", unit: "" })) });
     expect(patch.state).toBeNull();
     expect(patch.cnj).toBeNull();
     expect(patch.distributionDate).toBeNull();
     expect(patch.caseValue).toBeNull();
+    expect(patch.feeAmount).toBeNull();
+    expect(patch.feePercentage).toBeNull();
     expect("unit" in patch).toBe(true);
+    expect("title" in patch).toBe(false);
+  });
+  it("edição: honorários gravados nos dados internos", () => {
+    const { patch } = updateProcessSchema.parse({ id: UUID_A, patch: processEditPatch(formValues({ feeAmount: "1.500,00", feePercentage: "20" })) });
+    expect(patch).toMatchObject({ feeAmount: 1500, feePercentage: 20 });
   });
 });
 
@@ -154,6 +181,9 @@ describe("servidor — partes puras da Fase B", () => {
       origin: "MANUAL",
       responsibleUserId: undefined,
     });
+    // Sem título próprio (processo novo), o nome exibido é o do caso — nunca vazio.
+    expect(listItemFromRow({ ...row, title: null }, { surface: "INTERNAL", canViewCaseValue: false }).title).toBe("Caso X");
+    expect(listItemFromRow({ ...row, title: "  ", legal_cases: { client_id: "c1", title: "" } }, { surface: "INTERNAL", canViewCaseValue: false }).title).toBe("Processo sem título");
   });
   it("vencimento exibido na data de Brasília (23:59 de lá não vira o dia seguinte)", () => {
     expect(localDate("2026-12-16T02:59:59Z")).toBe("2026-12-15");
@@ -173,5 +203,11 @@ describe("lista de processos — coluna Tipo / ação (QA 4.3, BUG-02)", () => {
     expect(processSubtitle({ actionType: undefined, title: "Proc 1", caseTitle: "Caso X" })).toBe("Caso X");
     expect(processSubtitle({ actionType: "Ação", title: "Caso X", caseTitle: "Caso X" })).toBe("Caso X");
     expect(processSubtitle({ actionType: "Ação", title: "Proc 1", caseTitle: "" })).toBe("Proc 1");
+  });
+  it("processo sem título próprio (nome = caso) e sem tipo de ação: o caso fica na 1ª linha, sem repetir", () => {
+    const p = { actionType: undefined, title: "Caso X", caseTitle: "Caso X" };
+    expect(processHeading(p)).toBe("Caso X");
+    expect(processSubtitle(p)).toBe("");
+    expect(processHeading({ actionType: "Ação revisional", title: "Caso X", caseTitle: "Caso X" })).toBe("Ação revisional");
   });
 });

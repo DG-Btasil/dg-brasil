@@ -10,6 +10,7 @@ import type { CaseCatalogDTO, CaseInternalDTO } from "@/server/domain/cases/dto"
 import { useLawyerOptions, useOrganizationName, useOrgDirectory } from "@/features/directory/directory-context";
 import { useCaseActions } from "../use-case-actions";
 import { LINK_PARTNER_LABEL } from "../utils";
+import { ACQUISITION_CHANNEL_OPTIONS } from "@/lib/constants/legal";
 
 interface DialogBase {
   legalCase: CaseInternalDTO;
@@ -295,6 +296,7 @@ export function EditCaseDialog({ legalCase, open, onOpenChange, catalog }: Dialo
   const [title, setTitle] = useState(legalCase.title);
   const [area, setArea] = useState<string>(legalCase.area);
   const [opposingParty, setOpposingParty] = useState(legalCase.opposingParty ?? "");
+  const [channel, setChannel] = useState<string>(legalCase.acquisitionChannel ?? "");
   const [summary, setSummary] = useState(legalCase.summary);
   const [errors, setErrors] = useState<Record<string, string[]>>();
   const [saving, setSaving] = useState(false);
@@ -308,6 +310,7 @@ export function EditCaseDialog({ legalCase, open, onOpenChange, catalog }: Dialo
       title: title.trim(),
       ...(area !== legalCase.area ? { area, caseTypeId: null } : {}),
       opposingParty: opposingParty.trim(),
+      ...(channel !== (legalCase.acquisitionChannel ?? "") ? { acquisitionChannel: channel || null } : {}),
       summary: summary.trim(),
     });
     setSaving(false);
@@ -345,6 +348,9 @@ export function EditCaseDialog({ legalCase, open, onOpenChange, catalog }: Dialo
               options={areas}
             />
           )}
+        </Field>
+        <Field label="Canal (como o cliente chegou)" requirement="optional" className="col-span-2" error={errors?.acquisitionChannel?.[0]}>
+          {(p) => <Select {...p} value={channel} onChange={(e) => setChannel(e.target.value)} options={ACQUISITION_CHANNEL_OPTIONS} placeholder="Não informado" />}
         </Field>
         <Field label="Parte contrária" requirement="optional" className="col-span-2" error={errors?.opposingParty?.[0]}>
           {(p) => <Input {...p} value={opposingParty} onChange={(e) => setOpposingParty(e.target.value)} maxLength={300} />}

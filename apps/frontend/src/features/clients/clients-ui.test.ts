@@ -17,7 +17,6 @@ import { companyPeopleSchema, emptyCompanyValues, emptyIndividualValues, fromAdd
 import { CLIENT_FIELD_MAP, companyCreateInput, companyPatch, companyPeopleInput, countryCode, individualCreateInput, individualPatch } from "./server-input";
 
 const ORG = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
-const USER = "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b";
 
 /* ------------------------------------------------------------------ */
 /* Lista: URL ↔ filtros ↔ entrada da action                            */
@@ -25,7 +24,7 @@ const USER = "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b";
 
 describe("lista de clientes — estado na URL", () => {
   it("ida e volta: filtros, ordem e página sobrevivem a recarregar", () => {
-    const q: ClientListQuery = { search: "Maria", lifecycle: "inactive", kind: "COMPANY", responsible: USER, origin: ORG, sort: "name", direction: "asc", page: 3 };
+    const q: ClientListQuery = { search: "Maria", lifecycle: "inactive", kind: "COMPANY", channel: "GOOGLE_ADS", origin: ORG, sort: "name", direction: "asc", page: 3 };
     expect(clientQueryFromSearchParams(Object.fromEntries(clientQueryToSearchParams(q)))).toEqual(q);
   });
 
@@ -39,7 +38,7 @@ describe("lista de clientes — estado na URL", () => {
 
   it("padrão não polui a URL; valores inválidos voltam ao padrão", () => {
     expect(clientQueryToSearchParams(DEFAULT_CLIENT_QUERY).toString()).toBe("");
-    expect(clientQueryFromSearchParams({ pagina: "-4", tipo: "xx", ordem: "drop table", responsavel: "abc", origem: "1; select" })).toEqual(DEFAULT_CLIENT_QUERY);
+    expect(clientQueryFromSearchParams({ pagina: "-4", tipo: "xx", ordem: "drop table", canal: "TV", origem: "1; select" })).toEqual(DEFAULT_CLIENT_QUERY);
   });
 
   it("entrada da action: situação → status do banco; vazio → ausente", () => {
@@ -59,19 +58,47 @@ describe("lista de clientes — estado na URL", () => {
 /* Formulário → entrada das actions (validada pelo schema REAL)         */
 /* ------------------------------------------------------------------ */
 
+const ADDRESS = { zipCode: "01001-000", street: "Praça da Sé", number: "1", complement: "", district: "Sé", city: "São Paulo", state: "SP", country: "Brasil" };
+
 function pf(overrides: Partial<ReturnType<typeof emptyIndividualValues>> = {}) {
-  return { ...emptyIndividualValues(USER, ORG), fullName: "Maria Teste", cpf: "999.000.001-91", phone: "(11) 99999-0000", ...overrides };
+  return {
+    ...emptyIndividualValues(ORG),
+    fullName: "Maria Teste",
+    cpf: "999.000.001-91",
+    phone: "(11) 99999-0000",
+    email: "maria@exemplo.com",
+    maritalStatus: "WIDOWED",
+    profession: "Aposentada",
+    address: ADDRESS,
+    ...overrides,
+  };
 }
 
 describe("cadastro de cliente — formulário → createClientAction", () => {
-  it("PF mínima passa no schema do servidor; vazios com formato viram ausentes", () => {
-    const parsed = createClientSchema.safeParse(individualCreateInput(pf()));
+  it("PF completa passa no schema do servidor; vazios com formato viram ausentes", () => {
+    const parsed = createClientSchema.safeParse(individualCreateInput(pf({ acquisitionChannel: "REFERRAL", acquisitionDetail: "Dona Maria" })));
     expect(parsed.success).toBe(true);
     if (!parsed.success || parsed.data.kind !== "INDIVIDUAL") return;
     expect(parsed.data.cpf).toBe("99900000191");
     expect(parsed.data.birthDate).toBeUndefined();
-    expect(parsed.data.address).toBeUndefined();
     expect(parsed.data.originOfficeId).toBe(ORG);
+    expect([parsed.data.acquisitionChannel, parsed.data.acquisitionDetail]).toEqual(["REFERRAL", "Dona Maria"]);
+    expect(parsed.data).not.toHaveProperty("responsibleUserId");
+  });
+
+  it("obrigatórios do cadastro (Roadmap 2.0): nacionalidade, estado civil, profissão, e-mail, CEP e endereço completo", () => {
+    const issues = (o: Partial<ReturnType<typeof pf>>) => {
+      const r = individualFormSchema.safeParse(pf(o));
+      return r.success ? [] : [...new Set(r.error.issues.map((i) => i.path.join(".")))];
+    };
+    expect(issues({})).toEqual([]);
+    expect(issues({ nationality: "", maritalStatus: "", profession: "", email: "" })).toEqual(["nationality", "maritalStatus", "profession", "email"]);
+    expect(issues({ address: { ...ADDRESS, zipCode: "", street: "", number: "", district: "", city: "", state: "", complement: "" } })).toEqual([
+      "address.zipCode", "address.street", "address.number", "address.district", "address.city", "address.state",
+    ]);
+    // O servidor confere de novo: sem e-mail ou sem endereço, o cadastro não passa.
+    expect(createClientSchema.safeParse(individualCreateInput(pf({ email: "" }))).success).toBe(false);
+    expect(createClientSchema.safeParse({ ...individualCreateInput(pf()), address: undefined }).success).toBe(false);
   });
 
   it("endereço: 'Brasil' vira BR, UF em maiúsculas, CEP só dígitos", () => {
@@ -82,22 +109,21 @@ describe("cadastro de cliente — formulário → createClientAction", () => {
   });
 
   it("PJ com representante e sócio passa no schema do servidor", () => {
-    const v = emptyCompanyValues(USER, ORG);
+    const v = emptyCompanyValues(ORG);
     const values = {
       ...v,
       legalName: "Empresa Teste Ltda",
       cnpj: "99.000.000/0001-91",
       phone: "(11) 3333-0000",
-      mainCnae: "6911-7/01",
-      secondaryCnaes: "6911-7/02\n6920-6/01",
+      email: "contato@empresa.com",
+      address: ADDRESS,
       representatives: [{ ...v.representatives[0], name: "Rep Teste", cpf: "999.000.002-72", role: "Sócio" }],
       partners: [{ id: "x", name: "Sócio Teste", document: "", qualification: "", sharePercent: "50,5" }],
     };
     const parsed = createClientSchema.safeParse(companyCreateInput(values));
     expect(parsed.success).toBe(true);
     if (!parsed.success || parsed.data.kind !== "COMPANY") return;
-    expect(parsed.data.mainCnae).toBe("6911701");
-    expect(parsed.data.secondaryCnaes).toEqual(["6911702", "6920601"]);
+    expect(parsed.data).not.toHaveProperty("mainCnae");
     expect(parsed.data.partners[0].sharePercent).toBe(50.5);
     // Nenhum id gerado no navegador vai para o servidor.
     expect(JSON.stringify(companyCreateInput(values))).not.toContain('"id"');
@@ -118,7 +144,7 @@ describe("edição de cliente — PATCH", () => {
   });
 
   it("apagar texto e contato: chave presente, o servidor grava null", () => {
-    const parsed = updateClientSchema.parse({ id: "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a", patch: individualPatch(pf({ socialName: "", phone: "" }), original) });
+    const parsed = updateClientSchema.parse({ id: "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a", patch: individualPatch(pf({ socialName: "", phone: "", address: { ...ADDRESS, zipCode: "", street: "", number: "", district: "", city: "", state: "" } }), original) });
     expect("socialName" in parsed.patch).toBe(true);
     expect(parsed.patch.socialName).toBeUndefined();
     expect(parsed.patch.contact).toHaveProperty("phone", undefined);
@@ -127,7 +153,7 @@ describe("edição de cliente — PATCH", () => {
 
   it("PJ: representantes e sócios não vão no PATCH", () => {
     const company = { id: "c2", kind: "COMPANY", cnpj: "99000000000191" } as unknown as Client;
-    const patch = companyPatch({ ...emptyCompanyValues(USER, ORG), legalName: "X", cnpj: "99.000.000/0001-91" }, company);
+    const patch = companyPatch({ ...emptyCompanyValues(ORG), legalName: "X", cnpj: "99.000.000/0001-91" }, company);
     expect(patch).not.toHaveProperty("representatives");
     expect(patch).not.toHaveProperty("partners");
     expect(patch).not.toHaveProperty("document");
@@ -165,7 +191,7 @@ describe("PF — três estados no PATCH: ausente / valor / null", () => {
 
   it("formulário de edição: vazio na tela vira null; preenchido vira valor", () => {
     const original = { id: "c1", kind: "INDIVIDUAL", cpf: "99900000191" } as unknown as Client;
-    const empty = individualPatch(pf(), original);
+    const empty = individualPatch(pf({ maritalStatus: "" }), original);
     expect(empty).toMatchObject({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null });
     const parsed = parse(empty);
     expect([parsed.birthDate, parsed.gender, parsed.maritalStatus, parsed.identityDocument]).toEqual([null, null, null, null]);

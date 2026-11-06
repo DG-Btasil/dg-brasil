@@ -1,3 +1,4 @@
+import { isAcquisitionChannel, type AcquisitionChannel } from "@/lib/constants/legal";
 import type { ClientKind } from "@/lib/constants/status";
 
 /**
@@ -15,7 +16,8 @@ export interface ClientListQuery {
   search: string;
   lifecycle: ClientLifecycle;
   kind: ClientKind | "";
-  responsible: string;
+  /** Canal de aquisição (?canal=). */
+  channel: AcquisitionChannel | "";
   origin: string;
   sort: ClientSortField;
   direction: "asc" | "desc";
@@ -28,7 +30,7 @@ export const DEFAULT_CLIENT_QUERY: ClientListQuery = {
   search: "",
   lifecycle: "all",
   kind: "",
-  responsible: "",
+  channel: "",
   origin: "",
   sort: "updatedAt",
   direction: "desc",
@@ -49,7 +51,7 @@ export const isUrlSafeSearch = (search: string) => !/\d/.test(search);
 export function clientQueryFromSearchParams(params: Record<string, string | string[] | undefined>): ClientListQuery {
   const search = first(params.busca).trim().slice(0, 120);
   const page = Number.parseInt(first(params.pagina), 10);
-  const responsible = first(params.responsavel);
+  const channel = first(params.canal);
   const origin = first(params.origem);
   const sort = keyOf(SORT_PARAM, first(params.ordem)) ?? DEFAULT_CLIENT_QUERY.sort;
   const dir = first(params.dir);
@@ -57,7 +59,7 @@ export function clientQueryFromSearchParams(params: Record<string, string | stri
     search: isUrlSafeSearch(search) ? search : "",
     lifecycle: keyOf(LIFECYCLE_PARAM, first(params.situacao)) ?? "all",
     kind: keyOf(KIND_PARAM, first(params.tipo)) ?? "",
-    responsible: UUID.test(responsible) ? responsible : "",
+    channel: isAcquisitionChannel(channel) ? channel : "",
     origin: UUID.test(origin) ? origin : "",
     sort,
     direction: dir === "asc" || dir === "desc" ? dir : sort === "name" ? "asc" : "desc",
@@ -70,7 +72,7 @@ export function clientQueryToSearchParams(q: ClientListQuery): URLSearchParams {
   if (q.search && isUrlSafeSearch(q.search)) p.set("busca", q.search);
   if (q.lifecycle !== "all") p.set("situacao", LIFECYCLE_PARAM[q.lifecycle]);
   if (q.kind) p.set("tipo", KIND_PARAM[q.kind]);
-  if (q.responsible) p.set("responsavel", q.responsible);
+  if (q.channel) p.set("canal", q.channel);
   if (q.origin) p.set("origem", q.origin);
   if (q.sort !== DEFAULT_CLIENT_QUERY.sort || q.direction !== DEFAULT_CLIENT_QUERY.direction) {
     p.set("ordem", SORT_PARAM[q.sort]);
@@ -88,7 +90,7 @@ export function clientQueryToInput(q: ClientListQuery): Record<string, unknown> 
     q: q.search.trim() || undefined,
     status: q.lifecycle === "active" ? "ACTIVE" : q.lifecycle === "inactive" ? "INACTIVE" : undefined,
     kind: q.kind || undefined,
-    responsibleUserId: q.responsible || undefined,
+    acquisitionChannel: q.channel || undefined,
     originOrganizationId: q.origin || undefined,
     sortBy: q.sort,
     sortDirection: q.direction,
@@ -96,5 +98,5 @@ export function clientQueryToInput(q: ClientListQuery): Record<string, unknown> 
 }
 
 export function hasClientFilters(q: ClientListQuery): boolean {
-  return !!(q.search || q.kind || q.responsible || q.origin || q.lifecycle !== "all");
+  return !!(q.search || q.kind || q.channel || q.origin || q.lifecycle !== "all");
 }

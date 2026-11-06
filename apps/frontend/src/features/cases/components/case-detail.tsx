@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Archive, Check, FolderPlus, Handshake, Pencil, Send, X } from "lucide-react";
-import { LEGAL_AREA_LABEL, type LegalArea } from "@/lib/constants/legal";
+import { ACQUISITION_CHANNEL_LABEL, LEGAL_AREA_LABEL, type LegalArea } from "@/lib/constants/legal";
 import { LEGAL_CASE_STATUS_LABEL, LEGAL_CASE_STATUS_TONE } from "@/lib/constants/status";
 import { isAccepted, isDecidable } from "@/lib/domain/legal-case";
 import { formatDateTime, formatEventTime } from "@/lib/formatting";
@@ -192,11 +192,11 @@ function OriginDialog({ legalCase, onOpenChange }: { legalCase: CaseInternalDTO;
 export function CaseOriginLabel({ originOrganizationId }: { originOrganizationId: string }) {
   const { owner } = useOrgDirectory();
   const name = useOrganizationName(originOrganizationId);
-  if (originOrganizationId === owner.id) return <span>Origem do caso: {owner.name}</span>;
+  if (originOrganizationId === owner.id) return <span>Escritório de origem: {owner.name}</span>;
   return (
     <span className="inline-flex items-center gap-1">
       <Handshake className="size-3.5 text-gold-600" aria-hidden />
-      Origem do caso:{" "}
+      Escritório de origem:{" "}
       <Can permission="partners.view">
         <Link href={`/parceiros/${originOrganizationId}`} className="font-medium text-navy hover:underline underline-offset-2">
           {name ?? "Escritório parceiro"}
@@ -359,9 +359,14 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onD
             <DefinitionGrid
               items={[
                 { label: "Área", value: LEGAL_AREA_LABEL[legalCase.area as LegalArea] ?? legalCase.areaName },
-                { label: "Tipo", value: legalCase.caseType || "—" },
                 { label: "Parte contrária", value: legalCase.opposingParty ?? "—" },
-                { label: "Origem do caso", value: originName ?? "—" },
+                {
+                  label: "Canal (como o cliente chegou)",
+                  value: legalCase.acquisitionChannel
+                    ? `${ACQUISITION_CHANNEL_LABEL[legalCase.acquisitionChannel]}${legalCase.acquisitionDetail ? ` · ${legalCase.acquisitionDetail}` : ""}`
+                    : "Não informado",
+                },
+                { label: "Escritório de origem", value: originName ?? "—" },
                 { label: "Criado por", value: `${createdBy?.name ?? "—"} · ${createdByOrg ?? "—"}` },
                 { label: "Criado em", value: formatDateTime(legalCase.createdAt) },
                 { label: "Enviado para análise", value: legalCase.submittedAt ? formatDateTime(legalCase.submittedAt) : "—" },

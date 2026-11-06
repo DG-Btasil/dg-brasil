@@ -101,8 +101,8 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
 
   servidor.registerTool('listar_trabalhos', {
     title: 'Listar trabalhos na fila',
-    description: 'Lista os trabalhos que o DG Brasil deixou na fila para o computador do escritório (análises e ' +
-      'execuções avulsas). Mostra agente, tipo, quem pediu e quando — sem dados do cliente, que só aparecem ' +
+    description: 'Lista os trabalhos que o DG Brasil deixou na fila para o computador do escritório (análises, ' +
+      'tarefas dos processos e execuções avulsas). Mostra agente, tipo, quem pediu e quando — sem dados do cliente, que só aparecem ' +
       'depois de reservar.',
     inputSchema: {},
     annotations: leitura,
@@ -112,7 +112,7 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
     if (!jobs.length) return texto(`Nenhum trabalho na fila.${aviso}`)
     const linhas = jobs.map((j) => {
       const a = j.agent as { name: string; local_agent: string | null }
-      const tipo = j.kind === 'ANALYSIS' ? `análise "${j.analysis_template}"` : 'execução avulsa'
+      const tipo = j.kind === 'ANALYSIS' ? `análise "${j.analysis_template}"` : j.operation === 'PROCESS_TASK' ? 'tarefa do processo' : 'execução avulsa'
       return `- ${j.id} · ${tipo} · agente ${a.name} (local: ${a.local_agent ?? 'não definido'}) · pedido por ${j.requested_by_name ?? '—'} em ${j.created_at}` +
         `${Number(j.attempt) > 0 ? ` · tentativa anterior: ${j.attempt}` : ''}`
     })

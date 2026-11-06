@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fromDbError, unwrap } from "@/server/core/db-errors";
 import { toRange, type PageInput } from "@/server/core/pagination";
-import type { EventRow, PartyRow, ProcessInternalRow, ProcessRow } from "./mappers";
+import type { EventRow, PartyRow, ProcessInternalRow, ProcessRow, ProcessStatusCountRow } from "./mappers";
 
 /**
  * Acesso a dados de Processo, Partes e Movimentações (queries diretas com o
@@ -35,7 +35,28 @@ export function likePattern(text: string): string {
   return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-/** Busca: só dígitos (≥ 3, com ou sem máscara CNJ) → prefixo do CNJ; texto → título. */
+/**
+ * Valor dentro de um filtro `or=(...)` do PostgREST: entre aspas duplas, com
+ * aspas e barras escapadas — vírgula, parêntese ou ponto do usuário não viram
+ * sintaxe de filtro.
+ */
+export function orQuoted(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** Casos cujo título casa com a busca: no máximo estes entram no filtro do processo. */
+const CASE_TITLE_MATCH_LIMIT = 100;
+
+/**
+ * Filtro `or` da busca por texto: título do processo OU caso com título
+ * parecido (o processo novo não tem título próprio — o nome é o do caso).
+ */
+export function titleSearchFilter(pattern: string, caseIds: readonly string[]): string {
+  const byTitle = `title.ilike.${orQuoted(pattern)}`;
+  return caseIds.length ? `${byTitle},legal_case_id.in.(${caseIds.join(",")})` : byTitle;
+}
+
+/** Busca: só dígitos (≥ 3, com ou sem máscara CNJ) → prefixo do CNJ; texto → título do processo ou do caso. */
 export function searchTarget(q: string): { kind: "cnj"; digits: string } | { kind: "title"; text: string } | null {
   const text = q.trim();
   if (!text) return null;
@@ -79,7 +100,10 @@ export async function listProcesses(
   if (filters.openDeadlineBefore) query = query.eq("deadlines.status", "OPEN").lt("deadlines.due_at", filters.openDeadlineBefore);
   const target = filters.q ? searchTarget(filters.q) : null;
   if (target?.kind === "cnj") query = query.like("cnj_number", `${target.digits}%`);
-  if (target?.kind === "title") query = query.ilike("title", likePattern(target.text));
+  if (target?.kind === "title") {
+    const pattern = likePattern(target.text);
+    query = query.or(titleSearchFilter(pattern, await caseIdsByTitle(db, pattern)));
+  }
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.caseId) query = query.eq("legal_case_id", filters.caseId);
   if (filters.clientId) query = query.eq("legal_cases.client_id", filters.clientId);
@@ -94,13 +118,22 @@ export async function listProcesses(
   return { rows: (data ?? []) as unknown as ProcessRow[], total: count ?? 0 };
 }
 
+/** Ids dos casos visíveis (RLS) e não excluídos cujo título casa com o padrão ILIKE. */
+async function caseIdsByTitle(db: SupabaseClient, pattern: string): Promise<string[]> {
+  const rows = unwrap(
+    await db.from("legal_cases").select("id").ilike("title", pattern).is("deleted_at", null).order("updated_at", { ascending: false }).limit(CASE_TITLE_MATCH_LIMIT),
+  ) as { id: string }[] | null;
+  return (rows ?? []).map((r) => r.id);
+}
+
+/** Processos por status numa consulta só — public.get_process_status_counts() (045), com a RLS de quem pede. */
+export async function getStatusCounts(db: SupabaseClient): Promise<ProcessStatusCountRow[]> {
+  return (unwrap(await db.rpc("get_process_status_counts")) ?? []) as ProcessStatusCountRow[];
+}
+
 /** Contagem de processos (não excluídos) com filtros simples — só o total, nenhuma linha. */
-export async function countProcesses(
-  db: SupabaseClient,
-  filters: { notStatuses?: string[]; technicalOrigins?: string[]; openDeadlineBefore?: string },
-): Promise<number> {
+export async function countProcesses(db: SupabaseClient, filters: { technicalOrigins?: string[]; openDeadlineBefore?: string }): Promise<number> {
   let query = db.from("legal_processes").select(filters.openDeadlineBefore ? `id, ${OPEN_DEADLINE_EMBED}` : "id", { count: "exact", head: true }).is("deleted_at", null);
-  if (filters.notStatuses) query = query.not("status", "in", `(${filters.notStatuses.join(",")})`);
   if (filters.technicalOrigins) query = query.in("technical_origin", filters.technicalOrigins);
   if (filters.openDeadlineBefore) query = query.eq("deadlines.status", "OPEN").lt("deadlines.due_at", filters.openDeadlineBefore);
   const { error, count } = await query;
@@ -126,7 +159,9 @@ export async function getProcess(db: SupabaseClient, id: string, columns: string
 }
 
 export async function getInternalDetails(db: SupabaseClient, id: string): Promise<ProcessInternalRow | null> {
-  return unwrap(await db.from("legal_process_internal_details").select("summary, notes").eq("legal_process_id", id).maybeSingle()) as ProcessInternalRow | null;
+  return unwrap(
+    await db.from("legal_process_internal_details").select("summary, notes, fee_amount, fee_percentage").eq("legal_process_id", id).maybeSingle(),
+  ) as ProcessInternalRow | null;
 }
 
 /** Processo visível (RLS) e não excluído, com o caso e o cliente do caso. */

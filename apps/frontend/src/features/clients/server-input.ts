@@ -1,6 +1,6 @@
 import { onlyDigits } from "@/lib/formatting";
 import type { Client } from "@/types";
-import type { AddressFormValues, CompanyFormValues, CompanyPeopleFormValues, IndividualFormValues } from "./schemas";
+import type { CompanyFormValues, CompanyPeopleFormValues, IndividualFormValues, LooseAddressFormValues } from "./schemas";
 
 /**
  * Formulário (strings) → entrada das Server Actions de cliente.
@@ -24,11 +24,11 @@ export function countryCode(country: string | undefined): string | undefined {
   return /^[A-Za-z]{2}$/.test(c) ? c.toUpperCase() : undefined;
 }
 
-export function hasAddress(a: AddressFormValues): boolean {
+export function hasAddress(a: LooseAddressFormValues): boolean {
   return [a.zipCode, a.street, a.number, a.district, a.city, a.state].some((v) => v && v.trim());
 }
 
-export function addressToServer(a: AddressFormValues): Json | undefined {
+export function addressToServer(a: LooseAddressFormValues): Json | undefined {
   if (!hasAddress(a)) return undefined;
   return {
     zipCode: filled(a.zipCode),
@@ -47,12 +47,6 @@ function identityDocument(v: IndividualFormValues): Json | undefined {
   return { type: v.idType, number: v.idNumber.trim(), issuer: v.idIssuer.trim(), state: filled(v.idState) };
 }
 
-function stableUnion(v: IndividualFormValues): boolean | undefined {
-  return v.maritalStatus === "MARRIED" || !v.stableUnion ? undefined : v.stableUnion === "yes";
-}
-
-const cnae = (v: string) => onlyDigits(v);
-const secondaryCnaes = (v: string) => v.split(/\n|;|,/).map(cnae).filter(Boolean);
 
 function sharePercent(v: string): number | undefined {
   if (!v.trim()) return undefined;
@@ -75,11 +69,11 @@ export function individualCreateInput(v: IndividualFormValues): Json {
     nationality: v.nationality,
     birthplace: v.birthplace,
     maritalStatus: filled(v.maritalStatus),
-    stableUnion: stableUnion(v),
     profession: v.profession,
     identityDocument: identityDocument(v),
     originOfficeId: v.originOfficeId,
-    responsibleUserId: filled(v.responsibleUserId),
+    acquisitionChannel: filled(v.acquisitionChannel),
+    acquisitionDetail: v.acquisitionDetail,
     contact: { email: v.email, phone: v.phone, secondaryPhone: v.secondaryPhone },
     address: addressToServer(v.address),
     notes: v.notes,
@@ -93,14 +87,12 @@ export function companyCreateInput(v: CompanyFormValues): Json {
     cnpj: v.cnpj,
     legalName: v.legalName,
     tradeName: v.tradeName,
-    registrationStatus: v.registrationStatus,
     openingDate: filled(v.openingDate),
     legalNature: v.legalNature,
-    mainCnae: filled(cnae(v.mainCnae)),
-    secondaryCnaes: secondaryCnaes(v.secondaryCnaes),
     originOfficeId: v.originOfficeId,
-    responsibleUserId: filled(v.responsibleUserId),
-    contact: { email: v.email, phone: v.phone, website: v.website },
+    acquisitionChannel: filled(v.acquisitionChannel),
+    acquisitionDetail: v.acquisitionDetail,
+    contact: { email: v.email, phone: v.phone },
     address: addressToServer(v.address),
     notes: v.notes,
     legalSummary: v.legalSummary,
@@ -175,7 +167,8 @@ export function individualPatch(v: IndividualFormValues, original: Client): Json
     birthplace: v.birthplace,
     profession: v.profession,
     originOfficeId: v.originOfficeId,
-    responsibleUserId: filled(v.responsibleUserId) ?? null,
+    acquisitionChannel: filled(v.acquisitionChannel) ?? null,
+    acquisitionDetail: v.acquisitionDetail,
     contact: { email: v.email, phone: v.phone, secondaryPhone: v.secondaryPhone },
     address: addressToServer(v.address) ?? null,
     notes: v.notes,
@@ -188,7 +181,6 @@ export function individualPatch(v: IndividualFormValues, original: Client): Json
   patch.maritalStatus = filled(v.maritalStatus) ?? null;
   patch.identityDocument = identityDocument(v) ?? null;
   const optional: Json = {
-    stableUnion: stableUnion(v),
     document: documentChange(v.cpf, original),
   };
   for (const [k, value] of Object.entries(optional)) if (value !== undefined) patch[k] = value;
@@ -200,19 +192,17 @@ export function companyPatch(v: CompanyFormValues, original: Client): Json {
   const patch: Json = {
     legalName: v.legalName,
     tradeName: v.tradeName,
-    registrationStatus: v.registrationStatus,
     legalNature: v.legalNature,
-    secondaryCnaes: secondaryCnaes(v.secondaryCnaes),
     originOfficeId: v.originOfficeId,
-    responsibleUserId: filled(v.responsibleUserId) ?? null,
-    contact: { email: v.email, phone: v.phone, website: v.website },
+    acquisitionChannel: filled(v.acquisitionChannel) ?? null,
+    acquisitionDetail: v.acquisitionDetail,
+    contact: { email: v.email, phone: v.phone },
     address: addressToServer(v.address) ?? null,
     notes: v.notes,
     legalSummary: v.legalSummary,
   };
   const optional: Json = {
     openingDate: filled(v.openingDate),
-    mainCnae: filled(cnae(v.mainCnae)),
     document: documentChange(v.cnpj, original),
   };
   for (const [k, value] of Object.entries(optional)) if (value !== undefined) patch[k] = value;
@@ -229,7 +219,6 @@ export const CLIENT_FIELD_MAP: Record<string, string> = {
   "contact.email": "email",
   "contact.phone": "phone",
   "contact.secondaryPhone": "secondaryPhone",
-  "contact.website": "website",
   "address.zipCode": "address.zipCode",
   "address.state": "address.state",
   "identityDocument.*": "idNumber",

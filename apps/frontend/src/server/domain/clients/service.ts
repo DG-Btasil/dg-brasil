@@ -31,9 +31,9 @@ export async function listClients(ctx: ServiceContext, input: ListClientsInput):
       q: input.q,
       status: input.status,
       kind: input.kind,
-      // Parceiro não filtra por responsável interno; a RLS já limita aos próprios clientes.
+      // A RLS já limita o parceiro aos próprios clientes; canal é informação interna.
       originOrganizationId: input.originOrganizationId,
-      responsibleUserId: partner ? undefined : input.responsibleUserId,
+      acquisitionChannel: partner ? undefined : input.acquisitionChannel,
     },
     input,
     { column: input.column, ascending: input.ascending },
@@ -98,7 +98,7 @@ export async function createClient(ctx: ServiceContext, input: CreateClientInput
   const digits = input.kind === "INDIVIDUAL" ? input.cpf : input.cnpj;
   // Mensagem amigável antes de tentar; a unique do banco cobre a corrida (double-click).
   if (await repo.findIdByDocument(ctx.db, digits)) throw duplicateClient();
-  const payload = createPayload({ ...input, responsibleUserId: input.responsibleUserId ?? ctx.session.userId });
+  const payload = createPayload(input);
   const id = await repo.save(ctx.db, null, payload);
   ctx.log.info("client.created", { clientId: id });
   return { id };

@@ -1,5 +1,5 @@
 import type { LegalCaseStatus } from "@/lib/constants/status";
-import type { LegalArea } from "@/lib/constants/legal";
+import type { AcquisitionChannel, LegalArea } from "@/lib/constants/legal";
 import type { ID, ISODateTime, OfficeScoped, Timestamps } from "./common";
 
 /**
@@ -45,6 +45,9 @@ export interface LegalCase extends OfficeScoped, Timestamps {
   createdBy: ID;
   /** Advogado responsável. Pode ser nulo antes do aceite; obrigatório para aceitar. */
   assignedLawyerId: ID | null;
+  /** Interno: como o cliente chegou para este caso (herdado do cliente se não informado). */
+  acquisitionChannel?: AcquisitionChannel;
+  acquisitionDetail?: string;
   summary: string;
   opposingParty?: string;
   status: LegalCaseStatus;

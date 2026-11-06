@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { GENDERS } from "@/lib/constants/legal";
-import { isCnpjFormat, isCpfFormat, msg, zCepOptional, zCnpj, zCpf, zPhone, zPhoneOptional, zRequired } from "@/lib/validation";
+import { ACQUISITION_CHANNELS, GENDERS } from "@/lib/constants/legal";
+import { isCepFormat, isCnpjFormat, isCpfFormat, msg, zCepOptional, zCnpj, zCpf, zEmail, zPhone, zPhoneOptional, zRequired } from "@/lib/validation";
 import type { Address, CompanyClient, IndividualClient } from "@/types";
 
 /*
@@ -22,6 +22,24 @@ export const addressSchema = z.object({
   country: text(),
 });
 
+/**
+ * Endereço completo é obrigatório no cadastro (Roadmap 2.0): CEP, logradouro,
+ * número, bairro, município e UF. Complemento continua opcional.
+ */
+export const requiredAddressSchema = z.object({
+  zipCode: zRequired("Informe o CEP.").refine(isCepFormat, msg.cep),
+  street: zRequired("Informe o logradouro."),
+  number: zRequired("Informe o número (ou S/N)."),
+  complement: text(),
+  district: zRequired("Informe o bairro."),
+  city: zRequired("Informe o município."),
+  state: zRequired("Selecione a UF."),
+  country: text(),
+});
+
+/** Canal de aquisição: vazio ou um da lista (o banco confere de novo). */
+const channel = () => z.enum(["", ...ACQUISITION_CHANNELS]);
+
 export const individualSchema = z.object({
   fullName: zRequired("Informe o nome completo."),
   socialName: text(),
@@ -31,18 +49,18 @@ export const individualSchema = z.object({
   idIssuer: text(),
   idState: text(),
   birthDate: text(),
-  nationality: text(),
+  nationality: zRequired("Informe a nacionalidade."),
   birthplace: text(),
   gender: z.enum(["", ...GENDERS]),
-  maritalStatus: text(),
-  stableUnion: z.enum(["", "yes", "no"]),
-  profession: text(),
-  email: optionalEmail(),
+  maritalStatus: zRequired("Selecione o estado civil."),
+  profession: zRequired("Informe a profissão."),
+  email: zEmail(),
   phone: zPhone(),
   secondaryPhone: zPhoneOptional(),
-  address: addressSchema,
-  responsibleUserId: zRequired("Selecione o responsável."),
-  originOfficeId: zRequired("Selecione a origem do cliente."),
+  address: requiredAddressSchema,
+  originOfficeId: zRequired("Selecione o escritório de origem."),
+  acquisitionChannel: channel(),
+  acquisitionDetail: text().max(300, "Até 300 caracteres."),
   legalSummary: text(),
   notes: text(),
 });
@@ -85,27 +103,27 @@ export const companySchema = z.object({
   legalName: zRequired("Informe a razão social."),
   tradeName: text(),
   cnpj: zCnpj(),
-  registrationStatus: text(),
   openingDate: text(),
   legalNature: text(),
-  mainCnae: text(),
-  secondaryCnaes: text(),
-  email: optionalEmail(),
+  email: zEmail(),
   phone: zPhone(),
-  website: text(),
-  address: addressSchema,
+  address: requiredAddressSchema,
   representatives: z
     .array(representativeSchema)
     .min(1, "Cadastre ao menos um representante legal.")
     .refine((list) => list.filter((r) => r.isPrimary).length === 1, "Marque exatamente um representante como principal."),
   partners: z.array(partnerSchema),
-  responsibleUserId: zRequired("Selecione o responsável."),
-  originOfficeId: zRequired("Selecione a origem do cliente."),
+  originOfficeId: zRequired("Selecione o escritório de origem."),
+  acquisitionChannel: channel(),
+  acquisitionDetail: text().max(300, "Até 300 caracteres."),
   legalSummary: text(),
   notes: text(),
 });
 export type CompanyFormValues = z.infer<typeof companySchema>;
-export type AddressFormValues = z.infer<typeof addressSchema>;
+/** Endereço como os formulários de cliente guardam (todas as chaves presentes). */
+export type AddressFormValues = z.infer<typeof requiredAddressSchema>;
+/** Endereço de formulários em que ele é opcional (parceiros, edição antiga). */
+export type LooseAddressFormValues = z.infer<typeof addressSchema>;
 
 /* ------------------------------------------------------------------ */
 /* Conversões                                                          */
@@ -115,7 +133,7 @@ const opt = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
 
 export const EMPTY_ADDRESS: AddressFormValues = { zipCode: "", street: "", number: "", complement: "", district: "", city: "", state: "", country: "Brasil" };
 
-export function toAddress(a: AddressFormValues): Address | undefined {
+export function toAddress(a: LooseAddressFormValues): Address | undefined {
   const filled = [a.zipCode, a.street, a.number, a.district, a.city, a.state].some((v) => v && v.trim());
   if (!filled) return undefined;
   return {
@@ -134,14 +152,15 @@ export function fromAddress(a: Address | undefined): AddressFormValues {
   if (!a) return EMPTY_ADDRESS;
   // O banco guarda o código ISO ("BR"); o formulário mostra o nome.
   const country = !a.country || a.country.toUpperCase() === "BR" ? "Brasil" : a.country;
-  return { ...a, complement: a.complement ?? "", country };
+  return { ...a, zipCode: a.zipCode ?? "", complement: a.complement ?? "", country };
 }
 
-export function emptyIndividualValues(responsibleUserId = "", originOfficeId = ""): IndividualFormValues {
+export function emptyIndividualValues(originOfficeId = ""): IndividualFormValues {
   return {
     fullName: "", socialName: "", cpf: "", idType: "", idNumber: "", idIssuer: "", idState: "", birthDate: "",
-    nationality: "Brasileira", birthplace: "", gender: "", maritalStatus: "", stableUnion: "", profession: "",
-    email: "", phone: "", secondaryPhone: "", address: EMPTY_ADDRESS, responsibleUserId, originOfficeId, legalSummary: "", notes: "",
+    nationality: "Brasileira", birthplace: "", gender: "", maritalStatus: "", profession: "",
+    email: "", phone: "", secondaryPhone: "", address: EMPTY_ADDRESS, originOfficeId, acquisitionChannel: "", acquisitionDetail: "",
+    legalSummary: "", notes: "",
   };
 }
 
@@ -160,14 +179,14 @@ export function individualToValues(c: IndividualClient): IndividualFormValues {
     birthplace: c.birthplace ?? "",
     gender: c.gender ?? "",
     maritalStatus: c.maritalStatus ?? "",
-    stableUnion: c.stableUnion === undefined ? "" : c.stableUnion ? "yes" : "no",
     profession: c.profession ?? "",
     email: c.contact.email ?? "",
     phone: c.contact.phone ?? "",
     secondaryPhone: c.contact.secondaryPhone ?? "",
     address: fromAddress(c.address),
-    responsibleUserId: c.responsibleUserId,
     originOfficeId: c.originOfficeId ?? "",
+    acquisitionChannel: c.acquisitionChannel ?? "",
+    acquisitionDetail: c.acquisitionDetail ?? "",
     legalSummary: c.legalSummary ?? "",
     notes: c.notes ?? "",
   };
@@ -194,11 +213,11 @@ export function companyPeopleToValues(c: CompanyClient): CompanyPeopleFormValues
   return { representatives: v.representatives, partners: v.partners };
 }
 
-export function emptyCompanyValues(responsibleUserId = "", originOfficeId = ""): CompanyFormValues {
+export function emptyCompanyValues(originOfficeId = ""): CompanyFormValues {
   return {
-    legalName: "", tradeName: "", cnpj: "", registrationStatus: "", openingDate: "", legalNature: "", mainCnae: "",
-    secondaryCnaes: "", email: "", phone: "", website: "", address: EMPTY_ADDRESS,
-    representatives: [newRepresentative(true)], partners: [], responsibleUserId, originOfficeId, legalSummary: "", notes: "",
+    legalName: "", tradeName: "", cnpj: "", openingDate: "", legalNature: "", email: "", phone: "", address: EMPTY_ADDRESS,
+    representatives: [newRepresentative(true)], partners: [], originOfficeId, acquisitionChannel: "", acquisitionDetail: "",
+    legalSummary: "", notes: "",
   };
 }
 
@@ -208,14 +227,10 @@ export function companyToValues(c: CompanyClient): CompanyFormValues {
     legalName: c.legalName,
     tradeName: c.tradeName ?? "",
     cnpj: c.cnpj,
-    registrationStatus: c.registrationStatus ?? "",
     openingDate: c.openingDate ?? "",
     legalNature: c.legalNature ?? "",
-    mainCnae: c.mainCnae ?? "",
-    secondaryCnaes: (c.secondaryCnaes ?? []).join("\n"),
     email: c.contact.email ?? "",
     phone: c.contact.phone ?? "",
-    website: c.contact.website ?? "",
     address: fromAddress(c.address),
     representatives: c.representatives.length
       ? c.representatives.map((r) => ({ ...r, email: r.email ?? "", phone: r.phone ?? "" }))
@@ -227,8 +242,9 @@ export function companyToValues(c: CompanyClient): CompanyFormValues {
       qualification: p.qualification,
       sharePercent: p.sharePercent === undefined ? "" : String(p.sharePercent).replace(".", ","),
     })),
-    responsibleUserId: c.responsibleUserId,
     originOfficeId: c.originOfficeId ?? "",
+    acquisitionChannel: c.acquisitionChannel ?? "",
+    acquisitionDetail: c.acquisitionDetail ?? "",
     legalSummary: c.legalSummary ?? "",
     notes: c.notes ?? "",
   };

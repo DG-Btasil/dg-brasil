@@ -252,6 +252,11 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, office }: { ana
             />
           </div>
         )}
+        {analysis.additionalInfo && (
+          <div className="border-t border-line pt-4">
+            <DefinitionGrid columns={2} items={[{ label: "Informações adicionais para os agentes", value: <span className="whitespace-pre-line">{analysis.additionalInfo}</span>, wide: true }]} />
+          </div>
+        )}
         {analysis.missingRequirements.some((m) => !m.required) && (
           <p className="text-[12px] text-muted">
             Recomendados ainda ausentes:{" "}

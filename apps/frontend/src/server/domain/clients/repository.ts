@@ -9,12 +9,12 @@ import type { ClientDetailRow, ClientDirectoryRow, ClientInternalRow, Relationsh
  * funções do banco são a segunda barreira. Colunas sempre explícitas.
  */
 
-const DIRECTORY_COLUMNS = "id, kind, display_name, trade_name, cpf, cnpj, status, origin_organization_id, responsible_user_id, created_at, updated_at";
+const DIRECTORY_COLUMNS = "id, kind, display_name, trade_name, cpf, cnpj, status, origin_organization_id, acquisition_channel, created_at, updated_at";
 
-const BASIC_COLUMNS = `id, kind, cpf, cnpj, status, origin_organization_id, responsible_user_id, created_at, updated_at,
-  individual_client_details(full_name, social_name, birth_date, gender, nationality, birthplace, marital_status, stable_union, profession,
+const BASIC_COLUMNS = `id, kind, cpf, cnpj, status, origin_organization_id, acquisition_channel, acquisition_detail, created_at, updated_at,
+  individual_client_details(full_name, social_name, birth_date, gender, nationality, birthplace, marital_status, profession,
     identity_document_type, identity_document_number, identity_document_issuer, identity_document_state),
-  company_client_details(legal_name, trade_name, registration_status, opening_date, legal_nature, main_cnae, secondary_cnaes),
+  company_client_details(legal_name, trade_name, opening_date, legal_nature),
   client_contacts(type, value, is_primary),
   client_addresses(postal_code, street, number, complement, neighborhood, city, state, country, is_primary)`;
 
@@ -33,7 +33,7 @@ export interface DirectoryFilters {
   status?: "ACTIVE" | "INACTIVE" | "ARCHIVED";
   kind?: "INDIVIDUAL" | "COMPANY";
   originOrganizationId?: string;
-  responsibleUserId?: string;
+  acquisitionChannel?: string;
 }
 
 export async function listDirectory(
@@ -56,7 +56,7 @@ export async function listDirectory(
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.kind) query = query.eq("kind", filters.kind);
   if (filters.originOrganizationId) query = query.eq("origin_organization_id", filters.originOrganizationId);
-  if (filters.responsibleUserId) query = query.eq("responsible_user_id", filters.responsibleUserId);
+  if (filters.acquisitionChannel) query = query.eq("acquisition_channel", filters.acquisitionChannel);
   const { from, to } = toRange(page);
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending }).order("id").range(from, to);
   if (error) throw fromDbError(error);

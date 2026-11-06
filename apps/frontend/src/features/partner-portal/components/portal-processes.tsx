@@ -57,7 +57,7 @@ export function PortalProcessList({ initialQuery, initialResult }: { initialQuer
       initialResult={initialResult}
       load={(q) => listProcessesAction(portalProcessInput(q))}
       noun={{ one: "processo", many: "processos" }}
-      searchLabel="Buscar por número CNJ ou título"
+      searchLabel="Buscar por número CNJ ou nome do caso"
       empty={{ icon: Scale, title: "Nenhum processo ainda.", description: "Processos são cadastrados dentro de um caso do seu escritório." }}
       errorTitle="Não foi possível carregar os processos."
     >
@@ -205,7 +205,7 @@ export function PortalProcessForm({ initialCase }: { initialCase?: PickerOption 
     setError,
     formState: { errors, isSubmitting },
   } = useForm<PartnerProcessValues>({
-    defaultValues: { cnj: "", title: "", court: "", unit: "", district: "", state: "", actionType: "", subject: "", clientPole: "ACTIVE", opposingParty: "", distributionDate: "", caseValue: "" },
+    defaultValues: { cnj: "", court: "", unit: "", district: "", state: "", actionType: "", subject: "", clientPole: "ACTIVE", opposingParty: "", distributionDate: "", caseValue: "" },
   });
   const back = initialCase ? `/casos/${initialCase.id}?aba=processos` : "/processos";
 
@@ -224,7 +224,7 @@ export function PortalProcessForm({ initialCase }: { initialCase?: PickerOption 
       return;
     }
     idempotency.reset();
-    toast({ tone: "success", title: "Processo cadastrado", description: String(input.title) });
+    toast({ tone: "success", title: "Processo cadastrado", description: legalCase.label });
     // Recurso devolvido pelo servidor (também quando deduplicado).
     router.push(`/processos/${result.data.id}`);
   });
@@ -234,7 +234,7 @@ export function PortalProcessForm({ initialCase }: { initialCase?: PickerOption 
       <PageHeader
         breadcrumbs={[{ label: "Processos", href: "/processos" }, { label: "Cadastrar processo" }]}
         title="Cadastrar processo"
-        description="Todo processo pertence a um caso. Para uma nova demanda, envie antes um caso em Casos → Novo caso."
+        description="Todo processo pertence a um caso e leva o nome dele. Para uma nova demanda, envie antes um caso em Casos → Novo caso."
       />
       <form onSubmit={onSubmit} noValidate>
         <Panel className="max-w-[900px]">
@@ -255,9 +255,6 @@ export function PortalProcessForm({ initialCase }: { initialCase?: PickerOption 
             </Field>
             <Field label="Número CNJ" requirement="optional" error={errors.cnj?.message}>
               {(p) => <MaskedInput mask="cnj" placeholder="0000000-00.0000.0.00.0000" {...p} {...register("cnj", { validate: (x) => !x || isCnjFormat(x) || msg.cnj })} />}
-            </Field>
-            <Field label="Nome resumido" requirement="required" error={errors.title?.message} className="col-span-2">
-              {(p) => <Input {...p} maxLength={300} {...register("title", { validate: (x) => !!x.trim() || "Informe um nome resumido." })} />}
             </Field>
             <Field label="Tribunal" requirement="optional">
               {(p) => <Select {...p} placeholder="Selecione" options={opts(COURTS)} {...register("court")} />}

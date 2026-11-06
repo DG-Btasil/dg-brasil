@@ -11,7 +11,6 @@ import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/res
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { createClientAction } from "@/server/domain/clients/actions";
 import { useToast } from "@/store/ui-store";
-import { useClientSession } from "@/features/auth/session-context";
 import { useDefaultOrigin } from "@/features/directory/directory-context";
 import { emptyCompanyValues, emptyIndividualValues } from "../../schemas";
 import { CLIENT_FIELD_MAP, COMPANY_FIELD_MAP, companyCreateInput, individualCreateInput } from "../../server-input";
@@ -44,7 +43,6 @@ export function useClientFormResult() {
 export function ClientCreate() {
   const router = useRouter();
   const toast = useToast();
-  const session = useClientSession();
   const handle = useClientFormResult();
   const [kind, setKind] = useState<ClientKind | undefined>(undefined);
   // Origem já vem preenchida com o escritório do usuário; responsável, com o próprio usuário.
@@ -91,7 +89,7 @@ export function ClientCreate() {
       {kind === "INDIVIDUAL" && (
         <IndividualForm
           key="pf"
-          defaultValues={emptyIndividualValues(session?.userId, defaultOrigin)}
+          defaultValues={emptyIndividualValues(defaultOrigin)}
           submitLabel="Cadastrar cliente"
           onCancel={() => router.push("/clientes")}
           onSubmit={async (values, { setError }) => {
@@ -105,7 +103,7 @@ export function ClientCreate() {
       {kind === "COMPANY" && (
         <CompanyForm
           key="pj"
-          defaultValues={emptyCompanyValues(session?.userId, defaultOrigin)}
+          defaultValues={emptyCompanyValues(defaultOrigin)}
           submitLabel="Cadastrar cliente"
           onCancel={() => router.push("/clientes")}
           onSubmit={async (values, { setError }) => {

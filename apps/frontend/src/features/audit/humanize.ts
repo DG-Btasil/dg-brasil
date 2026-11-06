@@ -173,6 +173,14 @@ const STATUS_WORD: Record<string, string> = {
   PAID: "pago",
   REOPENED: "reaberto",
   CHANGES_REQUESTED: "alterações solicitadas",
+  // Condução do processo (045).
+  PRE_FILING: "pré-ajuizamento",
+  PREPARING: "em preparação",
+  FILED: "distribuído",
+  SENTENCED: "com sentença",
+  APPEAL: "recurso",
+  FINAL_JUDGMENT: "trânsito em julgado",
+  ENFORCEMENT: "execução",
 };
 
 const status = (v: unknown) => (typeof v === "string" ? (STATUS_WORD[v] ?? v.toLowerCase()) : undefined);

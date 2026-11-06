@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { PROCESS_STATUSES } from "@/lib/constants/status";
 import {
+  activeProcessTotal,
   eventFromRow,
   internalDetailsPatch,
   internalDetailsRow,
@@ -10,11 +12,14 @@ import {
   partyFromRow,
   partyInsertRow,
   partyUpdatePatch,
+  processDisplayTitle,
   processInsertRow,
   processUpdatePatch,
+  statusCountsFromRows,
+  UNNAMED_PROCESS,
   type ProcessRow,
 } from "./mappers";
-import { likePattern, processColumns, searchTarget } from "./repository";
+import { likePattern, orQuoted, processColumns, searchTarget, titleSearchFilter } from "./repository";
 const KEY = "11111111-1111-4111-8111-111111111111";
 
 import {
@@ -50,7 +55,7 @@ const row = (over: Partial<ProcessRow> = {}): ProcessRow => ({
   case_value: "15000.50",
   currency: "BRL",
   status: "ACTIVE",
-  phase: "PLEADINGS",
+  phase: "PROCEEDINGS",
   distribution_date: "2026-09-01",
   created_at: "2026-10-01T00:00:00Z",
   updated_at: "2026-10-02T00:00:00Z",
@@ -70,6 +75,23 @@ describe("schemas — CNJ e cadastro", () => {
     expect(createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", cnj: "  " }).cnj).toBeUndefined();
   });
 
+  it("título é opcional (o processo é exibido com o nome do caso); prazo inicial também", () => {
+    const parsed = createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE });
+    expect(parsed.title).toBeUndefined();
+    expect(parsed.nextDeadline).toBeUndefined();
+    expect(createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "  " }).title).toBeUndefined();
+    expect(createPartnerProcessSchema.safeParse({ idempotencyKey: KEY, legalCaseId: CASE }).success).toBe(true);
+  });
+
+  it("honorários: valor em reais (≥ 0, 2 casas) e êxito 0–100; parceiro não informa", () => {
+    expect(createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, feeAmount: 2500.5, feePercentage: 30 })).toMatchObject({ feeAmount: 2500.5, feePercentage: 30 });
+    expect(createProcessSchema.safeParse({ idempotencyKey: KEY, legalCaseId: CASE, feeAmount: -1 }).success).toBe(false);
+    expect(createProcessSchema.safeParse({ idempotencyKey: KEY, legalCaseId: CASE, feePercentage: 100.5 }).success).toBe(false);
+    const partner = createPartnerProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, feeAmount: 10, feePercentage: 10 });
+    expect(partner).not.toHaveProperty("feeAmount");
+    expect(partner).not.toHaveProperty("feePercentage");
+  });
+
   it("processo sem caso não passa (nunca órfão)", () => {
     expect(createProcessSchema.safeParse({ idempotencyKey: KEY, title: "P" }).success).toBe(false);
     expect(createPartnerProcessSchema.safeParse({ idempotencyKey: KEY, title: "P", legalCaseId: "x" }).success).toBe(false);
@@ -82,7 +104,7 @@ describe("schemas — CNJ e cadastro", () => {
   });
 
   it("parceiro não informa campo interno: status, responsável e notas são descartados", () => {
-    const parsed = createPartnerProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", status: "CLOSED", responsibleUserId: USER, notes: "x", summary: "y" });
+    const parsed = createPartnerProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "P", status: "ARCHIVED", responsibleUserId: USER, notes: "x", summary: "y" });
     expect(parsed).not.toHaveProperty("status");
     expect(parsed).not.toHaveProperty("responsibleUserId");
     expect(parsed).not.toHaveProperty("notes");
@@ -94,11 +116,25 @@ describe("schemas — CNJ e cadastro", () => {
     expect(updateProcessSchema.parse({ id: PROC, patch: { cnj: "" } }).patch.cnj).toBeNull();
     expect(updateProcessSchema.safeParse({ id: PROC, patch: { status: "OVERDUE" } }).success).toBe(false);
     expect(updateProcessSchema.parse({ id: PROC, patch: { status: "ARCHIVED" } }).patch.status).toBe("ARCHIVED");
+    expect(updateProcessSchema.parse({ id: PROC, patch: { title: "" } }).patch.title).toBeNull();
+  });
+
+  it("status e fases da 045: novos aceitos, antigos recusados", () => {
+    for (const status of ["SENTENCED", "APPEAL", "FINAL_JUDGMENT", "ENFORCEMENT", "RECEIVED", "ARCHIVED"]) {
+      expect(updateProcessSchema.safeParse({ id: PROC, patch: { status } }).success).toBe(true);
+    }
+    for (const status of ["WAITING_CLIENT", "WAITING_DEADLINE", "CLOSED"]) {
+      expect(updateProcessSchema.safeParse({ id: PROC, patch: { status } }).success).toBe(false);
+    }
+    expect(updateProcessSchema.safeParse({ id: PROC, patch: { phase: "PROCEEDINGS" } }).success).toBe(true);
+    for (const phase of ["PLEADINGS", "EVIDENCE", "JUDGMENT"]) {
+      expect(updateProcessSchema.safeParse({ id: PROC, patch: { phase } }).success).toBe(false);
+    }
   });
 
   it("listagem: ordenação só por whitelist; status do banco aceito", () => {
-    const parsed = listProcessesSchema.parse({ sortBy: "cnj", sortDirection: "asc", status: "ARCHIVED" });
-    expect(parsed).toMatchObject({ column: "cnj_number", ascending: true, status: "ARCHIVED", page: 1, pageSize: 25 });
+    const parsed = listProcessesSchema.parse({ sortBy: "cnj", sortDirection: "asc", status: "RECEIVED" });
+    expect(parsed).toMatchObject({ column: "cnj_number", ascending: true, status: "RECEIVED", page: 1, pageSize: 25 });
     expect(listProcessesSchema.safeParse({ sortBy: "case_value" }).success).toBe(false);
     expect(listProcessesSchema.safeParse({ pageSize: 500 }).success).toBe(false);
   });
@@ -121,7 +157,7 @@ describe("schemas — CNJ e cadastro", () => {
 
 describe("mapeamento banco → domínio", () => {
   it("ficha interna: dados processuais, responsável e dados internos", () => {
-    const p = internalProcessFromRows(row(), { summary: "resumo interno", notes: "nota interna" }, true);
+    const p = internalProcessFromRows(row(), { summary: "resumo interno", notes: "nota interna", fee_amount: "3000.00", fee_percentage: 25 }, true);
     expect(p).toMatchObject({
       id: PROC,
       legalCaseId: CASE,
@@ -136,18 +172,40 @@ describe("mapeamento banco → domínio", () => {
       responsibleUserId: USER,
       summary: "resumo interno",
       notes: "nota interna",
+      feeAmount: 3000,
+      feePercentage: 25,
     });
+    expect(internalProcessFromRows(row(), null, true)).toMatchObject({ feeAmount: undefined, feePercentage: undefined });
   });
 
-  it("ARCHIVED aparece como CLOSED (vocabulário do front), mantendo o status do banco", () => {
-    const p = internalProcessFromRows(row({ status: "ARCHIVED" }), null, true);
-    expect(p.status).toBe("CLOSED");
-    expect(p.dbStatus).toBe("ARCHIVED");
+  it("status do banco = status do front (ARCHIVED é Arquivado, sem tradução)", () => {
+    expect(internalProcessFromRows(row({ status: "ARCHIVED" }), null, true).status).toBe("ARCHIVED");
+    expect(listItemFromRow(row({ status: "RECEIVED" }), { surface: "PARTNER", canViewCaseValue: false }).status).toBe("RECEIVED");
+  });
+
+  it("nome exibido: título próprio; sem ele, o do caso; nunca vazio", () => {
+    expect(partnerProcessFromRow(row(), false).title).toBe("Revisional consignado");
+    expect(partnerProcessFromRow(row({ title: null, legal_cases: { client_id: CLIENT, title: "Caso Maria x Banco" } }), false).title).toBe("Caso Maria x Banco");
+    expect(processDisplayTitle(null, null)).toBe(UNNAMED_PROCESS);
+  });
+
+  it("contagem por status: todos os status na ordem da tela, zero onde não há; ativos sem recebido/arquivado", () => {
+    const counts = statusCountsFromRows([
+      { status: "ARCHIVED", total: 4 },
+      { status: "ACTIVE", total: "7" },
+      { status: "RECEIVED", total: 2 },
+      { status: "SUSPENDED", total: 1 },
+      { status: "LEGADO", total: 9 },
+    ]);
+    expect(counts.map((c) => c.status)).toEqual([...PROCESS_STATUSES]);
+    expect(counts.find((c) => c.status === "ACTIVE")?.count).toBe(7);
+    expect(counts.find((c) => c.status === "FILED")?.count).toBe(0);
+    expect(activeProcessTotal(counts)).toBe(8);
   });
 
   it("ficha do parceiro não tem nenhum campo interno, mesmo se a linha trouxer", () => {
     const p = partnerProcessFromRow(row(), true);
-    for (const field of ["responsibleUserId", "operationalDueAt", "createdBy", "summary", "notes"]) {
+    for (const field of ["responsibleUserId", "operationalDueAt", "createdBy", "summary", "notes", "feeAmount", "feePercentage"]) {
       expect(p).not.toHaveProperty(field);
     }
     expect(JSON.stringify(p)).not.toContain(USER);
@@ -206,19 +264,34 @@ describe("mapeamento domínio → banco", () => {
     });
     expect(internalDetailsRow(PROC, input)).toEqual({ legal_process_id: PROC, summary: "s", notes: "n" });
     expect(internalDetailsRow(PROC, {})).toBeNull();
+    expect(internalDetailsRow(PROC, { notes: undefined })).toBeNull();
   });
 
-  it("cadastro do parceiro: lista fechada (status/responsável nunca vão ao banco)", () => {
-    const sneaky = { legalCaseId: CASE, title: "P", status: "CLOSED", responsibleUserId: USER, operationalDueAt: "2026-01-01T00:00:00Z", technicalOrigin: "INTEGRATION" };
+  it("cadastro interno sem título: a coluna não vai (o banco grava null; a tela mostra o caso)", () => {
+    const input = createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, title: "", status: "PRE_FILING", phase: "PRELIMINARY" });
+    expect(processInsertRow(PROC, input, "INTERNAL")).not.toHaveProperty("title");
+  });
+
+  it("honorários vão para os dados internos (p_internal: fee_amount, fee_percentage)", () => {
+    const input = createProcessSchema.parse({ idempotencyKey: KEY, legalCaseId: CASE, feeAmount: 1200, feePercentage: 30 });
+    expect(internalDetailsRow(PROC, input)).toEqual({ legal_process_id: PROC, fee_amount: 1200, fee_percentage: 30 });
+    expect(processInsertRow(PROC, input, "INTERNAL")).not.toHaveProperty("fee_amount");
+  });
+
+  it("cadastro do parceiro: lista fechada (status/responsável/honorários nunca vão ao banco)", () => {
+    const sneaky = { legalCaseId: CASE, title: "P", status: "ARCHIVED", responsibleUserId: USER, operationalDueAt: "2026-01-01T00:00:00Z", technicalOrigin: "INTEGRATION", feeAmount: 10 };
     const out = processInsertRow(PROC, sneaky as never, "PARTNER");
     expect(out).toEqual({ id: PROC, legal_case_id: CASE, technical_origin: "MANUAL", title: "P" });
   });
 
-  it("edição: PATCH com só as chaves presentes; null limpa; notas vão para a tabela interna", () => {
+  it("edição: PATCH com só as chaves presentes; null limpa; notas e honorários vão para a tabela interna", () => {
     const { patch } = updateProcessSchema.parse({ id: PROC, patch: { court: "", caseValue: null, notes: "nova" } });
     expect(processUpdatePatch(patch)).toEqual({ court: null, case_value: null });
     expect(internalDetailsPatch(PROC, patch)).toEqual({ legal_process_id: PROC, notes: "nova" });
     expect(internalDetailsPatch(PROC, { title: "x" })).toBeNull();
+    const fees = updateProcessSchema.parse({ id: PROC, patch: { feeAmount: 800, feePercentage: null } }).patch;
+    expect(processUpdatePatch(fees)).toEqual({});
+    expect(internalDetailsPatch(PROC, fees)).toEqual({ legal_process_id: PROC, fee_amount: 800, fee_percentage: null });
   });
 
   it("parte: insert e PATCH", () => {
@@ -262,5 +335,11 @@ describe("repositório — partes puras", () => {
     expect(searchTarget("12")).toEqual({ kind: "title", text: "12" });
     expect(searchTarget("   ")).toBeNull();
     expect(likePattern("50%_a\\")).toBe("%50\\%\\_a\\\\%");
+  });
+
+  it("busca por texto: título do processo OU casos com título parecido; texto do usuário entre aspas", () => {
+    const pattern = likePattern('Maria, "x"');
+    expect(titleSearchFilter(pattern, [])).toBe(`title.ilike.${orQuoted(pattern)}`);
+    expect(titleSearchFilter(pattern, [CASE, CLIENT])).toBe(`title.ilike."%Maria, \\"x\\"%",legal_case_id.in.(${CASE},${CLIENT})`);
   });
 });

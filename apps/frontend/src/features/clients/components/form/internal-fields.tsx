@@ -1,19 +1,25 @@
 "use client";
 
 import { useFormContext, useWatch } from "react-hook-form";
-import { Field, FormSection, Select, Textarea } from "@/components/ui/form";
-import { useOriginOptions, useResponsibleUserOptions } from "@/features/directory/directory-context";
+import { Field, FormSection, Input, Select, Textarea } from "@/components/ui/form";
+import { ACQUISITION_CHANNEL_OPTIONS } from "@/lib/constants/legal";
+import { useOriginOptions } from "@/features/directory/directory-context";
 
 interface InternalValues {
-  responsibleUserId: string;
   originOfficeId: string;
+  acquisitionChannel: string;
+  acquisitionDetail: string;
   legalSummary: string;
   notes: string;
 }
 
-/** Responsável e observações internas (comum a PF e PJ). */
-export function InternalFields() {
-  const options = useResponsibleUserOptions();
+/**
+ * De onde o cliente veio (duas informações diferentes, Roadmap 2.0):
+ * - escritório de origem: escritório principal ou parceiro A/B;
+ * - canal: como ele chegou (indicação, Google Ads, Meta Ads, ...).
+ * Advogado não é responsável por cliente (só por caso e processo).
+ */
+export function OriginFields() {
   const {
     register,
     control,
@@ -22,18 +28,30 @@ export function InternalFields() {
   const origin = useWatch({ control, name: "originOfficeId" });
   const originOptions = useOriginOptions(origin);
   return (
-    <FormSection title="Informações adicionais" description="Uso interno do escritório. Não aparecem para o cliente.">
-      <Field label="Responsável" requirement="required" error={errors.responsibleUserId?.message}>
-        {(p) => <Select placeholder="Selecione" options={options} {...p} {...register("responsibleUserId")} />}
-      </Field>
+    <FormSection title="De onde o cliente veio" description="Escritório que trouxe o cliente e o canal pelo qual ele chegou. Alimenta os indicadores de origem.">
       <Field
-        label="Origem do cliente"
+        label="Escritório de origem"
         requirement="required"
         error={errors.originOfficeId?.message}
-        hint="Escritório ao qual a entrada do cliente é atribuída. Não define a origem de processos."
+        hint="Escritório principal ou o parceiro que trouxe o cliente."
       >
         {(p) => <Select placeholder="Selecione" options={originOptions} {...p} {...register("originOfficeId")} />}
       </Field>
+      <Field label="Canal (como chegou)" requirement="recommended" error={errors.acquisitionChannel?.message} hint="Indicação, Google Ads, Meta Ads, redes sociais...">
+        {(p) => <Select placeholder="Não informado" options={ACQUISITION_CHANNEL_OPTIONS} {...p} {...register("acquisitionChannel")} />}
+      </Field>
+      <Field label="Detalhe do canal" requirement="optional" error={errors.acquisitionDetail?.message} hint="Quem indicou, nome da campanha, evento." className="col-span-2">
+        {(p) => <Input maxLength={300} {...p} {...register("acquisitionDetail")} />}
+      </Field>
+    </FormSection>
+  );
+}
+
+/** Observações internas (comum a PF e PJ). */
+export function InternalFields() {
+  const { register } = useFormContext<InternalValues>();
+  return (
+    <FormSection title="Informações adicionais" description="Uso interno do escritório. Não aparecem para o cliente.">
       <Field label="Resumo jurídico" requirement="optional" hint="Síntese curta do relacionamento com o cliente." className="col-span-2">
         {(p) => <Textarea rows={3} {...p} {...register("legalSummary")} />}
       </Field>

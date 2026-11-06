@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { AlertTriangle, Building2, CheckCircle2, FileUp, Loader2, Plus, Search, Trash2, UserRound } from "lucide-react";
-import { BRAZILIAN_STATES } from "@/lib/constants/legal";
+import { ACQUISITION_CHANNEL_OPTIONS, BRAZILIAN_STATES, MARITAL_STATUS_LABEL, MARITAL_STATUSES } from "@/lib/constants/legal";
 import { CLIENT_KIND_LABEL, DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABEL, type ClientKind, type DocumentCategory } from "@/lib/constants/status";
 import { formatPhone, maskCNPJ, maskCPF } from "@/lib/formatting";
 import { callAction, mapFieldErrors, referenceCode } from "@/lib/actions/result";
@@ -72,6 +72,13 @@ const SERVER_FIELD_MAP: Record<string, string> = {
   "client.fullName": "fullName",
   "client.legalName": "legalName",
   "client.birthDate": "birthDate",
+  "client.nationality": "nationality",
+  "client.maritalStatus": "maritalStatus",
+  "client.profession": "profession",
+  "client.address.street": "street",
+  "client.address.number": "number",
+  "client.address.district": "district",
+  "client.address.city": "city",
   "client.email": "email",
   "client.phone": "phone",
   "client.address.zipCode": "zipCode",
@@ -81,7 +88,9 @@ const SERVER_FIELD_MAP: Record<string, string> = {
   "case.caseTypeId": "caseTypeId",
   "case.summary": "summary",
 };
-const BASIC_FIELDS = new Set(["fullName", "legalName", "birthDate", "email", "phone", "zipCode", "state"]);
+const BASIC_FIELDS = new Set(["fullName", "legalName", "birthDate", "nationality", "maritalStatus", "profession", "email", "phone", "zipCode", "street", "number", "district", "city", "state"]);
+const MARITAL_OPTIONS = MARITAL_STATUSES.map((m) => ({ value: m, label: MARITAL_STATUS_LABEL[m] }));
+const required = (message: string) => (x: string) => !!x.trim() || message;
 
 /**
  * Envio de caso pelo portal do parceiro (partnerSubmitCaseAction):
@@ -118,6 +127,11 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
       document: presetClient?.document ?? "",
       fullName: "",
       birthDate: "",
+      nationality: "Brasileira",
+      maritalStatus: "",
+      profession: "",
+      acquisitionChannel: "",
+      acquisitionDetail: "",
       legalName: "",
       tradeName: "",
       email: "",
@@ -410,7 +424,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
       {/* ----------------------------- Cadastro básico ----------------------------- */}
       {step === "basic" && (
         <Panel className="max-w-[900px]">
-          <PanelHeader title="Cadastro básico" description="O essencial para a Bárbara Cardoso Advocacia iniciar a análise. Dados complementares podem ser enviados depois." />
+          <PanelHeader title="Cadastro do cliente" description="Qualificação completa, usada na procuração e nas peças. Campos com * são obrigatórios." />
           <PanelBody className="grid grid-cols-2 gap-x-5 gap-y-4">
             <Field
               label="Origem do cliente"
@@ -431,6 +445,15 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
                 <Field label="Data de nascimento" requirement="recommended" error={errors.birthDate?.message}>
                   {(p) => <Input {...p} type="date" {...register("birthDate")} />}
                 </Field>
+                <Field label="Nacionalidade" requirement="required" error={errors.nationality?.message}>
+                  {(p) => <Input {...p} maxLength={80} {...register("nationality", { validate: required("Informe a nacionalidade.") })} />}
+                </Field>
+                <Field label="Estado civil" requirement="required" error={errors.maritalStatus?.message}>
+                  {(p) => <Select {...p} placeholder="Selecione" options={MARITAL_OPTIONS} {...register("maritalStatus", { validate: required("Selecione o estado civil.") })} />}
+                </Field>
+                <Field label="Profissão" requirement="required" error={errors.profession?.message}>
+                  {(p) => <Input {...p} maxLength={120} {...register("profession", { validate: required("Informe a profissão.") })} />}
+                </Field>
               </>
             ) : (
               <>
@@ -442,39 +465,62 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
                 </Field>
               </>
             )}
-            <Field label="E-mail" requirement="recommended" error={errors.email?.message}>
-              {(p) => <Input {...p} type="email" {...register("email", { validate: (x) => !x || /\S+@\S+\.\S+/.test(x) || msg.email })} />}
+            <Field label="Canal (como chegou)" requirement="recommended" hint="Indicação, Google Ads, Meta Ads, redes sociais...">
+              {(p) => <Select {...p} placeholder="Não informado" options={ACQUISITION_CHANNEL_OPTIONS} {...register("acquisitionChannel")} />}
+            </Field>
+            <Field label="Detalhe do canal" requirement="optional" hint="Quem indicou, campanha.">
+              {(p) => <Input {...p} maxLength={300} {...register("acquisitionDetail")} />}
+            </Field>
+            <Field label="E-mail" requirement="required" error={errors.email?.message}>
+              {(p) => <Input {...p} type="email" {...register("email", { validate: (x) => (!!x.trim() && /\S+@\S+\.\S+/.test(x)) || msg.email })} />}
             </Field>
             <Field label="Telefone" requirement="recommended" error={errors.phone?.message}>
               {(p) => <MaskedInput mask="phone" {...p} {...register("phone", { validate: (x) => !x || isPhoneFormat(x) || msg.phone })} />}
             </Field>
-            <Field label="CEP" requirement="recommended" error={errors.zipCode?.message}>
-              {(p) => <MaskedInput mask="cep" {...p} {...register("zipCode")} />}
+            <Field label="CEP" requirement="required" error={errors.zipCode?.message}>
+              {(p) => <MaskedInput mask="cep" {...p} {...register("zipCode", { validate: (x) => x.replace(/\D/g, "").length === 8 || msg.cep })} />}
             </Field>
-            <Field label="Logradouro" requirement="recommended">
-              {(p) => <Input {...p} maxLength={200} {...register("street")} />}
+            <Field label="Logradouro" requirement="required" error={errors.street?.message}>
+              {(p) => <Input {...p} maxLength={200} {...register("street", { validate: required("Informe o logradouro.") })} />}
             </Field>
-            <Field label="Número" requirement="recommended">
-              {(p) => <Input {...p} maxLength={20} {...register("number")} />}
+            <Field label="Número" requirement="required" error={errors.number?.message}>
+              {(p) => <Input {...p} maxLength={20} {...register("number", { validate: required("Informe o número (ou S/N).") })} />}
             </Field>
             <Field label="Complemento" requirement="optional">
               {(p) => <Input {...p} maxLength={100} {...register("complement")} />}
             </Field>
-            <Field label="Bairro" requirement="recommended">
-              {(p) => <Input {...p} maxLength={100} {...register("district")} />}
+            <Field label="Bairro" requirement="required" error={errors.district?.message}>
+              {(p) => <Input {...p} maxLength={100} {...register("district", { validate: required("Informe o bairro.") })} />}
             </Field>
-            <Field label="Município" requirement="recommended">
-              {(p) => <Input {...p} maxLength={100} {...register("city")} />}
+            <Field label="Município" requirement="required" error={errors.city?.message}>
+              {(p) => <Input {...p} maxLength={100} {...register("city", { validate: required("Informe o município.") })} />}
             </Field>
-            <Field label="UF" requirement="recommended" error={errors.state?.message}>
-              {(p) => <Select {...p} placeholder="—" options={UF_OPTIONS} {...register("state")} />}
+            <Field label="UF" requirement="required" error={errors.state?.message}>
+              {(p) => <Select {...p} placeholder="—" options={UF_OPTIONS} {...register("state", { validate: required("Selecione a UF.") })} />}
             </Field>
           </PanelBody>
           <PanelFooter>
             <Button variant="ghost" onClick={back}>
               Voltar
             </Button>
-            <Button onClick={() => validateAndNext(kind === "INDIVIDUAL" ? ["clientOriginId", "fullName", "email", "phone"] : ["clientOriginId", "legalName", "email", "phone"])}>Continuar</Button>
+            <Button
+              onClick={() =>
+                validateAndNext([
+                  "clientOriginId",
+                  ...(kind === "INDIVIDUAL" ? (["fullName", "nationality", "maritalStatus", "profession"] as const) : (["legalName"] as const)),
+                  "email",
+                  "phone",
+                  "zipCode",
+                  "street",
+                  "number",
+                  "district",
+                  "city",
+                  "state",
+                ])
+              }
+            >
+              Continuar
+            </Button>
           </PanelFooter>
         </Panel>
       )}

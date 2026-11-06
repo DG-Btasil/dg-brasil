@@ -1,4 +1,5 @@
 import { mapsProcess, normalizeHeader, type ImportFieldKey } from "@/lib/domain/import-fields";
+import type { ProcessPhase, ProcessStatus } from "@/lib/constants/status";
 import type { RawRow } from "./parse";
 
 /**
@@ -58,7 +59,7 @@ export interface ProcessPayload {
   client_side?: "ACTIVE" | "PASSIVE" | "THIRD_PARTY";
   responsible_user_id?: string;
   status?: ProcessStatusCode;
-  phase?: "PRELIMINARY" | "ARCHIVED";
+  phase?: ProcessPhase;
   distribution_date?: string;
   case_value?: number;
   due_date?: string;
@@ -74,7 +75,8 @@ export interface StagedRow {
   payload?: { client: ClientPayload; process?: ProcessPayload };
 }
 
-export type ProcessStatusCode = "PRE_FILING" | "PREPARING" | "FILED" | "ACTIVE" | "WAITING_CLIENT" | "WAITING_DEADLINE" | "SUSPENDED" | "CLOSED" | "ARCHIVED";
+/** Status do processo (vocabulário do banco, migration 045). */
+export type ProcessStatusCode = ProcessStatus;
 
 /* ------------------------------------------------------------------ */
 /* Conversões                                                          */
@@ -155,14 +157,24 @@ export function parseMoney(value: string): number | undefined {
   return negative ? -n : n;
 }
 
+/**
+ * Texto da planilha → status. A primeira regra que casa vence; entre etapas,
+ * a mais adiantada vem antes ("cumprimento de sentença" é execução, não
+ * sentença; "sentença transitada" é trânsito em julgado). Textos dos status
+ * antigos continuam reconhecidos: "aguardando cliente/prazo" → Em andamento;
+ * encerrado/baixado/extinto → Arquivado.
+ */
 const STATUS_WORDS: [RegExp, ProcessStatusCode][] = [
   [/^pre ?ajuiz|^pre filing/, "PRE_FILING"],
   [/prepar|a ajuizar|^preparing/, "PREPARING"],
-  [/aguardando cliente|^waiting client/, "WAITING_CLIENT"],
-  [/aguardando prazo|^waiting deadline/, "WAITING_DEADLINE"],
+  [/aguardando (cliente|prazo|sentenc)|concluso|^waiting (client|deadline)/, "ACTIVE"],
   [/suspens|sobrest|^suspended/, "SUSPENDED"],
-  [/arquiv|^archived/, "ARCHIVED"],
-  [/encerr|finaliz|conclu|baixad|extint|transitad|^closed/, "CLOSED"],
+  [/arquiv|encerr|finaliz|conclui|baixad|extint|^archived|^closed/, "ARCHIVED"],
+  [/recebid|^received/, "RECEIVED"],
+  [/execu|cumprimento|^enforcement/, "ENFORCEMENT"],
+  [/transit|^final judgment/, "FINAL_JUDGMENT"],
+  [/recurs|apela|agravo|^appeal/, "APPEAL"],
+  [/sentenc/, "SENTENCED"],
   [/distribu|ajuizad|protocolad|^filed/, "FILED"],
   [/andamento|ativo|tramit|^active|em curso/, "ACTIVE"],
 ];
@@ -171,6 +183,21 @@ export function parseStatus(value: string): ProcessStatusCode | undefined {
   const v = normalizeHeader(value).replace(/_/g, " ");
   return STATUS_WORDS.find(([re]) => re.test(v))?.[1];
 }
+
+/**
+ * Fase que o status deixa clara. Em andamento, recebido e suspenso não dizem
+ * a fase: fica a que o processo já tem (ou nenhuma, no processo novo).
+ */
+const PHASE_OF_STATUS: Partial<Record<ProcessStatusCode, ProcessPhase>> = {
+  PRE_FILING: "PRELIMINARY",
+  PREPARING: "PRELIMINARY",
+  FILED: "PROCEEDINGS",
+  SENTENCED: "PROCEEDINGS",
+  APPEAL: "APPEAL",
+  FINAL_JUDGMENT: "FINAL_JUDGMENT",
+  ENFORCEMENT: "ENFORCEMENT",
+  ARCHIVED: "ARCHIVED",
+};
 
 export function parseClientSide(value: string): ProcessPayload["client_side"] | undefined {
   const v = normalizeHeader(value);
@@ -343,8 +370,7 @@ export function normalizeRows(
         const s = parseStatus(v["process.status"]);
         if (s) {
           process.status = s;
-          if (s === "PRE_FILING" || s === "PREPARING") process.phase = "PRELIMINARY";
-          if (s === "CLOSED" || s === "ARCHIVED") process.phase = "ARCHIVED";
+          process.phase = PHASE_OF_STATUS[s];
         } else warnings.push(`Status “${v["process.status"]}” não reconhecido: fica “Em andamento” (com CNJ) ou “Em preparação” (sem CNJ).`);
       }
       if (v["process.distributionDate"]) {

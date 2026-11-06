@@ -1,7 +1,6 @@
-import type { ClientPole, ProcessEventSource, ProcessOrigin, ProcessPhase } from "@/lib/constants/status";
-import { processStatusFromDb, type DbProcessStatus } from "@/repositories/api/db-mappings";
+import { ACTIVE_PROCESS_STATUSES, PROCESS_STATUSES, type ClientPole, type ProcessEventSource, type ProcessOrigin, type ProcessPhase, type ProcessStatus } from "@/lib/constants/status";
 import type { ID } from "@/types";
-import type { ProcessEventDTO, ProcessInternalDTO, ProcessListItem, ProcessPartnerDTO, ProcessPartyDTO } from "./dto";
+import type { ProcessEventDTO, ProcessInternalDTO, ProcessListItem, ProcessPartnerDTO, ProcessPartyDTO, ProcessStatusCountDTO } from "./dto";
 import type { AddPartyInput, CreatePartnerProcessInput, CreateProcessInput, PartyType, UpdatePartyInput, UpdateProcessInput } from "./schemas";
 
 /**
@@ -44,7 +43,7 @@ export interface ProcessRow {
   /** Só selecionado quando o papel pode ver o valor da causa. numeric chega como string ou number. */
   case_value?: number | string | null;
   currency: string;
-  status: DbProcessStatus;
+  status: ProcessStatus;
   phase: ProcessPhase | null;
   distribution_date: string | null;
   created_at: string;
@@ -59,6 +58,15 @@ export interface ProcessRow {
 export interface ProcessInternalRow {
   summary: string | null;
   notes: string | null;
+  /** numeric chega como string ou number. */
+  fee_amount?: number | string | null;
+  fee_percentage?: number | string | null;
+}
+
+/** Linha de public.get_process_status_counts() (045). bigint pode chegar como string. */
+export interface ProcessStatusCountRow {
+  status: string;
+  total: number | string;
 }
 
 export interface PartyRow {
@@ -116,19 +124,31 @@ function caseRef(row: ProcessRow) {
   };
 }
 
+/** Sem nome nenhum (nem título próprio, nem do caso). */
+export const UNNAMED_PROCESS = "Processo sem título";
+
+/**
+ * Nome do processo para exibição. O processo não tem nome próprio (o nome é o
+ * do caso); o título só existe em processos antigos, importados ou vindos de
+ * integração. Nunca devolve texto vazio.
+ */
+export function processDisplayTitle(title: string | null | undefined, caseTitle: string | null | undefined): string {
+  return title?.trim() || caseTitle?.trim() || UNNAMED_PROCESS;
+}
+
 export function listItemFromRow(row: ProcessRow, viewer: ProcessViewer): ProcessListItem {
+  const ref = caseRef(row);
   return {
     id: row.id,
     legalCaseId: row.legal_case_id,
-    ...caseRef(row),
+    ...ref,
     actionType: opt(row.legal_class),
     origin: row.technical_origin,
     cnj: opt(row.cnj_number),
-    title: row.title ?? "",
+    title: processDisplayTitle(row.title, ref.caseTitle),
     court: opt(row.court),
     state: opt(row.state),
-    status: processStatusFromDb(row.status),
-    dbStatus: row.status,
+    status: row.status,
     phase: opt(row.phase),
     distributionDate: opt(row.distribution_date),
     caseValue: viewer.canViewCaseValue ? money(row.case_value) : undefined,
@@ -139,12 +159,13 @@ export function listItemFromRow(row: ProcessRow, viewer: ProcessViewer): Process
 }
 
 function baseFromRow(row: ProcessRow, canViewCaseValue: boolean): ProcessPartnerDTO {
+  const ref = caseRef(row);
   return {
     id: row.id,
     legalCaseId: row.legal_case_id,
-    ...caseRef(row),
+    ...ref,
     cnj: opt(row.cnj_number),
-    title: row.title ?? "",
+    title: processDisplayTitle(row.title, ref.caseTitle),
     court: opt(row.court),
     unit: opt(row.court_unit),
     district: opt(row.district),
@@ -155,8 +176,7 @@ function baseFromRow(row: ProcessRow, canViewCaseValue: boolean): ProcessPartner
     opposingParty: opt(row.adverse_party_summary),
     caseValue: canViewCaseValue ? money(row.case_value) : undefined,
     currency: row.currency,
-    status: processStatusFromDb(row.status),
-    dbStatus: row.status,
+    status: row.status,
     phase: opt(row.phase),
     origin: row.technical_origin,
     distributionDate: opt(row.distribution_date),
@@ -174,7 +194,24 @@ export function internalProcessFromRows(row: ProcessRow, internalRow: ProcessInt
     createdBy: opt(row.created_by),
     summary: opt(internalRow?.summary),
     notes: opt(internalRow?.notes),
+    feeAmount: money(internalRow?.fee_amount),
+    feePercentage: money(internalRow?.fee_percentage),
   };
+}
+
+/**
+ * Contagem por status → todos os status, na ordem da tela, com zero onde não
+ * há processo. Valor fora do vocabulário (não deveria existir) é ignorado.
+ */
+export function statusCountsFromRows(rows: ProcessStatusCountRow[]): ProcessStatusCountDTO[] {
+  const totals = new Map<string, number>();
+  for (const r of rows) totals.set(r.status, (totals.get(r.status) ?? 0) + Number(r.total));
+  return PROCESS_STATUSES.map((status) => ({ status, count: totals.get(status) ?? 0 }));
+}
+
+/** Processos ativos = todos os status, exceto recebido e arquivado. */
+export function activeProcessTotal(counts: readonly ProcessStatusCountDTO[]): number {
+  return counts.reduce((sum, c) => (ACTIVE_PROCESS_STATUSES.includes(c.status) ? sum + c.count : sum), 0);
 }
 
 /**
@@ -256,8 +293,8 @@ const PARTNER_WRITABLE = new Set([
 ]);
 const PARTNER_FIELD_TO_COLUMN = Object.fromEntries(Object.entries(PROCESS_FIELD_TO_COLUMN).filter(([field]) => PARTNER_WRITABLE.has(field)));
 
-/** Campos que vão para legal_process_internal_details. */
-const INTERNAL_DETAIL_FIELDS: Record<string, string> = { summary: "summary", notes: "notes" };
+/** Campos que vão para legal_process_internal_details (nunca lida por parceiro). */
+const INTERNAL_DETAIL_FIELDS: Record<string, string> = { summary: "summary", notes: "notes", feeAmount: "fee_amount", feePercentage: "fee_percentage" };
 
 function copy(source: Record<string, unknown>, map: Record<string, string>, out: Json) {
   for (const [field, column] of Object.entries(map)) {
@@ -279,10 +316,18 @@ export function processInsertRow(id: ID, input: CreateProcessInput | CreatePartn
   return out;
 }
 
-/** Dados internos do cadastro (null quando não há nada a gravar). */
-export function internalDetailsRow(id: ID, input: { summary?: string | null; notes?: string | null }): Json | null {
+/**
+ * Dados internos do cadastro (null quando não há nada a gravar). Vai para
+ * create_legal_process_once como p_internal (summary, notes, fee_amount,
+ * fee_percentage — 045).
+ */
+export function internalDetailsRow(
+  id: ID,
+  input: { summary?: string | null; notes?: string | null; feeAmount?: number | null; feePercentage?: number | null },
+): Json | null {
   const out: Json = {};
   copy(input as Record<string, unknown>, INTERNAL_DETAIL_FIELDS, out);
+  for (const key of Object.keys(out)) if (out[key] === null || out[key] === undefined) delete out[key];
   if (Object.keys(out).length === 0) return null;
   return { legal_process_id: id, ...out };
 }
@@ -297,7 +342,7 @@ export function processUpdatePatch(patch: UpdateProcessInput["patch"]): Json {
 /** PATCH dos dados internos (null quando o patch não toca neles). */
 export function internalDetailsPatch(id: ID, patch: UpdateProcessInput["patch"]): Json | null {
   const p = patch as Record<string, unknown>;
-  if (!("summary" in p) && !("notes" in p)) return null;
+  if (!Object.keys(INTERNAL_DETAIL_FIELDS).some((field) => field in p)) return null;
   const out: Json = { legal_process_id: id };
   copy(p, INTERNAL_DETAIL_FIELDS, out);
   return out;

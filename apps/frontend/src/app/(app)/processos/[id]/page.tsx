@@ -19,6 +19,7 @@ import { requireAppSession } from "@/server/auth/session";
 import { listAgreementRowsAction } from "@/server/domain/finance/actions";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
+import { listProcessTasksAction } from "@/server/domain/process-tasks/actions";
 
 const fallback = (
   <PageContainer>
@@ -58,6 +59,7 @@ async function InternalProcess({ id }: { id: string }) {
     listDeadlinesAction({ processId: id, pageSize: 50 }),
     listDocumentsAction(documentListInput({ legalProcessId: id })),
     can(session.role, "reviews.view") ? listReviewsAction({ processId: id, pageSize: 50 }) : Promise.resolve(undefined),
+    listProcessTasksAction({ processId: id }),
   ]);
   const result = await getProcessAction({ id });
   if (!result.ok) {
@@ -69,13 +71,13 @@ async function InternalProcess({ id }: { id: string }) {
     );
   }
   if (result.data.surface !== "INTERNAL") return <ProcessNotFound />;
-  const [[parties, events, deadlines, documents, reviews], agreements] = await Promise.all([
+  const [[parties, events, deadlines, documents, reviews, tasks], agreements] = await Promise.all([
     pending,
     can(session.role, "finance.view") ? listAgreementRowsAction(agreementQueryToInput(DEFAULT_AGREEMENT_QUERY, { legalCaseId: result.data.process.legalCaseId })) : Promise.resolve(undefined),
   ]);
   return (
     <Suspense fallback={fallback}>
-      <ProcessDetail process={result.data.process} parties={parties} events={events} deadlines={deadlines} documents={documents} reviews={reviews} agreements={agreements} />
+      <ProcessDetail process={result.data.process} parties={parties} events={events} deadlines={deadlines} documents={documents} reviews={reviews} agreements={agreements} tasks={tasks} />
     </Suspense>
   );
 }

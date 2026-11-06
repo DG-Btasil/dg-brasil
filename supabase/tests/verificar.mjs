@@ -645,9 +645,25 @@ await deve('outro parceiro não vê a solicitação', () => como(ids.ferreiraAdm
 
 // ═════════════════════════════ financeiro ════════════════════════════════
 
+// Roadmap 2.0 [046]: contrato de honorários é do PROCESSO. Nos testes antigos,
+// o contrato vai para o primeiro processo do caso (criado aqui se não houver).
+await db.exec(`
+  create or replace function public.test_process_of(p_case uuid) returns uuid
+  language plpgsql security definer set search_path = '' as $f$
+  declare v uuid;
+  begin
+    select id into v from public.legal_processes where legal_case_id = p_case and deleted_at is null order by created_at, id limit 1;
+    if v is null then
+      insert into public.legal_processes (legal_case_id, title) values (p_case, 'Processo do contrato') returning id into v;
+    end if;
+    return v;
+  end $f$;
+  grant execute on function public.test_process_of(uuid) to authenticated;
+`)
+
 secao('Financeiro')
 await deve('ADMIN registra honorários, obrigação e recebimento; a divisão nasce sozinha do snapshot', () => como(ids.barbara, async (tx) => {
-  ids.acordo = (await um(tx, `insert into financial_agreements (legal_case_id, fixed_fee, status) values ($1, 4000, 'ACTIVE') returning id`, [ids.casoA])).id
+  ids.acordo = (await um(tx, `insert into financial_agreements (legal_process_id, legal_case_id, fixed_fee, status) values (public.test_process_of($1), $1, 4000, 'ACTIVE') returning id`, [ids.casoA])).id
   ids.pagamento = (await um(tx, `insert into payments (financial_agreement_id, amount, payment_type, due_date)
     values ($1, 4000, 'FIXED', current_date + 30) returning id`, [ids.acordo])).id
   ids.recebimento = (await um(tx, `insert into payment_receipts (payment_id, kind, amount, method)
@@ -663,9 +679,9 @@ await deve('ADMIN registra honorários, obrigação e recebimento; a divisão na
   await tx.query(`update partner_transfers set status = 'PAID' where id = $1`, [ids.repasse])
 }))
 
-await deveFalhar('um segundo acordo ATIVO no mesmo caso é impedido', () =>
-  db.query(`insert into financial_agreements (legal_case_id, status) values ($1, 'ACTIVE')`, [ids.casoA]),
-  /one_active_per_case/)
+await deveFalhar('um segundo acordo ATIVO no mesmo processo é impedido', () =>
+  db.query(`insert into financial_agreements (legal_process_id, legal_case_id, status) values (public.test_process_of($1), $1, 'ACTIVE')`, [ids.casoA]),
+  /one_active_per_process/)
 
 await deveFalhar('divisão não se digita: nem ADMIN insere', () => como(ids.barbara, (tx) =>
   tx.query(`insert into partner_revenue_allocations (receipt_id, case_partnership_agreement_id, base_amount, partner_percentage, partner_amount, owner_amount)
@@ -805,7 +821,7 @@ await deve('50/50 sobre R$ 1.000 recebido → parceiro R$ 500; mudar o padrão p
   const novo = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, partner_organization_id,
       origin_organization_id, created_by_organization_id, status, accepted_at, assigned_lawyer_id)
     values ($1, $2, 'Caso 60/40', $3, $3, $3, 'ACCEPTED', now(), $4) returning id`, [ids.joao, ids.banking, ids.almeida, ids.lucas])).id
-  const fa = (await um(db, `insert into financial_agreements (legal_case_id, status) values ($1, 'ACTIVE') returning id`, [novo])).id
+  const fa = (await um(db, `insert into financial_agreements (legal_process_id, legal_case_id, status) values (public.test_process_of($1), $1, 'ACTIVE') returning id`, [novo])).id
   const p2 = (await um(db, `insert into payments (financial_agreement_id, amount, payment_type) values ($1, 1000, 'OTHER') returning id`, [fa])).id
   const r2 = (await um(db, `insert into payment_receipts (payment_id, kind, amount) values ($1, 'RECEIPT', 1000) returning id`, [p2])).id
   igual((await um(db, `select partner_amount::text v from partner_revenue_allocations where receipt_id = $1`, [r2])).v, '600.00', 'caso novo a 60%')
@@ -853,7 +869,7 @@ await deve('Parceiro A → Parceiro B → OWNER → Parceiro A: cancela, recria,
       origin_organization_id, created_by_organization_id, status, accepted_at, assigned_lawyer_id)
     values ($1, $2, 'Caso de origem trocada', $3, $3, $3, 'ACCEPTED', now(), $4) returning id`,
     [ids.joao, ids.banking, ids.almeida, ids.lucas])).id
-  const fa = (await um(db, `insert into financial_agreements (legal_case_id, status) values ($1, 'ACTIVE') returning id`, [caso])).id
+  const fa = (await um(db, `insert into financial_agreements (legal_process_id, legal_case_id, status) values (public.test_process_of($1), $1, 'ACTIVE') returning id`, [caso])).id
   const pg = (await um(db, `insert into payments (financial_agreement_id, amount, payment_type) values ($1, 2000, 'OTHER') returning id`, [fa])).id
   const antes = (await um(db, `insert into payment_receipts (payment_id, kind, amount) values ($1, 'RECEIPT', 1000) returning id`, [pg])).id
   const acordoA = (await um(db, `select id from case_partnership_agreements where legal_case_id = $1 and cancelled_at is null`, [caso])).id
@@ -1596,8 +1612,8 @@ await deve('PJ com sócios e CNAEs secundários', async () => {
 await deveFalhar('documento de identidade precisa de tipo e número juntos', () =>
   db.query(`update individual_client_details set identity_document_type = 'CNH' where client_id = $1`, [ids.joao]),
   /identity_complete/)
-await deveFalhar('responsável pelo cliente precisa ser usuário interno', () =>
-  db.query(`update clients set responsible_user_id = $2 where id = $1`, [ids.joao, ids.almeidaAdm]), /usuário interno ativo/)
+await deveFalhar('cliente não tem mais "responsável" (Roadmap 2.0: advogado responde por caso/processo) [045]', () =>
+  db.query(`update clients set responsible_user_id = $2 where id = $1`, [ids.joao, ids.almeidaAdm]), /responsible_user_id/)
 
 // ═════════════════════════════ importação genérica ═══════════════════════
 
@@ -2653,7 +2669,7 @@ secao('Acordo financeiro: ciclo de vida garantido no banco [030]')
 const novoCaso030 = async (titulo) => (await um(db, `insert into legal_cases (client_id, legal_area_id, title, origin_organization_id, created_by_organization_id)
   values ($1, $2, $3, $4, $4) returning id`, [ids.joao, ids.banking, titulo, ids.owner])).id
 const acordo030 = (uid, caso, status = 'DRAFT', termos = {}) => como(uid, async (tx) =>
-  (await um(tx, `insert into financial_agreements (legal_case_id, status, fixed_fee, notes) values ($1, $2, $3, $4) returning id`,
+  (await um(tx, `insert into financial_agreements (legal_process_id, legal_case_id, status, fixed_fee, notes) values (public.test_process_of($1), $1, $2, $3, $4) returning id`,
     [caso, status, termos.fixed_fee ?? 1000, termos.notes ?? null])).id)
 const situacao030 = (uid, id, status) => como(uid, (tx) => tx.query(`update financial_agreements set status = $2 where id = $1`, [id, status]))
 const obrigacao030 = (uid, acordo, valor = 500) => como(uid, async (tx) =>
@@ -3203,9 +3219,9 @@ await deveFalhar('valores da parceria não se editam (nem ADMIN)', () =>
 await deve('contratado por modelo: obrigações não canceladas de acordos não cancelados, somadas no banco; só ADMIN', async () => {
   const modelo = (await um(db, `insert into fee_models (name) values ('Modelo 035') returning id`)).id
   const caso1 = await novoCaso030('Caso 035 modelo A'), caso2 = await novoCaso030('Caso 035 modelo B'), caso3 = await novoCaso030('Caso 035 modelo C')
-  const a1 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_case_id, fee_model_id) values ($1, $2) returning id`, [caso1, modelo])).id)
-  const a2 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_case_id, fee_model_id) values ($1, $2) returning id`, [caso2, modelo])).id)
-  const a3 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_case_id, fee_model_id) values ($1, $2) returning id`, [caso3, modelo])).id)
+  const a1 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_process_id, legal_case_id, fee_model_id) values (public.test_process_of($1), $1, $2) returning id`, [caso1, modelo])).id)
+  const a2 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_process_id, legal_case_id, fee_model_id) values (public.test_process_of($1), $1, $2) returning id`, [caso2, modelo])).id)
+  const a3 = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_process_id, legal_case_id, fee_model_id) values (public.test_process_of($1), $1, $2) returning id`, [caso3, modelo])).id)
   await cronograma035(ids.barbara, randomUUID(), a1, '1000.00', 2, '2027-01-01')
   const p2 = await obrigacao030(ids.barbara, a2, 250)
   const cancelada = await obrigacao030(ids.barbara, a2, 500)
@@ -4531,13 +4547,12 @@ await deve('grava em lotes até concluir; contagens batem com a prévia', async 
   igual(a.metadata.processes_created, 4, 'auditoria do resumo')
 })
 await deve('mesmo CPF em duas linhas = um cliente com dois casos/processos; origem IMPORT, caso em andamento com advogado', async () => {
-  const c = await um(db, `select id, responsible_user_id from clients where cpf = $1`, [cpf042(1)])
+  const c = await um(db, `select id from clients where cpf = $1`, [cpf042(1)])
   const ps = await linhas(db, `select lp.technical_origin, lp.status, lp.responsible_user_id, lc.status cs, lc.assigned_lawyer_id, lc.origin_organization_id, lc.legal_area_id
     from legal_processes lp join legal_cases lc on lc.id = lp.legal_case_id where lc.client_id = $1 order by lp.cnj_number`, [c.id])
   igual(ps.length, 2, 'dois processos')
   igual(ps.map((p) => [p.technical_origin, p.cs, p.assigned_lawyer_id, p.origin_organization_id, p.legal_area_id]),
     [['IMPORT', 'IN_PROGRESS', ids.lucas, ids.owner, ids.banking], ['IMPORT', 'IN_PROGRESS', ids.lucas, ids.owner, ids.banking]], 'casos')
-  igual(c.responsible_user_id, ids.lucas, 'responsável pelo cliente')
   const r2 = await um(db, `select status, entity_type, outcome from import_row_results where import_job_id = $1 and row_number = 2`, [imp.job])
   const r3 = await um(db, `select status, outcome from import_row_results where import_job_id = $1 and row_number = 3`, [imp.job])
   igual([r2.status, r2.entity_type, r2.outcome.client_action, r3.outcome.client_action, r3.outcome.client_id], ['IMPORTED', 'legal_processes', 'CREATE', 'LINK', c.id], 'procedência')
@@ -5068,6 +5083,275 @@ await deve('rodada presa (a rota morreu antes de gravar o fim) vira interrompida
   igual(st.find((x) => x.id === velha).error, 'Interrompida (sem conclusão em 6 min).', 'motivo')
   igual(st.find((x) => x.id === nova).status, 'RUNNING', 'a de 5 min segue')
   await db.query(`update judicial_sync_runs set status = 'FAILED', finished_at = now() where id = $1`, [nova])
+})
+
+// ═════════════════════════════ Roadmap 2.0 — cadastros [045] ════════════
+
+secao('Roadmap 2.0 — cadastros: canal de aquisição, cliente sem responsável, status e fases do processo, honorários, análise [045]')
+await deve('cliente PF com canal de aquisição; sem "responsável" e sem "união estável" no banco', async () => {
+  ids.cli045 = await salvar(ids.ana, null, {
+    kind: 'INDIVIDUAL', document: '999.045.000-01', origin_organization_id: ids.owner, responsible_user_id: ids.lucas,
+    acquisition_channel: 'GOOGLE_ADS', acquisition_detail: 'Campanha consignado', full_name: 'Cliente 045',
+    nationality: 'Brasileira', marital_status: 'SINGLE', profession: 'Aposentada', stable_union: true,
+    contact: { email: 'c045@dgbrasil.test', phone: '11999990045' },
+    address: { postal_code: '01001-000', street: 'Rua A', number: '1', neighborhood: 'Centro', city: 'São Paulo', state: 'SP' },
+  })
+  const c = await um(db, `select acquisition_channel, acquisition_detail from clients where id = $1`, [ids.cli045])
+  igual([c.acquisition_channel, c.acquisition_detail], ['GOOGLE_ADS', 'Campanha consignado'], 'canal')
+  const cols = await linhas(db, `select table_name || '.' || column_name c from information_schema.columns
+    where (table_name = 'clients' and column_name = 'responsible_user_id') or (table_name = 'individual_client_details' and column_name = 'stable_union')
+       or (table_name = 'client_directory' and column_name in ('responsible_user_id', 'acquisition_channel'))`)
+  igual(cols.map((r) => r.c).sort(), ['client_directory.acquisition_channel'], 'colunas')
+  await salvar(ids.ana, ids.cli045, { acquisition_channel: 'REFERRAL', acquisition_detail: 'Indicação da Dona Maria' })
+  igual((await um(db, `select acquisition_channel from clients where id = $1`, [ids.cli045])).acquisition_channel, 'REFERRAL', 'edição do canal')
+})
+await deveFalhar('canal de aquisição fora da lista é recusado', () =>
+  salvar(ids.ana, ids.cli045, { acquisition_channel: 'TV' }), /Canal de aquisição inválido/)
+await deveFalhar('…e também direto na tabela (CHECK)', () =>
+  db.query(`update clients set acquisition_channel = 'TV' where id = $1`, [ids.cli045]), /acquisition_channel_check/)
+await deve('caso herda o canal do cliente; canal informado no caso prevalece', async () => {
+  const base = { client_id: ids.cli045, legal_area_id: ids.banking, title: 'Caso 045', origin_organization_id: ids.owner }
+  const a = await criarCaso(ids.lucas, randomUUID(), base)
+  const b = await criarCaso(ids.lucas, randomUUID(), { ...base, title: 'Caso 045 B', acquisition_channel: 'META_ADS', acquisition_detail: 'Reels' })
+  const r = await linhas(db, `select acquisition_channel, acquisition_detail from legal_cases where id = any ($1) order by title`, [[a.legal_case_id, b.legal_case_id]])
+  igual(r.map((x) => [x.acquisition_channel, x.acquisition_detail]), [['REFERRAL', 'Indicação da Dona Maria'], ['META_ADS', 'Reels']], 'canais')
+  ids.caso045 = a.legal_case_id
+})
+await deve('portal: cliente novo nasce com nacionalidade, estado civil, profissão e canal; o caso herda o canal', async () => {
+  const cli = { document: '999.045.000-02', kind: 'INDIVIDUAL', origin_organization_id: ids.almeida, full_name: 'Cliente Portal 045',
+    nationality: 'Brasileira', marital_status: 'MARRIED', profession: 'Pedreiro', acquisition_channel: 'WHATSAPP', email: 'p045@dgbrasil.test' }
+  const kase = { legal_area_id: ids.banking, title: 'Caso portal 045', origin_organization_id: ids.almeida }
+  const r = await como(ids.almeidaAdm, async (tx) => (await um(tx, `select public.partner_submit_case_once($1, $2, $3) r`, [randomUUID(), JSON.stringify(cli), JSON.stringify(kase)])).r)
+  const d = await um(db, `select d.nationality, d.marital_status, d.profession, c.acquisition_channel from individual_client_details d join clients c on c.id = d.client_id where d.client_id = $1`, [r.client_id])
+  igual([d.nationality, d.marital_status, d.profession, d.acquisition_channel], ['Brasileira', 'MARRIED', 'Pedreiro', 'WHATSAPP'], 'qualificação')
+  igual((await um(db, `select acquisition_channel from legal_cases where id = $1`, [r.legal_case_id])).acquisition_channel, 'WHATSAPP', 'caso herdou')
+})
+await deve('status e fases antigos são traduzidos (nunca recusados); os novos são aceitos', async () => {
+  const novo = (status, phase, n) => criarProc(ids.lucas, randomUUID(), { legal_case_id: ids.caso045, cnj_number: cnj027(45000 + n), status, phase })
+  const ids045 = []
+  for (const [i, [st, ph]] of [['WAITING_CLIENT', 'PLEADINGS'], ['CLOSED', 'EVIDENCE'], ['SENTENCED', 'PROCEEDINGS'], ['FINAL_JUDGMENT', 'FINAL_JUDGMENT'], ['RECEIVED', 'ENFORCEMENT']].entries()) {
+    ids045.push((await novo(st, ph, i)).legal_process_id)
+  }
+  const r = await linhas(db, `select status, phase from legal_processes where id = any ($1) order by cnj_number`, [ids045])
+  igual(r.map((x) => [x.status, x.phase]), [['ACTIVE', 'PROCEEDINGS'], ['ARCHIVED', 'PROCEEDINGS'], ['SENTENCED', 'PROCEEDINGS'], ['FINAL_JUDGMENT', 'FINAL_JUDGMENT'], ['RECEIVED', 'ENFORCEMENT']], 'status e fases')
+  await db.query(`update legal_processes set status = 'WAITING_DEADLINE', phase = 'JUDGMENT' where id = $1`, [ids045[2]])
+  igual(await um(db, `select status, phase from legal_processes where id = $1`, [ids045[2]]), { status: 'ACTIVE', phase: 'PROCEEDINGS' }, 'na edição também')
+  igual((await um(db, `select count(*)::int n from legal_processes where status in ('WAITING_CLIENT', 'WAITING_DEADLINE', 'CLOSED') or phase in ('PLEADINGS', 'EVIDENCE', 'JUDGMENT')`)).n, 0, 'nada antigo sobrou')
+})
+await deveFalhar('status desconhecido é recusado', () =>
+  criarProc(ids.lucas, randomUUID(), { legal_case_id: ids.caso045, status: 'GANHO' }), /legal_processes_status_check/)
+await deve('honorários do processo ficam nos dados internos; processo sem nome próprio (usa o do caso)', async () => {
+  const r = await criarProc(ids.lucas, randomUUID(), { legal_case_id: ids.caso045, title: '   ' }, { fee_amount: '1500.50', fee_percentage: '30' })
+  const p = await um(db, `select p.title, d.fee_amount::text fee, d.fee_percentage::text pct from legal_processes p
+    join legal_process_internal_details d on d.legal_process_id = p.id where p.id = $1`, [r.legal_process_id])
+  igual([p.title, p.fee, p.pct], [null, '1500.50', '30.00'], 'honorários')
+})
+await deve('parceiro cria processo: honorários ignorados (dado interno)', async () => {
+  const r = await criarProc(ids.almeidaAdm, randomUUID(), { legal_case_id: ids.casoA, title: 'Processo parceiro 045' }, { fee_amount: '999' })
+  igual((await um(db, `select count(*)::int n from legal_process_internal_details where legal_process_id = $1`, [r.legal_process_id])).n, 0, 'sem dados internos')
+})
+await deve('análise: informações adicionais ficam na análise e vão para o agente junto com o pedido (no início e no reenvio)', async () => {
+  const r = await como(ids.lucas, async (tx) => (await um(tx, `select public.start_legal_analysis_once($1, $2, $3, '{}', true, 'Verificar portabilidade', '{}', 'Cliente tem 82 anos; banco Pan.') r`,
+    [randomUUID(), ids.caso045, ids.tpl029])).r)
+  const a = await um(db, `select a.additional_info, i.request_text from legal_analyses a join agent_run_inputs i on i.agent_run_id = a.agent_run_id where a.id = $1`, [r.analysis_id])
+  igual(a.additional_info, 'Cliente tem 82 anos; banco Pan.', 'guardado')
+  igual(a.request_text, 'Informações adicionais da equipe:\nCliente tem 82 anos; banco Pan.\n\nPedido:\nVerificar portabilidade', 'texto do agente')
+  const s = await como(ids.lucas, async (tx) => (await um(tx, `select public.start_legal_analysis_once($1, $2, $3, '{}', false, null, '{}', 'Só contexto') r`, [randomUUID(), ids.caso045, ids.tpl029])).r)
+  const e = await enviarAnalise(ids.lucas, randomUUID(), s.analysis_id)
+  igual((await um(db, `select request_text from agent_run_inputs where agent_run_id = $1`, [e.agent_run_id])).request_text, 'Informações adicionais da equipe:\nSó contexto', 'reenvio')
+})
+await deve('contagem por status: uma consulta, com a RLS de quem pede', async () => {
+  const soma = (rows) => rows.reduce((t, r) => t + Number(r.total), 0)
+  const lucas = await como(ids.lucas, async (tx) => ({ rpc: soma(await linhas(tx, `select * from public.get_process_status_counts()`)),
+    tab: (await um(tx, `select count(*)::int n from legal_processes where deleted_at is null`)).n }))
+  igual(lucas.rpc, lucas.tab, 'interno')
+  const parceiro = await como(ids.almeidaAdm, async (tx) => ({ rpc: soma(await linhas(tx, `select * from public.get_process_status_counts()`)),
+    tab: (await um(tx, `select count(*)::int n from legal_processes where deleted_at is null`)).n }))
+  igual(parceiro.rpc, parceiro.tab, 'parceiro: só os dele')
+  if (!(parceiro.rpc < lucas.rpc)) throw new Error('parceiro deveria ver menos processos que o interno')
+})
+
+// ═════════════════════════════ Roadmap 2.0 — financeiro por processo [046] ═
+
+secao('Roadmap 2.0 — financeiro por processo: contrato do processo, despesas e visão consolidada [046]')
+await deve('cenário: caso de parceiro aceito com dois processos (valor da causa e honorários)', async () => {
+  ids.caso046 = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, partner_organization_id,
+      origin_organization_id, created_by_organization_id, status, accepted_at, assigned_lawyer_id)
+    values ($1, $2, 'Caso 046', $3, $3, $3, 'ACCEPTED', now(), $4) returning id`, [ids.joao, ids.banking, ids.almeida, ids.lucas])).id
+  ids.proc046a = (await um(db, `insert into legal_processes (legal_case_id, title, case_value) values ($1, null, 50000) returning id`, [ids.caso046])).id
+  ids.proc046b = (await um(db, `insert into legal_processes (legal_case_id, title, case_value) values ($1, 'Processo B 046', 8000) returning id`, [ids.caso046])).id
+  await db.query(`insert into legal_process_internal_details (legal_process_id, fee_amount, fee_percentage) values ($1, 10000, 30)`, [ids.proc046a])
+  const cpa = await um(db, `select partner_percentage::text p, owner_percentage::text o from case_partnership_agreements where legal_case_id = $1 and cancelled_at is null`, [ids.caso046])
+  if (!cpa) throw new Error('parceria do caso não nasceu no aceite')
+  ids.cpa046 = { partner: Number(cpa.p), owner: Number(cpa.o) }
+})
+await deveFalhar('contrato novo sem processo é recusado (o financeiro é do processo)', () =>
+  como(ids.barbara, (tx) => tx.query(`insert into financial_agreements (legal_case_id, status) values ($1, 'DRAFT')`, [ids.caso046])),
+  /contrato de honorários é do processo/)
+await deveFalhar('processo de outro caso não serve (FK composta processo + caso)', () =>
+  como(ids.barbara, (tx) => tx.query(`insert into financial_agreements (legal_case_id, legal_process_id, status) values ($1, $2, 'DRAFT')`, [ids.casoA, ids.proc046a])),
+  /financial_agreements_process_fkey/)
+await deve('um contrato ATIVO por processo; o outro processo do mesmo caso tem o seu', async () => {
+  ids.fa046a = await como(ids.barbara, async (tx) => (await um(tx, `insert into financial_agreements (legal_case_id, legal_process_id, status, fixed_fee) values ($1, $2, 'ACTIVE', 10000) returning id`, [ids.caso046, ids.proc046a])).id)
+  await como(ids.barbara, (tx) => tx.query(`insert into financial_agreements (legal_case_id, legal_process_id, status) values ($1, $2, 'ACTIVE')`, [ids.caso046, ids.proc046b]))
+})
+await deveFalhar('…e um segundo ATIVO no mesmo processo é impedido', () =>
+  como(ids.barbara, (tx) => tx.query(`insert into financial_agreements (legal_case_id, legal_process_id, status) values ($1, $2, 'ACTIVE')`, [ids.caso046, ids.proc046a])),
+  /one_active_per_process/)
+await deveFalhar('contrato não muda de processo', () =>
+  como(ids.barbara, (tx) => tx.query(`update financial_agreements set legal_process_id = $2 where id = $1`, [ids.fa046a, ids.proc046b])),
+  /não muda de processo/)
+await deve('recebimento no processo A: dividido com o parceiro pelo percentual do caso', async () => {
+  await como(ids.barbara, async (tx) => {
+    const pg = (await um(tx, `insert into payments (financial_agreement_id, amount, payment_type, due_date) values ($1, 6000, 'FIXED', current_date + 10) returning id`, [ids.fa046a])).id
+    await tx.query(`insert into payments (financial_agreement_id, amount, payment_type, due_date) values ($1, 4000, 'FIXED', current_date - 5)`, [ids.fa046a])
+    await tx.query(`insert into payment_receipts (payment_id, kind, amount) values ($1, 'RECEIPT', 6000)`, [pg])
+  })
+})
+await deve('despesas: ADMIN lança (o caso vem do processo); cancelar exige motivo; cancelada não muda; auditada', async () => {
+  const nova = (cat, valor, pago) => como(ids.barbara, async (tx) => (await um(tx,
+    `insert into process_expenses (legal_process_id, legal_case_id, category, description, amount, incurred_on, paid_on, reimbursable)
+     values ($1, $2, $3, $4, $5, current_date, $6, $7) returning id, legal_case_id`,
+    [ids.proc046a, ids.casoA, cat, `Despesa ${cat}`, valor, pago ? '2026-11-01' : null, cat === 'COURT_COSTS'])))
+  const custas = await nova('COURT_COSTS', 300, true)
+  igual(custas.legal_case_id, ids.caso046, 'caso vem do processo, não do navegador')
+  ids.desp046 = custas.id
+  await nova('HIRED_LAWYER', 500, false)
+  const pericia = (await nova('EXPERT_FEE', 200, true)).id
+  await como(ids.barbara, (tx) => tx.query(`update process_expenses set cancelled_at = now(), cancellation_reason = 'Lançada em duplicidade' where id = $1`, [pericia]))
+  const a = await um(db, `select action from audit_events where entity_id = $1 order by created_at desc limit 1`, [pericia])
+  igual(a.action, 'PROCESS_EXPENSE_CANCELLED', 'auditoria')
+  ids.pericia046 = pericia
+})
+await deveFalhar('cancelar despesa sem motivo é recusado', () =>
+  como(ids.barbara, (tx) => tx.query(`update process_expenses set cancelled_at = now() where id = $1`, [ids.desp046])), /cancel_has_reason/)
+await deveFalhar('despesa cancelada não muda', () =>
+  como(ids.barbara, (tx) => tx.query(`update process_expenses set amount = 1 where id = $1`, [ids.pericia046])), /histórico/)
+await deveFalhar('LAWYER não lança despesa', () =>
+  como(ids.lucas, (tx) => tx.query(`insert into process_expenses (legal_process_id, legal_case_id, category, description, amount, incurred_on) values ($1, $2, 'OTHER', 'x', 1, current_date)`, [ids.proc046a, ids.caso046])),
+  /Somente ADMIN/)
+await deve('LAWYER e parceiro não leem despesas (RLS)', async () => {
+  for (const uid of [ids.lucas, ids.almeidaAdm]) {
+    const n = await como(uid, async (tx) => (await um(tx, `select count(*)::int n from process_expenses`)).n)
+    igual(n, 0, 'despesas visíveis')
+  }
+})
+await deve('visão por processo: valor da causa, honorários (escritório × parceiro), contratado, recebido, atraso, despesas e resultado', async () => {
+  const v = await como(ids.barbara, async (tx) => um(tx, `select * from process_finance_overview where legal_process_id = $1`, [ids.proc046a]))
+  const n = (x) => Number(x)
+  const parceiroRecebido = Math.round(6000 * ids.cpa046.partner) / 100
+  igual([n(v.case_value), n(v.fee_amount), n(v.fee_percentage)], [50000, 10000, 30], 'valor e honorários')
+  igual([n(v.fee_partner_share), n(v.fee_owner_share)], [10000 * ids.cpa046.partner / 100, 10000 * ids.cpa046.owner / 100], 'divisão dos honorários')
+  igual([n(v.contracted), n(v.received), n(v.open_balance), n(v.overdue)], [10000, 6000, 4000, 4000], 'contrato')
+  igual([n(v.received_partner_share), n(v.received_owner_share)], [parceiroRecebido, 6000 - parceiroRecebido], 'recebido dividido')
+  igual([n(v.expenses_total), n(v.expenses_paid), n(v.expenses_open), n(v.expenses_reimbursable), v.expense_count], [800, 300, 500, 300, 2], 'despesas (cancelada fora)')
+  igual(n(v.net_result), 6000 - parceiroRecebido - 300, 'resultado = recebido do escritório − despesas pagas')
+  igual(v.display_title, 'Caso 046', 'processo sem nome usa o do caso')
+  const b = await como(ids.barbara, async (tx) => um(tx, `select display_title, contracted::text c from process_finance_overview where legal_process_id = $1`, [ids.proc046b]))
+  igual([b.display_title, b.c], ['Processo B 046', '0.00'], 'processo B')
+})
+await deve('visão por processo para LAWYER: dinheiro vazio (RLS das tabelas de origem)', async () => {
+  const v = await como(ids.lucas, async (tx) => um(tx, `select contracted::text c, received::text r, expenses_total::text e from process_finance_overview where legal_process_id = $1`, [ids.proc046a]))
+  igual([v.c, v.r, v.e], ['0.00', '0.00', '0.00'], 'sem valores')
+})
+
+await deve('totais do financeiro: uma linha somada no banco; cliente na visão por processo', async () => {
+  const t = await como(ids.barbara, async (tx) => um(tx, `select process_count, expenses_total::text e from process_finance_totals`))
+  if (!(t.process_count > 0)) throw new Error('sem processos nos totais')
+  const v = await como(ids.barbara, async (tx) => um(tx, `select client_name from process_finance_overview where legal_process_id = $1`, [ids.proc046a]))
+  if (!v.client_name) throw new Error('sem nome do cliente')
+})
+
+// ═════════════════════════════ Roadmap 2.0 — tarefas para os agentes [047] ═
+
+secao('Roadmap 2.0 — tarefas do processo para os agentes: orquestrador, revisão humana e o check [047]')
+const tarefa047 = (uid, proc, titulo, o = {}) => como(uid, async (tx) => (await um(tx,
+  `select public.create_process_task($1, $2, $3, $4, $5, $6, $7) r`,
+  [proc, titulo, o.instrucoes ?? `Fazer: ${titulo}`, o.agente ?? null, o.prazo ?? null, o.prioridade ?? 'NORMAL', o.enviar ?? true])).r)
+const status047 = async (id) => (await um(db, `select status, last_error, attempts, agent_run_id from process_tasks where id = $1`, [id]))
+await deve('sem agente escolhido e sem orquestrador: a tarefa fica ABERTA, com o motivo; vira movimentação interna', async () => {
+  const r = await tarefa047(ids.lucas, ids.proc046a, 'Juntar procuração')
+  const t = await status047(r.task_id)
+  igual([t.status, t.agent_run_id, !!t.last_error], ['OPEN', null, true], 'aberta')
+  const ev = await um(db, `select source, event_type, title from process_events where raw_data ->> 'process_task_id' = $1`, [r.task_id])
+  igual([ev.source, ev.event_type, ev.title], ['MANUAL', 'TASK', 'Tarefa para os agentes: Juntar procuração'], 'movimentação')
+  ids.tarefaAberta047 = r.task_id
+})
+await deveFalhar('LAWYER não escolhe o orquestrador', () =>
+  como(ids.lucas, (tx) => tx.query(`select public.save_process_task_settings($1)`, [ids.agente])), /Somente ADMIN/)
+await deve('ADMIN escolhe o orquestrador; tarefa nova vai para a fila com o pedido completo', async () => {
+  await como(ids.barbara, (tx) => tx.query(`select public.save_process_task_settings($1)`, [ids.agente]))
+  const r = await tarefa047(ids.lucas, ids.proc046a, 'Réplica', { instrucoes: 'Redigir a réplica à contestação do Banco Pan.', prazo: '2026-12-01T18:00:00-03:00', prioridade: 'HIGH' })
+  const t = await status047(r.task_id)
+  igual([t.status, t.attempts, r.agent_run_id === t.agent_run_id], ['QUEUED', 1, true], 'na fila')
+  const run = await um(db, `select r.operation, r.agent_id, r.legal_process_id, i.request_text, i.parameters from agent_runs r join agent_run_inputs i on i.agent_run_id = r.id where r.id = $1`, [t.agent_run_id])
+  igual([run.operation, run.agent_id, run.legal_process_id, run.parameters.process_task_id], ['PROCESS_TASK', ids.agente, ids.proc046a, r.task_id], 'execução')
+  for (const trecho of ['TAREFA DO PROCESSO', 'Título: Réplica', 'Redigir a réplica à contestação do Banco Pan.', 'Prazo interno: 01/12/2026 18:00', 'revisão humana']) {
+    if (!run.request_text.includes(trecho)) throw new Error(`pedido sem "${trecho}"`)
+  }
+  ids.tarefa047 = r.task_id
+  ids.run047 = t.agent_run_id
+})
+await deveFalhar('ASSISTANT não cria tarefa para os agentes', () => tarefa047(ids.ana, ids.proc046a, 'X'), /Somente ADMIN ou advogado/)
+await deve('parceiro não lê tarefas (dado interno)', async () => {
+  const n = await como(ids.almeidaAdm, async (tx) => (await um(tx, `select count(*)::int n from process_tasks`)).n)
+  igual(n, 0, 'tarefas visíveis')
+})
+await deveFalhar('ninguém escreve direto na tabela (só pelas funções)', () =>
+  como(ids.barbara, (tx) => tx.query(`update process_tasks set status = 'DONE' where id = $1`, [ids.tarefa047])), /permission denied/)
+await deve('a tarefa acompanha a execução: trabalhando → entregue para revisão (movimentação do agente)', async () => {
+  await db.query(`update agent_runs set status = 'RUNNING', started_at = now(), claimed_by = 'teste-047', claimed_at = now() where id = $1`, [ids.run047])
+  igual((await status047(ids.tarefa047)).status, 'IN_PROGRESS', 'trabalhando')
+  await db.query(`update agent_runs set status = 'WAITING_HUMAN' where id = $1`, [ids.run047])
+  igual((await status047(ids.tarefa047)).status, 'IN_REVIEW', 'para revisar')
+  const ev = await um(db, `select source from process_events where raw_data ->> 'process_task_id' = $1 and title like 'Tarefa entregue%'`, [ids.tarefa047])
+  igual(ev.source, 'AGENT', 'movimentação do agente (interna)')
+})
+await deve('o check: advogado conclui; fica registrado quem e quando', async () => {
+  await como(ids.lucas, (tx) => tx.query(`select public.complete_process_task($1, 'Conferido, pode protocolar.')`, [ids.tarefa047]))
+  const t = await um(db, `select status, completed_by, completion_note from process_tasks where id = $1`, [ids.tarefa047])
+  igual([t.status, t.completed_by, t.completion_note], ['DONE', ids.lucas, 'Conferido, pode protocolar.'], 'concluída')
+  const a = await um(db, `select count(*)::int n from audit_events where entity_id = $1`, [ids.tarefa047])
+  if (!(a.n >= 2)) throw new Error('sem auditoria da tarefa')
+})
+await deveFalhar('concluída não volta a ser concluída', () =>
+  como(ids.lucas, (tx) => tx.query(`select public.complete_process_task($1)`, [ids.tarefa047])), /já encerrada/)
+await deve('agente falhou: tarefa volta a ABERTA com o motivo; reenviar com observação cria nova execução', async () => {
+  const r = await tarefa047(ids.barbara, ids.proc046a, 'Cálculo atualizado')
+  const run1 = (await status047(r.task_id)).agent_run_id
+  await db.query(`update agent_runs set status = 'FAILED', completed_at = now(), error_message = 'Documento ilegível' where id = $1`, [run1])
+  const t1 = await status047(r.task_id)
+  igual([t1.status, t1.last_error], ['OPEN', 'Documento ilegível'], 'aberta com motivo')
+  const s = await como(ids.lucas, async (tx) => (await um(tx, `select public.send_process_task($1, 'Use o extrato novo anexado.') r`, [r.task_id])).r)
+  const t2 = await status047(r.task_id)
+  igual([t2.status, t2.attempts, t2.agent_run_id === s.agent_run_id, t2.agent_run_id !== run1], ['QUEUED', 2, true, true], 'reenviada')
+  const txt = (await um(db, `select request_text from agent_run_inputs where agent_run_id = $1`, [t2.agent_run_id])).request_text
+  if (!txt.includes('Use o extrato novo anexado.')) throw new Error('observação não foi para o agente')
+  ids.tarefaFila047 = r.task_id
+})
+await deveFalhar('reenviar tarefa que já está na fila é recusado', () =>
+  como(ids.lucas, (tx) => tx.query(`select public.send_process_task($1)`, [ids.tarefaFila047])), /já está com os agentes/)
+await deveFalhar('cancelar exige motivo', () =>
+  como(ids.lucas, (tx) => tx.query(`select public.cancel_process_task($1, '  ')`, [ids.tarefaFila047])), /motivo/)
+await deve('cancelar tarefa na fila: interrompe a execução e registra o motivo', async () => {
+  const run = (await status047(ids.tarefaFila047)).agent_run_id
+  await como(ids.lucas, (tx) => tx.query(`select public.cancel_process_task($1, 'Cliente desistiu')`, [ids.tarefaFila047]))
+  const t = await um(db, `select status, cancel_reason from process_tasks where id = $1`, [ids.tarefaFila047])
+  igual([t.status, t.cancel_reason], ['CANCELLED', 'Cliente desistiu'], 'cancelada')
+  igual((await um(db, `select status from agent_runs where id = $1`, [run])).status, 'CANCELLED', 'execução interrompida')
+  igual((await um(db, `select status from process_tasks where id = $1`, [ids.tarefaFila047])).status, 'CANCELLED', 'continua cancelada (não volta a aberta)')
+})
+await deve('tarefa aberta sem agente: depois do orquestrador configurado, "enviar" põe na fila', async () => {
+  const s = await como(ids.lucas, async (tx) => (await um(tx, `select public.send_process_task($1) r`, [ids.tarefaAberta047])).r)
+  igual(s.status, 'QUEUED', 'na fila')
+})
+
+await deve('agentes para tarefa: LAWYER vê os ativos e qual é o orquestrador; ASSISTANT e parceiro não veem nada', async () => {
+  const l = await como(ids.lucas, async (tx) => linhas(tx, `select id, is_orchestrator from public.list_task_agents()`))
+  if (!l.some((a) => a.id === ids.agente && a.is_orchestrator)) throw new Error('orquestrador ausente')
+  for (const uid of [ids.ana, ids.almeidaAdm]) {
+    igual((await como(uid, async (tx) => linhas(tx, `select id from public.list_task_agents()`))).length, 0, 'lista')
+  }
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

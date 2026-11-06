@@ -3,17 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { FormProvider, useForm, useFormContext, useWatch, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  CLIENT_POLE_LABEL,
-  CLIENT_POLES,
-  DEADLINE_TYPE_LABEL,
-  DEADLINE_TYPES,
-  LEGAL_CASE_STATUSES,
-  PROCESS_PHASE_LABEL,
-  PROCESS_PHASES,
-  PROCESS_STATUS_LABEL,
-  PROCESS_STATUSES,
-} from "@/lib/constants/status";
+import { CLIENT_POLE_LABEL, CLIENT_POLES, LEGAL_CASE_STATUSES, PROCESS_PHASE_LABEL, PROCESS_PHASES, PROCESS_STATUS_LABEL, PROCESS_STATUSES } from "@/lib/constants/status";
 import { BRAZILIAN_STATES, COURTS } from "@/lib/constants/legal";
 import { onlyDigits } from "@/lib/formatting";
 import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/result";
@@ -25,7 +15,7 @@ import { listCasesAction } from "@/server/domain/cases/actions";
 import type { ProcessInternalDTO } from "@/server/domain/processes/dto";
 import { useLawyerOptions } from "@/features/directory/directory-context";
 import { processEditSchema, processFormSchema, type ProcessEditValues, type ProcessFormInput, type ProcessFormValues } from "../schemas";
-import { DEFAULT_DEADLINE_TITLE, processCreateInput, processEditPatch } from "../server-input";
+import { processCreateInput, processEditPatch } from "../server-input";
 
 const opts = <T extends string>(values: readonly T[], labels?: Record<T, string>) => values.map((v) => ({ value: v, label: labels ? labels[v] : v }));
 /** Processo só entra em caso enviado, em análise, aceito, em andamento ou encerrado. */
@@ -44,7 +34,10 @@ function useCaseSearch(lawyerOf: React.MutableRefObject<Map<string, string | und
   );
 }
 
-function ProcessFieldSections({ withDeadline }: { withDeadline: boolean }) {
+/** Valor em reais para o campo de texto ("1234.5" → "1234,50"). */
+const currencyField = (v: number | undefined) => (v === undefined ? "" : v.toFixed(2).replace(".", ","));
+
+function ProcessFieldSections({ cnjHint }: { cnjHint: boolean }) {
   const lawyers = useLawyerOptions();
   const {
     register,
@@ -82,14 +75,14 @@ function ProcessFieldSections({ withDeadline }: { withDeadline: boolean }) {
         </Field>
       </FormSection>
 
-      <FormSection title="Condução" description="Responsável, situação atual e dados de distribuição.">
+      <FormSection title="Condução" description="Responsável, situação atual, distribuição, valor da causa e honorários (dados internos, que o parceiro não vê).">
         <Field label="Advogado responsável" requirement="required" error={errors.responsibleUserId?.message}>
           {(a) => <Select {...a} {...register("responsibleUserId")} options={lawyers} placeholder="Selecione" />}
         </Field>
         <Field label="Data de distribuição" requirement="optional" error={errors.distributionDate?.message}>
           {(a) => <Input {...a} type="date" {...register("distributionDate")} />}
         </Field>
-        <Field label="Status" requirement="required" hint={withDeadline ? "Sugerido a partir do número CNJ." : undefined} error={errors.status?.message}>
+        <Field label="Status" requirement="required" hint={cnjHint ? "Sugerido a partir do número CNJ." : undefined} error={errors.status?.message}>
           {(a) => <Select {...a} {...register("status")} options={opts(PROCESS_STATUSES, PROCESS_STATUS_LABEL)} />}
         </Field>
         <Field label="Fase processual" requirement="required" error={errors.phase?.message}>
@@ -98,21 +91,13 @@ function ProcessFieldSections({ withDeadline }: { withDeadline: boolean }) {
         <Field label="Valor da causa" requirement="optional" hint="Dado jurídico da demanda — não se confunde com honorários." error={errors.caseValue?.message}>
           {(a) => <Input {...a} {...register("caseValue")} inputMode="decimal" placeholder="R$ 0,00" className="tabular" />}
         </Field>
+        <Field label="Honorários (R$)" requirement="optional" hint="Valor contratado ou esperado neste processo. Interno: o parceiro não vê." error={errors.feeAmount?.message}>
+          {(a) => <Input {...a} {...register("feeAmount")} inputMode="decimal" placeholder="R$ 0,00" className="tabular" />}
+        </Field>
+        <Field label="Honorários de êxito (%)" requirement="optional" hint="Percentual sobre o proveito, de 0 a 100. Interno." error={errors.feePercentage?.message}>
+          {(a) => <Input {...a} {...register("feePercentage")} inputMode="decimal" placeholder="Ex.: 30" className="tabular" />}
+        </Field>
       </FormSection>
-
-      {withDeadline && (
-        <FormSection title="Vencimento" description="Data operacional principal do processo. Obrigatória: é ela que organiza tarefas, alertas, prazos e prioridades.">
-          <Field label="Data de vencimento" requirement="required" hint="Vencimento do próximo prazo ou providência." error={errors.deadlineDueDate?.message}>
-            {(a) => <Input {...a} type="date" {...register("deadlineDueDate")} />}
-          </Field>
-          <Field label="Tipo" requirement="optional" hint="Sem seleção, fica como prazo interno." error={errors.deadlineType?.message}>
-            {(a) => <Select {...a} {...register("deadlineType")} options={opts(DEADLINE_TYPES, DEADLINE_TYPE_LABEL)} placeholder="Selecione" />}
-          </Field>
-          <Field label="Descrição do prazo" requirement="optional" className="col-span-2" hint={`Sem descrição, fica “${DEFAULT_DEADLINE_TITLE}”.`} error={errors.deadlineTitle?.message}>
-            {(a) => <Input {...a} {...register("deadlineTitle")} maxLength={300} placeholder="Ex.: Protocolar petição inicial" />}
-          </Field>
-        </FormSection>
-      )}
 
       <FormSection title="Observações" description="Notas internas da equipe sobre o processo.">
         <Field label="Observações" requirement="optional" className="col-span-2">
@@ -124,11 +109,12 @@ function ProcessFieldSections({ withDeadline }: { withDeadline: boolean }) {
 }
 
 /** Erros de campo do servidor → campos do formulário. */
-const SERVER_FIELD_MAP: Record<string, string> = { legalCaseId: "legalCaseId", "nextDeadline.dueDate": "deadlineDueDate", "nextDeadline.title": "deadlineTitle", "nextDeadline.type": "deadlineType" };
+const SERVER_FIELD_MAP: Record<string, string> = { legalCaseId: "legalCaseId" };
 
 /**
- * Cadastro de processo. `onSubmit` recebe a entrada da action e devolve o
- * resultado; erro de campo volta para o campo, o resto o chamador avisa.
+ * Cadastro de processo. `onSubmit` recebe a entrada da action (e o título do
+ * caso escolhido, que é o nome do processo) e devolve o resultado; erro de
+ * campo volta para o campo, o resto o chamador avisa.
  */
 export function ProcessForm({
   initialCase,
@@ -136,7 +122,7 @@ export function ProcessForm({
   onCancel,
 }: {
   initialCase?: PickerOption & { lawyerId?: string };
-  onSubmit: (input: Record<string, unknown>) => Promise<ActionResult<unknown>>;
+  onSubmit: (input: Record<string, unknown>, meta: { caseTitle?: string }) => Promise<ActionResult<unknown>>;
   onCancel: () => void;
 }) {
   const lawyers = useLawyerOptions();
@@ -165,18 +151,19 @@ export function ProcessForm({
   } = methods;
   useWatch({ control, name: "legalCaseId" });
 
-  // Status padrão acompanha o CNJ enquanto o usuário não escolhe outro.
+  // Status padrão acompanha o CNJ enquanto o usuário não escolhe outro:
+  // sem número, pré-ajuizamento; com número, em andamento na fase processual.
   const cnjField = register("cnj", {
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
       if (dirtyFields.status) return;
       const hasCnj = onlyDigits(e.target.value).length > 0;
       setValue("status", hasCnj ? "ACTIVE" : "PRE_FILING");
-      setValue("phase", hasCnj ? "PLEADINGS" : "PRELIMINARY");
+      setValue("phase", hasCnj ? "PROCEEDINGS" : "PRELIMINARY");
     },
   });
 
   const submit = handleSubmit(async (values) => {
-    const result = await onSubmit(processCreateInput(values));
+    const result = await onSubmit(processCreateInput(values), { caseTitle: caseOption?.label });
     if (result.ok) return;
     const fields = mapFieldErrors(result.error.fieldErrors, SERVER_FIELD_MAP);
     Object.entries(fields).forEach(([name, message], i) => setError(name as Path<ProcessFormInput>, { message }, { shouldFocus: i === 0 }));
@@ -186,7 +173,10 @@ export function ProcessForm({
     <FormProvider {...methods}>
       <form noValidate onSubmit={submit}>
         <Panel className="px-7">
-          <FormSection title="Caso e identificação" description="Todo processo pertence a um caso. O cliente e a origem são os do caso. O número CNJ pode ficar em branco em pré-ajuizamento.">
+          <FormSection
+            title="Caso e identificação"
+            description="Todo processo pertence a um caso e é identificado pelo nome do caso. O cliente e a origem são os do caso. O número CNJ pode ficar em branco em pré-ajuizamento."
+          >
             <Field label="Caso relacionado" requirement="required" error={errors.legalCaseId?.message} hint={caseOption?.description ? `Cliente: ${caseOption.description}` : undefined}>
               {(a) => (
                 <AsyncPicker
@@ -206,11 +196,8 @@ export function ProcessForm({
             <Field label="Número CNJ" requirement="optional" hint="Formato 0000000-00.0000.0.00.0000" error={errors.cnj?.message}>
               {(a) => <MaskedInput {...a} {...cnjField} mask="cnj" placeholder="0000000-00.0000.0.00.0000" />}
             </Field>
-            <Field label="Nome resumido" requirement="required" className="col-span-2" hint="Como a equipe se refere ao processo, ex.: “Revisional de consignados”." error={errors.title?.message}>
-              {(a) => <Input {...a} {...register("title")} maxLength={300} />}
-            </Field>
           </FormSection>
-          <ProcessFieldSections withDeadline />
+          <ProcessFieldSections cnjHint />
           <PanelFooter className="-mx-7">
             <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
               Cancelar
@@ -230,7 +217,6 @@ function editDefaults(p: ProcessInternalDTO): ProcessFormInput {
   return {
     legalCaseId: p.legalCaseId,
     cnj: p.cnj ?? "",
-    title: p.title,
     court: p.court ?? "",
     unit: p.unit ?? "",
     district: p.district ?? "",
@@ -241,11 +227,12 @@ function editDefaults(p: ProcessInternalDTO): ProcessFormInput {
     opposingParty: p.opposingParty ?? "",
     responsibleUserId: p.responsibleUserId ?? "",
     distributionDate: p.distributionDate ?? "",
-    caseValue: p.caseValue === undefined ? "" : p.caseValue.toFixed(2).replace(".", ","),
+    caseValue: currencyField(p.caseValue),
+    feeAmount: currencyField(p.feeAmount),
+    feePercentage: p.feePercentage === undefined ? "" : String(p.feePercentage).replace(".", ","),
     status: p.status,
     phase: p.phase ?? "PRELIMINARY",
     notes: p.notes ?? "",
-    deadlineDueDate: "",
   };
 }
 
@@ -286,11 +273,8 @@ export function ProcessEditForm({
             <Field label="Número CNJ" requirement="optional" hint="Formato 0000000-00.0000.0.00.0000" error={errors.cnj?.message}>
               {(a) => <MaskedInput {...a} {...register("cnj")} mask="cnj" placeholder="0000000-00.0000.0.00.0000" />}
             </Field>
-            <Field label="Nome resumido" requirement="required" error={errors.title?.message}>
-              {(a) => <Input {...a} {...register("title")} maxLength={300} />}
-            </Field>
           </FormSection>
-          <ProcessFieldSections withDeadline={false} />
+          <ProcessFieldSections cnjHint={false} />
           <PanelFooter className="-mx-7">
             <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
               Cancelar

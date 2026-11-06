@@ -19,12 +19,14 @@ import { searchActiveClients } from "@/features/clients/picker";
 import { useDefaultOrigin, useLawyerOptions, useOrgDirectory, useOriginOptions } from "@/features/directory/directory-context";
 import { LINK_PARTNER_LABEL } from "../utils";
 import { useCatalogOptions } from "./case-dialogs";
+import { ACQUISITION_CHANNEL_OPTIONS } from "@/lib/constants/legal";
 
 interface Values {
   title: string;
   area: string;
   caseTypeId: string;
   originOrganizationId: string;
+  acquisitionChannel: string;
   opposingParty: string;
   assignedLawyerId: string;
   summary: string;
@@ -64,6 +66,7 @@ export function CaseForm({ catalog, defaultClient }: { catalog: CaseCatalogDTO; 
     area: "",
     caseTypeId: "",
     originOrganizationId: defaultOrigin,
+    acquisitionChannel: "",
     opposingParty: "",
     assignedLawyerId: "",
     summary: "",
@@ -87,6 +90,7 @@ export function CaseForm({ catalog, defaultClient }: { catalog: CaseCatalogDTO; 
       area: values.area,
       caseTypeId: values.caseTypeId || undefined,
       originOrganizationId: values.originOrganizationId,
+      acquisitionChannel: values.acquisitionChannel || undefined,
       opposingParty: values.opposingParty.trim(),
       assignedLawyerId: values.assignedLawyerId || undefined,
       summary: values.summary.trim(),
@@ -122,7 +126,7 @@ export function CaseForm({ catalog, defaultClient }: { catalog: CaseCatalogDTO; 
                 <Field label="Cliente" requirement="required" error={errors.clientId} hint="Clientes ativos. Digite o nome ou o CPF/CNPJ.">
                   {(p) => <AsyncPicker {...p} value={client} onChange={setClient} search={searchActiveClients} placeholder="Buscar cliente" />}
                 </Field>
-                <Field label="Origem do caso" requirement="required" error={errors.originOrganizationId} hint="Independe da origem do cliente. Define parceria e financeiro do caso.">
+                <Field label="Escritório de origem" requirement="required" error={errors.originOrganizationId} hint="Escritório principal ou parceiro. Define parceria e financeiro do caso.">
                   {(p) => (
                     <Select
                       {...p}
@@ -152,6 +156,11 @@ export function CaseForm({ catalog, defaultClient }: { catalog: CaseCatalogDTO; 
                       options={areas}
                       placeholder="Selecione a área"
                     />
+                  )}
+                </Field>
+                <Field label="Canal (como o cliente chegou)" requirement="optional" hint="Em branco: usa o canal do cadastro do cliente.">
+                  {(p) => (
+                    <Select {...p} value={values.acquisitionChannel} onChange={(e) => set("acquisitionChannel", e.target.value)} options={ACQUISITION_CHANNEL_OPTIONS} placeholder="Igual ao do cliente" />
                   )}
                 </Field>
                 <Field label="Parte contrária" requirement="optional" error={errors.opposingParty}>

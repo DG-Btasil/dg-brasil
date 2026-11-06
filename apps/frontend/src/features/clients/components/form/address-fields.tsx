@@ -15,32 +15,32 @@ export function AddressFields({ description }: { description?: string }) {
   } = useFormContext<{ address: AddressFormValues }>();
   const e = errors.address;
   return (
-    <FormSection title="Endereço" description={description ?? "Recomendado para qualificação em peças e correspondências."}>
-      <Field label="CEP" requirement="recommended" error={e?.zipCode?.message}>
+    <FormSection title="Endereço" description={description ?? "Endereço completo, para a qualificação em peças e correspondências."}>
+      <Field label="CEP" requirement="required" error={e?.zipCode?.message}>
         {(p) => <MaskedInput mask="cep" placeholder="00000-000" {...p} {...register("address.zipCode")} />}
       </Field>
-      <Field label="Logradouro" requirement="recommended">
+      <Field label="Logradouro" requirement="required" error={e?.street?.message}>
         {(p) => <Input {...p} {...register("address.street")} />}
       </Field>
       <div className="grid grid-cols-[1fr_1.4fr] gap-x-5">
-        <Field label="Número" requirement="recommended">
+        <Field label="Número" requirement="required" error={e?.number?.message}>
           {(p) => <Input {...p} {...register("address.number")} />}
         </Field>
         <Field label="Complemento" requirement="optional">
           {(p) => <Input {...p} {...register("address.complement")} />}
         </Field>
       </div>
-      <Field label="Bairro" requirement="recommended">
+      <Field label="Bairro" requirement="required" error={e?.district?.message}>
         {(p) => <Input {...p} {...register("address.district")} />}
       </Field>
-      <Field label="Município" requirement="recommended">
+      <Field label="Município" requirement="required" error={e?.city?.message}>
         {(p) => <Input {...p} {...register("address.city")} />}
       </Field>
       <div className="grid grid-cols-[1fr_1.4fr] gap-x-5">
-        <Field label="UF" requirement="recommended">
+        <Field label="UF" requirement="required" error={e?.state?.message}>
           {(p) => <Select placeholder="—" options={UF_OPTIONS} {...p} {...register("address.state")} />}
         </Field>
-        <Field label="País" requirement="recommended">
+        <Field label="País" requirement="optional">
           {(p) => <Input {...p} {...register("address.country")} />}
         </Field>
       </div>

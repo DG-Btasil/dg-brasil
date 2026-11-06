@@ -135,15 +135,24 @@ export const ANALYSIS_STATUS_TONE: Record<AnalysisStatus, Tone> = {
 /* Processos                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Condução do processo (vocabulário do banco, migration 045), na ordem da
+ * tela; "Suspenso" é um estado à parte e fica por último. Valores antigos
+ * (Aguardando cliente/prazo → Em andamento; Encerrado → Arquivado) são
+ * traduzidos pelo banco.
+ */
 export const PROCESS_STATUSES = [
   "PRE_FILING",
   "PREPARING",
   "FILED",
   "ACTIVE",
-  "WAITING_CLIENT",
-  "WAITING_DEADLINE",
+  "SENTENCED",
+  "APPEAL",
+  "FINAL_JUDGMENT",
+  "ENFORCEMENT",
+  "RECEIVED",
+  "ARCHIVED",
   "SUSPENDED",
-  "CLOSED",
 ] as const;
 export type ProcessStatus = (typeof PROCESS_STATUSES)[number];
 export const PROCESS_STATUS_LABEL: Record<ProcessStatus, string> = {
@@ -151,38 +160,39 @@ export const PROCESS_STATUS_LABEL: Record<ProcessStatus, string> = {
   PREPARING: "Em preparação",
   FILED: "Distribuído",
   ACTIVE: "Em andamento",
-  WAITING_CLIENT: "Aguardando cliente",
-  WAITING_DEADLINE: "Aguardando prazo",
+  SENTENCED: "Com sentença",
+  APPEAL: "Recurso",
+  FINAL_JUDGMENT: "Trânsito em julgado",
+  ENFORCEMENT: "Execução",
+  RECEIVED: "Recebido",
+  ARCHIVED: "Arquivado",
   SUSPENDED: "Suspenso",
-  CLOSED: "Encerrado",
 };
 export const PROCESS_STATUS_TONE: Record<ProcessStatus, Tone> = {
   PRE_FILING: "neutral",
   PREPARING: "info",
   FILED: "navy",
   ACTIVE: "success",
-  WAITING_CLIENT: "warning",
-  WAITING_DEADLINE: "gold",
+  SENTENCED: "gold",
+  APPEAL: "warning",
+  FINAL_JUDGMENT: "navy",
+  ENFORCEMENT: "info",
+  RECEIVED: "success",
+  ARCHIVED: "neutral",
   SUSPENDED: "orange",
-  CLOSED: "neutral",
 };
+/** Fora da carteira ativa: recebido e arquivado. Todo o resto conta como processo ativo. */
+export const INACTIVE_PROCESS_STATUSES: readonly ProcessStatus[] = ["RECEIVED", "ARCHIVED"];
+export const ACTIVE_PROCESS_STATUSES: readonly ProcessStatus[] = PROCESS_STATUSES.filter((s) => !INACTIVE_PROCESS_STATUSES.includes(s));
 
-export const PROCESS_PHASES = [
-  "PRELIMINARY",
-  "PLEADINGS",
-  "EVIDENCE",
-  "JUDGMENT",
-  "APPEAL",
-  "ENFORCEMENT",
-  "ARCHIVED",
-] as const;
+/** Fase (migration 045). As fases antigas postulatória, instrutória e decisória viraram "Processual". */
+export const PROCESS_PHASES = ["PRELIMINARY", "PROCEEDINGS", "APPEAL", "FINAL_JUDGMENT", "ENFORCEMENT", "ARCHIVED"] as const;
 export type ProcessPhase = (typeof PROCESS_PHASES)[number];
 export const PROCESS_PHASE_LABEL: Record<ProcessPhase, string> = {
   PRELIMINARY: "Pré-processual",
-  PLEADINGS: "Postulatória",
-  EVIDENCE: "Instrutória",
-  JUDGMENT: "Decisória",
+  PROCEEDINGS: "Processual",
   APPEAL: "Recursal",
+  FINAL_JUDGMENT: "Trânsito em julgado",
   ENFORCEMENT: "Cumprimento de sentença",
   ARCHIVED: "Arquivado",
 };

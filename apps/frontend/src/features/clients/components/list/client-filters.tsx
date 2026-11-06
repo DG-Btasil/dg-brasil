@@ -8,6 +8,7 @@ import { SearchInput, Select } from "@/components/ui/form";
 import { CLIENT_KINDS, CLIENT_KIND_LABEL, type ClientKind } from "@/lib/constants/status";
 import { useDebouncedCallback } from "@/lib/hooks/use-server-list";
 import { DEFAULT_CLIENT_QUERY, hasClientFilters, type ClientLifecycle, type ClientListQuery } from "../../list-query";
+import { ACQUISITION_CHANNEL_OPTIONS } from "@/lib/constants/legal";
 
 const LIFECYCLE_OPTIONS: { value: ClientLifecycle; label: string }[] = [
   { value: "active", label: "Ativos" },
@@ -17,19 +18,17 @@ const LIFECYCLE_OPTIONS: { value: ClientLifecycle; label: string }[] = [
 
 /**
  * Filtros da lista de clientes. Só oferece o que o BACKEND filtra (busca por
- * nome ou CPF/CNPJ, tipo, situação, responsável, origem): nenhum filtro
+ * nome ou CPF/CNPJ, tipo, situação, canal, origem): nenhum filtro
  * acontece no navegador sobre uma página já baixada.
  */
 export function ClientFilters({
   value,
   onChange,
-  responsibleOptions,
   originOptions,
   total,
 }: {
   value: ClientListQuery;
   onChange: (next: ClientListQuery) => void;
-  responsibleOptions: { value: string; label: string }[];
   /** Presente para quem vê parceiros: habilita o filtro de origem. */
   originOptions?: { value: string; label: string }[];
   total: number | undefined;
@@ -65,7 +64,7 @@ export function ClientFilters({
           value={value.kind}
           onChange={(e) => set("kind", e.target.value as ClientKind | "")}
         />
-        <Select aria-label="Responsável" placeholder="Todos os responsáveis" options={responsibleOptions} value={value.responsible} onChange={(e) => set("responsible", e.target.value)} />
+        <Select aria-label="Canal de aquisição" placeholder="Todos os canais" options={ACQUISITION_CHANNEL_OPTIONS} value={value.channel} onChange={(e) => set("channel", e.target.value as ClientListQuery["channel"])} />
         {originOptions ? (
           <Select aria-label="Origem do cliente" placeholder="Todas as origens" options={originOptions} value={value.origin} onChange={(e) => set("origin", e.target.value)} />
         ) : (

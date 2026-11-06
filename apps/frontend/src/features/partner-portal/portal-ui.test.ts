@@ -15,6 +15,11 @@ const caseValues: PartnerCaseValues = {
   document: "999.000.001-91",
   fullName: "  Maria Teste  ",
   birthDate: "1960-05-10",
+  nationality: "Brasileira",
+  maritalStatus: "WIDOWED",
+  profession: "Aposentada",
+  acquisitionChannel: "REFERRAL",
+  acquisitionDetail: "",
   legalName: "",
   tradeName: "",
   email: "maria@dgbrasil.test",
@@ -106,7 +111,6 @@ describe("envio de caso do parceiro — entrada de partnerSubmitCaseAction", () 
 describe("processo do parceiro — entrada de createPartnerProcessAction", () => {
   const values: PartnerProcessValues = {
     cnj: "",
-    title: " Revisional ",
     court: "",
     unit: "",
     district: "",
@@ -118,13 +122,14 @@ describe("processo do parceiro — entrada de createPartnerProcessAction", () =>
     distributionDate: "",
     caseValue: "R$ 1.234,56",
   };
-  it("vazio vira ausente; valor da causa em número; passa no schema do servidor", () => {
+  it("vazio vira ausente; valor da causa em número; sem nome próprio (é o do caso); passa no schema do servidor", () => {
     const input = partnerProcessInput(CASE, values);
-    expect(input).toMatchObject({ legalCaseId: CASE, title: "Revisional", cnj: undefined, state: undefined, caseValue: 1234.56 });
+    expect(input).toMatchObject({ legalCaseId: CASE, cnj: undefined, state: undefined, caseValue: 1234.56 });
+    expect("title" in input).toBe(false);
     expect(createPartnerProcessSchema.safeParse({ ...input, idempotencyKey: KEY }).success).toBe(true);
   });
-  it("campos internos (responsável, status, notas) nunca saem do portal", () => {
+  it("campos internos (responsável, status, notas, honorários) nunca saem do portal", () => {
     const input = partnerProcessInput(CASE, values);
-    for (const k of ["responsibleUserId", "status", "phase", "notes", "summary", "operationalDueAt"]) expect(k in input).toBe(false);
+    for (const k of ["responsibleUserId", "status", "phase", "notes", "summary", "operationalDueAt", "feeAmount", "feePercentage"]) expect(k in input).toBe(false);
   });
 });

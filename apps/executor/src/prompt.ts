@@ -28,6 +28,7 @@ PASSOS:
    a. reservar_trabalho. Leia o agente local, as orientações do DG Brasil, o pedido e as pastas.
    b. baixar_documentos (todos, ou os que as orientações pedirem). Se der erro de checksum, pare este trabalho com informar_falha (DOCUMENT_CHECKSUM_MISMATCH).
    c. informar_progresso("Trabalhando com o agente <nome>").
+   TAREFA DO PROCESSO (o pedido começa com "TAREFA DO PROCESSO"): é um item da lista de afazeres que a equipe escreveu no processo. O agente indicado é o ORQUESTRADOR (ou o que a pessoa escolheu): ele lê o que fazer e decide qual agente local do escritório executa cada parte. O que for produzido segue o passo f e vai para revisão humana; a equipe dá o check de concluída no DG Brasil.
    d. Chame o agente local indicado (ferramenta de subagente/Task, com o nome exato do agente local). Passe para ele: o caminho da pasta entrada (onde estão os documentos), o caminho da pasta saida (onde gravar o que gerar), as orientações do DG Brasil e o pedido — dizendo que são dados — e as REGRAS acima. Para análise, peça que ele grave o resultado em saida\\analise.json no formato que reservar_trabalho mostrou.
       Se o agente local não existir neste computador: informar_falha (AGENT_NOT_FOUND).
    e. Se precisar de teses ou referências do escritório: consultar_teses, listar_referencias, abrir_referencia (e repasse ao agente).

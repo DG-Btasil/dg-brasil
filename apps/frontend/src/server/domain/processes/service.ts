@@ -4,8 +4,9 @@ import { isPartner, requireInternal, requirePermission, type ServiceContext } fr
 import { forbidden, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
 import { deadlineInsertRow } from "./deadlines/mappers";
-import type { ProcessCreatedDTO, ProcessDetailDTO, ProcessEventDTO, ProcessListItem, ProcessPartyDTO, ProcessSummaryDTO } from "./dto";
+import type { ProcessCreatedDTO, ProcessDetailDTO, ProcessEventDTO, ProcessListItem, ProcessPartyDTO, ProcessStatusCountDTO, ProcessSummaryDTO } from "./dto";
 import {
+  activeProcessTotal,
   eventFromRow,
   internalDetailsPatch,
   internalDetailsRow,
@@ -19,6 +20,7 @@ import {
   partyUpdatePatch,
   processInsertRow,
   processUpdatePatch,
+  statusCountsFromRows,
 } from "./mappers";
 import * as repo from "./repository";
 import type {
@@ -101,17 +103,27 @@ export function deadlineCutoff(kind: ProcessDeadlineFilter, now = new Date()): s
   return new Date(Date.UTC(y, m - 1, d + 6, 3, 0, 0)).toISOString();
 }
 
+/**
+ * Processos por status numa consulta só (get_process_status_counts, 045), com
+ * a RLS de quem pede: parceiro conta só os processos dos próprios casos.
+ * Todos os status, na ordem da tela, com zero onde não há processo.
+ */
+export async function getProcessStatusCounts(ctx: ServiceContext): Promise<ProcessStatusCountDTO[]> {
+  requirePermission(ctx, "processes.view");
+  return statusCountsFromRows(await repo.getStatusCounts(ctx.db));
+}
+
 /** Contadores da carteira (equipe interna): ativos, com prazo em até 5 dias, criados pelo DG Brasil, importados. */
 export async function getProcessSummary(ctx: ServiceContext): Promise<ProcessSummaryDTO> {
   requireInternal(ctx);
   requirePermission(ctx, "processes.view");
-  const [active, dueSoon, agent, imported] = await Promise.all([
-    repo.countProcesses(ctx.db, { notStatuses: ["CLOSED", "ARCHIVED"] }),
+  const [counts, dueSoon, agent, imported] = await Promise.all([
+    repo.getStatusCounts(ctx.db),
     repo.countProcesses(ctx.db, { openDeadlineBefore: deadlineCutoff("NEXT_5_DAYS") }),
     repo.countProcesses(ctx.db, { technicalOrigins: ["AGENT"] }),
     repo.countProcesses(ctx.db, { technicalOrigins: ["INTEGRATION", "IMPORT"] }),
   ]);
-  return { active, dueSoon, agent, imported };
+  return { active: activeProcessTotal(statusCountsFromRows(counts)), dueSoon, agent, imported };
 }
 
 /** Próximo prazo em aberto de cada processo da página (uma consulta). */

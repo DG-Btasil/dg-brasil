@@ -12,7 +12,7 @@ import type { AnalysisDetailRow, AnalysisRow, TemplateFieldRow, TemplateRequirem
  */
 
 const LIST_COLUMNS = "id, legal_case_id, analysis_template_id, status, agent_run_id, started_at, completed_at, created_at, updated_at, analysis_templates(name)";
-const DETAIL_COLUMNS = `${LIST_COLUMNS}, summary, field_values, result_data, interruption_reason, started_by`;
+const DETAIL_COLUMNS = `${LIST_COLUMNS}, summary, field_values, additional_info, result_data, interruption_reason, started_by`;
 
 export async function list(
   db: SupabaseClient,
@@ -129,7 +129,16 @@ export interface AnalysisStartedRow {
  */
 export async function startOnce(
   db: SupabaseClient,
-  input: { key: string; legalCaseId: string; templateId: string; fields: Record<string, string>; send: boolean; requestText: string | null; requestId: string },
+  input: {
+    key: string;
+    legalCaseId: string;
+    templateId: string;
+    fields: Record<string, string>;
+    send: boolean;
+    requestText: string | null;
+    additionalInfo: string | null;
+    requestId: string;
+  },
 ): Promise<AnalysisStartedRow> {
   return unwrap(
     await db.rpc("start_legal_analysis_once", {
@@ -141,6 +150,7 @@ export async function startOnce(
       p_request_text: input.requestText,
       // Só o correlation ID (UUID, sem PII): liga a execução à requisição que a pediu.
       p_parameters: { request_id: input.requestId },
+      p_additional_info: input.additionalInfo,
     }),
   ) as AnalysisStartedRow;
 }

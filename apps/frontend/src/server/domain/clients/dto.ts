@@ -1,4 +1,5 @@
 import type { ClientKind, ClientStatus } from "@/lib/constants/status";
+import type { AcquisitionChannel } from "@/lib/constants/legal";
 import type { Address, Client, Contact, ID, ISODateTime } from "@/types";
 
 /**
@@ -18,8 +19,8 @@ export interface ClientListItem {
   status: ClientStatus;
   /** Interno: sempre. Parceiro: só quando a origem é o próprio escritório. */
   originOrganizationId?: ID;
-  /** Só interno. */
-  responsibleUserId?: ID;
+  /** Só interno: como o cliente chegou (canal de aquisição). */
+  acquisitionChannel?: AcquisitionChannel;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
   /**

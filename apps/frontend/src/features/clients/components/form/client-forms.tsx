@@ -10,7 +10,7 @@ import { companySchema, individualFormSchema, type CompanyFormValues, type Indiv
 import { AddressFields } from "./address-fields";
 import { CompanyContactFields, CompanyDataFields } from "./company-fields";
 import { IndividualContactFields, IndividualIdentificationFields } from "./individual-fields";
-import { InternalFields } from "./internal-fields";
+import { InternalFields, OriginFields } from "./internal-fields";
 import { PartnersFields } from "./partners-fields";
 import { RepresentativesFields } from "./representatives-fields";
 
@@ -73,6 +73,7 @@ export function IndividualForm({ defaultValues, submitLabel, onSubmit, onCancel 
           <IndividualIdentificationFields />
           <IndividualContactFields />
           <AddressFields />
+          <OriginFields />
           <InternalFields />
           <StickyFooter submitLabel={submitLabel} submitting={methods.formState.isSubmitting} onCancel={onCancel} />
         </FormFrame>
@@ -105,6 +106,7 @@ export function CompanyForm({ defaultValues, submitLabel, onSubmit, onCancel, mo
               <PartnersFields />
             </>
           )}
+          <OriginFields />
           <InternalFields />
           <StickyFooter submitLabel={submitLabel} submitting={methods.formState.isSubmitting} onCancel={onCancel} />
         </FormFrame>

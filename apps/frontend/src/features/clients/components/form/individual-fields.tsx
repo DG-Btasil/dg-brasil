@@ -1,6 +1,6 @@
 "use client";
 
-import { useFormContext, useWatch } from "react-hook-form";
+import { useFormContext } from "react-hook-form";
 import { Field, FormSection, Input, MaskedInput, Select } from "@/components/ui/form";
 import {
   BRAZILIAN_STATES,
@@ -22,10 +22,8 @@ const GENDER_OPTIONS = GENDERS.map((g) => ({ value: g, label: GENDER_LABEL[g] })
 export function IndividualIdentificationFields() {
   const {
     register,
-    control,
     formState: { errors },
   } = useFormContext<IndividualFormValues>();
-  const marital = useWatch({ control, name: "maritalStatus" });
   return (
     <FormSection title="Identificação" description="Somente o essencial é obrigatório. Os dados recomendados agilizam a qualificação nas peças.">
       <Field label="Nome completo" requirement="required" error={errors.fullName?.message}>
@@ -54,33 +52,16 @@ export function IndividualIdentificationFields() {
           {(p) => <Select placeholder="—" options={UF_OPTIONS} {...p} {...register("idState")} />}
         </Field>
       </div>
-      <Field label="Nacionalidade" requirement="recommended">
+      <Field label="Nacionalidade" requirement="required" error={errors.nationality?.message}>
         {(p) => <Input {...p} {...register("nationality")} />}
       </Field>
       <Field label="Naturalidade" requirement="optional" hint="Município/UF de nascimento.">
         {(p) => <Input {...p} {...register("birthplace")} />}
       </Field>
-      <Field label="Estado civil" requirement="recommended">
+      <Field label="Estado civil" requirement="required" error={errors.maritalStatus?.message}>
         {(p) => <Select placeholder="Selecione" options={MARITAL_OPTIONS} {...p} {...register("maritalStatus")} />}
       </Field>
-      {marital !== "MARRIED" ? (
-        <Field label="União estável" requirement="optional">
-          {(p) => (
-            <Select
-              placeholder="Não informado"
-              options={[
-                { value: "yes", label: "Sim" },
-                { value: "no", label: "Não" },
-              ]}
-              {...p}
-              {...register("stableUnion")}
-            />
-          )}
-        </Field>
-      ) : (
-        <div />
-      )}
-      <Field label="Profissão" requirement="recommended">
+      <Field label="Profissão" requirement="required" error={errors.profession?.message}>
         {(p) => <Input {...p} {...register("profession")} />}
       </Field>
       <Field label="Gênero" requirement="optional">
@@ -97,7 +78,7 @@ export function IndividualContactFields() {
   } = useFormContext<IndividualFormValues>();
   return (
     <FormSection title="Contato">
-      <Field label="E-mail" requirement="recommended" error={errors.email?.message}>
+      <Field label="E-mail" requirement="required" error={errors.email?.message}>
         {(p) => <Input type="email" placeholder="nome@exemplo.com" {...p} {...register("email")} />}
       </Field>
       <Field label="Telefone principal" requirement="required" error={errors.phone?.message}>

@@ -125,6 +125,7 @@ export async function startAnalysis(ctx: ServiceContext, input: StartAnalysisInp
     fields: fieldValuesPayload(input.fields),
     send: input.send,
     requestText: input.requestText ?? null,
+    additionalInfo: input.additionalInfo ?? null,
     requestId: ctx.requestId,
   });
   ctx.log.info(r.deduplicated ? "analysis.start_replayed" : "analysis.created", {

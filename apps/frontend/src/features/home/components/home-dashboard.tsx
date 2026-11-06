@@ -25,7 +25,20 @@ import { maskCNPJ, maskCPF } from "@/lib/formatting";
 import type { InternalHomeData } from "../load";
 
 const weekdayFmt = new Intl.DateTimeFormat("pt-BR", { weekday: "long", timeZone: "America/Sao_Paulo" });
-const STATUS_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)", "var(--chart-1)", "var(--chart-2)"];
+/** Uma cor por status (tokens --chart-* de globals.css), vizinhos da ordem da tela sempre contrastando. */
+const STATUS_COLORS: Record<ProcessStatus, string> = {
+  PRE_FILING: "var(--chart-6)",
+  PREPARING: "var(--chart-4)",
+  FILED: "var(--chart-2)",
+  ACTIVE: "var(--chart-1)",
+  SENTENCED: "var(--chart-3)",
+  APPEAL: "var(--chart-8)",
+  FINAL_JUDGMENT: "var(--chart-7)",
+  ENFORCEMENT: "var(--chart-9)",
+  RECEIVED: "var(--chart-5)",
+  ARCHIVED: "var(--chart-10)",
+  SUSPENDED: "var(--chart-11)",
+};
 const num = (v: number | undefined) => (v === undefined ? "—" : formatNumber(v));
 
 /**
@@ -54,7 +67,7 @@ export function HomeDashboard({ data }: { data: InternalHomeData }) {
       <section aria-label="Indicadores do escritório" data-tour="home-kpis" className="grid grid-cols-2 gap-4 xl:grid-cols-5">
         <Stat label="Casos ativos" value={num(k.activeCases)} icon={FolderOpen} href="/casos?situacao=ativos" hint="Em análise, aceitos e em andamento" />
         <Stat label="Casos aguardando a equipe" value={num(k.awaitingCases)} icon={Hourglass} href="/casos?situacao=aguardando" hint="Enviados ou aguardando documentos" />
-        <Stat label="Processos ativos" value={num(k.activeProcesses)} icon={Briefcase} href="/processos" hint="Todos os status, exceto encerrados" />
+        <Stat label="Processos ativos" value={num(k.activeProcesses)} icon={Briefcase} href="/processos" hint="Todos os status, exceto recebidos e arquivados" />
         {k.pendingReviews !== undefined ? (
           <Stat
             label="Revisões pendentes"
@@ -261,7 +274,7 @@ function AttentionPanel({ overdue, upcoming }: { overdue: ActionResult<Page<Dead
 }
 
 function ProcessDistribution({ distribution }: { distribution: InternalHomeData["distribution"] }) {
-  const slices = (distribution ?? []).map((s, i) => ({ ...s, color: STATUS_COLORS[i % STATUS_COLORS.length], name: PROCESS_STATUS_LABEL[s.status as ProcessStatus] }));
+  const slices = (distribution ?? []).map((s) => ({ ...s, color: STATUS_COLORS[s.status], name: PROCESS_STATUS_LABEL[s.status] }));
   const total = slices.reduce((sum, s) => sum + s.count, 0);
   return (
     <Panel className="flex h-full flex-col">

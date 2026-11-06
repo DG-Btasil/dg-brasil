@@ -49,13 +49,18 @@
   --info-soft: #e8eff6;
   --info-line: #c6d6e7;
 
-  /* Gráficos — derivados da identidade */
+  /* Gráficos — derivados da identidade (navy, dourado e semânticas discretas) */
   --chart-1: #0b1f33;
   --chart-2: #33506d;
   --chart-3: #c9a227;
   --chart-4: #7d93a8;
   --chart-5: #2c6a4d;
   --chart-6: #b9c4cf;
+  --chart-7: #e2cc84;
+  --chart-8: #2c5a86;
+  --chart-9: #b25a14;
+  --chart-10: #8a95a1;
+  --chart-11: #8c3b3b;
 
   --focus-ring: #c9a227;
   --header-height: 60px;

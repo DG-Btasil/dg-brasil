@@ -1,15 +1,14 @@
 import { z } from "zod";
 import { CLIENT_POLES, DEADLINE_TYPES, PROCESS_ORIGINS, PROCESS_PHASES, PROCESS_STATUSES } from "@/lib/constants/status";
 import { pageInputSchema, sortSchema } from "@/server/core/pagination";
-import { zCnj, zIsoDate, zIsoDateTime, zMoney, zOptionalText, zTaxId, zText, zUf, zUuid } from "@/server/core/validation";
+import { zCnj, zIsoDate, zIsoDateTime, zMoney, zOptionalText, zPercentage, zTaxId, zText, zUf, zUuid } from "@/server/core/validation";
 
 /**
  * Entrada das operações de Processo, Partes e Movimentações (validada no
- * servidor, sempre). Vocabulário = o do banco (canônico).
+ * servidor, sempre). Vocabulário = o do banco (canônico): status e fases da
+ * migration 045, iguais aos do front.
  */
 
-/** Status gravados no banco: os do front + ARCHIVED (exibido como "Encerrado"). */
-export const DB_PROCESS_STATUSES = [...PROCESS_STATUSES, "ARCHIVED"] as const;
 export const PARTY_TYPES = ["PLAINTIFF", "DEFENDANT", "INTERESTED", "OTHER"] as const;
 export type PartyType = (typeof PARTY_TYPES)[number];
 
@@ -40,7 +39,7 @@ export const listProcessesSchema = pageInputSchema
   .extend({
     /** CNJ (só dígitos, prefixo, com ou sem máscara) ou trecho do título. */
     q: z.string().trim().max(120).optional(),
-    status: z.enum(DB_PROCESS_STATUSES).optional(),
+    status: z.enum(PROCESS_STATUSES).optional(),
     clientId: zUuid().optional(),
     caseId: zUuid().optional(),
     /** Só equipe interna (parceiro não filtra por responsável interno). */
@@ -70,7 +69,11 @@ export const processIdSchema = z.object({ id: zUuid() });
 
 /** Campos que interno e parceiro informam. */
 const sharedFields = {
-  title: zText(300, "Informe o título do processo."),
+  /**
+   * Opcional: o processo não tem nome próprio, a tela mostra o título do caso.
+   * Continua aceito (importação, integrações e processos antigos têm título).
+   */
+  title: zOptionalText(300),
   cnj: optionalCnj(),
   court: zOptionalText(200),
   unit: zOptionalText(200),
@@ -89,12 +92,16 @@ const sharedFields = {
 
 /** Só equipe interna. */
 const internalFields = {
-  status: z.enum(DB_PROCESS_STATUSES).optional(),
+  status: z.enum(PROCESS_STATUSES).optional(),
   phase: z.enum(PROCESS_PHASES).optional(),
   responsibleUserId: zUuid().optional(),
   operationalDueAt: zIsoDateTime().optional(),
   summary: zOptionalText(5000),
   notes: zOptionalText(5000),
+  /** Honorários do processo em reais (legal_process_internal_details — parceiro nunca lê). */
+  feeAmount: zMoney().optional(),
+  /** Honorários de êxito, % do proveito (0–100). */
+  feePercentage: zPercentage().optional(),
 };
 
 const nextDeadlineSchema = z.object({
@@ -113,7 +120,10 @@ export const createProcessSchema = z.object({
   legalCaseId: zUuid(),
   ...sharedFields,
   ...internalFields,
-  /** Prazo inicial opcional (mesmo formulário do front). */
+  /**
+   * Prazo inicial opcional. A tela não pede mais (prazos ficam na aba Prazos);
+   * continua aceito para quem chama o servidor direto.
+   */
   nextDeadline: nextDeadlineSchema.optional(),
 });
 export type CreateProcessInput = z.infer<typeof createProcessSchema>;
@@ -132,7 +142,8 @@ export const updateProcessSchema = z.object({
   id: zUuid(),
   patch: z
     .object({
-      title: sharedFields.title,
+      /** null/"" limpa: o processo passa a ser exibido com o título do caso. */
+      title: z.preprocess(blankToNull, zText(300).nullable()),
       cnj: z.preprocess(blankToNull, zCnj().nullable()),
       court: zOptionalText(200).nullable(),
       unit: zOptionalText(200).nullable(),
@@ -144,12 +155,14 @@ export const updateProcessSchema = z.object({
       opposingParty: zOptionalText(500).nullable(),
       distributionDate: z.preprocess(blankToNull, zIsoDate().nullable()),
       caseValue: zMoney().nullable(),
-      status: z.enum(DB_PROCESS_STATUSES),
+      status: z.enum(PROCESS_STATUSES),
       phase: z.enum(PROCESS_PHASES).nullable(),
       responsibleUserId: zUuid().nullable(),
       operationalDueAt: zIsoDateTime().nullable(),
       summary: zOptionalText(5000).nullable(),
       notes: zOptionalText(5000).nullable(),
+      feeAmount: zMoney().nullable(),
+      feePercentage: zPercentage().nullable(),
     })
     .partial()
     .refine((p) => Object.keys(p).length > 0, "Nada para alterar."),

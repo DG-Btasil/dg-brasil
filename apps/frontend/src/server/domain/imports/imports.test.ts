@@ -173,11 +173,35 @@ describe("conversões", () => {
     expect(parseUf("XX")).toBeUndefined();
     expect(parseStatus("Em andamento")).toBe("ACTIVE");
     expect(parseStatus("Arquivado")).toBe("ARCHIVED");
-    expect(parseStatus("Baixado")).toBe("CLOSED");
+    expect(parseStatus("Baixado")).toBe("ARCHIVED");
     expect(parseStatus("Pré-ajuizamento")).toBe("PRE_FILING");
     expect(parseStatus("???")).toBeUndefined();
     expect(isValidCnj(cnj(1))).toBe(true);
     expect(isValidCnj(cnj(1).replace(/^0/, "9"))).toBe(false);
+  });
+  it("status da 045: etapas novas e textos dos status antigos", () => {
+    const cases: [string, string][] = [
+      ["Com sentença", "SENTENCED"],
+      ["Sentenciado", "SENTENCED"],
+      ["Em recurso", "APPEAL"],
+      ["Apelação", "APPEAL"],
+      ["Trânsito em julgado", "FINAL_JUDGMENT"],
+      ["Sentença transitada em julgado", "FINAL_JUDGMENT"],
+      ["Execução", "ENFORCEMENT"],
+      ["Cumprimento de sentença", "ENFORCEMENT"],
+      ["Recebido", "RECEIVED"],
+      ["Encerrado", "ARCHIVED"],
+      ["Processo extinto", "ARCHIVED"],
+      ["Concluído", "ARCHIVED"],
+      ["CLOSED", "ARCHIVED"],
+      ["Aguardando cliente", "ACTIVE"],
+      ["Aguardando prazo", "ACTIVE"],
+      ["WAITING_DEADLINE", "ACTIVE"],
+      ["Concluso para sentença", "ACTIVE"],
+      ["Execução suspensa", "SUSPENDED"],
+      ["Distribuído", "FILED"],
+    ];
+    for (const [text, status] of cases) expect([text, parseStatus(text)]).toEqual([text, status]);
   });
   it("responsável: nome completo, de preferência ou primeiro nome único", () => {
     const users: ImportUser[] = [
@@ -220,6 +244,24 @@ describe("validação linha a linha (simulação)", () => {
       process: { cnj: cnj(10), legal_class: "Revisional", status: "ACTIVE", case_value: 1500, due_date: "2026-12-10", responsible_user_id: "u-lucas" },
     });
     expect(r!.raw_data.Nome).toBe("Ana Lima");
+  });
+
+  it("status que deixa a fase clara define a fase; em andamento não mexe na fase", () => {
+    const rows = normalizeRows(
+      headers,
+      [
+        row(2, ["Ana Lima", "529.982.247-25", "", "", cnj(20), "Revisional", "Em grau de recurso", "", "", ""]),
+        row(3, ["Bia Souza", "111.444.777-35", "", "", cnj(21), "Revisional", "Encerrado", "", "", ""]),
+        row(4, ["Caio Lima", "390.533.447-05", "", "", cnj(22), "Revisional", "Em andamento", "", "", ""]),
+      ],
+      mapping,
+      ctx,
+    );
+    expect(rows.map((r) => [r.payload?.process?.status, r.payload?.process?.phase])).toEqual([
+      ["APPEAL", "APPEAL"],
+      ["ARCHIVED", "ARCHIVED"],
+      ["ACTIVE", undefined],
+    ]);
   });
 
   it("erros: sem nome, CPF com 10 dígitos com máscara, CNJ com DV errado, CNJ repetido no arquivo, tipo PJ com CPF", () => {

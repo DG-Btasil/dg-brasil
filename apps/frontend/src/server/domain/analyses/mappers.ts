@@ -31,6 +31,7 @@ export interface AnalysisRow {
 export interface AnalysisDetailRow extends AnalysisRow {
   summary: string | null;
   field_values: Record<string, unknown> | null;
+  additional_info?: string | null;
   result_data: unknown;
   interruption_reason: string | null;
   started_by: string | null;
@@ -190,6 +191,7 @@ export function detailFromRow(row: AnalysisDetailRow, missing: MissingRequiremen
     ...listItemFromRow(row),
     status: analysisStatusFromDb(row.status, requiredDocumentsComplete),
     fields: stringFields(row.field_values),
+    additionalInfo: opt(row.additional_info),
     result: resultFromRow(row.summary, row.result_data),
     resultData: isObject(row.result_data) ? row.result_data : {},
     interruptionReason: opt(row.interruption_reason),

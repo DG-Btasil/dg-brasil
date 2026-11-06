@@ -52,7 +52,7 @@ export function PublicationDrawer({ id, onClose, onChanged }: { id: string; onCl
   const canDecide = can("processes.edit");
 
   return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} width={680} title={p ? `Publicação — ${p.processTitle ?? formatCNJ(p.cnjNumber)}` : "Publicação"} description={p ? `${p.court ?? ""} · disponibilizada em ${formatDate(p.availableOn)}` : undefined}>
+    <Drawer open onOpenChange={(o) => !o && onClose()} width={680} title={p ? `Publicação — ${p.processTitle || p.caseTitle || formatCNJ(p.cnjNumber)}` : "Publicação"} description={p ? `${p.court ?? ""} · disponibilizada em ${formatDate(p.availableOn)}` : undefined}>
       {!data ? (
         <SkeletonRows rows={6} />
       ) : !data.ok ? (

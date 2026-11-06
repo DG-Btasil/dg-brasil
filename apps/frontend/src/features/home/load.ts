@@ -1,7 +1,7 @@
 import "server-only";
 
 import { CASE_STATUS_GROUPS } from "@/features/cases/list-query";
-import { PROCESS_STATUSES, type LegalCaseStatus, type ProcessStatus } from "@/lib/constants/status";
+import type { LegalCaseStatus } from "@/lib/constants/status";
 import type { ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/permissions";
 import { requireAppSession } from "@/server/auth/session";
@@ -18,8 +18,9 @@ import { getFinanceSummaryAction, getMyPartnerFinanceAction } from "@/server/dom
 import type { FinanceSummaryDTO, PartnerFinanceDTO } from "@/server/domain/finance/dto";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 import type { PartnerRequestListItem } from "@/server/domain/partner-requests/dto";
-import { getProcessSummaryAction, listProcessesAction } from "@/server/domain/processes/actions";
-import type { ProcessListItem, ProcessSummaryDTO } from "@/server/domain/processes/dto";
+import { getProcessStatusCountsAction, listProcessesAction } from "@/server/domain/processes/actions";
+import type { ProcessListItem, ProcessStatusCountDTO } from "@/server/domain/processes/dto";
+import { activeProcessTotal } from "@/server/domain/processes/mappers";
 import { listOverdueDeadlinesAction, listUpcomingDeadlinesAction } from "@/server/domain/processes/deadlines/actions";
 import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
@@ -28,8 +29,10 @@ import type { ReviewListItem } from "@/server/domain/reviews/dto";
 /**
  * Início (Fase H): tudo do SERVIDOR, pelas mesmas Server Actions das telas
  * (sessão + permissão + RLS). Contadores vêm do total das listagens
- * (pageSize 1) — nada de baixar listas para contar no navegador. Cada bloco
- * só é lido se o papel tem a permissão; o resto nem é consultado.
+ * (pageSize 1) — nada de baixar listas para contar no navegador. Processos
+ * por status (gráfico e "Processos ativos") saem de UMA consulta
+ * (get_process_status_counts, 045). Cada bloco só é lido se o papel tem a
+ * permissão; o resto nem é consultado.
  */
 
 type R<T> = ActionResult<T>;
@@ -56,7 +59,8 @@ export interface InternalHomeData {
   newCases?: R<Page<CaseListItem>>;
   overdue: R<Page<DeadlineDTO>>;
   upcoming: R<Page<DeadlineDTO>>;
-  distribution: { status: ProcessStatus; count: number }[] | null;
+  /** Status com processo, na ordem da tela (status sem processo ficam de fora); null = falha na contagem. */
+  distribution: ProcessStatusCountDTO[] | null;
   reviews?: R<Page<ReviewListItem>>;
   clients: R<Page<ClientListItem>>;
   feed?: R<Page<AuditEventDTO>>;
@@ -67,10 +71,10 @@ export async function loadInternalHome(): Promise<InternalHomeData> {
   const session = await requireAppSession();
   const role = session.role;
   const none = Promise.resolve(undefined);
-  const [active, awaiting, summary, reviewsOpen, reviewsUrgent, upcoming, overdue, finance, newCases, clients, feed, runs, ...byStatus] = await Promise.all([
+  const [active, awaiting, byStatus, reviewsOpen, reviewsUrgent, upcoming, overdue, finance, newCases, clients, feed, runs] = await Promise.all([
     listCasesAction({ status: ACTIVE_CASE, pageSize: 1 }),
     listCasesAction({ status: AWAITING_CASE, pageSize: 1 }),
-    getProcessSummaryAction() as Promise<R<ProcessSummaryDTO>>,
+    getProcessStatusCountsAction() as Promise<R<ProcessStatusCountDTO[]>>,
     can(role, "reviews.view") ? listReviewsAction({ status: "OPEN", pageSize: 5, sortBy: "createdAt", sortDirection: "asc" }) : none,
     can(role, "reviews.view") ? listReviewsAction({ status: "OPEN", priority: "URGENT", pageSize: 1 }) : none,
     listUpcomingDeadlinesAction({ days: 5, pageSize: 10 }),
@@ -80,16 +84,15 @@ export async function loadInternalHome(): Promise<InternalHomeData> {
     listClientsAction({ pageSize: 6, sortBy: "updatedAt", sortDirection: "desc" }),
     can(role, "audit.view") ? listAuditEventsAction({ pageSize: 8, sortBy: "createdAt", sortDirection: "desc" }) : none,
     can(role, "dgbrasil.activity.view") && can(role, "analyses.start") ? listAgentRunsAction({ pageSize: 5 }) : none,
-    ...PROCESS_STATUSES.map((status) => listProcessesAction({ status, pageSize: 1 })),
   ]);
-  const distribution = byStatus.every((r) => r.ok) ? PROCESS_STATUSES.map((status, i) => ({ status, count: total(byStatus[i]) ?? 0 })).filter((s) => s.count > 0) : null;
+  const distribution = byStatus.ok ? byStatus.data.filter((s) => s.count > 0) : null;
   return {
     firstName: session.displayName || session.fullName,
     officeName: session.organizationName,
     kpis: {
       activeCases: total(active),
       awaitingCases: total(awaiting),
-      activeProcesses: summary.ok ? summary.data.active : undefined,
+      activeProcesses: byStatus.ok ? activeProcessTotal(byStatus.data) : undefined,
       pendingReviews: reviewsOpen ? total(reviewsOpen) : undefined,
       urgentReviews: reviewsUrgent ? total(reviewsUrgent) : undefined,
       dueSoonDeadlines: total(upcoming),

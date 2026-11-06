@@ -16,7 +16,7 @@ import type { Page } from "@/server/core/pagination";
 import { listClientsAction } from "@/server/domain/clients/actions";
 import type { ClientListItem } from "@/server/domain/clients/dto";
 import { usePermission } from "@/features/auth/hooks";
-import { useDirectoryUserMap, useOrganizationNames, useOrgDirectory, useResponsibleUserOptions } from "@/features/directory/directory-context";
+import { useOrganizationNames, useOrgDirectory } from "@/features/directory/directory-context";
 import { CLIENT_PAGE_SIZE, DEFAULT_CLIENT_QUERY, clientQueryToInput, clientQueryToSearchParams, hasClientFilters, type ClientListQuery, type ClientSortField } from "../../list-query";
 import { ClientFilters } from "./client-filters";
 import { ClientTable } from "./client-table";
@@ -33,8 +33,6 @@ export function ClientList({ initialQuery, initialResult }: { initialQuery: Clie
     load: (q: ClientListQuery) => listClientsAction(clientQueryToInput(q)),
     toSearch: clientQueryToSearchParams,
   });
-  const userMap = useDirectoryUserMap();
-  const responsibleOptions = useResponsibleUserOptions();
   const canPartners = usePermission("partners.view");
   const { owner, partners } = useOrgDirectory();
   const originNames = useOrganizationNames();
@@ -80,7 +78,6 @@ export function ClientList({ initialQuery, initialResult }: { initialQuery: Clie
           <ClientFilters
             value={query}
             onChange={setQuery}
-            responsibleOptions={responsibleOptions}
             originOptions={canPartners ? originOptions : undefined}
             total={page?.total}
           />
@@ -102,7 +99,7 @@ export function ClientList({ initialQuery, initialResult }: { initialQuery: Clie
               />
             ) : (
               <>
-                <ClientTable rows={page.items} userMap={userMap} sortKey={query.sort} direction={query.direction} onSort={onSort} originNames={canPartners ? originNames : undefined} />
+                <ClientTable rows={page.items} sortKey={query.sort} direction={query.direction} onSort={onSort} originNames={canPartners ? originNames : undefined} />
                 <Pagination
                   page={page.page}
                   pageSize={CLIENT_PAGE_SIZE}

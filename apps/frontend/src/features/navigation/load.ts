@@ -11,7 +11,8 @@ import { listClientsAction } from "@/server/domain/clients/actions";
 import { countUnreadNotificationsAction } from "@/server/domain/notifications/actions";
 import { listPartnersAction } from "@/server/domain/organizations/actions";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
-import { getProcessSummaryAction, listProcessesAction } from "@/server/domain/processes/actions";
+import { getProcessStatusCountsAction, listProcessesAction } from "@/server/domain/processes/actions";
+import { activeProcessTotal } from "@/server/domain/processes/mappers";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
 
 /**
@@ -50,11 +51,12 @@ export const loadNavCounts = cache(async (): Promise<Partial<Record<NavKey, stri
       notifications: unreadCount === undefined ? undefined : unreadCount ? `${unreadCount} não lidas` : "Tudo em dia",
     };
   }
-  const [clients, awaiting, active, summary, reviews, partners] = await Promise.all([
+  const [clients, awaiting, active, byStatus, reviews, partners] = await Promise.all([
     listClientsAction({ pageSize: 1 }),
     listCasesAction({ status: AWAITING, pageSize: 1 }),
     listCasesAction({ status: ACTIVE, pageSize: 1 }),
-    getProcessSummaryAction(),
+    // Uma consulta (045): processos ativos = todos os status, exceto recebido e arquivado.
+    getProcessStatusCountsAction(),
     can(role, "reviews.view") ? listReviewsAction({ status: "OPEN", pageSize: 1 }) : none,
     can(role, "partners.view") ? listPartnersAction({ status: "ACTIVE", pageSize: 1 }) : none,
   ]);
@@ -62,7 +64,7 @@ export const loadNavCounts = cache(async (): Promise<Partial<Record<NavKey, stri
   return {
     clients: n(clients) !== undefined ? pluralize(n(clients) ?? 0, "cliente", "clientes") : undefined,
     cases: n(awaiting) ? `${n(awaiting)} aguardando análise` : n(active) !== undefined ? `${n(active)} ativos` : undefined,
-    processes: summary.ok ? `${summary.data.active} ativos` : undefined,
+    processes: byStatus.ok ? `${activeProcessTotal(byStatus.data)} ativos` : undefined,
     reviews: openReviews === undefined ? undefined : openReviews ? `${openReviews} pendentes` : "Nenhuma pendente",
     partners: n(partners) !== undefined ? `${n(partners)} ativos` : undefined,
   };

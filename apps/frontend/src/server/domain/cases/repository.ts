@@ -27,7 +27,7 @@ const PARTNER_COLUMNS = `id, client_id, legal_area_id, case_type_id, title, summ
   created_at, updated_at, ${CATALOG_EMBEDS},
   clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name))`;
 
-const INTERNAL_COLUMNS = `${PARTNER_COLUMNS}, created_by_organization_id, created_by, assigned_lawyer_id`;
+const INTERNAL_COLUMNS = `${PARTNER_COLUMNS}, created_by_organization_id, created_by, assigned_lawyer_id, acquisition_channel, acquisition_detail`;
 
 const LIST_BASE_COLUMNS = `id, client_id, legal_area_id, case_type_id, title, status, origin_organization_id, partner_organization_id,
   submitted_at, accepted_at, created_at, updated_at, ${CATALOG_EMBEDS},

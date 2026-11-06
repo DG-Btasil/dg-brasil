@@ -18,7 +18,6 @@ import type {
   PartnerOfficeStatus,
   PartnerRequestType,
   PaymentStatus,
-  ProcessStatus,
   ReviewDecisionKind,
   ReviewStatus,
   UserStatus,
@@ -38,7 +37,6 @@ export type DbAgentStatus = "ACTIVE" | "INACTIVE" | "DRAFT";
 export type DbMembershipStatus = "INVITED" | "ACTIVE" | "SUSPENDED" | "REMOVED";
 export type DbAnalysisStatus = "PENDING" | "WAITING_DOCUMENTS" | "QUEUED" | "RUNNING" | "WAITING_REVIEW" | "COMPLETED" | "FAILED" | "CANCELLED";
 export type DbClientStatus = "ACTIVE" | "INACTIVE" | "ARCHIVED";
-export type DbProcessStatus = ProcessStatus | "ARCHIVED";
 export type DbPaymentStatus = "PENDING" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED";
 export type DbDocumentVerification = "UNVERIFIED" | "VERIFIED" | "FAILED";
 
@@ -187,10 +185,11 @@ export const CLIENT_STATUS_FROM_DB: Record<DbClientStatus, ClientStatus> = {
   ARCHIVED: "INACTIVE",
 };
 
-/** Status do processo banco → front. O banco tem ARCHIVED a mais, exibido como CLOSED. */
-export function processStatusFromDb(status: DbProcessStatus): ProcessStatus {
-  return status === "ARCHIVED" ? "CLOSED" : status;
-}
+/*
+ * Status e fase do processo: desde a migration 045 o front usa exatamente o
+ * vocabulário do banco (PROCESS_STATUSES / PROCESS_PHASES), sem adaptador.
+ * "Arquivado" deixou de ser exibido como "Encerrado": é um status próprio.
+ */
 
 /* ------------------------------------------------------------------ */
 /* Financeiro                                                          */

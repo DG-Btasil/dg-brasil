@@ -27,6 +27,11 @@ export async function listProcessesAction(input: unknown) {
   return runAction({ name: "processes.list", permission: "processes.view", schema: listProcessesSchema, input, handler: service.listProcesses });
 }
 
+/** Processos por status numa consulta só (Início e menu), com a RLS de quem pede. */
+export async function getProcessStatusCountsAction(input?: unknown) {
+  return runAction({ name: "processes.status_counts", permission: "processes.view", schema: z.unknown(), input, handler: (ctx) => service.getProcessStatusCounts(ctx) });
+}
+
 /** Contadores da carteira (equipe interna). */
 export async function getProcessSummaryAction(input?: unknown) {
   return runAction({ name: "processes.summary", permission: "processes.view", schema: z.unknown(), input, handler: (ctx) => service.getProcessSummary(ctx) });

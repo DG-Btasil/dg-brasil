@@ -15,10 +15,13 @@ import { ctxFor, dbFor, expectDomainError, fakeCpf, serviceDb, world } from "./s
  */
 
 const form = (cpf: string, name: string) => ({
-  ...emptyIndividualValues(world.users.LAWYER.id, world.owner),
+  ...emptyIndividualValues(world.owner),
   fullName: name,
   cpf,
   phone: "(11) 99999-0000",
+  email: "cliente.ui@dgbrasil.test",
+  maritalStatus: "SINGLE",
+  profession: "Aposentada",
   socialName: "Apelido UI",
   address: { zipCode: "01001-000", street: "Praça da Sé", number: "1", complement: "", district: "Sé", city: "São Paulo", state: "sp", country: "Brasil" },
 });
@@ -30,7 +33,7 @@ describe("Fase A — clientes pela UI", () => {
     const { id } = await clients.createClient(lawyer, createClientSchema.parse(individualCreateInput(form(cpf, `Cliente UI ${world.run}`))));
     const created = await clients.getClient(lawyer, id);
     if (created.surface !== "INTERNAL" || created.client.kind !== "INDIVIDUAL") throw new Error("ficha");
-    expect(created.client).toMatchObject({ socialName: "Apelido UI", responsibleUserId: world.users.LAWYER.id, originOfficeId: world.owner });
+    expect(created.client).toMatchObject({ socialName: "Apelido UI", originOfficeId: world.owner });
     expect(created.client.address).toMatchObject({ zipCode: "01001000", state: "SP", country: "BR" });
 
     const patch = individualPatch({ ...form(cpf, `Cliente UI ${world.run} editado`), socialName: "", address: { ...form(cpf, "").address, zipCode: "", street: "", number: "", district: "", city: "", state: "" } }, created.client);

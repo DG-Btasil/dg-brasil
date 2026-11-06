@@ -6,13 +6,16 @@ import type {
   DocumentVerification,
   DocumentVisibility,
 } from "@/lib/constants/status";
-import type { Gender, IdDocumentType, MaritalStatus } from "@/lib/constants/legal";
+import type { AcquisitionChannel, Gender, IdDocumentType, MaritalStatus } from "@/lib/constants/legal";
 import type { Address, Contact, ID, ISODate, ISODateTime, OfficeScoped, Timestamps } from "./common";
 
 interface ClientBase extends OfficeScoped, Timestamps {
   kind: ClientKind;
   status: ClientStatus;
-  responsibleUserId: ID;
+  /** Como o cliente chegou (indicação, Google Ads, ...). Ver ACQUISITION_CHANNELS. */
+  acquisitionChannel?: AcquisitionChannel;
+  /** Detalhe livre do canal: quem indicou, campanha. */
+  acquisitionDetail?: string;
   contact: Contact;
   address?: Address;
   /** Observações internas estruturadas. */
@@ -90,7 +93,6 @@ export interface IndividualClient extends ClientBase {
   birthplace?: string;
   gender?: Gender;
   maritalStatus?: MaritalStatus;
-  stableUnion?: boolean;
   profession?: string;
 }
 
@@ -118,11 +120,8 @@ export interface CompanyClient extends ClientBase {
   legalName: string;
   tradeName?: string;
   cnpj: string;
-  registrationStatus?: string;
   openingDate?: ISODate;
   legalNature?: string;
-  mainCnae?: string;
-  secondaryCnaes?: string[];
   representatives: LegalRepresentative[];
   partners: Partner[];
 }

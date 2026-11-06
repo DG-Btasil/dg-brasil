@@ -35,6 +35,8 @@ export interface AnalysisDetailDTO extends AnalysisListItem {
   /** Status do front (READY × NOT_STARTED derivado dos documentos obrigatórios). */
   status: AnalysisStatus;
   fields: Record<string, string>;
+  /** Informações adicionais da equipe para os agentes (045). */
+  additionalInfo?: string;
   /** Resultado estruturado (resumo, teses identificadas, recomendação). Nunca raciocínio do modelo. */
   result?: AnalysisResult;
   /** Saída estruturada completa (result_data), para telas que precisem de outras chaves. */

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ACQUISITION_CHANNELS } from "@/lib/constants/legal";
 import { CLIENT_INACTIVATION_REASONS } from "@/types/client";
 import { pageInputSchema, sortSchema } from "@/server/core/pagination";
 import {
@@ -26,7 +27,8 @@ export const listClientsSchema = pageInputSchema
     kind: z.enum(["INDIVIDUAL", "COMPANY"]).optional(),
     /** Só equipe interna: parceiro sempre recebe apenas os próprios relacionamentos (RLS). */
     originOrganizationId: zUuid().optional(),
-    responsibleUserId: zUuid().optional(),
+    /** Canal de aquisição (como o cliente chegou). */
+    acquisitionChannel: z.enum(ACQUISITION_CHANNELS).optional(),
   })
   .and(sortSchema(CLIENT_SORT_FIELDS, "updatedAt"));
 export type ListClientsInput = z.infer<typeof listClientsSchema>;
@@ -42,9 +44,15 @@ const contactSchema = z
     email: zEmailOptional(),
     phone: zOptionalText(20),
     secondaryPhone: zOptionalText(20),
-    website: zOptionalText(200),
   })
   .partial();
+
+/** Cadastro novo (Roadmap 2.0): e-mail obrigatório. */
+const requiredContactSchema = z.object({
+  email: z.string().trim().toLowerCase().min(1, "Informe o e-mail.").email("E-mail inválido.").max(200),
+  phone: zOptionalText(20),
+  secondaryPhone: zOptionalText(20),
+});
 
 export const addressSchema = z.object({
   zipCode: zCep().optional(),
@@ -55,6 +63,16 @@ export const addressSchema = z.object({
   city: zOptionalText(100),
   state: zUf().optional(),
   country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).optional(),
+});
+
+/** Cadastro novo (Roadmap 2.0): endereço completo; só o complemento é opcional. */
+const requiredAddressSchema = addressSchema.extend({
+  zipCode: zCep(),
+  street: zText(200, "Informe o logradouro."),
+  number: zText(20, "Informe o número (ou S/N)."),
+  district: zText(100, "Informe o bairro."),
+  city: zText(100, "Informe o município."),
+  state: zUf(),
 });
 
 const identitySchema = z.object({
@@ -72,26 +90,35 @@ const individualFields = {
   nationality: zOptionalText(80),
   birthplace: zOptionalText(120),
   maritalStatus: z.enum(["SINGLE", "MARRIED", "DIVORCED", "WIDOWED", "SEPARATED"]).optional(),
-  stableUnion: z.boolean().optional(),
   profession: zOptionalText(120),
   identityDocument: identitySchema.optional(),
+};
+
+/** No cadastro novo, a qualificação completa é obrigatória (Roadmap 2.0). */
+const individualCreateFields = {
+  ...individualFields,
+  nationality: zText(80, "Informe a nacionalidade."),
+  maritalStatus: individualFields.maritalStatus.unwrap(),
+  profession: zText(120, "Informe a profissão."),
 };
 
 const companyFields = {
   legalName: zText(200, "Informe a razão social."),
   tradeName: zOptionalText(200),
-  registrationStatus: zOptionalText(80),
   openingDate: zIsoDate().optional(),
   legalNature: zOptionalText(120),
-  mainCnae: z.string().regex(/^\d{7}$/, "CNAE com 7 dígitos.").optional(),
-  secondaryCnaes: z.array(z.string().regex(/^\d{7}$/, "CNAE com 7 dígitos.")).max(50).optional(),
+};
+
+const channelFields = {
+  acquisitionChannel: z.enum(ACQUISITION_CHANNELS).optional(),
+  acquisitionDetail: zOptionalText(300),
 };
 
 const commonFields = {
   originOfficeId: zUuid(),
-  responsibleUserId: zUuid().optional(),
-  contact: contactSchema.default({}),
-  address: addressSchema.optional(),
+  ...channelFields,
+  contact: requiredContactSchema,
+  address: requiredAddressSchema,
   notes: zOptionalText(5000),
   legalSummary: zOptionalText(5000),
 };
@@ -113,7 +140,7 @@ const shareholderSchema = z.object({
 });
 
 export const createClientSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("INDIVIDUAL"), cpf: zCpf(), ...individualFields, ...commonFields }),
+  z.object({ kind: z.literal("INDIVIDUAL"), cpf: zCpf(), ...individualCreateFields, ...commonFields }),
   z.object({
     kind: z.literal("COMPANY"),
     cnpj: zCnpj(),
@@ -144,7 +171,8 @@ export const updateClientSchema = z.object({
       identityDocument: identitySchema.nullable(),
       ...companyFields,
       originOfficeId: zUuid(),
-      responsibleUserId: zUuid().nullable(),
+      acquisitionChannel: z.enum(ACQUISITION_CHANNELS).nullable(),
+      acquisitionDetail: zOptionalText(300).nullable(),
       contact: contactSchema,
       address: addressSchema.nullable(),
       notes: zOptionalText(5000).nullable(),

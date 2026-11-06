@@ -8,19 +8,37 @@ const optionalDate = z
   .optional()
   .refine((v) => !v || isoDate.test(v), msg.date);
 
-/** Mensagem da data de vencimento obrigatória no cadastro de processo. */
-export const DUE_DATE_REQUIRED = "Informe uma data de vencimento para continuar.";
-
 const requiredEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.enum(values, { error: () => ({ message: msg.required }) });
 
-/** Formulário de cadastro manual de processo. */
+/** Percentual digitado ("20", "12,5", "12,5%") → número; vazio → undefined; texto inválido → NaN. */
+export function parsePercentInput(value: string | undefined): number | undefined {
+  const v = value?.replace("%", "").trim();
+  if (!v) return undefined;
+  const n = Number(v.replace(",", "."));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** Percentual opcional 0–100, até 2 casas. */
+const percentOptional = () =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .refine((v) => {
+      const n = parsePercentInput(v);
+      return n === undefined || (n >= 0 && n <= 100 && Math.round(n * 100) === Number((n * 100).toFixed(6)));
+    }, msg.percent);
+
+/**
+ * Formulário de cadastro manual de processo. Sem nome próprio (o processo é
+ * exibido com o título do caso) e sem prazo inicial (prazos na aba Prazos).
+ */
 export const processFormSchema = z
   .object({
     /** Todo processo pertence a um caso (o cliente é o do caso). */
     legalCaseId: zRequired("Selecione o caso relacionado."),
     cnj: zCnjOptional(),
-    title: zRequired("Informe um nome resumido para o processo."),
     court: z.string().optional(),
     unit: z.string().optional(),
     district: z.string().optional(),
@@ -32,27 +50,20 @@ export const processFormSchema = z
     responsibleUserId: zRequired("Selecione o advogado responsável."),
     distributionDate: optionalDate,
     caseValue: zCurrencyOptional(),
+    /** Honorários do processo (R$) — dado interno, parceiro nunca vê. */
+    feeAmount: zCurrencyOptional(),
+    /** Honorários de êxito (% do proveito, 0–100) — dado interno. */
+    feePercentage: percentOptional(),
     status: requiredEnum(PROCESS_STATUSES),
     phase: requiredEnum(PROCESS_PHASES),
-    deadlineTitle: z.string().optional(),
-    deadlineType: z.union([z.enum(DEADLINE_TYPES), z.literal("")]).optional(),
-    /**
-     * Data operacional principal do processo (vencimento do próximo prazo).
-     * Obrigatória: é ela que organiza tarefas, alertas, prazos e prioridades.
-     */
-    deadlineDueDate: z
-      .string({ error: () => ({ message: DUE_DATE_REQUIRED }) })
-      .trim()
-      .min(1, DUE_DATE_REQUIRED)
-      .refine((v) => isoDate.test(v), msg.date),
     notes: z.string().optional(),
   });
 
 export type ProcessFormInput = z.input<typeof processFormSchema>;
 export type ProcessFormValues = z.output<typeof processFormSchema>;
 
-/** Edição: o caso não muda e o prazo inicial é só do cadastro (prazos têm aba própria). */
-export const processEditSchema = processFormSchema.omit({ legalCaseId: true, deadlineTitle: true, deadlineType: true, deadlineDueDate: true });
+/** Edição: o caso do processo não muda. */
+export const processEditSchema = processFormSchema.omit({ legalCaseId: true });
 export type ProcessEditInput = z.input<typeof processEditSchema>;
 export type ProcessEditValues = z.output<typeof processEditSchema>;
 

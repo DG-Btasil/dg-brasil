@@ -13,9 +13,9 @@ const blank = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
 /* Processo                                                            */
 /* ------------------------------------------------------------------ */
 
+/** Sem nome próprio: o processo é exibido com o título do caso. Sem honorários (dado interno). */
 export interface PartnerProcessValues {
   cnj: string;
-  title: string;
   court: string;
   unit: string;
   district: string;
@@ -32,7 +32,6 @@ export interface PartnerProcessValues {
 export function partnerProcessInput(legalCaseId: string, v: PartnerProcessValues): Record<string, unknown> {
   return {
     legalCaseId,
-    title: v.title.trim(),
     cnj: blank(v.cnj),
     court: blank(v.court),
     unit: blank(v.unit),
@@ -64,6 +63,11 @@ export interface PartnerCaseValues {
   document: string;
   fullName: string;
   birthDate: string;
+  nationality: string;
+  maritalStatus: string;
+  profession: string;
+  acquisitionChannel: string;
+  acquisitionDetail: string;
   legalName: string;
   tradeName: string;
   email: string;
@@ -108,7 +112,17 @@ export function partnerSubmitInput(v: PartnerCaseValues, ownerId: string, existi
     ? common
     : {
         ...common,
-        ...(v.kind === "INDIVIDUAL" ? { fullName: blank(v.fullName), birthDate: blank(v.birthDate) } : { legalName: blank(v.legalName), tradeName: blank(v.tradeName) }),
+        ...(v.kind === "INDIVIDUAL"
+          ? {
+              fullName: blank(v.fullName),
+              birthDate: blank(v.birthDate),
+              nationality: blank(v.nationality),
+              maritalStatus: blank(v.maritalStatus),
+              profession: blank(v.profession),
+            }
+          : { legalName: blank(v.legalName), tradeName: blank(v.tradeName) }),
+        acquisitionChannel: blank(v.acquisitionChannel),
+        acquisitionDetail: blank(v.acquisitionDetail),
         email: blank(v.email),
         phone: blank(v.phone),
         address: address(v),

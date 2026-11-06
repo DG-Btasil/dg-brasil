@@ -27,20 +27,20 @@ export function NewProcessPage({ initialCase }: { initialCase?: PickerOption & {
     <PageContainer className="max-w-[1200px]">
       <PageHeader
         title="Cadastrar processo"
-        description="Todo processo pertence a um caso. Processos sem número CNJ ficam em pré-ajuizamento até a distribuição."
+        description="Todo processo pertence a um caso e leva o nome dele. Processos sem número CNJ ficam em pré-ajuizamento até a distribuição. Prazos são lançados depois, na aba Prazos do processo."
         breadcrumbs={[{ label: "Processos", href: "/processos" }, { label: "Cadastrar processo" }]}
       />
       <ProcessForm
         initialCase={initialCase}
         onCancel={() => router.push(back)}
-        onSubmit={async (input) => {
+        onSubmit={async (input, { caseTitle }) => {
           const result = await callAction(() => createProcessAction({ ...input, idempotencyKey: idempotency.keyFor(input) }));
           if (!result.ok) {
             failed(result, "Não foi possível cadastrar o processo.");
             return result;
           }
           idempotency.reset();
-          toast({ tone: "success", title: "Processo cadastrado", description: String(input.title) });
+          toast({ tone: "success", title: "Processo cadastrado", description: caseTitle });
           // Recurso devolvido pelo servidor (também quando deduplicado).
           router.push(`/processos/${result.data.id}`);
           return result;

@@ -246,7 +246,7 @@ export async function updateCase(ctx: ServiceContext, input: UpdateCaseInput): P
   requireCaseWrite(ctx);
   const { patch } = input;
   const partner = isPartner(ctx);
-  if (partner && patch.notes !== undefined) throw forbidden();
+  if (partner && (patch.notes !== undefined || patch.acquisitionChannel !== undefined || patch.acquisitionDetail !== undefined)) throw forbidden();
 
   const touchesCatalog = ["area", "legalAreaId", "caseTypeCode", "caseTypeId"].some((k) => k in patch);
   let catalog: { legalAreaId?: string; caseTypeId?: string | null } | undefined;

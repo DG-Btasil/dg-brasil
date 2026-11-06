@@ -51,6 +51,7 @@ export function AnalysisWizard({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [send, setSend] = useState(true);
   const [requestText, setRequestText] = useState("");
+  const [additionalInfo, setAdditionalInfo] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const template = templates.find((t) => t.id === templateId);
@@ -80,6 +81,7 @@ export function AnalysisWizard({
       fields: fieldsPayload(template.fields, values),
       send: send && canSend,
       requestText: send && canSend ? requestText.trim() || undefined : undefined,
+      additionalInfo: additionalInfo.trim() || undefined,
     };
     setSubmitting(true);
     const result = await callAction(() => startAnalysisAction({ ...payload, idempotencyKey: idempotency.keyFor(payload) }));
@@ -165,6 +167,8 @@ export function AnalysisWizard({
                 fields={template.fields}
                 values={values}
                 errors={errors}
+                additionalInfo={additionalInfo}
+                onAdditionalInfo={setAdditionalInfo}
                 onChange={(key, v) => {
                   setValues((prev) => ({ ...prev, [key]: v }));
                   if (errors[key])
@@ -356,11 +360,15 @@ function FieldsStep({
   values,
   errors,
   onChange,
+  additionalInfo,
+  onAdditionalInfo,
 }: {
   fields: TemplateFieldDTO[];
   values: Record<string, string>;
   errors: Record<string, string>;
   onChange: (key: string, value: string) => void;
+  additionalInfo: string;
+  onAdditionalInfo: (value: string) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -368,9 +376,7 @@ function FieldsStep({
         <h2 className="text-[15px] font-semibold text-foreground">Dados específicos</h2>
         <p className="mt-0.5 text-[13px] text-muted">Informações da relação analisada. Ficam registradas na análise, não no cadastro do cliente.</p>
       </div>
-      {fields.length === 0 ? (
-        <p className="text-[13px] text-muted">Este modelo não pede dados adicionais.</p>
-      ) : (
+      {fields.length > 0 && (
         <div className="grid max-w-[900px] grid-cols-2 gap-x-5 gap-y-4 rounded-lg border border-line bg-surface p-6 shadow-hairline">
           {fields.map((f) => (
             <Field key={f.key} label={f.label} requirement={f.required ? "required" : "optional"} hint={f.helpText} error={errors[f.key]} className={f.type === "textarea" ? "col-span-2" : undefined}>
@@ -379,6 +385,26 @@ function FieldsStep({
           ))}
         </div>
       )}
+      {/* Roadmap 2.0: texto livre que fica guardado na análise e vai para os
+          agentes junto com o pedido, a cada envio (também nos reenvios). */}
+      <div className="max-w-[900px] rounded-lg border border-line bg-surface p-6 shadow-hairline">
+        <Field
+          label="Informações adicionais para os agentes"
+          requirement="optional"
+          hint="Contexto que ajuda a análise: o que o cliente relatou, o que observar, bancos envolvidos, prazos. Fica registrado na análise e os agentes leem antes de trabalhar."
+        >
+          {(a11y) => (
+            <Textarea
+              {...a11y}
+              rows={6}
+              maxLength={10_000}
+              value={additionalInfo}
+              onChange={(e) => onAdditionalInfo(e.target.value)}
+              placeholder="Ex.: cliente com 82 anos, recebe pelo Banco Pan; diz que nunca contratou o cartão RMC."
+            />
+          )}
+        </Field>
+      </div>
     </div>
   );
 }

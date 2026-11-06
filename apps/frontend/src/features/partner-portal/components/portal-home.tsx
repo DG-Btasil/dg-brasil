@@ -127,7 +127,8 @@ export function PortalHome({ data }: { data: PartnerHomeData }) {
                       {p.title}
                     </Link>
                     <p className="truncate text-[11.5px] text-muted">
-                      {p.caseTitle} · {formatEventTime(p.updatedAt)}
+                      {/* Processo sem título próprio já é exibido com o título do caso: não repete. */}
+                      {[p.caseTitle !== p.title ? p.caseTitle : null, formatEventTime(p.updatedAt)].filter(Boolean).join(" · ")}
                     </p>
                   </div>
                   <StatusBadge status={p.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />

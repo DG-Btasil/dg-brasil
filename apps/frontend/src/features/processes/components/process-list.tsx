@@ -102,8 +102,8 @@ export function ProcessList({
           <div className="border-b border-line px-5 py-3" role="search" aria-label="Filtrar processos">
             <div className="flex items-center gap-3">
               <SearchInput
-                aria-label="Buscar processos por número CNJ ou título"
-                placeholder="Buscar por número CNJ ou título do processo"
+                aria-label="Buscar processos por número CNJ ou nome do caso"
+                placeholder="Buscar por número CNJ ou nome do caso"
                 value={search}
                 maxLength={120}
                 onChange={(e) => {

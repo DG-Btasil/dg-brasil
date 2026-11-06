@@ -22,7 +22,7 @@ const detailRow = (over: Partial<ClientDetailRow> = {}): ClientDetailRow => ({
   cnpj: null,
   status: "ACTIVE",
   origin_organization_id: OWNER,
-  responsible_user_id: "u1",
+  acquisition_channel: "GOOGLE_ADS",
   created_at: "2026-10-01T00:00:00Z",
   updated_at: "2026-10-02T00:00:00Z",
   individual_client_details: {
@@ -33,7 +33,6 @@ const detailRow = (over: Partial<ClientDetailRow> = {}): ClientDetailRow => ({
     nationality: null,
     birthplace: null,
     marital_status: "WIDOWED",
-    stable_union: null,
     profession: null,
     identity_document_type: "RG",
     identity_document_number: "123",
@@ -91,13 +90,13 @@ describe("mapeamento banco → domínio", () => {
       cnpj: "99900011122233",
       status: "ARCHIVED",
       origin_organization_id: OWNER,
-      responsible_user_id: "u1",
+      acquisition_channel: "GOOGLE_ADS",
       created_at: "a",
       updated_at: "b",
     };
-    expect(listItemFromRow(row, { surface: "INTERNAL", organizationId: OWNER })).toMatchObject({ responsibleUserId: "u1", originOrganizationId: OWNER, status: "INACTIVE" });
+    expect(listItemFromRow(row, { surface: "INTERNAL", organizationId: OWNER })).toMatchObject({ acquisitionChannel: "GOOGLE_ADS", originOrganizationId: OWNER, status: "INACTIVE" });
     const p = listItemFromRow(row, { surface: "PARTNER", organizationId: PARTNER_A });
-    expect(p.responsibleUserId).toBeUndefined();
+    expect(p.acquisitionChannel).toBeUndefined();
     expect(p.originOrganizationId).toBeUndefined();
   });
 });
@@ -108,12 +107,18 @@ describe("payload de gravação (PATCH)", () => {
       kind: "INDIVIDUAL",
       cpf: "999.000.111-22",
       fullName: "Maria",
+      nationality: "Brasileira",
+      maritalStatus: "SINGLE",
+      profession: "Aposentada",
       originOfficeId: OWNER,
+      acquisitionChannel: "GOOGLE_ADS",
       contact: { email: "M@X.com" },
-      address: { zipCode: "01001-000", district: "Centro", state: "sp" },
+      address: { zipCode: "01001-000", street: "Rua A", number: "1", district: "Centro", city: "São Paulo", state: "sp" },
     });
     const p = createPayload(input);
-    expect(p).toMatchObject({ kind: "INDIVIDUAL", document: "99900011122", full_name: "Maria", origin_organization_id: OWNER, contact: { email: "m@x.com" } });
+    expect(p).toMatchObject({ kind: "INDIVIDUAL", document: "99900011122", full_name: "Maria", origin_organization_id: OWNER, acquisition_channel: "GOOGLE_ADS", contact: { email: "m@x.com" } });
+    expect(p).not.toHaveProperty("responsible_user_id");
+    expect(p).not.toHaveProperty("stable_union");
     expect(p.address).toMatchObject({ postal_code: "01001000", neighborhood: "Centro", state: "SP" });
   });
   it("edição só envia o que mudou; null limpa", () => {

@@ -1,17 +1,16 @@
 import { parseCurrencyInput } from "@/lib/validation";
-import type { ProcessEditValues, ProcessFormValues } from "./schemas";
+import { parsePercentInput, type ProcessEditValues, type ProcessFormValues } from "./schemas";
 
 /**
  * Formulário de processo (strings) → entrada das Server Actions. Puro: o
- * servidor valida de novo (schemas de server/domain/processes).
+ * servidor valida de novo (schemas de server/domain/processes). O processo
+ * não tem nome próprio (exibido com o título do caso) e o cadastro não cria
+ * prazo inicial — prazos são lançados na aba Prazos.
  */
 
-export const DEFAULT_DEADLINE_TITLE = "Acompanhamento do processo";
-
 /** Campos comuns ao cadastro e à edição (servidor valida de novo; "" limpa na edição). */
-function processFields(v: Omit<ProcessFormValues, "legalCaseId" | "deadlineTitle" | "deadlineType" | "deadlineDueDate">) {
+function processFields(v: ProcessEditValues) {
   return {
-    title: v.title.trim(),
     cnj: v.cnj ?? "",
     court: v.court ?? "",
     unit: v.unit ?? "",
@@ -31,17 +30,22 @@ function processFields(v: Omit<ProcessFormValues, "legalCaseId" | "deadlineTitle
 
 /** Formulário (cadastro) → createProcessAction (sem a chave de idempotência). */
 export function processCreateInput(v: ProcessFormValues): Record<string, unknown> {
-  const f = processFields(v);
   return {
-    ...f,
+    ...processFields(v),
     legalCaseId: v.legalCaseId,
     // Cadastro: vazio = ausente (o servidor trata "" como ausente nos campos com formato).
     caseValue: parseCurrencyInput(v.caseValue),
-    nextDeadline: { title: v.deadlineTitle?.trim() || DEFAULT_DEADLINE_TITLE, type: v.deadlineType || "INTERNAL", dueDate: v.deadlineDueDate },
+    feeAmount: parseCurrencyInput(v.feeAmount),
+    feePercentage: parsePercentInput(v.feePercentage),
   };
 }
 
 /** Formulário (edição) → patch de updateProcessAction: vazio limpa (null). */
 export function processEditPatch(v: ProcessEditValues): Record<string, unknown> {
-  return { ...processFields(v), caseValue: parseCurrencyInput(v.caseValue) ?? null };
+  return {
+    ...processFields(v),
+    caseValue: parseCurrencyInput(v.caseValue) ?? null,
+    feeAmount: parseCurrencyInput(v.feeAmount) ?? null,
+    feePercentage: parsePercentInput(v.feePercentage) ?? null,
+  };
 }

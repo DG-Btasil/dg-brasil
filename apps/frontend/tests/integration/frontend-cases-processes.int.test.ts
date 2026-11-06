@@ -41,10 +41,10 @@ const casePayload = (clientId: string, title: string) => ({
   linkPartner: false,
 });
 
+/** Como o formulário de processo monta o envio: sem nome próprio (é o do caso) e sem prazo inicial (045). */
 const processForm = (legalCaseId: string, o: Partial<ProcessFormValues> = {}): ProcessFormValues => ({
   legalCaseId,
   cnj: "",
-  title: `Processo Fase B ${randomUUID().slice(0, 6)}`,
   court: "TJSP",
   unit: "2ª Vara Cível",
   district: "",
@@ -56,11 +56,10 @@ const processForm = (legalCaseId: string, o: Partial<ProcessFormValues> = {}): P
   responsibleUserId: world.users.LAWYER.id,
   distributionDate: "",
   caseValue: "10.000,00",
+  feeAmount: "3.000,00",
+  feePercentage: "30",
   status: "PRE_FILING",
   phase: "PRELIMINARY",
-  deadlineTitle: "Protocolar inicial",
-  deadlineType: "",
-  deadlineDueDate: "2026-12-15",
   notes: "",
   ...o,
 });
@@ -108,27 +107,35 @@ describe("Fase B — processos, prazos e andamentos pela UI", () => {
     return id;
   }
 
-  it("cadastro pelo formulário (idempotente) → lista com cliente, caso e próximo prazo", async () => {
+  it("cadastro pelo formulário (idempotente) → lista com cliente e caso; o nome do processo é o do caso; sem prazo inicial", async () => {
     const lawyer = await ctxFor("LAWYER");
     const legalCaseId = await caseId();
-    const input = processCreateInput(processForm(legalCaseId, { cnj: fakeCnj(), status: "ACTIVE", phase: "PLEADINGS" }));
+    const input = processCreateInput(processForm(legalCaseId, { cnj: fakeCnj(), status: "ACTIVE", phase: "PROCEEDINGS" }));
     const key = randomUUID();
     const a = await processes.createProcess(lawyer, createProcessSchema.parse({ ...input, idempotencyKey: key }));
     const b = await processes.createProcess(lawyer, createProcessSchema.parse({ ...input, idempotencyKey: key }));
     expect(b).toEqual({ id: a.id, deduplicated: true });
-    const page = await processes.listProcesses(lawyer, listProcessesSchema.parse(processQueryToInput({ ...DEFAULT_PROCESS_QUERY, search: String(input.title), phase: "PLEADINGS", court: "TJSP" })));
+    // Busca por texto acha pelo título do CASO (o processo não tem título próprio).
+    const page = await processes.listProcesses(lawyer, listProcessesSchema.parse(processQueryToInput({ ...DEFAULT_PROCESS_QUERY, search: "Caso p/ processo", phase: "PROCEEDINGS", court: "TJSP" })));
     const row = page.items.find((p) => p.id === a.id);
     expect(row).toMatchObject({ caseTitle: expect.stringContaining("Caso p/ processo"), clientName: expect.stringContaining("Cliente Fase B"), actionType: "Ação revisional" });
-    expect(row?.nextDeadline).toMatchObject({ title: "Protocolar inicial", dueDateLocal: "2026-12-15" });
+    expect(row?.title).toBe(row?.caseTitle);
+    expect(row?.nextDeadline).toBeUndefined();
+    const detail = await processes.getProcess(lawyer, a.id);
+    if (detail.surface !== "INTERNAL") throw new Error("ficha");
+    expect(detail.process).toMatchObject({ feeAmount: 3000, feePercentage: 30 });
   });
 
-  it("edição pelo formulário: vazio limpa; leitura posterior mostra o novo estado", async () => {
+  it("edição pelo formulário: vazio limpa; leitura posterior mostra o novo estado (honorários nos dados internos)", async () => {
     const lawyer = await ctxFor("LAWYER");
     const { id } = await processes.createProcess(lawyer, createProcessSchema.parse({ ...processCreateInput(processForm(await caseId())), idempotencyKey: randomUUID() }));
-    await processes.updateProcess(lawyer, updateProcessSchema.parse({ id, patch: processEditPatch(processForm("", { unit: "", caseValue: "", phase: "EVIDENCE" })) }));
+    await processes.updateProcess(
+      lawyer,
+      updateProcessSchema.parse({ id, patch: processEditPatch(processForm("", { unit: "", caseValue: "", phase: "PROCEEDINGS", status: "SENTENCED", feeAmount: "4.500,00", feePercentage: "" })) }),
+    );
     const detail = await processes.getProcess(lawyer, id);
     if (detail.surface !== "INTERNAL") throw new Error("ficha");
-    expect(detail.process).toMatchObject({ phase: "EVIDENCE", unit: undefined, caseValue: undefined });
+    expect(detail.process).toMatchObject({ phase: "PROCEEDINGS", status: "SENTENCED", unit: undefined, caseValue: undefined, feeAmount: 4500, feePercentage: undefined });
   });
 
   it("prazo: criar (data civil), editar, cumprir e cancelar; vencido é derivado", async () => {
@@ -145,7 +152,8 @@ describe("Fase B — processos, prazos e andamentos pela UI", () => {
     await deadlines.completeDeadline(lawyer, past.id);
     await deadlines.cancelDeadline(lawyer, future.id);
     const after = await deadlines.listDeadlines(lawyer, listDeadlinesSchema.parse({ processId, pageSize: 50 }));
-    expect(after.items.filter((d) => d.status === "OPEN").map((d) => d.title)).toEqual(["Protocolar inicial"]);
+    // O cadastro pela tela não cria prazo inicial (045): só os lançados aqui, já cumpridos/cancelados.
+    expect(after.items.filter((d) => d.status === "OPEN").map((d) => d.title)).toEqual([]);
   });
 
   it("andamento da equipe é MANUAL; parceiro não vê nota interna", async () => {
@@ -165,9 +173,13 @@ describe("Fase B — processos, prazos e andamentos pela UI", () => {
     expect(internal.items.find((e) => e.title === "Nota interna da equipe")?.source).toBe("MANUAL");
     const partner = await processes.listEvents(pa, listEventsSchema.parse({ processId }));
     expect(partner.items.find((e) => e.title === "Nota interna da equipe")).toBeUndefined();
-    // Parceiro não recebe o próximo prazo (sem acesso a prazos).
+    // Parceiro não recebe o próximo prazo (sem acesso a prazos) nem os honorários (dados internos).
     const partnerList = await processes.listProcesses(pa, listProcessesSchema.parse({ caseId: submitted.legalCaseId }));
     expect(partnerList.items[0]?.nextDeadline).toBeUndefined();
+    const partnerDetail = await processes.getProcess(pa, processId);
+    expect(partnerDetail.surface).toBe("PARTNER");
+    expect(partnerDetail.process).not.toHaveProperty("feeAmount");
+    expect(partnerDetail.process).not.toHaveProperty("feePercentage");
   });
 
   it("ASSISTANT não cadastra processo nem prazo (matriz: processes.edit só ADMIN/LAWYER)", async () => {

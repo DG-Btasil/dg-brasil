@@ -1,4 +1,4 @@
-import type { LegalArea } from "@/lib/constants/legal";
+import { isAcquisitionChannel, type LegalArea } from "@/lib/constants/legal";
 import type { LegalCaseStatus } from "@/lib/constants/status";
 import type { ID } from "@/types";
 import type { CaseInternalDTO, CaseListItem, CasePartnerDTO } from "./dto";
@@ -50,6 +50,8 @@ export interface CaseRow extends CasePartnerRow {
   created_by_organization_id: string;
   created_by: string | null;
   assigned_lawyer_id: string | null;
+  acquisition_channel?: string | null;
+  acquisition_detail?: string | null;
 }
 
 /** legal_case_internal_details (nunca lida para parceiro). */
@@ -153,6 +155,8 @@ export function internalCaseFromRows(row: CaseRow, internalRow: CaseInternalRow 
     partnerOrganizationId: row.partner_organization_id,
     createdBy: row.created_by ?? "",
     assignedLawyerId: row.assigned_lawyer_id,
+    acquisitionChannel: row.acquisition_channel && isAcquisitionChannel(row.acquisition_channel) ? row.acquisition_channel : undefined,
+    acquisitionDetail: opt(row.acquisition_detail),
     summary: row.summary ?? "",
     opposingParty: opt(row.opposing_party),
     status: row.status,
@@ -231,6 +235,9 @@ export function createPayload(
     partner_organization_id: resolved.partnerOrganizationId,
     assigned_lawyer_id: input.assignedLawyerId ?? null,
     partner_notes: input.partnerNotes ?? null,
+    // Sem canal informado, o banco herda o do cliente (migration 045).
+    acquisition_channel: input.acquisitionChannel ?? null,
+    acquisition_detail: input.acquisitionDetail ?? null,
   };
 }
 
@@ -239,6 +246,8 @@ const PATCH_TO_COLUMN = {
   summary: "summary",
   opposingParty: "opposing_party",
   partnerNotes: "partner_notes",
+  acquisitionChannel: "acquisition_channel",
+  acquisitionDetail: "acquisition_detail",
 } as const;
 
 /**
@@ -286,10 +295,15 @@ export function partnerSubmitPayload(
   if (c.kind === "INDIVIDUAL") {
     p_client.full_name = c.fullName ?? null;
     p_client.birth_date = c.birthDate ?? null;
+    p_client.nationality = c.nationality ?? null;
+    p_client.marital_status = c.maritalStatus ?? null;
+    p_client.profession = c.profession ?? null;
   } else {
     p_client.legal_name = c.legalName ?? null;
     p_client.trade_name = c.tradeName ?? null;
   }
+  p_client.acquisition_channel = c.acquisitionChannel ?? null;
+  p_client.acquisition_detail = c.acquisitionDetail ?? null;
   const p_case: Json = {
     legal_area_id: resolved.legalAreaId,
     case_type_id: resolved.caseTypeId,

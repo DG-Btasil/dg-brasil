@@ -5,12 +5,11 @@ import { Pencil } from "lucide-react";
 import { Can } from "@/components/layout/guards";
 import { StatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
-import { Avatar } from "@/components/ui/display";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
-import { GENDER_LABEL, GENDER_NOT_INFORMED, ID_DOCUMENT_TYPE_LABEL, MARITAL_STATUS_LABEL } from "@/lib/constants/legal";
+import { ACQUISITION_CHANNEL_LABEL, GENDER_LABEL, GENDER_NOT_INFORMED, ID_DOCUMENT_TYPE_LABEL, MARITAL_STATUS_LABEL } from "@/lib/constants/legal";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatDate, formatDateTime } from "@/lib/formatting";
-import { useDirectoryUser, useOrganizationName } from "@/features/directory/directory-context";
+import { useOrganizationName } from "@/features/directory/directory-context";
 import type { Client, CompanyClient, IndividualClient } from "@/types";
 import { clientDocumentLabel, countryLabel, maskClientDocument } from "../../../utils";
 
@@ -49,7 +48,6 @@ function individualIdentification(c: IndividualClient) {
     { label: "Nacionalidade", value: c.nationality },
     { label: "Naturalidade", value: c.birthplace },
     { label: "Estado civil", value: c.maritalStatus ? MARITAL_STATUS_LABEL[c.maritalStatus] : undefined },
-    ...(c.maritalStatus !== "MARRIED" && c.stableUnion !== undefined ? [{ label: "União estável", value: c.stableUnion ? "Sim" : "Não" }] : []),
     { label: "Profissão", value: c.profession },
     ...(c.gender ? [{ label: "Gênero", value: GENDER_LABEL[c.gender] ?? GENDER_NOT_INFORMED }] : []),
   ];
@@ -60,11 +58,8 @@ function companyIdentification(c: CompanyClient) {
     { label: "Razão social", value: c.legalName },
     { label: "Nome fantasia", value: c.tradeName },
     { label: "CNPJ", value: <span className="tabular">{maskClientDocument(c)}</span> },
-    { label: "Situação cadastral", value: c.registrationStatus },
     { label: "Data de abertura", value: c.openingDate ? formatDate(c.openingDate) : undefined },
     { label: "Natureza jurídica", value: c.legalNature },
-    { label: "CNAE principal", value: c.mainCnae, wide: true },
-    ...(c.secondaryCnaes?.length ? [{ label: "CNAEs secundários", value: c.secondaryCnaes.join(" · "), wide: true }] : []),
   ];
 }
 
@@ -114,24 +109,17 @@ export function AddressBlock({ client }: { client: Client }) {
   );
 }
 
+/** Situação e de onde o cliente veio (escritório de origem + canal). Sem "responsável": advogado responde por caso/processo. */
 export function ResponsibleBlock({ client }: { client: Client }) {
-  const user = useDirectoryUser(client.responsibleUserId);
   const origin = useOrganizationName(client.originOfficeId);
   return (
-    <Block title="Responsável e status" clientId={client.id}>
+    <Block title="Origem e situação" clientId={client.id}>
       <DefinitionGrid
         items={[
-          {
-            label: "Responsável",
-            value: user ? (
-              <span className="inline-flex items-center gap-2">
-                <Avatar name={user.name} size="xs" />
-                {user.name}
-              </span>
-            ) : undefined,
-          },
           { label: "Status", value: <StatusBadge status={client.status} labels={CLIENT_STATUS_LABEL} tones={CLIENT_STATUS_TONE} /> },
-          { label: "Origem", value: origin },
+          { label: "Escritório de origem", value: origin },
+          { label: "Canal (como chegou)", value: client.acquisitionChannel ? ACQUISITION_CHANNEL_LABEL[client.acquisitionChannel] : undefined },
+          ...(client.acquisitionDetail ? [{ label: "Detalhe do canal", value: client.acquisitionDetail }] : []),
           { label: "Tipo", value: CLIENT_KIND_LABEL[client.kind] },
           { label: `Identificador (${clientDocumentLabel(client)})`, value: <span className="tabular">{maskClientDocument(client)}</span> },
           { label: "Cadastrado em", value: formatDateTime(client.createdAt) },

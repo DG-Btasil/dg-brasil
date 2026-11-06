@@ -160,7 +160,10 @@ describe("domínio → banco", () => {
 
   it("envio do parceiro: payload da RPC com origens resolvidas e endereço no formato do banco", () => {
     const input = partnerSubmitCaseSchema.parse({ idempotencyKey: KEY,
-      client: { kind: "INDIVIDUAL", document: "999.000.111-22", fullName: "Maria", address: { zipCode: "01001-000", district: "Centro", state: "sp" } },
+      client: {
+        kind: "INDIVIDUAL", document: "999.000.111-22", fullName: "Maria", nationality: "Brasileira", maritalStatus: "SINGLE", profession: "Aposentada",
+        email: "maria@x.com", acquisitionChannel: "WHATSAPP", address: { zipCode: "01001-000", street: "Rua A", number: "1", district: "Centro", city: "São Paulo", state: "sp" },
+      },
       case: { area: "BANKING", title: "Caso", origin: "OWNER" },
     });
     const { p_client, p_case } = partnerSubmitPayload(input, { clientOriginId: PARTNER_A, caseOriginId: OWNER, legalAreaId: AREA, caseTypeId: null });
@@ -169,6 +172,10 @@ describe("domínio → banco", () => {
       kind: "INDIVIDUAL",
       origin_organization_id: PARTNER_A,
       full_name: "Maria",
+      nationality: "Brasileira",
+      marital_status: "SINGLE",
+      profession: "Aposentada",
+      acquisition_channel: "WHATSAPP",
       address: { postal_code: "01001000", neighborhood: "Centro", state: "SP" },
     });
     expect(p_case).toMatchObject({ legal_area_id: AREA, case_type_id: null, title: "Caso", origin_organization_id: OWNER });

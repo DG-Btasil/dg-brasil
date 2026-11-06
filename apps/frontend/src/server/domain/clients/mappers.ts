@@ -1,4 +1,5 @@
 import { CLIENT_STATUS_FROM_DB, type DbClientStatus } from "@/repositories/api/db-mappings";
+import { isAcquisitionChannel, type AcquisitionChannel } from "@/lib/constants/legal";
 import type { Address, Client, ClientInactivationReason, Contact, ID } from "@/types";
 import type { CreateClientInput, ReplaceCompanyPeopleInput, UpdateClientInput, UpdateClientBasicsInput } from "./schemas";
 import type { ClientListItem, ClientPartnerDTO, ClientRelationshipDTO } from "./dto";
@@ -21,7 +22,7 @@ export interface ClientDirectoryRow {
   cnpj: string | null;
   status: DbClientStatus;
   origin_organization_id: string;
-  responsible_user_id: string | null;
+  acquisition_channel: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,12 +46,13 @@ interface AddressRow {
 
 export interface ClientDetailRow {
   id: string;
+  acquisition_detail?: string | null;
   kind: "INDIVIDUAL" | "COMPANY";
   cpf: string | null;
   cnpj: string | null;
   status: DbClientStatus;
   origin_organization_id: string;
-  responsible_user_id: string | null;
+  acquisition_channel: string | null;
   created_at: string;
   updated_at: string;
   individual_client_details: IndividualRow | IndividualRow[] | null;
@@ -68,7 +70,6 @@ interface IndividualRow {
   nationality: string | null;
   birthplace: string | null;
   marital_status: "SINGLE" | "MARRIED" | "DIVORCED" | "WIDOWED" | "SEPARATED" | null;
-  stable_union: boolean | null;
   profession: string | null;
   identity_document_type: "RG" | "CNH" | "PASSPORT" | "RNM" | "OTHER" | null;
   identity_document_number: string | null;
@@ -78,11 +79,8 @@ interface IndividualRow {
 interface CompanyRow {
   legal_name: string;
   trade_name: string | null;
-  registration_status: string | null;
   opening_date: string | null;
   legal_nature: string | null;
-  main_cnae: string | null;
-  secondary_cnaes: string[] | null;
 }
 interface RepresentativeRow {
   id: string;
@@ -123,6 +121,7 @@ export interface RelationshipRow {
 
 const one = <T>(v: T | T[] | null | undefined): T | undefined => (Array.isArray(v) ? v[0] : (v ?? undefined));
 const opt = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v);
+const channel = (v: string | null | undefined): AcquisitionChannel | undefined => (v && isAcquisitionChannel(v) ? v : undefined);
 
 export function contactFromRows(rows: ContactRow[] | null | undefined): Contact {
   const list = rows ?? [];
@@ -160,7 +159,7 @@ export function listItemFromRow(row: ClientDirectoryRow, viewer: { surface: "INT
     document: row.cpf ?? row.cnpj ?? "",
     status: CLIENT_STATUS_FROM_DB[row.status],
     originOrganizationId: internal || row.origin_organization_id === viewer.organizationId ? row.origin_organization_id : undefined,
-    responsibleUserId: internal ? opt(row.responsible_user_id) : undefined,
+    acquisitionChannel: internal ? channel(row.acquisition_channel) : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -172,7 +171,8 @@ export function internalClientFromRows(row: ClientDetailRow, internalRow: Client
     id: row.id,
     officeId: ownerOrganizationId,
     status: CLIENT_STATUS_FROM_DB[row.status],
-    responsibleUserId: row.responsible_user_id ?? "",
+    acquisitionChannel: channel(row.acquisition_channel),
+    acquisitionDetail: opt(row.acquisition_detail),
     contact: contactFromRows(row.client_contacts),
     address: addressFromRows(row.client_addresses),
     notes: opt(internalRow?.notes),
@@ -208,7 +208,6 @@ export function internalClientFromRows(row: ClientDetailRow, internalRow: Client
       birthplace: opt(d?.birthplace),
       gender: opt(d?.gender),
       maritalStatus: opt(d?.marital_status),
-      stableUnion: opt(d?.stable_union),
       profession: opt(d?.profession),
     };
   }
@@ -219,11 +218,8 @@ export function internalClientFromRows(row: ClientDetailRow, internalRow: Client
     legalName: d?.legal_name ?? "",
     tradeName: opt(d?.trade_name),
     cnpj: row.cnpj ?? "",
-    registrationStatus: opt(d?.registration_status),
     openingDate: opt(d?.opening_date),
     legalNature: opt(d?.legal_nature),
-    mainCnae: opt(d?.main_cnae),
-    secondaryCnaes: d?.secondary_cnaes ?? [],
     representatives: (row.company_representatives ?? []).map((r) => ({
       id: r.id,
       name: r.full_name,
@@ -272,17 +268,19 @@ export function relationshipFromRow(row: RelationshipRow): ClientRelationshipDTO
 
 type Json = Record<string, unknown>;
 
-function contactPayload(contact: CreateClientInput["contact"] | undefined): Json | undefined {
+type ContactInput = Partial<{ email: string; phone: string; secondaryPhone: string }>;
+type AddressInput = Partial<{ zipCode: string; street: string; number: string; complement: string; district: string; city: string; state: string; country: string }>;
+
+function contactPayload(contact: ContactInput | undefined): Json | undefined {
   if (!contact) return undefined;
   const out: Json = {};
   if ("email" in contact) out.email = contact.email ?? null;
   if ("phone" in contact) out.phone = contact.phone ?? null;
   if ("secondaryPhone" in contact) out.secondary_phone = contact.secondaryPhone ?? null;
-  if ("website" in contact) out.website = contact.website ?? null;
   return out;
 }
 
-function addressPayload(address: CreateClientInput["address"] | null): Json | null {
+function addressPayload(address: AddressInput | null | undefined): Json | null {
   if (!address) return null;
   return {
     postal_code: address.zipCode ?? null,
@@ -304,17 +302,14 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   nationality: "nationality",
   birthplace: "birthplace",
   maritalStatus: "marital_status",
-  stableUnion: "stable_union",
   profession: "profession",
   legalName: "legal_name",
   tradeName: "trade_name",
-  registrationStatus: "registration_status",
   openingDate: "opening_date",
   legalNature: "legal_nature",
-  mainCnae: "main_cnae",
-  secondaryCnaes: "secondary_cnaes",
   originOfficeId: "origin_organization_id",
-  responsibleUserId: "responsible_user_id",
+  acquisitionChannel: "acquisition_channel",
+  acquisitionDetail: "acquisition_detail",
   notes: "notes",
   legalSummary: "legal_summary",
   document: "document",

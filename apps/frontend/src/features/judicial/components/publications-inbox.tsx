@@ -110,7 +110,8 @@ export function PublicationsInbox({ processId }: { processId?: string }) {
                   {!processId && (
                     <Td className="text-[12.5px]">
                       <Link href={`/processos/${p.legalProcessId}`} onClick={(e) => e.stopPropagation()} className="font-medium text-navy hover:underline underline-offset-2">
-                        {p.processTitle ?? formatCNJ(p.cnjNumber)}
+                        {/* Processo sem título próprio leva o nome do caso. */}
+                        {p.processTitle || p.caseTitle || formatCNJ(p.cnjNumber)}
                       </Link>
                       <span className="block text-muted">{p.clientName ?? ""}</span>
                     </Td>

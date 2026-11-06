@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { CLIENT_POLE_LABEL } from "@/lib/constants/status";
-import { formatCurrency, formatDate, formatDateTime, maskDocument } from "@/lib/formatting";
+import { formatCurrency, formatDate, formatDateTime, formatPercent, maskDocument } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
@@ -163,6 +163,20 @@ export function OverviewTab({
                 <p className="whitespace-pre-line text-muted">{p.notes}</p>
               </div>
             )}
+            {/* Honorários do processo: dado interno (legal_process_internal_details), nunca entregue ao parceiro. */}
+            <div className="border-t border-line pt-3">
+              <p className="eyebrow mb-2">Honorários do processo (interno)</p>
+              <DefinitionGrid
+                columns={2}
+                items={[
+                  { label: "Honorários", value: p.feeAmount !== undefined ? <span className="tabular">{formatCurrency(p.feeAmount)}</span> : undefined },
+                  {
+                    label: "Honorários de êxito",
+                    value: p.feePercentage !== undefined ? <span className="tabular">{formatPercent(p.feePercentage, Number.isInteger(p.feePercentage) ? 0 : 2)}</span> : undefined,
+                  },
+                ]}
+              />
+            </div>
           </PanelBody>
         </Panel>
       </div>

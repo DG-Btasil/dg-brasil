@@ -37,8 +37,10 @@ import { ProcessOriginBadge } from "./process-origin-badge";
 import { DeadlinesTab } from "./tabs/deadlines-tab";
 import { EventsTab } from "./tabs/events-tab";
 import { OverviewTab } from "./tabs/overview-tab";
+import { ProcessTasksPanel } from "@/features/process-tasks/components/process-tasks-panel";
+import type { ProcessTaskDTO } from "@/server/domain/process-tasks/dto";
 
-const TAB_KEYS = ["visao-geral", "movimentacoes", "publicacoes", "documentos", "prazos", "revisoes", "financeiro"] as const;
+const TAB_KEYS = ["visao-geral", "tarefas", "movimentacoes", "publicacoes", "documentos", "prazos", "revisoes", "financeiro"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 type DialogState = { kind: "event" } | { kind: "deadline"; deadline?: DeadlineDTO } | { kind: "delete" } | null;
 
@@ -55,8 +57,11 @@ export function ProcessDetail({
   documents,
   reviews,
   agreements,
+  tasks,
 }: {
   process: ProcessInternalDTO;
+  /** Tarefas para os agentes (Roadmap 2.0, 047). */
+  tasks?: ActionResult<ProcessTaskDTO[]>;
   parties: ActionResult<Page<ProcessPartyDTO>>;
   events: ActionResult<Page<ProcessEventDTO>>;
   deadlines: ActionResult<Page<DeadlineDTO>>;
@@ -78,6 +83,16 @@ export function ProcessDetail({
   const tabs = useMemo(() => {
     const items: TabItem<TabKey>[] = [
       { key: "visao-geral", label: "Visão geral" },
+      ...(tasks
+        ? [
+            {
+              key: "tarefas" as const,
+              label: "Tarefas para os agentes",
+              count: tasks.ok ? tasks.data.filter((t) => t.status !== "DONE" && t.status !== "CANCELLED").length : undefined,
+              attention: tasks.ok && tasks.data.some((t) => t.status === "IN_REVIEW"),
+            },
+          ]
+        : []),
       { key: "movimentacoes", label: "Movimentações", count: events.ok ? events.data.total : undefined },
       { key: "publicacoes", label: "Publicações" },
       { key: "documentos", label: "Documentos", count: documents.ok ? documents.data.total : undefined },
@@ -86,7 +101,7 @@ export function ProcessDetail({
     if (can("reviews.view")) items.push({ key: "revisoes", label: "Revisões" });
     if (can("finance.view")) items.push({ key: "financeiro", label: "Financeiro" });
     return items;
-  }, [can, events, openDeadlines.length, urgent, documents]);
+  }, [can, events, openDeadlines.length, urgent, documents, tasks]);
 
   // Aba sem permissão na URL cai na visão geral.
   const active: TabKey = tabs.some((t) => t.key === tab) ? tab : "visao-geral";
@@ -139,6 +154,7 @@ export function ProcessDetail({
 
       <TabPanel tabKey={active}>
         {active === "visao-geral" && <OverviewTab process={process} parties={parties} responsibleName={responsible?.name} lastMovementAt={lastMovementAt} />}
+        {active === "tarefas" && tasks && <ProcessTasksPanel processId={process.id} initial={tasks} />}
         {active === "movimentacoes" && <EventsTab processId={process.id} initial={events} onAdd={() => setDialog({ kind: "event" })} />}
         {active === "publicacoes" && <PublicationsInbox processId={process.id} />}
         {active === "documentos" && (

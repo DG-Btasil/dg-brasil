@@ -40,12 +40,11 @@ export interface ProcessListItem extends ProcessCaseRef {
   /** Só interno. */
   nextDeadline?: ProcessNextDeadline;
   cnj?: string;
+  /** Nome para exibição: o título próprio (processos antigos/importados) ou, sem ele, o título do caso. Nunca vazio. */
   title: string;
   court?: string;
   state?: string;
   status: ProcessStatus;
-  /** Status como está no banco (ARCHIVED aparece em `status` como CLOSED). */
-  dbStatus: ProcessStatus | "ARCHIVED";
   phase?: ProcessPhase;
   distributionDate?: ISODate;
   /** Só com `processes.caseValue.view`. */
@@ -61,6 +60,7 @@ interface ProcessBase extends ProcessCaseRef {
   id: ID;
   legalCaseId: ID;
   cnj?: string;
+  /** Nome para exibição: o título próprio ou, sem ele, o título do caso. Nunca vazio. */
   title: string;
   court?: string;
   unit?: string;
@@ -75,7 +75,6 @@ interface ProcessBase extends ProcessCaseRef {
   caseValue?: number;
   currency: string;
   status: ProcessStatus;
-  dbStatus: ProcessStatus | "ARCHIVED";
   phase?: ProcessPhase;
   /** Origem TÉCNICA do cadastro (manual, integração, agente, importação). */
   origin: ProcessOrigin;
@@ -92,6 +91,10 @@ export interface ProcessInternalDTO extends ProcessBase {
   /** legal_process_internal_details: nunca visível a parceiros. */
   summary?: string;
   notes?: string;
+  /** Honorários do processo em reais (interno). */
+  feeAmount?: number;
+  /** Honorários de êxito, em % do proveito (interno). */
+  feePercentage?: number;
 }
 
 /** Ficha do processo no Portal do Parceiro: só dados processuais. */
@@ -128,8 +131,15 @@ export interface ProcessEventDTO {
   createdAt: ISODateTime;
 }
 
+/** Processos (não excluídos) por status, contados no banco com a RLS de quem pede. */
+export interface ProcessStatusCountDTO {
+  status: ProcessStatus;
+  count: number;
+}
+
 /** Contadores da carteira de processos (equipe interna), contados no banco. */
 export interface ProcessSummaryDTO {
+  /** Todos os status, exceto recebido e arquivado. */
   active: number;
   /** Processos com prazo em aberto vencendo em até 5 dias (inclui vencidos). */
   dueSoon: number;

@@ -4,16 +4,16 @@ import { FolderPlus, Pencil } from "lucide-react";
 import { Can } from "@/components/layout/guards";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
-import { Avatar, Breadcrumbs } from "@/components/ui/display";
+import { Breadcrumbs } from "@/components/ui/display";
+import { ACQUISITION_CHANNEL_LABEL } from "@/lib/constants/legal";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
 import { formatEventTime } from "@/lib/formatting";
-import { useDirectoryUser, useOrganizationName } from "@/features/directory/directory-context";
+import { useOrganizationName } from "@/features/directory/directory-context";
 import { CLIENT_INACTIVATION_REASON_LABEL, type Client } from "@/types";
 import { clientDisplayName, clientDocumentLabel, clientSecondaryName, clientShortName, formatClientDocument, maskClientDocument } from "../../utils";
 import { MaskedIdentifier } from "./masked-identifier";
 
 export function ClientHeader({ client }: { client: Client }) {
-  const responsible = useDirectoryUser(client.responsibleUserId);
   const secondary = clientSecondaryName(client);
 
   return (
@@ -40,17 +40,11 @@ export function ClientHeader({ client }: { client: Client }) {
           )}
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[12.5px]">
             <MaskedIdentifier label={clientDocumentLabel(client)} masked={maskClientDocument(client)} full={formatClientDocument(client)} />
-            <span className="inline-flex items-center gap-2">
-              <span className="text-subtle">Responsável</span>
-              {responsible ? (
-                <>
-                  <Avatar name={responsible.name} size="xs" />
-                  <span className="text-foreground">{responsible.name}</span>
-                </>
-              ) : (
-                <span className="text-muted">Não definido</span>
-              )}
-            </span>
+            {client.acquisitionChannel && (
+              <span>
+                <span className="text-subtle">Canal</span> <span className="text-foreground">{ACQUISITION_CHANNEL_LABEL[client.acquisitionChannel]}</span>
+              </span>
+            )}
             <span className="text-muted">
               <span className="text-subtle">Atualizado</span> {formatEventTime(client.updatedAt)}
             </span>

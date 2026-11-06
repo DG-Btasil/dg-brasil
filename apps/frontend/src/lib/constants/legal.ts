@@ -49,6 +49,39 @@ export const MARITAL_STATUS_LABEL: Record<MaritalStatus, string> = {
   SEPARATED: "Separado(a) judicialmente",
 };
 
+/**
+ * Canal de aquisição: COMO o cliente chegou (marketing). Não confundir com o
+ * escritório de origem (escritório principal ou parceiro), que é outra
+ * informação. A mesma lista está no banco (migration 045).
+ */
+export const ACQUISITION_CHANNELS = [
+  "REFERRAL",
+  "GOOGLE_ADS",
+  "META_ADS",
+  "OTHER_PAID_TRAFFIC",
+  "SOCIAL_MEDIA",
+  "WEBSITE_SEARCH",
+  "WHATSAPP",
+  "RETURNING_CLIENT",
+  "EVENT",
+  "OTHER",
+] as const;
+export type AcquisitionChannel = (typeof ACQUISITION_CHANNELS)[number];
+export const ACQUISITION_CHANNEL_LABEL: Record<AcquisitionChannel, string> = {
+  REFERRAL: "Indicação / recomendação",
+  GOOGLE_ADS: "Google Ads",
+  META_ADS: "Meta Ads (Instagram/Facebook)",
+  OTHER_PAID_TRAFFIC: "Outro tráfego pago",
+  SOCIAL_MEDIA: "Redes sociais (orgânico)",
+  WEBSITE_SEARCH: "Site / busca no Google",
+  WHATSAPP: "WhatsApp",
+  RETURNING_CLIENT: "Cliente antigo",
+  EVENT: "Evento / palestra",
+  OTHER: "Outro",
+};
+export const ACQUISITION_CHANNEL_OPTIONS = ACQUISITION_CHANNELS.map((c) => ({ value: c, label: ACQUISITION_CHANNEL_LABEL[c] }));
+export const isAcquisitionChannel = (v: string): v is AcquisitionChannel => (ACQUISITION_CHANNELS as readonly string[]).includes(v);
+
 export const ID_DOCUMENT_TYPES = ["RG", "CNH", "PASSPORT", "RNM", "OTHER"] as const;
 export type IdDocumentType = (typeof ID_DOCUMENT_TYPES)[number];
 export const ID_DOCUMENT_TYPE_LABEL: Record<IdDocumentType, string> = {
