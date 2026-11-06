@@ -27,6 +27,8 @@ hora de contratar.
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
 | 10 | Integração judicial: mais buscas por dia e lotes do DataJud | Hobby: 1 rodada por dia, 60 s | Já vem com o Vercel Pro |
 | 11 | Conferir as publicações com o APOGEU | Adiado na validação da Etapa 8 | Sem custo |
+| 12 | Consulta de CPF na Receita (Serpro) | Paga por consulta; contrato do escritório | Por consulta (Loja Serpro) |
+| 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) | Pedido para a atualização final | Sem custo |
 
 ---
 
@@ -282,3 +284,30 @@ acrescente:
    - **Por que não agora;**
    - **Na produção:** os passos;
    - **Como conferir.**
+
+---
+
+## 12. Consulta de CPF na Receita (Serpro) — Roadmap 2.0
+
+- **Hoje:** o cadastro já tenta preencher nome e nascimento pelo CPF, mas sem as
+  chaves do Serpro a consulta diz "ainda não contratada" e nada é preenchido.
+  CEP (ViaCEP/BrasilAPI) e CNPJ (BrasilAPI) são gratuitos e já funcionam.
+- **Por que não agora:** a API Consulta CPF do Serpro é paga por consulta e o
+  contrato é do escritório (Loja Serpro, contratação online, pós-pago).
+- **Na produção:** contratar a **Consulta CPF** na Loja Serpro e pôr na Vercel:
+  `SERPRO_CPF_CONSUMER_KEY` e `SERPRO_CPF_CONSUMER_SECRET` (opcional:
+  `SERPRO_CPF_BASE_URL`, se o Serpro indicar outro endereço). Para testar sem
+  contrato, `SERPRO_CPF_TRIAL=1` usa a demonstração pública do Serpro (só CPFs
+  de teste, ex.: 404.428.201-35).
+- **Como conferir:** novo cliente PF → digitar um CPF real → o nome e a data de
+  nascimento aparecem com o aviso "Dados preenchidos pela Receita Federal".
+
+## 13. Validação de formato dos documentos — Roadmap 2.0
+
+- **Hoje:** CPF e CNPJ conferem tamanho e dígitos repetidos; RG/CNH/OAB só o
+  básico. O número do documento de identidade é opcional.
+- **Por que não agora:** pedido da Barbara para a atualização final de produção.
+- **Na produção:** dígito verificador de CPF/CNPJ, formato de RG por estado,
+  CNH (11 dígitos com verificador), OAB por seccional, CNJ com verificador em
+  todos os campos — no formulário e no servidor.
+- **Como conferir:** tentar cadastrar documentos com dígito errado e ver a recusa.

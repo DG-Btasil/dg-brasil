@@ -10,6 +10,7 @@ import { ActionErrorState } from "@/components/feedback/action-error";
 import type { MyPartnerSettingsDTO, PartnerDetailDTO } from "@/server/domain/organizations/dto";
 import { useClientSession } from "@/features/auth/session-context";
 import { AccountSecurity } from "@/features/account/components/account-security";
+import { MyOabsPanel } from "@/features/account/components/my-oabs-panel";
 import { NotificationPreferences } from "@/features/notifications/components/notification-preferences";
 import { PartnerOabsPanel } from "@/features/judicial/components/partner-oabs-panel";
 import { UsersPanel } from "./portal-users";
@@ -103,6 +104,9 @@ export function PortalAccount({
             Notificações
           </h2>
           <NotificationPreferences />
+        </section>
+        <section className="col-span-12">
+          <MyOabsPanel />
         </section>
         <section aria-labelledby="account-security-title" className="col-span-12">
           <h2 id="account-security-title" className="mb-3 text-[15px] font-semibold text-foreground">

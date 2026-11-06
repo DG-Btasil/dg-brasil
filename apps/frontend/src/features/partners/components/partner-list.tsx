@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Handshake, Plus, SearchX } from "lucide-react";
+import { Handshake, Plus, SearchX, Send } from "lucide-react";
 import { PARTNER_OFFICE_STATUS_LABEL, PARTNER_OFFICE_STATUS_TONE, type PartnerOfficeStatus } from "@/lib/constants/status";
 import { cn } from "@/lib/cn";
 import { formatCNPJ, pluralize } from "@/lib/formatting";
@@ -23,6 +23,7 @@ import { listPartnersAction } from "@/server/domain/organizations/actions";
 import type { PartnerListItem } from "@/server/domain/organizations/dto";
 import { usePermission } from "@/features/auth/hooks";
 import { DEFAULT_PARTNER_QUERY, PARTNER_PAGE_SIZE, partnerQueryToInput, partnerQueryToSearchParams, type PartnerListQuery } from "../list-query";
+import { InvitePartnerDialog } from "./invite-partner-dialog";
 
 const STATUS_FILTERS: { key: PartnerOfficeStatus | ""; label: string }[] = [
   { key: "", label: "Todos" },
@@ -42,6 +43,7 @@ export function PartnerList({ initialQuery, initialResult }: { initialQuery: Par
   });
   const canFinance = usePermission("partners.finance.view");
   const [search, setSearch] = useState(query.search);
+  const [inviting, setInviting] = useState(false);
   const commitSearch = useDebouncedCallback((text: string) => setQuery({ ...query, search: text.trim(), page: 1 }));
   const page = result.ok ? result.data : undefined;
   const filtered = !!query.search || !!query.status;
@@ -54,9 +56,14 @@ export function PartnerList({ initialQuery, initialResult }: { initialQuery: Par
 
   const cta = (
     <Can permission="partners.manage">
-      <ButtonLink href="/parceiros/novo" icon={<Plus className="size-4" aria-hidden />}>
-        Adicionar parceiro
-      </ButtonLink>
+      <div className="flex flex-wrap items-center gap-2">
+        <ButtonLink href="/parceiros/novo" variant="secondary" icon={<Plus className="size-4" aria-hidden />}>
+          Cadastrar completo
+        </ButtonLink>
+        <Button icon={<Send className="size-4" aria-hidden />} onClick={() => setInviting(true)}>
+          Convidar parceiro
+        </Button>
+      </div>
     </Can>
   );
 
@@ -175,6 +182,7 @@ export function PartnerList({ initialQuery, initialResult }: { initialQuery: Par
           </div>
         </Panel>
       )}
+      {inviting && <InvitePartnerDialog onClose={() => setInviting(false)} />}
     </PageContainer>
   );
 }

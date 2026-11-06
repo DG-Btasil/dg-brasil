@@ -25,6 +25,8 @@ import { useCatalogOptions } from "@/features/cases/components/case-dialogs";
 import { FILE_ACCEPT } from "@/features/documents/constants";
 import { checkFile, createAndUpload, uploadVersion, type UploadResume } from "@/features/documents/upload";
 import { partnerSubmitInput, type PartnerCaseValues as Values } from "../server-input";
+import { autofillHint, useCepAutofill, useCnpjAutofill, useCpfAutofill } from "@/features/lookup/use-autofill";
+import { INPUT_MASKS } from "@/lib/formatting/masks";
 
 type StepKey = "identify" | "basic" | "documents" | "case" | "review";
 const STEP_LABEL: Record<StepKey, string> = {
@@ -163,6 +165,41 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
   } = form;
   const kind = useWatch({ control, name: "kind" });
   const area = useWatch({ control, name: "area" });
+
+  // Roadmap 2.0: cliente NOVO → CPF/CNPJ consultado na Receita (nome, nascimento,
+  // dados da empresa) e CEP completando o endereço. A pessoa confere e corrige.
+  const documentValue = useWatch({ control, name: "document" });
+  const zipCode = useWatch({ control, name: "zipCode" });
+  const isNew = target?.mode === "NEW";
+  const fillIfEmpty = (name: keyof Values, value: string | undefined) => {
+    if (value && !String(getValues(name) ?? "").trim()) setValue(name, value, { shouldDirty: true, shouldValidate: true });
+  };
+  const cpfStatus = useCpfAutofill(isNew && kind === "INDIVIDUAL" ? documentValue : undefined, (p) => {
+    if (p.fullName) setValue("fullName", p.fullName, { shouldDirty: true, shouldValidate: true });
+    fillIfEmpty("birthDate", p.birthDate);
+  });
+  const cnpjStatus = useCnpjAutofill(isNew && kind === "COMPANY" ? documentValue : undefined, (c) => {
+    if (c.legalName) setValue("legalName", c.legalName, { shouldDirty: true, shouldValidate: true });
+    fillIfEmpty("tradeName", c.tradeName);
+    fillIfEmpty("email", c.email);
+    fillIfEmpty("phone", c.phone ? INPUT_MASKS.phone(c.phone) : undefined);
+    if (c.address && !getValues("zipCode").trim()) {
+      setValue("zipCode", INPUT_MASKS.cep(c.address.zipCode), { shouldDirty: true });
+      fillIfEmpty("street", c.address.street);
+      fillIfEmpty("number", c.address.number);
+      fillIfEmpty("complement", c.address.complement);
+      fillIfEmpty("district", c.address.district);
+      fillIfEmpty("city", c.address.city);
+      fillIfEmpty("state", c.address.state);
+    }
+  });
+  const cepStatus = useCepAutofill(zipCode, (a) => {
+    const opts = { shouldDirty: true, shouldValidate: true } as const;
+    if (a.street) setValue("street", a.street, opts);
+    if (a.district) setValue("district", a.district, opts);
+    if (a.city) setValue("city", a.city, opts);
+    if (a.state) setValue("state", a.state, opts);
+  });
   const { areas } = useCatalogOptions(catalog, area);
   const areaName = useMemo(() => new Map(areas.map((a) => [a.value, a.label])), [areas]);
 
@@ -424,7 +461,13 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
       {/* ----------------------------- Cadastro básico ----------------------------- */}
       {step === "basic" && (
         <Panel className="max-w-[900px]">
-          <PanelHeader title="Cadastro do cliente" description="Qualificação completa, usada na procuração e nas peças. Campos com * são obrigatórios." />
+          <PanelHeader
+            title="Cadastro do cliente"
+            description={
+              autofillHint(kind === "INDIVIDUAL" ? cpfStatus : cnpjStatus, kind === "INDIVIDUAL" ? "CPF" : "CNPJ") ??
+              "Qualificação completa, usada na procuração e nas peças. Campos com * são obrigatórios."
+            }
+          />
           <PanelBody className="grid grid-cols-2 gap-x-5 gap-y-4">
             <Field
               label="Origem do cliente"
@@ -477,7 +520,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
             <Field label="Telefone" requirement="recommended" error={errors.phone?.message}>
               {(p) => <MaskedInput mask="phone" {...p} {...register("phone", { validate: (x) => !x || isPhoneFormat(x) || msg.phone })} />}
             </Field>
-            <Field label="CEP" requirement="required" error={errors.zipCode?.message}>
+            <Field label="CEP" requirement="required" error={errors.zipCode?.message} hint={autofillHint(cepStatus, "CEP") ?? "Digite o CEP: o endereço é preenchido sozinho."}>
               {(p) => <MaskedInput mask="cep" {...p} {...register("zipCode", { validate: (x) => x.replace(/\D/g, "").length === 8 || msg.cep })} />}
             </Field>
             <Field label="Logradouro" requirement="required" error={errors.street?.message}>

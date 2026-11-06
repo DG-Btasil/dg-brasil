@@ -128,7 +128,6 @@ function OfficeReadOnly({ office }: { office: Office }) {
           value: a ? `${a.street}, ${a.number}${a.complement ? ` — ${a.complement}` : ""} · ${a.district} · ${a.city}/${a.state}` : null,
         },
         { label: "Estados de atuação", value: office.statesOfPractice.join(", ") || null },
-        { label: "Unidades", value: office.units.join(" · ") || null },
       ]}
     />
   );

@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Avatar } from "@/components/ui/display";
-import { Field, Input, Select } from "@/components/ui/form";
+import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { OAB_OPTIONAL_ROLES, OAB_REQUIRED_ROLES, OAB_UF_OPTIONS } from "@/lib/auth/oab";
 import { MenuButton, type MenuItem } from "@/components/ui/menu";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
@@ -410,14 +411,22 @@ function InviteUserDialog({
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>(roles[roles.length - 1]);
+  const [isLawyer, setIsLawyer] = useState(true);
+  const [oabNumber, setOabNumber] = useState("");
+  const [oabState, setOabState] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const oabRequired = OAB_REQUIRED_ROLES.includes(role);
+  const oabOptional = OAB_OPTIONAL_ROLES.includes(role);
+  const askOab = oabRequired || (oabOptional && isLawyer);
 
   async function onSubmit(event?: FormEvent) {
     event?.preventDefault();
+    if (askOab && oabRequired && (!oabNumber.trim() || !oabState)) return setError("Informe a OAB do advogado convidado.");
     setSending(true);
     setError(null);
-    const result = await inviteUser({ email, fullName, role, organizationId });
+    const oab = askOab && oabNumber.trim() ? { number: oabNumber, state: oabState } : undefined;
+    const result = await inviteUser({ email, fullName, role, organizationId, oab });
     setSending(false);
     if (!result.ok) return setError(result.error);
     onInvited();
@@ -453,6 +462,24 @@ function InviteUserDialog({
             <Select {...p} value={role} options={roles.map((r) => ({ value: r, label: ROLE_LABEL[r] }))} onChange={(e) => setRole(e.target.value as Role)} />
           )}
         </Field>
+        {oabOptional && (
+          <Checkbox
+            checked={isLawyer}
+            onChange={(e) => setIsLawyer(e.target.checked)}
+            label="É advogado(a)"
+            description="Administrador pode ou não ter OAB. Se tiver, informe abaixo."
+          />
+        )}
+        {askOab && (
+          <div className="grid grid-cols-[1fr_96px] gap-3">
+            <Field label="OAB do convidado" requirement={oabRequired ? "required" : "optional"} hint="A pessoa confirma (e pode acrescentar outras seccionais) no primeiro acesso.">
+              {(p) => <Input {...p} inputMode="numeric" value={oabNumber} onChange={(e) => setOabNumber(e.target.value)} placeholder="000000" />}
+            </Field>
+            <Field label="UF" requirement={oabRequired ? "required" : "optional"}>
+              {(p) => <Select {...p} placeholder="—" options={OAB_UF_OPTIONS} value={oabState} onChange={(e) => setOabState(e.target.value)} />}
+            </Field>
+          </div>
+        )}
         <button type="submit" hidden />
       </form>
     </Dialog>

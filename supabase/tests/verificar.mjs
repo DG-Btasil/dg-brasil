@@ -5354,6 +5354,77 @@ await deve('agentes para tarefa: LAWYER vê os ativos e qual é o orquestrador; 
   }
 })
 
+// ═════════════════════════════ Roadmap 2.0 — parceiros, convites e OABs [048] ═
+
+secao('Roadmap 2.0 — várias OABs por pessoa, OAB no convite e cadastro do parceiro no primeiro acesso [048]')
+await deve('a pessoa cadastra várias OABs; a primeira é a principal e aparece no perfil; trocar a principal e remover', async () => {
+  const sp = await como(ids.lucas, async (tx) => (await um(tx, `select public.add_my_oab('225.006', 'rj') id`)).id)
+  const mg = await como(ids.lucas, async (tx) => (await um(tx, `select public.add_my_oab('123456A', 'MG') id`)).id)
+  const p1 = await um(db, `select oab_number, oab_state from profiles where id = $1`, [ids.lucas])
+  igual([p1.oab_number, p1.oab_state], ['225006', 'RJ'], 'principal = primeira')
+  await como(ids.lucas, (tx) => tx.query(`select public.set_my_primary_oab($1)`, [mg]))
+  igual((await um(db, `select oab_number from profiles where id = $1`, [ids.lucas])).oab_number, '123456A', 'nova principal')
+  await como(ids.lucas, (tx) => tx.query(`select public.remove_my_oab($1)`, [mg]))
+  const rest = await linhas(db, `select id, is_primary from profile_oabs where user_id = $1`, [ids.lucas])
+  igual(rest.map((r) => [r.id, r.is_primary]), [[sp, true]], 'sobrou a do RJ, de novo principal')
+  igual((await um(db, `select oab_number from profiles where id = $1`, [ids.lucas])).oab_number, '225006', 'espelho')
+})
+await deveFalhar('OAB com formato inválido é recusada', () =>
+  como(ids.lucas, (tx) => tx.query(`select public.add_my_oab('ABC', 'RJ')`)), /OAB inválido/)
+await deveFalhar('ninguém remove OAB de outra pessoa', async () => {
+  const id = (await um(db, `select id from profile_oabs where user_id = $1 limit 1`, [ids.lucas])).id
+  await como(ids.ana, (tx) => tx.query(`select public.remove_my_oab($1)`, [id]))
+}, /não encontrada/)
+await deve('quem vê a OAB de quem: a própria pessoa e o ADMIN; o parceiro não vê a do escritório', async () => {
+  igual((await como(ids.lucas, async (tx) => linhas(tx, `select 1 from profile_oabs where user_id = $1`, [ids.lucas]))).length, 1, 'própria')
+  igual((await como(ids.barbara, async (tx) => linhas(tx, `select 1 from profile_oabs where user_id = $1`, [ids.lucas]))).length, 1, 'ADMIN')
+  igual((await como(ids.almeidaAdm, async (tx) => linhas(tx, `select 1 from profile_oabs where user_id = $1`, [ids.lucas]))).length, 0, 'parceiro')
+})
+await deve('convite de parceiro só com o e-mail: escritório pendente; no 1º acesso o administrador vê que falta o cadastro', async () => {
+  ids.parc048 = await como(ids.barbara, async (tx) => (await um(tx, `select public.create_partner_invite_office('dra.ana@parceiro048.test', 40) id`)).id)
+  const st = await um(db, `select o.status, o.name, s.default_partner_percentage::text p from organizations o join partner_office_settings s on s.organization_id = o.id where o.id = $1`, [ids.parc048])
+  igual([st.status, st.name, st.p], ['PENDING', 'Convite: dra.ana@parceiro048.test', '40.00'], 'escritório pendente')
+  igual((await um(db, `select profile_completed_at from partner_office_settings where organization_id = $1`, [ids.parc048])).profile_completed_at, null, 'a completar')
+  const inv = await convidar(ids.barbara, 'dra.ana@parceiro048.test', 'PARTNER_ADMIN', ids.parc048)
+  await comoServico((tx) => tx.query(`select public.set_invitation_oab($1, '98.765', 'sp')`, [inv.invitation_id]))
+  ids.ana048 = await usuarioAuth('dra.ana@parceiro048.test', 'Ana Parceira')
+  const ctx = await comoAal1(ids.ana048, async (tx) => (await um(tx, `select public.get_invitation_context($1) r`, [await sha256hex(inv.token)])).r)
+  igual([ctx.status, ctx.role, ctx.needs_office_profile, ctx.oab_number, ctx.oab_state], ['PENDING', 'PARTNER_ADMIN', true, '98765', 'SP'], 'contexto')
+  igual((await aceitar(ids.ana048, inv.token)).status, 'ACCEPTED', 'aceite')
+  const oab = await um(db, `select oab_number, oab_state, is_primary from profile_oabs where user_id = $1`, [ids.ana048])
+  igual([oab.oab_number, oab.oab_state, oab.is_primary], ['98765', 'SP', true], 'OAB do convite virou da pessoa')
+  ids.tokenAna048 = inv.token
+})
+await deve('contexto do convite só para o próprio convidado (outra pessoa recebe INVALID)', async () => {
+  const r = await comoAal1(ids.lucas, async (tx) => (await um(tx, `select public.get_invitation_context($1) r`, [await sha256hex(ids.tokenAna048)])).r)
+  igual(r.status, 'INVALID', 'outro e-mail')
+})
+await deveFalhar('cadastro do escritório exige CNPJ ou CPF', () =>
+  comoAal1(ids.ana048, (tx) => tx.query(`select public.complete_partner_office_profile($1)`, [JSON.stringify({ name: 'Ana Advocacia', document: '123', phone: '11999990048' })])),
+  /CNPJ \(14 dígitos\) ou o CPF/)
+await deve('o parceiro completa o cadastro no 1º acesso (CPF de advogada sem CNPJ, telefone, OAB); só uma vez', async () => {
+  await comoAal1(ids.ana048, (tx) => tx.query(`select public.complete_partner_office_profile($1)`, [JSON.stringify({
+    name: 'Ana Advocacia', legal_name: 'Ana Souza', document: '999.048.000-01', phone: '(11) 99999-0048', email: 'contato@parceiro048.test',
+    responsible_name: 'Ana Souza', oab_number: '98765', oab_state: 'SP' })]))
+  const o = await um(db, `select o.name, o.cpf, o.cnpj, o.phone, o.email, s.profile_completed_at is not null done, s.responsible_oab_number
+    from organizations o join partner_office_settings s on s.organization_id = o.id where o.id = $1`, [ids.parc048])
+  igual([o.name, o.cpf, o.cnpj, o.phone, o.email, o.done, o.responsible_oab_number], ['Ana Advocacia', '99904800001', null, '11999990048', 'contato@parceiro048.test', true, '98765'], 'escritório')
+})
+await deveFalhar('…e não completa de novo', () =>
+  comoAal1(ids.ana048, (tx) => tx.query(`select public.complete_partner_office_profile($1)`, [JSON.stringify({ name: 'X', document: '99904800001', phone: '11999990048' })])),
+  /já foi completado/)
+await deveFalhar('usuário comum do parceiro não completa cadastro do escritório', () =>
+  como(ids.almeidaAdm, (tx) => tx.query(`select public.complete_partner_office_profile($1)`, [JSON.stringify({ name: 'X', document: '99904800001', phone: '11999990048' })])),
+  /já foi completado|não é seu/)
+await deveFalhar('LAWYER não convida parceiro', () =>
+  como(ids.lucas, (tx) => tx.query(`select public.create_partner_invite_office('x@y.test')`)), /Somente ADMIN/)
+await deve('escritório cadastrado pelo formulário completo (ADMIN) não pede cadastro no 1º acesso', async () => {
+  const id = await como(ids.barbara, async (tx) => (await um(tx, `select private.create_partner_office($1, '{}') id`, [JSON.stringify({ name: 'Completo 048' })])).id)
+  igual((await um(db, `select profile_completed_at is not null done from partner_office_settings where organization_id = $1`, [id])).done, true, 'completo')
+})
+await deveFalhar('só o servidor grava a OAB do convite', () =>
+  como(ids.barbara, (tx) => tx.query(`select public.set_invitation_oab($1, '1', 'SP')`, [randomUUID()])), /permission denied/)
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

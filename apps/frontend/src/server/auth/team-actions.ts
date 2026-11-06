@@ -1,6 +1,7 @@
 "use server";
 
 import { createHash, randomBytes } from "node:crypto";
+import { normalizeOab, OAB_OPTIONAL_ROLES, OAB_REQUIRED_ROLES } from "@/lib/auth/oab";
 import { sanitizeForLog } from "@/lib/auth/errors";
 import { buildInviteMetadata, normalizePersonName, personNameProblem } from "@/lib/auth/invite-metadata";
 import { ALL_ROLES, can, type Role } from "@/lib/permissions";
@@ -193,7 +194,11 @@ export interface InviteInput {
   fullName: string;
   role: Role;
   organizationId?: string;
+  /** OAB do convidado (048): obrigatória para LAWYER e PARTNER_USER, opcional para administradores. */
+  oab?: { number: string; state: string };
 }
+
+
 
 /**
  * Envia o e-mail do convite pelo Supabase Auth. Os dados do e-mail ficam em
@@ -243,6 +248,12 @@ export async function inviteUser(input: InviteInput): Promise<ActionResult> {
     const nameProblem = personNameProblem(fullName);
     if (nameProblem) return { ok: false, error: nameProblem };
     if (!ALL_ROLES.includes(input.role)) return { ok: false, error: "Papel não permitido" };
+    const oab = normalizeOab(input.oab);
+    if (oab === "invalid") return { ok: false, error: "Informe o número da OAB (só números) e a UF." };
+    if (!oab && OAB_REQUIRED_ROLES.includes(input.role)) return { ok: false, error: "Informe a OAB do advogado convidado." };
+    if (oab && !OAB_REQUIRED_ROLES.includes(input.role) && !OAB_OPTIONAL_ROLES.includes(input.role)) {
+      return { ok: false, error: "Este papel não leva OAB." };
+    }
     const orgId = session.role === "ADMIN" && input.organizationId && UUID.test(input.organizationId) ? input.organizationId : session.organizationId;
 
     const ref = randomBytes(32).toString("base64url");
@@ -262,6 +273,14 @@ export async function inviteUser(input: InviteInput): Promise<ActionResult> {
     });
     if (error) return { ok: false, error: dbErrorMessage(error, session) };
     const created = data as { invitation_id: string; organization_id: string; auth_user_id: string | null };
+    if (oab) {
+      const { error: oabError } = await createSupabaseAdminClient().rpc("set_invitation_oab", {
+        p_invitation_id: created.invitation_id,
+        p_number: oab.number,
+        p_state: oab.state,
+      });
+      if (oabError) console.error("[equipe] OAB do convite", sanitizeForLog(oabError));
+    }
 
     // O e-mail muda conforme o público (equipe interna, administrador do
     // parceiro, integrante do parceiro) e mostra o escritório do convite.
@@ -393,5 +412,32 @@ export async function resetUserMfa(userId: string): Promise<ActionResult<{ remov
       p_actor: session.userId,
     });
     return { ok: true, data: { removed } };
+  });
+}
+
+/**
+ * Convidar parceiro só com o e-mail (Roadmap 2.0, 048): o banco cria o
+ * escritório PENDENTE (cadastro a completar pelo próprio parceiro) e o convite
+ * de administrador sai como qualquer outro. No primeiro acesso o parceiro
+ * completa nome do escritório, CNPJ ou CPF, telefone e a OAB dele.
+ * Só ADMIN interno (o banco confere de novo).
+ */
+export async function invitePartnerOffice(input: { email: string; contactName: string; partnerPercentage: number }): Promise<ActionResult<{ organizationId: string }>> {
+  return run("convidar parceiro", async (session) => {
+    if (session.role !== "ADMIN") return { ok: false, error: "Somente o administrador convida parceiros." };
+    const email = input.email.trim().toLowerCase();
+    if (!EMAIL.test(email) || email.length > 254) return { ok: false, error: "Informe um e-mail válido." };
+    const pct = Number(input.partnerPercentage);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) return { ok: false, error: "Percentual do parceiro entre 0 e 100." };
+    const supabase = await createSupabaseServerClient();
+    const { data: orgId, error } = await supabase.rpc("create_partner_invite_office", { p_contact: email, p_partner_percentage: pct });
+    if (error || typeof orgId !== "string") return { ok: false, error: error ? dbErrorMessage(error, session) : GENERIC };
+    const invited = await inviteUser({ email, fullName: input.contactName, role: "PARTNER_ADMIN", organizationId: orgId });
+    if (!invited.ok) {
+      // Sem convite, o escritório pendente não serve: fica inativo (nada é apagado).
+      await supabase.from("organizations").update({ status: "INACTIVE" }).eq("id", orgId);
+      return { ok: false, error: invited.error };
+    }
+    return { ok: true, data: { organizationId: orgId } };
   });
 }

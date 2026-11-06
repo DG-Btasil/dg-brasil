@@ -34,7 +34,18 @@ const nameFromFile = (fileName: string) => fileName.replace(/\.[^.]+$/, "").repl
  * falha, diz em qual parou e retoma dali (confirmação repetida não cria
  * versão duplicada). Nunca mostra sucesso que o banco não confirmou.
  */
-export function UploadDialog({ target, initialFile, onClose }: { target: UploadTarget; initialFile?: File; onClose: () => void }) {
+export function UploadDialog({
+  target,
+  initialFile,
+  onClose,
+  onUploaded,
+}: {
+  target: UploadTarget;
+  initialFile?: File;
+  onClose: () => void;
+  /** Chamado com o documento confirmado (ex.: anexar à mensagem de uma pendência). */
+  onUploaded?: (doc: { documentId: string; versionId: string; title: string }) => void | Promise<void>;
+}) {
   const router = useRouter();
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +81,7 @@ export function UploadDialog({ target, initialFile, onClose }: { target: UploadT
   async function finish(outcome: UploadOutcome) {
     if (outcome.ok) {
       toast({ tone: "success", title: target.kind === "new" ? "Documento enviado" : "Nova versão enviada", description: "O arquivo entra como não verificado." });
+      await onUploaded?.({ documentId: outcome.documentId, versionId: outcome.versionId, title: target.kind === "new" ? title.trim() : target.title });
       router.refresh();
       onClose();
       return;

@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormContext } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
+import { autofillHint, useCpfAutofill } from "@/features/lookup/use-autofill";
 import { Field, FormSection, Input, MaskedInput, Select } from "@/components/ui/form";
 import {
   BRAZILIAN_STATES,
@@ -22,8 +23,17 @@ const GENDER_OPTIONS = GENDERS.map((g) => ({ value: g, label: GENDER_LABEL[g] })
 export function IndividualIdentificationFields() {
   const {
     register,
+    control,
+    setValue,
+    getValues,
     formState: { errors },
   } = useFormContext<IndividualFormValues>();
+  // Roadmap 2.0: CPF completo → nome e nascimento da Receita Federal (Serpro), quando contratado.
+  const cpf = useWatch({ control, name: "cpf" });
+  const cpfStatus = useCpfAutofill(cpf, (p) => {
+    if (p.fullName) setValue("fullName", p.fullName, { shouldValidate: true, shouldDirty: true });
+    if (p.birthDate && !getValues("birthDate")) setValue("birthDate", p.birthDate, { shouldDirty: true });
+  });
   return (
     <FormSection title="Identificação" description="Somente o essencial é obrigatório. Os dados recomendados agilizam a qualificação nas peças.">
       <Field label="Nome completo" requirement="required" error={errors.fullName?.message}>
@@ -32,7 +42,7 @@ export function IndividualIdentificationFields() {
       <Field label="Nome social" requirement="optional" hint="Usado no tratamento com o cliente.">
         {(p) => <Input {...p} {...register("socialName")} />}
       </Field>
-      <Field label="CPF" requirement="required" error={errors.cpf?.message}>
+      <Field label="CPF" requirement="required" error={errors.cpf?.message} hint={autofillHint(cpfStatus, "CPF")}>
         {(p) => <MaskedInput mask="cpf" placeholder="000.000.000-00" {...p} {...register("cpf")} />}
       </Field>
       <Field label="Data de nascimento" requirement="recommended" error={errors.birthDate?.message}>

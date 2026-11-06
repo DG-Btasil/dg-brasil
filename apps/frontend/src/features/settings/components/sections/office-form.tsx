@@ -3,7 +3,7 @@
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
-import { Field, FormSection, Input, MaskedInput, Select, Textarea } from "@/components/ui/form";
+import { Field, FormSection, Input, MaskedInput, Select } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
 import { BRAZILIAN_STATES } from "@/lib/constants/legal";
 import type { Office } from "@/types";
@@ -130,9 +130,6 @@ export function OfficeForm({ office, onSaved }: { office: Office; onSaved: () =>
             </fieldset>
           )}
         />
-        <Field label="Unidades" requirement="optional" hint="Uma unidade por linha." className="col-span-2">
-          {(p) => <Textarea {...p} rows={3} {...register("units")} />}
-        </Field>
       </FormSection>
 
       <div className="flex items-center justify-end gap-2 border-t border-line pt-4">

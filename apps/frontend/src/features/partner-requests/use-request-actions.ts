@@ -37,9 +37,9 @@ export function useRequestActions() {
     () => ({
       create: (input: { legalCaseId: ID; type: string; title: string; description?: string; dueDate?: string }) =>
         run(() => createPartnerRequestAction(input), { title: "Solicitação enviada ao parceiro", description: input.title }, "Não foi possível criar a solicitação."),
-      message: (requestId: ID, message: string, reopen = false) =>
+      message: (requestId: ID, message: string, reopen = false, documentId?: ID) =>
         run(
-          () => addPartnerRequestMessageAction({ requestId, message, reopen }),
+          () => addPartnerRequestMessageAction({ requestId, message, reopen, ...(documentId ? { documentId } : {}) }),
           { title: reopen ? "Nova resposta pedida ao parceiro" : "Mensagem enviada" },
           "Não foi possível enviar a mensagem.",
         ),

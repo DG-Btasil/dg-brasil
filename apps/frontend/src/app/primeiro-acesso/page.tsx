@@ -4,6 +4,7 @@ import { FirstAccessScreen } from "@/features/auth/components/first-access-scree
 import { param } from "@/lib/auth/params";
 import { AUTH_ROUTES, isInviteRef } from "@/lib/auth/redirects";
 import { requireAuthenticatedUser } from "@/server/auth/session";
+import { getInvitationContext } from "@/server/auth/actions";
 
 export const metadata: Metadata = { title: "Primeiro acesso" };
 
@@ -17,5 +18,6 @@ export default async function FirstAccessPage({ searchParams }: PageProps<"/prim
   if (result.mfa?.hasVerifiedFactor && result.mfa.currentLevel !== "aal2") {
     redirect(`${AUTH_ROUTES.mfaVerify}?retorno=convite&ref=${ref}`);
   }
-  return <FirstAccessScreen inviteRef={ref} email={result.email} defaultName={result.fullName} />;
+  const invitation = await getInvitationContext(ref);
+  return <FirstAccessScreen inviteRef={ref} email={result.email} defaultName={result.fullName} invitation={invitation} />;
 }

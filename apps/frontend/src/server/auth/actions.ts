@@ -73,7 +73,52 @@ export async function acceptLegalTerms(): Promise<ActionResult> {
  * abriu uma sessão. Aqui o convite é aceito (vínculo criado uma única vez, no
  * banco — accept_invitation é idempotente) e a pessoa define a senha.
  */
-export async function completeInvitation(input: { ref: string; fullName: string; password: string }): Promise<ActionResult> {
+/** O que o convite pede no primeiro acesso (048): OAB sugerida e, para o administrador de parceiro convidado só por e-mail, o cadastro do escritório. */
+export interface InvitationContext {
+  status: "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED" | "INVALID";
+  role?: string;
+  organizationType?: "OWNER" | "PARTNER";
+  organizationName?: string;
+  oabNumber?: string;
+  oabState?: string;
+  needsOfficeProfile: boolean;
+}
+
+export async function getInvitationContext(ref: string): Promise<InvitationContext> {
+  if (!isInviteRef(ref)) return { status: "INVALID", needsOfficeProfile: false };
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("get_invitation_context", { p_token_hash: createHash("sha256").update(ref).digest("hex") });
+  if (error || !data) return { status: "INVALID", needsOfficeProfile: false };
+  const d = data as Record<string, unknown>;
+  return {
+    status: (d.status as InvitationContext["status"]) ?? "INVALID",
+    role: (d.role as string) ?? undefined,
+    organizationType: (d.organization_type as InvitationContext["organizationType"]) ?? undefined,
+    organizationName: (d.organization_name as string) ?? undefined,
+    oabNumber: (d.oab_number as string) ?? undefined,
+    oabState: (d.oab_state as string) ?? undefined,
+    needsOfficeProfile: d.needs_office_profile === true,
+  };
+}
+
+export interface FirstAccessOffice {
+  name: string;
+  legalName?: string;
+  document: string;
+  phone: string;
+  email?: string;
+}
+
+const OAB_NUMBER = /^[0-9]{1,8}[A-Z]?$/;
+const UF = /^[A-Z]{2}$/;
+
+export async function completeInvitation(input: {
+  ref: string;
+  fullName: string;
+  password: string;
+  oab?: { number: string; state: string };
+  office?: FirstAccessOffice;
+}): Promise<ActionResult> {
   const result = await getCurrentSession();
   if (result.state === "ANONYMOUS") return { ok: false, error: "Sua sessão expirou. Abra o link do convite novamente." };
   if (!isInviteRef(input.ref)) redirect(`${AUTH_ROUTES.blocked}?motivo=convite-invalido`);
@@ -84,8 +129,18 @@ export async function completeInvitation(input: { ref: string; fullName: string;
   const problem = passwordProblem(input.password, { email: result.email, name: fullName });
   if (problem) return { ok: false, error: problem };
 
+  const oab = input.oab ? { number: input.oab.number.toUpperCase().replace(/[^0-9A-Z]/g, ""), state: input.oab.state.trim().toUpperCase() } : undefined;
+  if (oab && (!OAB_NUMBER.test(oab.number) || !UF.test(oab.state))) return { ok: false, error: "Informe o número da OAB (só números) e a UF." };
+  if (input.office) {
+    const doc = input.office.document.replace(/\D/g, "");
+    if (!input.office.name.trim()) return { ok: false, error: "Informe o nome do escritório." };
+    if (doc.length !== 11 && doc.length !== 14) return { ok: false, error: "Informe o CNPJ ou o CPF do escritório." };
+    if (input.office.phone.replace(/\D/g, "").length < 10) return { ok: false, error: "Informe o telefone do escritório com DDD." };
+  }
+
   const supabase = await createSupabaseServerClient();
   const tokenHash = createHash("sha256").update(input.ref).digest("hex");
+  const before = await getInvitationContext(input.ref);
   const { data, error } = await supabase.rpc("accept_invitation", { p_token_hash: tokenHash });
   if (error) {
     console.error("[auth] aceite de convite", sanitizeForLog(error));
@@ -101,6 +156,29 @@ export async function completeInvitation(input: { ref: string; fullName: string;
   if (status && reason[status]) redirect(`${AUTH_ROUTES.blocked}?motivo=${reason[status]}`);
 
   await supabase.from("profiles").update({ full_name: fullName }).eq("id", result.userId!);
+
+  // Roadmap 2.0 (048): cadastro do escritório (parceiro convidado só por e-mail) e OAB da pessoa.
+  if (before.needsOfficeProfile && input.office) {
+    const { error: officeError } = await supabase.rpc("complete_partner_office_profile", {
+      p: {
+        name: input.office.name.trim(),
+        legal_name: input.office.legalName?.trim() || null,
+        document: input.office.document,
+        phone: input.office.phone,
+        email: input.office.email?.trim() || null,
+        responsible_name: fullName,
+        oab_number: oab?.number ?? null,
+        oab_state: oab?.state ?? null,
+      },
+    });
+    if (officeError) {
+      console.error("[auth] cadastro do escritório no primeiro acesso", sanitizeForLog(officeError));
+      return { ok: false, error: "Não foi possível salvar os dados do escritório. Confira CNPJ/CPF e telefone e tente de novo." };
+    }
+  } else if (oab && (oab.number !== before.oabNumber || oab.state !== before.oabState)) {
+    const { error: oabError } = await supabase.rpc("add_my_oab", { p_number: oab.number, p_state: oab.state, p_primary: true });
+    if (oabError) console.error("[auth] OAB no primeiro acesso", sanitizeForLog(oabError));
+  }
   // Senha + limpeza dos dados de e-mail do convite (papel, escritório, marca de
   // reconvite): depois do aceite a conta não carrega "papel do convite" no token.
   const { error: pwError } = await supabase.auth.updateUser({ password: input.password, data: acceptedInviteMetadata(fullName) });

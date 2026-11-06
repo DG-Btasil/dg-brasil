@@ -15,7 +15,7 @@ import { RequestsPanel } from "@/features/partner-requests/components/requests-p
 export function PortalPending({ initial }: { initial: ActionResult<Page<PartnerRequestListItem>> }) {
   return (
     <PageContainer>
-      <PageHeader title="Pendências" description="Solicitações da Bárbara Cardoso Advocacia. Responda enquanto estiverem abertas; documentos pedidos são enviados na página do caso." />
+      <PageHeader title="Pendências" description="Solicitações da Bárbara Cardoso Advocacia. Abra a conversa para responder e anexar o documento pedido — ele vai direto para o caso." />
       <RequestsPanel scope={{}} initial={initial} title="Solicitações" />
     </PageContainer>
   );

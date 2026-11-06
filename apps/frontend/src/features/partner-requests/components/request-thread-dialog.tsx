@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Send } from "lucide-react";
+import { Download, Paperclip, Send } from "lucide-react";
 import { PARTNER_REQUEST_STATUS_LABEL, PARTNER_REQUEST_STATUS_TONE, PARTNER_REQUEST_TYPE_LABEL } from "@/lib/constants/status";
 import { cn } from "@/lib/cn";
 import { formatDate, formatEventTime } from "@/lib/formatting";
@@ -18,6 +18,8 @@ import type { PartnerRequestDetailDTO } from "@/server/domain/partner-requests/d
 import { usePermission } from "@/features/auth/hooks";
 import { useOrgDirectory } from "@/features/directory/directory-context";
 import { useRequestActions } from "../use-request-actions";
+import { UploadDialog } from "@/features/documents/components/upload-dialog";
+import { useDocumentActions } from "@/features/documents/use-document-actions";
 
 /**
  * Conversa de uma solicitação, lida do servidor ao abrir. Parceiro responde
@@ -33,6 +35,10 @@ export function RequestThreadDialog({ requestId, onClose }: { requestId: string;
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [attaching, setAttaching] = useState(false);
+  const documents = useDocumentActions();
+  const canSubmitDocs = usePermission("partnerPortal.documents.submit");
+  const canManageDocs = usePermission("documents.manage");
 
   useEffect(() => {
     let alive = true;
@@ -61,6 +67,17 @@ export function RequestThreadDialog({ requestId, onClose }: { requestId: string;
       setError(undefined);
       setVersion((v) => v + 1);
     } else setError(r.error.fieldErrors?.message?.[0]);
+  }
+
+  /** Documento enviado pelo fluxo padrão: vira uma mensagem da conversa, com o arquivo anexado. */
+  async function attach(doc: { documentId: string; title: string }) {
+    const body = text.trim() || `Documento enviado: ${doc.title}`;
+    const r = await actions.message(requestId, body, false, doc.documentId);
+    if (r.ok) {
+      setText("");
+      setError(undefined);
+      setVersion((v) => v + 1);
+    }
   }
 
   async function close(resolution: "RESOLVED" | "CANCELLED") {
@@ -120,6 +137,15 @@ export function RequestThreadDialog({ requestId, onClose }: { requestId: string;
                       <span>{formatEventTime(m.at)}</span>
                     </p>
                     <p className="whitespace-pre-line text-foreground">{m.message}</p>
+                    {m.documentId && (
+                      <button
+                        type="button"
+                        onClick={() => void documents.download(m.documentId as string)}
+                        className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-1 text-[12px] font-medium text-navy-700 hover:bg-navy-50"
+                      >
+                        <Paperclip className="size-3.5" aria-hidden /> Documento anexado <Download className="size-3.5" aria-hidden />
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -131,7 +157,12 @@ export function RequestThreadDialog({ requestId, onClose }: { requestId: string;
                 <Field label={surface === "PARTNER" ? "Sua resposta" : "Mensagem ao parceiro"} requirement="required" error={error}>
                   {(p) => <Textarea {...p} rows={3} maxLength={5000} value={text} onChange={(e) => setText(e.target.value)} />}
                 </Field>
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
+                  {(surface === "PARTNER" ? canSubmitDocs : canManageDocs) && (
+                    <Button variant="secondary" icon={<Paperclip className="size-4" aria-hidden />} disabled={!!busy} onClick={() => setAttaching(true)} className="mr-auto">
+                      Anexar documento
+                    </Button>
+                  )}
                   {surface === "INTERNAL" && request.status === "ANSWERED" && (
                     <Button variant="secondary" loading={busy === "reopen"} disabled={!!busy} onClick={() => send(true)}>
                       Pedir nova resposta
@@ -147,6 +178,13 @@ export function RequestThreadDialog({ requestId, onClose }: { requestId: string;
             )}
           </div>
         )
+      )}
+      {attaching && request && (
+        <UploadDialog
+          target={{ kind: "new", legalCaseId: request.legalCaseId, defaultTitle: request.title }}
+          onClose={() => setAttaching(false)}
+          onUploaded={attach}
+        />
       )}
     </Dialog>
   );
