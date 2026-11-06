@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { evaluateSession } from "@/lib/auth/evaluate";
 import { sanitizeForLog } from "@/lib/auth/errors";
-import { AUTH_ROUTES, destinationFor, safeNextPath } from "@/lib/auth/redirects";
-import { resolveAppSurface } from "@/lib/auth/surface";
+import { AUTH_ROUTES, destinationFor } from "@/lib/auth/redirects";
+import { surfaceRedirectPath } from "@/lib/auth/surface";
 import type { AppSession, ClientSession, MfaStatus, SessionContextRow, SessionResult } from "@/lib/auth/types";
 import { can, type Permission } from "@/lib/permissions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -53,7 +53,8 @@ async function currentPath(): Promise<string | null> {
 /**
  * Acesso à aplicação liberado (conta válida + termos + MFA aal2). Senão,
  * redireciona para o passo que falta. Também corrige a superfície pelo host:
- * parceiro em app.* vai para portal.*, equipe interna em portal.* vai para app.*.
+ * parceiro em app.* vai para portal.*, equipe interna em portal.* vai para app.*
+ * (um salto só: ver `surfaceRedirectPath`).
  */
 export async function requireAppSession(): Promise<AppSession> {
   const result = await getCurrentSession();
@@ -61,9 +62,8 @@ export async function requireAppSession(): Promise<AppSession> {
 
   const session = result.session;
   const host = (await headers()).get("host")?.split(":")[0];
-  const { redirectToHost } = resolveAppSurface(host, session.role);
-  // Caminho sempre saneado: um valor como "@evil.com" mudaria o host do destino.
-  if (redirectToHost) redirect(`https://${redirectToHost}${safeNextPath(await currentPath(), AUTH_ROUTES.home)}`);
+  const elsewhere = surfaceRedirectPath(host, session.role, await currentPath());
+  if (elsewhere) redirect(elsewhere);
   return session;
 }
 

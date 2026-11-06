@@ -4,8 +4,8 @@ import { evaluateSession } from "./evaluate";
 import { firstNameOf } from "./first-name";
 import { LEGAL_DOCUMENTS, pendingLegalDocuments } from "./legal-documents";
 import { passwordProblem } from "./password-policy";
-import { AUTH_ROUTES, destinationFor, safeNextPath } from "./redirects";
-import { resolveAppSurface, surfaceForRole } from "./surface";
+import { AUTH_ROUTES, BLOCKED_MESSAGES, destinationFor, safeNextPath } from "./redirects";
+import { resolveAppSurface, surfaceForRole, surfaceRedirectPath } from "./surface";
 import type { MfaStatus, SessionContextRow } from "./types";
 
 const ALL_ACCEPTED = LEGAL_DOCUMENTS.map((d) => ({ document_type: d.type, document_version: d.version }));
@@ -150,6 +150,62 @@ describe("superfície (interno x portal)", () => {
     expect(resolveAppSurface("app.barbaracardoso.adv.br", "PARTNER_USER").redirectToHost).toBe("portal.barbaracardoso.adv.br");
     expect(resolveAppSurface("portal.barbaracardoso.adv.br", "LAWYER").redirectToHost).toBe("app.barbaracardoso.adv.br");
     expect(resolveAppSurface("app.barbaracardoso.adv.br", "ADMIN").redirectToHost).toBeUndefined();
+  });
+});
+
+describe("salto entre app e portal (ERR_TOO_MANY_REDIRECTS)", () => {
+  const APP = "app.barbaracardoso.adv.br";
+  const PORTAL = "portal.barbaracardoso.adv.br";
+  const CONFLITO = "/acesso?motivo=contas-em-conflito";
+
+  it("host certo não redireciona, com ou sem marca", () => {
+    expect(surfaceRedirectPath(APP, "ADMIN", "/home")).toBeNull();
+    expect(surfaceRedirectPath(PORTAL, "PARTNER_USER", "/home?trocou-area=1")).toBeNull();
+  });
+  it("localhost/preview não redireciona", () => {
+    expect(surfaceRedirectPath("localhost", "PARTNER_ADMIN", "/home")).toBeNull();
+  });
+  it("host errado: um salto, marcado, mantendo rota e busca", () => {
+    expect(surfaceRedirectPath(APP, "PARTNER_ADMIN", "/home")).toBe(`https://${PORTAL}/home?trocou-area=1`);
+    expect(surfaceRedirectPath(PORTAL, "LAWYER", "/clientes?q=ana")).toBe(`https://${APP}/clientes?q=ana&trocou-area=1`);
+    expect(surfaceRedirectPath(APP, "PARTNER_USER", null)).toBe(`https://${PORTAL}/home?trocou-area=1`);
+  });
+  it("host errado com a marca: para no /acesso, não devolve", () => {
+    expect(surfaceRedirectPath(PORTAL, "ADMIN", "/home?trocou-area=1")).toBe(CONFLITO);
+    expect(surfaceRedirectPath(APP, "PARTNER_ADMIN", "/casos?x=1&trocou-area=1")).toBe(CONFLITO);
+  });
+  it("destino saneado: nada troca o host", () => {
+    expect(surfaceRedirectPath(APP, "PARTNER_USER", "@evil.com")).toBe(`https://${PORTAL}/home?trocou-area=1`);
+    expect(surfaceRedirectPath(APP, "PARTNER_USER", "//evil.com")).toBe(`https://${PORTAL}/home?trocou-area=1`);
+  });
+  it("contas opostas em cada host terminam em no máximo um salto", () => {
+    // Reproduz a sessão real: parceiro em app.*, ADMIN em portal.*.
+    const contas: Record<string, "PARTNER_ADMIN" | "ADMIN"> = { [APP]: "PARTNER_ADMIN", [PORTAL]: "ADMIN" };
+    let host = APP;
+    let path = "/home";
+    let saltos = 0;
+    for (;;) {
+      const destino = surfaceRedirectPath(host, contas[host], path);
+      if (!destino) throw new Error("renderizou a área autenticada no host errado");
+      if (!destino.startsWith("https://")) {
+        expect(destino).toBe(CONFLITO);
+        break;
+      }
+      const url = new URL(destino);
+      host = url.host;
+      path = `${url.pathname}${url.search}`;
+      saltos += 1;
+      expect(saltos).toBeLessThanOrEqual(1);
+    }
+    expect(host).toBe(PORTAL);
+  });
+  it("a marca não sobrevive ao next do login", () => {
+    expect(safeNextPath("/home?trocou-area=1")).toBe("/home");
+    expect(safeNextPath("/casos?x=1&trocou-area=1")).toBe("/casos?x=1");
+    expect(safeNextPath("/busca?q=a%20b")).toBe("/busca?q=a%20b");
+  });
+  it("o motivo tem texto na tela de bloqueio", () => {
+    expect(BLOCKED_MESSAGES["contas-em-conflito"]?.title).toBeTruthy();
   });
 });
 

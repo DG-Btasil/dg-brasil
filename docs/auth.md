@@ -58,8 +58,11 @@ registrar aceite de termos e atualizar o próprio perfil.
 
 `app.*` = equipe interna; `portal.*` = parceiros (`NEXT_PUBLIC_APP_HOST` /
 `NEXT_PUBLIC_PORTAL_HOST`). **O papel decide**; o host só escolhe a porta. Papel
-de parceiro em `app.*` é redirecionado para `portal.*` (e vice-versa). Em
-`localhost` não há redirecionamento.
+de parceiro em `app.*` é redirecionado para `portal.*` (e vice-versa), em **um
+salto só**: os cookies são por host, então cada um pode estar com uma conta de
+perfil oposto. Quem chega com a marca `trocou-area` e ainda está no host errado
+para em `/acesso?motivo=contas-em-conflito`. Em `localhost` não há
+redirecionamento.
 
 ## Fluxos
 

@@ -14,6 +14,12 @@ export const AUTH_ROUTES = {
   home: "/home",
 } as const;
 
+/**
+ * Marca do salto entre app.* e portal.* (ver `surfaceRedirectPath`). Só limita
+ * redirecionamento: não dá acesso a nada, e forjá-la leva à tela de bloqueio.
+ */
+export const SURFACE_HOP_PARAM = "trocou-area";
+
 /** Formato do `ref` de convite (32 bytes em base64url, com folga). Só formato: a validade é do banco. */
 export function isInviteRef(value: string | null | undefined): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_-]{32,128}$/.test(value);
@@ -77,6 +83,8 @@ export function safeNextPath(raw: string | null | undefined, fallback: string = 
   if (url.origin !== "http://dg.invalid") return fallback;
   const path = url.pathname;
   if (path === "/" || isPublicPath(path) || isOnboardingPath(path)) return fallback;
+  // A marca vale para um salto só: não sobrevive ao `next` do login.
+  if (url.searchParams.has(SURFACE_HOP_PARAM)) url.searchParams.delete(SURFACE_HOP_PARAM);
   return `${path}${url.search}${url.hash}`;
 }
 
@@ -133,6 +141,10 @@ export const BLOCKED_MESSAGES: Record<string, { title: string; body: string }> =
   "escritorio-pendente": {
     title: "Escritório em ativação",
     body: "O acesso do seu escritório ainda está sendo ativado pelo administrador do escritório. Tente novamente mais tarde.",
+  },
+  "contas-em-conflito": {
+    title: "Contas diferentes neste navegador",
+    body: "O sistema interno e o portal de parceiros estão conectados, neste navegador, com contas de perfis diferentes. Saia aqui e entre com a conta certa para esta área.",
   },
   "convite-invalido": {
     title: "Convite inválido",
