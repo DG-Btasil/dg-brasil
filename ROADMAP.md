@@ -118,6 +118,21 @@ rodado). Decidido em 2026-10-29 (docs/mcp/relatorio-diagnostico.md):
 - Depois da validação: o ciclo de conferência em dupla (docs/judicial.md) antes
   de o DG Brasil virar a fonte única de prazos.
 
+### Roadmap 2.0 — fechamento do MVP (2026-11-06)
+
+Lista da validação final da Barbara, em 8 blocos + validação: correções e
+velocidade; cadastros (045: canal de aquisição, cliente sem responsável, campos
+obrigatórios, status e fases novos do processo, honorários, informações para os
+agentes); financeiro por processo (046: contrato do processo, despesas, visão por
+processo, modelos de honorários no Financeiro); tarefas para os agentes (047:
+lista de afazeres com orquestrador, revisão humana e o check); parceiros e equipe
+(048: convidar parceiro só com o e-mail, cadastro no primeiro acesso, várias OABs
+por pessoa, anexo nas pendências); preenchimento automático (CEP, CNPJ e CPF pelo
+Serpro); Central DG Brasil (Conexões, computador do escritório com instalador de
+um comando, integrações); números e gráficos em todas as abas (049). Plano e
+decisões: [docs/roadmap-2.0.md](docs/roadmap-2.0.md). Guia de validação:
+[docs/roadmap-2.0-validacao.md](docs/roadmap-2.0-validacao.md).
+
 ### Futuro (fora do MVP) — Domínio consignado
 
 Adiada em 2026-11-05: a análise do HISCON continua com a Clara e a skill

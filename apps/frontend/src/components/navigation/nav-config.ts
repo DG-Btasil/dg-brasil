@@ -53,7 +53,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: "reviews", label: "Revisões", href: "/revisoes", description: "Materiais dos agentes aguardando decisão", icon: ClipboardCheck, permission: "reviews.view", audience: "OWNER" },
   { key: "finance", label: "Financeiro", href: "/financeiro", description: "Honorários, recebimentos e contratos", icon: Banknote, permission: "finance.view", audience: "OWNER" },
   { key: "partners", label: "Parceiros", href: "/parceiros", description: "Escritórios parceiros, casos enviados e parcerias", icon: Handshake, permission: "partners.view", audience: "OWNER" },
-  { key: "dgbrasil", label: "DG Brasil", href: "/dg-brasil", description: "Agentes, Skills, teses e histórico", icon: Landmark, permission: "dgbrasil.view", audience: "OWNER" },
+  { key: "dgbrasil", label: "DG Brasil", href: "/dg-brasil", description: "Conexões, agentes, integrações e o computador do escritório", icon: Landmark, permission: "dgbrasil.view", audience: "OWNER" },
 
   // Portal do parceiro: escopo e vocabulário próprios, sem áreas internas.
   { key: "home", label: "Início", href: "/home", description: "Seus casos e o que precisa da sua atenção", icon: Home, permission: "partnerPortal.view", audience: "PARTNER" },

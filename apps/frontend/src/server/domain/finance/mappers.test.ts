@@ -1,23 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
   agreementInsert,
+  agreementListItemFromRows,
   agreementShareFromRows,
   agreementUpdate,
   allocationFromRow,
+  expenseFromRow,
+  expenseInsert,
+  expensesByCategory,
+  expenseStatusOf,
+  expenseUpdate,
   feeModelUpdate,
+  monthlyPaidExpenses,
   money,
   partnershipInternalFromRow,
   partnershipPartnerFromRow,
   paymentFromRows,
+  processFinanceFromRow,
+  processFinanceTotalsFromRow,
   receiptFromRow,
   shareTotals,
   transferInternalFromRow,
   transferPartnerFromRow,
+  type AgreementListRow,
   type AllocationBalanceRow,
+  type ExpenseRow,
   type PartnershipRow,
+  type ProcessFinanceRow,
   type TransferRow,
 } from "./mappers";
-import { createAgreementSchema } from "./schemas";
+import { processFinanceSearch } from "./repository";
+import { createAgreementSchema, createExpenseSchema } from "./schemas";
 
 const partnershipRow: PartnershipRow = {
   id: "pa-1",
@@ -210,10 +223,11 @@ describe("totais do parceiro (soma em centavos do que o banco derivou)", () => {
 });
 
 describe("domínio → colunas", () => {
-  it("acordo: status decidido pelo service, autor da sessão; chaves ausentes não viram coluna; a chave de idempotência é gravada pelo repositório", () => {
-    const input = createAgreementSchema.parse({ legalCaseId: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01", fixedFee: 1200, activate: true, idempotencyKey: "9b2d4c6e-1a3f-4e5b-8c7d-0f1e2d3c4b5a" });
-    expect(agreementInsert(input, "actor-1")).toEqual({
-      legal_case_id: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01",
+  it("acordo: status decidido pelo service, autor da sessão, caso lido do processo; chaves ausentes não viram coluna; a chave de idempotência é gravada pelo repositório", () => {
+    const input = createAgreementSchema.parse({ legalProcessId: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01", fixedFee: 1200, activate: true, idempotencyKey: "9b2d4c6e-1a3f-4e5b-8c7d-0f1e2d3c4b5a" });
+    expect(agreementInsert(input, "actor-1", "case-from-process")).toEqual({
+      legal_case_id: "case-from-process",
+      legal_process_id: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01",
       fixed_fee: 1200,
       status: "ACTIVE",
       created_by: "actor-1",
@@ -223,5 +237,216 @@ describe("domínio → colunas", () => {
   it("PATCH: null limpa, ausente não mexe", () => {
     expect(agreementUpdate({ notes: null, upfrontFee: 10 })).toEqual({ notes: null, upfront_fee: 10 });
     expect(feeModelUpdate({ active: false, successFeePercent: null })).toEqual({ active: false, success_fee_percentage: null });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Financeiro por processo (046)                                       */
+/* ------------------------------------------------------------------ */
+
+const processRow: ProcessFinanceRow = {
+  legal_process_id: "proc-1",
+  legal_case_id: "case-1",
+  client_id: "client-1",
+  client_name: "Maria Teste",
+  cnj_number: "00012345620268260100",
+  display_title: null,
+  case_title: "Revisional — Banco X",
+  status: "ACTIVE" as ProcessFinanceRow["status"],
+  phase: null,
+  created_at: "2026-10-01T00:00:00Z",
+  case_value: "50000.00",
+  fee_amount: "10000.00",
+  fee_percentage: "30.00",
+  partner_organization_id: "org-a",
+  partner_percentage: "40.00",
+  owner_percentage: "60.00",
+  fee_owner_share: "6000.00",
+  fee_partner_share: "4000.00",
+  contracted: "3000.00",
+  received: "1000.10",
+  open_balance: "1999.90",
+  overdue: "500.00",
+  agreement_count: 1,
+  received_partner_share: "400.04",
+  received_owner_share: "600.06",
+  expenses_total: "350.00",
+  expenses_paid: "200.00",
+  expenses_open: "150.00",
+  expenses_reimbursable: "100.00",
+  expense_count: 3,
+  net_result: "400.06",
+};
+
+const expenseRow: ExpenseRow = {
+  id: "exp-1",
+  legal_process_id: "proc-1",
+  legal_case_id: "case-1",
+  category: "COURT_COSTS",
+  description: "Custas iniciais",
+  amount: "150.35",
+  currency: "BRL ",
+  incurred_on: "2026-10-01",
+  paid_on: null,
+  reimbursable: true,
+  supplier: null,
+  notes: null,
+  created_by: "user-admin",
+  created_at: "2026-10-01T10:00:00Z",
+  updated_at: "2026-10-01T10:00:00Z",
+  cancelled_at: null,
+  cancellation_reason: null,
+};
+
+describe("visão por processo (view process_finance_overview)", () => {
+  it("numeric do banco vira número; título cai no do caso; divisão vem pronta do banco", () => {
+    const dto = processFinanceFromRow(processRow);
+    expect(dto).toMatchObject({
+      legalProcessId: "proc-1",
+      title: "Revisional — Banco X",
+      clientName: "Maria Teste",
+      caseValue: 50000,
+      feeAmount: 10000,
+      feePercentage: 30,
+      ownerPercentage: 60,
+      partnerPercentage: 40,
+      feeOwnerShare: 6000,
+      feePartnerShare: 4000,
+      received: 1000.1,
+      receivedPartnerShare: 400.04,
+      receivedOwnerShare: 600.06,
+      expensesOpen: 150,
+      netResult: 400.06,
+      agreementCount: 1,
+      expenseCount: 3,
+    });
+    expect(dto.phase).toBeUndefined();
+  });
+
+  it("título próprio do processo prevalece; valores ausentes ficam ausentes (não viram zero)", () => {
+    const dto = processFinanceFromRow({ ...processRow, display_title: "  Ação revisional nº 2 ", case_value: null, fee_amount: null, fee_percentage: null, partner_organization_id: null });
+    expect(dto.title).toBe("Ação revisional nº 2");
+    expect(dto.caseValue).toBeUndefined();
+    expect(dto.feeAmount).toBeUndefined();
+    expect(dto.partnerOrganizationId).toBeUndefined();
+  });
+
+  it("totais: sem linha = zeros", () => {
+    expect(processFinanceTotalsFromRow(null)).toMatchObject({ processCount: 0, receivedTotal: 0, netResultTotal: 0 });
+    expect(processFinanceTotalsFromRow({ process_count: 2, case_value_total: "1.10", fee_total: "0.20", fee_owner_total: 0, fee_partner_total: 0, contracted_total: 0, received_total: "0.30", received_owner_total: 0, received_partner_total: 0, open_total: 0, overdue_total: 0, expenses_total: 0, expenses_paid_total: 0, expenses_open_total: 0, net_result_total: "-5.50" })).toMatchObject({
+      processCount: 2,
+      caseValueTotal: 1.1,
+      receivedTotal: 0.3,
+      netResultTotal: -5.5,
+    });
+  });
+
+  it("busca: dígitos (com ou sem máscara) = prefixo do CNJ; texto = cliente/título com curinga escapado", () => {
+    expect(processFinanceSearch("0001234-56.2026")).toEqual({ kind: "cnj", digits: "0001234562026" });
+    expect(processFinanceSearch("  ")).toBeNull();
+    const text = processFinanceSearch('Maria 50%, "x"');
+    expect(text?.kind).toBe("text");
+    // ILIKE escapa o % do usuário (\%); dentro das aspas do PostgREST a barra e as aspas são escapadas de novo.
+    const quoted = String.raw`"%Maria 50\\%, \"x\"%"`;
+    expect(text && text.kind === "text" ? text.or : "").toBe(`client_name.ilike.${quoted},display_title.ilike.${quoted},case_title.ilike.${quoted}`);
+  });
+});
+
+describe("contrato na lista: rótulo do processo", () => {
+  const base = {
+    id: "fa-1",
+    legal_case_id: "case-1",
+    legal_process_id: "proc-1",
+    fee_model_id: null,
+    upfront_fee: null,
+    fixed_fee: null,
+    installments: null,
+    monthly_fee: null,
+    success_fee_percentage: null,
+    currency: "BRL",
+    start_date: null,
+    status: "ACTIVE",
+    notes: null,
+    created_by: null,
+    created_at: "2026-10-01T00:00:00Z",
+    updated_at: "2026-10-01T00:00:00Z",
+    legal_cases: { title: "Caso X", origin_organization_id: "org", clients: null },
+  } as AgreementListRow;
+
+  it("processo sem título usa o título do caso; contrato antigo (sem processo) não tem rótulo de processo", () => {
+    expect(agreementListItemFromRows({ ...base, legal_processes: { title: null, cnj_number: "123" } }, [])).toMatchObject({ legalProcessId: "proc-1", processTitle: "Caso X", cnjNumber: "123" });
+    expect(agreementListItemFromRows({ ...base, legal_processes: [{ title: "Processo A", cnj_number: null }] }, []).processTitle).toBe("Processo A");
+    const legacy = agreementListItemFromRows({ ...base, legal_process_id: null, legal_processes: null }, []);
+    expect(legacy.legalProcessId).toBeUndefined();
+    expect(legacy.processTitle).toBeUndefined();
+  });
+});
+
+describe("despesas do processo", () => {
+  it("situação derivada: cancelada › paga › a pagar", () => {
+    expect(expenseStatusOf({ cancelled_at: null, paid_on: null })).toBe("OPEN");
+    expect(expenseStatusOf({ cancelled_at: null, paid_on: "2026-10-02" })).toBe("PAID");
+    expect(expenseStatusOf({ cancelled_at: "2026-10-03T00:00:00Z", paid_on: "2026-10-02" })).toBe("CANCELLED");
+  });
+
+  it("linha → DTO; rótulos do processo só com o embed", () => {
+    const dto = expenseFromRow(expenseRow);
+    expect(dto).toMatchObject({ amount: 150.35, currency: "BRL", status: "OPEN", reimbursable: true, incurredOn: "2026-10-01" });
+    expect(dto).not.toHaveProperty("processTitle");
+    const labeled = expenseFromRow({
+      ...expenseRow,
+      legal_processes: { title: null, cnj_number: "999", legal_cases: { title: "Caso Y", origin_organization_id: "org", clients: { individual_client_details: null, company_client_details: [{ legal_name: "Empresa Z" }] } } },
+    });
+    expect(labeled).toMatchObject({ processTitle: "Caso Y", cnjNumber: "999", clientName: "Empresa Z" });
+  });
+
+  it("insert: caso do processo (servidor), autor da sessão; nada de cancelamento", () => {
+    const input = createExpenseSchema.parse({ processId: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01", category: "EXPERT_FEE", description: "Perito", amount: 800, incurredOn: "2026-10-05" });
+    expect(expenseInsert(input, "case-1", "actor-1")).toEqual({
+      legal_process_id: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01",
+      legal_case_id: "case-1",
+      category: "EXPERT_FEE",
+      description: "Perito",
+      amount: 800,
+      incurred_on: "2026-10-05",
+      reimbursable: false,
+      created_by: "actor-1",
+    });
+  });
+
+  it("PATCH: só as chaves presentes; null limpa (paid_on null = volta a pagar)", () => {
+    expect(expenseUpdate({ paidOn: null, supplier: "Fórum" })).toEqual({ paid_on: null, supplier: "Fórum" });
+    expect(expenseUpdate({ paidOn: "2026-10-10" })).toEqual({ paid_on: "2026-10-10" });
+  });
+
+  it("por categoria: pagas × a pagar, canceladas fora, maior total primeiro, centavos exatos", () => {
+    const rows = [
+      { category: "COURT_COSTS" as const, amount: "0.10", paid_on: "2026-10-01", cancelled_at: null },
+      { category: "COURT_COSTS" as const, amount: "0.20", paid_on: null, cancelled_at: null },
+      { category: "EXPERT_FEE" as const, amount: "800.00", paid_on: null, cancelled_at: null },
+      { category: "HEARING" as const, amount: "999.00", paid_on: null, cancelled_at: "2026-10-02T00:00:00Z" },
+    ];
+    expect(expensesByCategory(rows)).toEqual([
+      { category: "EXPERT_FEE", paid: 0, open: 800, total: 800, count: 1 },
+      { category: "COURT_COSTS", paid: 0.1, open: 0.2, total: 0.3, count: 2 },
+    ]);
+  });
+
+  it("pagas por mês: pela data do pagamento, só nos meses pedidos; a pagar e canceladas fora", () => {
+    const months = ["2026-09", "2026-10"];
+    const out = monthlyPaidExpenses(
+      [
+        { amount: "100.00", paid_on: "2026-10-31", cancelled_at: null },
+        { amount: "50.00", paid_on: "2026-09-01", cancelled_at: null },
+        { amount: "70.00", paid_on: null, cancelled_at: null },
+        { amount: "30.00", paid_on: "2026-10-05", cancelled_at: "2026-10-06T00:00:00Z" },
+        { amount: "10.00", paid_on: "2025-01-01", cancelled_at: null },
+      ],
+      months,
+    );
+    expect(out).toEqual([
+      { month: "2026-09", amount: 50 },
+      { month: "2026-10", amount: 100 },
+    ]);
   });
 });

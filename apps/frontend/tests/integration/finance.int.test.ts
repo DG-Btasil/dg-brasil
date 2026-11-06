@@ -13,7 +13,7 @@ import {
   registerReceiptSchema,
   registerReversalSchema,
 } from "@/server/domain/finance/schemas";
-import { ctxFor, expectDomainError, fakeCpf, serviceDb, world } from "./support/world";
+import { ctxFor, expectDomainError, fakeCpf, serviceDb, world, processForCase } from "./support/world";
 
 /**
  * Financeiro no Supabase DEV real: ledger append-only, divisão gerada pelo
@@ -49,7 +49,7 @@ async function acceptedPartnerCase(title = "Caso financeiro"): Promise<string> {
 /** Acordo ATIVO + obrigação de `amount` no caso, criados pelo ADMIN pelos services. */
 async function agreementWithPayment(caseId: string, amount: number, dueDate = isoDate(30)) {
   const admin = await ctxFor("ADMIN");
-  const agreement = await finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseId, fixedFee: amount, activate: true }));
+  const agreement = await finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(caseId), fixedFee: amount, activate: true }));
   const payment = await finance.createPayment(admin, createPaymentSchema.parse({ idempotencyKey: key(), agreementId: agreement.id, amount, dueDate, paymentType: "FIXED", description: "Parcela única" }));
   return { agreementId: agreement.id, paymentId: payment.id };
 }
@@ -199,10 +199,10 @@ describe("financeiro — ADMIN", () => {
     const direct = await admin.db.from("financial_agreements").insert({ legal_case_id: caseId, status: "ACTIVE", fixed_fee: 100 }).select("id").single();
     expect(direct.error).toBeNull();
     const agreementId = (direct.data as { id: string }).id;
-    await expectDomainError(finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseId, activate: true })), "CONFLICT", /acordo financeiro ativo/);
+    await expectDomainError(finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(caseId), activate: true })), "CONFLICT", /acordo financeiro ativo/);
 
     // Reenvio do mesmo formulário (mesma chave) devolve o mesmo rascunho; chave nova cria outro.
-    const draftInput = createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseId, fixedFee: 10 });
+    const draftInput = createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(caseId), fixedFee: 10 });
     const draftA = await finance.createAgreement(admin, draftInput);
     expect(await finance.createAgreement(admin, draftInput)).toEqual({ id: draftA.id, deduplicated: true });
     const draftC = await finance.createAgreement(admin, { ...draftInput, idempotencyKey: key() });
@@ -356,7 +356,7 @@ describe("financeiro — Portal do Parceiro e isolamento", () => {
       const ctx = await ctxFor(role);
       await expectDomainError(finance.listAgreements(ctx, { page: 1, pageSize: 5, column: "created_at", ascending: false }), "FORBIDDEN");
       await expectDomainError(finance.listPayments(ctx, listPaymentsSchema.parse({ legalCaseId: caseA })), "FORBIDDEN");
-      await expectDomainError(finance.createAgreement(ctx, createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseA })), "FORBIDDEN");
+      await expectDomainError(finance.createAgreement(ctx, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(caseA) })), "FORBIDDEN");
       await expectDomainError(finance.listCasePartnerships(ctx, caseA), "FORBIDDEN");
       await expectDomainError(finance.getPartnerFinance(ctx, { partnerOrganizationId: world.partnerA }), "FORBIDDEN");
       await expectDomainError(finance.listTransfers(ctx, listTransfersSchema.parse({})), "FORBIDDEN");

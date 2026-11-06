@@ -23,6 +23,8 @@ import { ACTOR_TYPE_LABEL, actionLabel, eventDetail } from "@/features/audit/hum
 import { useOrganizationNames } from "@/features/directory/directory-context";
 import { maskCNPJ, maskCPF } from "@/lib/formatting";
 import type { InternalHomeData } from "../load";
+import { EntriesTrend, MetricsBoard } from "@/features/metrics/components/metrics-board";
+import type { DashboardMetricsDTO } from "@/server/domain/metrics/dto";
 
 const weekdayFmt = new Intl.DateTimeFormat("pt-BR", { weekday: "long", timeZone: "America/Sao_Paulo" });
 /** Uma cor por status (tokens --chart-* de globals.css), vizinhos da ordem da tela sempre contrastando. */
@@ -46,7 +48,7 @@ const num = (v: number | undefined) => (v === undefined ? "—" : formatNumber(v
  * página, por permissão). Cada bloco só existe se o papel tem a permissão —
  * o que não é permitido nem é consultado no servidor.
  */
-export function HomeDashboard({ data }: { data: InternalHomeData }) {
+export function HomeDashboard({ data, metrics }: { data: InternalHomeData; metrics?: ActionResult<DashboardMetricsDTO> }) {
   const today = now();
   const k = data.kpis;
   return (
@@ -101,9 +103,15 @@ export function HomeDashboard({ data }: { data: InternalHomeData }) {
         <div className="col-span-12 xl:col-span-8">
           <AttentionPanel overdue={data.overdue} upcoming={data.upcoming} />
         </div>
-        <div className="col-span-12 xl:col-span-4">
+        <div className="col-span-12 flex flex-col gap-5 xl:col-span-4">
           <ProcessDistribution distribution={data.distribution} />
+          {metrics && <EntriesTrend metrics={metrics} />}
         </div>
+        {metrics && (
+          <div className="col-span-12">
+            <MetricsBoard variant="home" initial={metrics} title="O escritório em números" />
+          </div>
+        )}
         {data.reviews && (
           <div className="col-span-12 xl:col-span-7">
             <PendingReviews reviews={data.reviews} />

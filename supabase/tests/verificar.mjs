@@ -5425,6 +5425,41 @@ await deve('escritório cadastrado pelo formulário completo (ADMIN) não pede c
 await deveFalhar('só o servidor grava a OAB do convite', () =>
   como(ids.barbara, (tx) => tx.query(`select public.set_invitation_oab($1, '1', 'SP')`, [randomUUID()])), /permission denied/)
 
+// ═════════════════════════════ Roadmap 2.0 — indicadores [049] ═══════════
+
+secao('Roadmap 2.0 — indicadores e séries com a RLS de quem pede [049]')
+const metricas = (uid, de = null, ate = null) => como(uid, async (tx) => (await um(tx, `select public.get_dashboard_metrics($1, $2) m`, [de, ate])).m)
+await deve('totais batem com o que cada um enxerga; parceiro vê só o próprio escritório', async () => {
+  for (const uid of [ids.barbara, ids.lucas, ids.almeidaAdm]) {
+    const m = await metricas(uid)
+    const real = await como(uid, async (tx) => um(tx, `select (select count(*)::int from clients where deleted_at is null) c,
+      (select count(*)::int from legal_cases where deleted_at is null) k, (select count(*)::int from legal_processes where deleted_at is null) p`))
+    igual([m.clients.total, m.cases.total, m.processes.total], [real.c, real.k, real.p], `totais (${uid === ids.almeidaAdm ? 'parceiro' : 'interno'})`)
+  }
+  const interno = await metricas(ids.barbara), parceiro = await metricas(ids.almeidaAdm)
+  if (!(parceiro.processes.total < interno.processes.total)) throw new Error('parceiro deveria ver menos processos')
+  igual([parceiro.tasks.open, parceiro.reviews.pending], [0, 0], 'parceiro não vê tarefas nem revisões')
+})
+await deve('dinheiro: ADMIN vê o recebido; LAWYER não vê (RLS do financeiro)', async () => {
+  const a = await metricas(ids.barbara, '2000-01-01', '2100-12-31'), l = await metricas(ids.lucas, '2000-01-01', '2100-12-31')
+  if (!(Number(a.finance.received) > 0)) throw new Error('ADMIN deveria ver recebimentos')
+  igual(Number(l.finance.received), 0, 'LAWYER sem recebimentos')
+})
+await deve('séries: semanas até 120 dias, meses acima; novos do período somam a série', async () => {
+  const hoje = (await um(db, `select (now() at time zone 'America/Sao_Paulo')::date::text d`)).d
+  const s = await metricas(ids.barbara)
+  igual(s.period.unit, 'week', 'unidade')
+  igual(s.series.reduce((t, x) => t + Number(x.cases), 0), s.cases.new, 'série de casos = novos do período')
+  const ano = await metricas(ids.barbara, '2026-01-01', hoje)
+  igual(ano.period.unit, 'month', 'unidade longa')
+  igual(ano.series.reduce((t, x) => t + Number(x.clients), 0), ano.clients.new, 'série de clientes = novos')
+})
+await deve('canal de aquisição dos novos clientes aparece no agrupamento', async () => {
+  const m = await metricas(ids.barbara)
+  if (!m.clients.by_channel.some((x) => x.key === 'REFERRAL' || x.key === 'GOOGLE_ADS')) throw new Error('sem canal no agrupamento')
+})
+await deveFalhar('período invertido é recusado', () => metricas(ids.barbara, '2026-12-31', '2026-01-01'), /Período inválido/)
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

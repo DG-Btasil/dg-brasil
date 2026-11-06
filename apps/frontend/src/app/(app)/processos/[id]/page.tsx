@@ -1,3 +1,4 @@
+import { loadProcessFinance } from "@/features/finance/load";
 import { Suspense } from "react";
 import { FileSearch } from "lucide-react";
 import { PageContainer } from "@/components/layout/guards";
@@ -13,10 +14,8 @@ import { listDeadlinesAction } from "@/server/domain/processes/deadlines/actions
 import { listDocumentsAction } from "@/server/domain/documents/actions";
 import { documentListInput } from "@/features/documents/constants";
 import { requestListInput } from "@/features/partner-requests/query";
-import { DEFAULT_AGREEMENT_QUERY, agreementQueryToInput } from "@/features/finance/list-query";
 import { can } from "@/lib/permissions";
 import { requireAppSession } from "@/server/auth/session";
-import { listAgreementRowsAction } from "@/server/domain/finance/actions";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 import { listProcessTasksAction } from "@/server/domain/process-tasks/actions";
@@ -73,7 +72,7 @@ async function InternalProcess({ id }: { id: string }) {
   if (result.data.surface !== "INTERNAL") return <ProcessNotFound />;
   const [[parties, events, deadlines, documents, reviews, tasks], agreements] = await Promise.all([
     pending,
-    can(session.role, "finance.view") ? listAgreementRowsAction(agreementQueryToInput(DEFAULT_AGREEMENT_QUERY, { legalCaseId: result.data.process.legalCaseId })) : Promise.resolve(undefined),
+    loadProcessFinance(id),
   ]);
   return (
     <Suspense fallback={fallback}>

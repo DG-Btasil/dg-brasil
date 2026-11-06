@@ -23,6 +23,7 @@ import { DEFAULT_PORTAL_QUERY, PORTAL_PAGE_SIZE, portalQueryToSearchParams, type
  * CPF/CNPJ, e os estados de carregamento, vazio e erro.
  */
 export function PortalServerList<T>({
+  insights,
   title,
   description,
   cta,
@@ -36,6 +37,8 @@ export function PortalServerList<T>({
   errorTitle,
   children,
 }: {
+  /** Indicadores da aba (Roadmap 2.0), abaixo do título. */
+  insights?: ReactNode;
   title: string;
   description: string;
   cta?: ReactNode;
@@ -58,6 +61,7 @@ export function PortalServerList<T>({
   return (
     <PageContainer>
       <PageHeader title={title} description={description} actions={cta} />
+      {insights}
       {page && page.total === 0 && !filtered ? (
         <Panel>
           <EmptyState icon={empty.icon} title={empty.title} description={empty.description} action={cta} />

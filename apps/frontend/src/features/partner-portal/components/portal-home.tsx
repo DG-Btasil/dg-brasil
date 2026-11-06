@@ -13,13 +13,16 @@ import { ButtonLink } from "@/components/ui/button";
 import { PageHeader, Stat } from "@/components/ui/display";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import type { PartnerHomeData } from "@/features/home/load";
+import { MetricsBoard } from "@/features/metrics/components/metrics-board";
+import type { DashboardMetricsDTO } from "@/server/domain/metrics/dto";
+import type { ActionResult } from "@/lib/actions/result";
 
 /**
  * Início do Portal do Parceiro, com dados do SERVIDOR (RLS recorta ao
  * escritório da sessão): casos em análise e ativos, solicitações abertas,
  * casos e processos recentes e — só PARTNER_ADMIN — a participação.
  */
-export function PortalHome({ data }: { data: PartnerHomeData }) {
+export function PortalHome({ data, metrics }: { data: PartnerHomeData; metrics?: ActionResult<DashboardMetricsDTO> }) {
   const open = data.openRequests.ok ? data.openRequests.data.total : undefined;
   return (
     <>
@@ -57,6 +60,12 @@ export function PortalHome({ data }: { data: PartnerHomeData }) {
           </span>
           <span className="ml-auto text-[12px] font-semibold text-navy-700">Ver Financeiro</span>
         </Link>
+      )}
+
+      {metrics && (
+        <div className="mt-6">
+          <MetricsBoard variant="portal-home" initial={metrics} title="Seu escritório em números" />
+        </div>
       )}
 
       <div className="mt-6 grid grid-cols-12 gap-5">

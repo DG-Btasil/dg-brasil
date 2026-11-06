@@ -4,16 +4,25 @@ import { useMemo } from "react";
 import { useCan } from "@/features/auth/hooks";
 import type { Permission } from "@/lib/permissions";
 
-export const SETTINGS_SECTIONS = ["geral", "equipe", "integracoes", "ia", "honorarios", "notificacoes", "conta", "seguranca"] as const;
+export const SETTINGS_SECTIONS = ["geral", "equipe", "notificacoes", "conta", "seguranca"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+/**
+ * Seções que saíram das Configurações e para onde foram (links antigos,
+ * `?secao=`, levam ao novo lugar). Roadmap 2.0: modelos de honorários agora
+ * ficam no Financeiro.
+ */
+export const MOVED_SECTIONS: Record<string, { href: string; label: string; permission: Permission }> = {
+  honorarios: { href: "/financeiro?aba=modelos", label: "Financeiro › Modelos de honorários", permission: "finance.view" },
+  // Integrações e o computador do escritório agora são da Central DG Brasil.
+  integracoes: { href: "/dg-brasil/integracoes", label: "DG Brasil › Integrações", permission: "dgbrasil.view" },
+  ia: { href: "/dg-brasil/computador", label: "DG Brasil › Computador do escritório", permission: "dgbrasil.view" },
+};
 
 /** `permission: null` = toda sessão liberada (cuidar da própria conta não depende do papel). */
 export const SECTION_META: Record<SettingsSection, { label: string; description: string; permission: Permission | null }> = {
   geral: { label: "Geral", description: "Dados do escritório, preferências e identidade", permission: "settings.view" },
   equipe: { label: "Equipe e permissões", description: "Usuários, convites e papéis", permission: "settings.team.manage" },
-  integracoes: { label: "Integrações", description: "Integração Judicial, importação de dados (XLSX/CSV), e-mail", permission: "settings.integrations.view" },
-  ia: { label: "Computador do escritório", description: "Quem executa os agentes, a fila e o interruptor geral", permission: "settings.ai.view" },
-  honorarios: { label: "Modelos de honorários", description: "Modelos usados nos contratos", permission: "settings.fees.manage" },
   notificacoes: { label: "Notificações", description: "Suas preferências de aviso", permission: "settings.notifications.edit" },
   conta: { label: "Sua conta e sessões", description: "Senha, verificação em duas etapas e dispositivos", permission: null },
   seguranca: { label: "Segurança e auditoria", description: "Postura do escritório e registro de atividades", permission: "settings.security.view" },

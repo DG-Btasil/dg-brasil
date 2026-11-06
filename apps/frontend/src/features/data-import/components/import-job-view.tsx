@@ -188,7 +188,7 @@ export function ImportJobView({ jobId }: { jobId: string }) {
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumbs={[{ label: "Configurações", href: "/configuracoes?secao=integracoes" }, { label: "Importações", href: IMPORTS_HREF }, { label: j.fileName }]}
+        breadcrumbs={[{ label: "DG Brasil", href: "/dg-brasil/integracoes" }, { label: "Importações", href: IMPORTS_HREF }, { label: j.fileName }]}
         title={
           <span className="inline-flex items-center gap-2">
             <FileSpreadsheet className="size-5 text-navy-700" aria-hidden />

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Handshake, Plus, SearchX, Send } from "lucide-react";
 import { PARTNER_OFFICE_STATUS_LABEL, PARTNER_OFFICE_STATUS_TONE, type PartnerOfficeStatus } from "@/lib/constants/status";
 import { cn } from "@/lib/cn";
@@ -34,7 +34,9 @@ const STATUS_FILTERS: { key: PartnerOfficeStatus | ""; label: string }[] = [
 ];
 
 /** Escritórios parceiros (equipe interna), com busca, situação, ordem e páginas no servidor. */
-export function PartnerList({ initialQuery, initialResult }: { initialQuery: PartnerListQuery; initialResult: ActionResult<Page<PartnerListItem>> }) {
+export function PartnerList({ insights, initialQuery, initialResult }: {
+  /** Indicadores e gráficos da aba (Roadmap 2.0), logo abaixo do título. */
+  insights?: ReactNode; initialQuery: PartnerListQuery; initialResult: ActionResult<Page<PartnerListItem>> }) {
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
     initialResult,
@@ -74,6 +76,7 @@ export function PartnerList({ initialQuery, initialResult }: { initialQuery: Par
         description="Escritórios que originam casos operados pelo escritório. Cada parceiro enxerga apenas os próprios clientes e casos."
         actions={cta}
       />
+      {insights}
       {page && page.total === 0 && !filtered ? (
         <Panel>
           <EmptyState icon={Handshake} title="Nenhum parceiro cadastrado." description="Cadastre um escritório parceiro para que ele possa enviar clientes e casos." action={cta} />

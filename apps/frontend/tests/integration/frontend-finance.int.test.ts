@@ -6,7 +6,7 @@ import * as clients from "@/server/domain/clients/service";
 import { createClientSchema } from "@/server/domain/clients/schemas";
 import * as finance from "@/server/domain/finance/service";
 import { createAgreementSchema, createPaymentSchema, listAgreementsSchema, registerReceiptSchema, registerReversalSchema } from "@/server/domain/finance/schemas";
-import { ctxFor, expectDomainError, fakeCpf, world } from "./support/world";
+import { ctxFor, expectDomainError, fakeCpf, world, processForCase } from "./support/world";
 
 /**
  * Etapa 4.3, Fase F — financeiro das telas no Supabase DEV real:
@@ -34,7 +34,7 @@ beforeAll(async () => {
 describe("ciclo de vida do acordo (030)", () => {
   it("rascunho → ativo; termos congelam; concluir com aberta é recusado (inclusive direto no banco); quitada, conclui", async () => {
     const admin = await ctxFor("ADMIN");
-    const { id } = await finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseId, fixedFee: 900 }));
+    const { id } = await finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(caseId), fixedFee: 900 }));
     await finance.changeAgreementStatus(admin, { id, to: "ACTIVE" });
     const direct = await admin.db.from("financial_agreements").update({ fixed_fee: 1 }).eq("id", id);
     expect(direct.error?.message).toMatch(/Só o rascunho/);
@@ -62,7 +62,7 @@ describe("ciclo de vida do acordo (030)", () => {
   it("acordo concluído ou cancelado é histórico: nem observação muda", async () => {
     const admin = await ctxFor("ADMIN");
     const otherCase = await internalCase(`Caso financeiro 030 cancelado ${world.run}`);
-    const { id } = await finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: otherCase }));
+    const { id } = await finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(otherCase) }));
     await finance.changeAgreementStatus(admin, { id, to: "CANCELLED" });
     const direct = await admin.db.from("financial_agreements").update({ notes: "x" }).eq("id", id);
     expect(direct.error?.message).toMatch(/histórico/);

@@ -1,4 +1,4 @@
-import type { BillingMoment } from "@/lib/constants/status";
+import type { BillingMoment, ProcessPhase, ProcessStatus } from "@/lib/constants/status";
 import { paymentStatusFromDb, type DbPaymentStatus } from "@/repositories/api/db-mappings";
 import type { ID } from "@/types";
 import type {
@@ -7,6 +7,10 @@ import type {
   AllocationDTO,
   CasePartnershipInternalDTO,
   CasePartnershipPartnerDTO,
+  ExpenseCategory,
+  ExpenseCategoryPoint,
+  ExpenseDTO,
+  ExpenseStatus,
   FeeModelDTO,
   FinanceTotals,
   FinancialAgreementDTO,
@@ -14,13 +18,15 @@ import type {
   PartnerShareTotals,
   PaymentDTO,
   PaymentType,
+  ProcessFinanceDTO,
+  ProcessFinanceTotalsDTO,
   ReceiptDTO,
   ReceiptKind,
   TransferInternalDTO,
   TransferItemDTO,
   TransferPartnerDTO,
   TransferStatus, PartnerShareTransferDTO, ContractedByModelPoint } from "./dto";
-import type { CreateAgreementInput, CreateFeeModelInput, UpdateAgreementInput, UpdateFeeModelInput } from "./schemas";
+import { EXPENSE_CATEGORIES, type CreateAgreementInput, type CreateExpenseInput, type CreateFeeModelInput, type UpdateAgreementInput, type UpdateExpenseInput, type UpdateFeeModelInput } from "./schemas";
 
 /**
  * Banco (snake_case) ↔ domínio (camelCase). Funções puras, testadas em
@@ -73,6 +79,8 @@ export interface FeeModelRow {
 export interface AgreementRow {
   id: string;
   legal_case_id: string;
+  /** 046: nulo só em contrato antigo (do caso). Opcional no tipo para linhas lidas antes da coluna existir. */
+  legal_process_id?: string | null;
   fee_model_id: string | null;
   upfront_fee: Numeric | null;
   fixed_fee: Numeric | null;
@@ -172,6 +180,7 @@ interface CaseEmbed {
 export interface AgreementListRow extends AgreementRow {
   fee_models?: Many<{ name: string }>;
   legal_cases?: Many<CaseEmbed>;
+  legal_processes?: Many<{ title: string | null; cnj_number: string | null }>;
 }
 
 export interface TransferRow {
@@ -232,6 +241,7 @@ export function agreementFromRow(r: AgreementRow): FinancialAgreementDTO {
   return {
     id: r.id,
     legalCaseId: r.legal_case_id,
+    legalProcessId: opt(r.legal_process_id),
     feeModelId: opt(r.fee_model_id),
     upfrontFee: optMoney(r.upfront_fee),
     fixedFee: optMoney(r.fixed_fee),
@@ -436,6 +446,7 @@ function clientNameOf(c: CaseEmbed): string {
 export function agreementListItemFromRows(row: AgreementListRow, balances: PaymentBalanceRow[]): AgreementListItemDTO {
   const own = balances.filter((b) => b.financial_agreement_id === row.id);
   const legalCase = first(row.legal_cases);
+  const process = first(row.legal_processes);
   const nextDueDate = own
     .filter((b) => OPEN_STATUSES.has(b.status) && b.due_date)
     .map((b) => b.due_date as string)
@@ -444,6 +455,8 @@ export function agreementListItemFromRows(row: AgreementListRow, balances: Payme
     ...agreementFromRow(row),
     caseTitle: legalCase?.title ?? "",
     clientName: legalCase ? clientNameOf(legalCase) : "",
+    processTitle: process ? process.title?.trim() || legalCase?.title || undefined : undefined,
+    cnjNumber: opt(process?.cnj_number),
     caseOriginOrganizationId: legalCase?.origin_organization_id,
     feeModelName: first(row.fee_models)?.name,
     totals: balanceTotals(own),
@@ -525,11 +538,15 @@ export function feeModelUpdate(patch: UpdateFeeModelInput["patch"]): Json {
   return columns(patch as Record<string, unknown>, FEE_MODEL_TO_COLUMN);
 }
 
-/** Colunas do acordo. Status e autor NUNCA vêm do input: status é decidido pelo service, autor pelo banco. */
-export function agreementInsert(input: CreateAgreementInput, actorId: ID): Json {
-  const { activate, legalCaseId, ...rest } = input;
+/**
+ * Colunas do acordo. Status e autor NUNCA vêm do input: status é decidido pelo
+ * service, autor pelo banco. O caso vem do PROCESSO, lido no servidor.
+ */
+export function agreementInsert(input: CreateAgreementInput, actorId: ID, legalCaseId: ID): Json {
+  const { activate, legalProcessId, ...rest } = input;
   return {
     legal_case_id: legalCaseId,
+    legal_process_id: legalProcessId,
     ...columns(rest as Record<string, unknown>, AGREEMENT_TO_COLUMN),
     status: activate ? "ACTIVE" : "DRAFT",
     created_by: actorId,
@@ -573,4 +590,244 @@ export function compositionByFeeModel(rows: { fee_model_id: string | null; fee_m
     .sort((a, b) => b.cents - a.cents || a.name.localeCompare(b.name));
   const out = points.length <= 5 ? points : [...points.slice(0, 4), points.slice(4).reduce((acc, p) => ({ ...acc, cents: acc.cents + p.cents, count: acc.count + p.count }), { name: "Outros", feeModelId: null, cents: 0, count: 0 })];
   return out.map((p) => ({ name: p.name, feeModelId: p.feeModelId, total: fromCents(p.cents), count: p.count }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Financeiro por processo (Roadmap 2.0, 046)                          */
+/* ------------------------------------------------------------------ */
+
+/** Linha da view process_finance_overview (tudo somado no banco). */
+export interface ProcessFinanceRow {
+  legal_process_id: string;
+  legal_case_id: string;
+  client_id: string;
+  client_name: string | null;
+  cnj_number: string | null;
+  display_title: string | null;
+  case_title: string | null;
+  status: ProcessStatus;
+  phase: ProcessPhase | null;
+  created_at: string;
+  case_value: Numeric | null;
+  fee_amount: Numeric | null;
+  fee_percentage: Numeric | null;
+  partner_organization_id: string | null;
+  partner_percentage: Numeric;
+  owner_percentage: Numeric;
+  fee_owner_share: Numeric;
+  fee_partner_share: Numeric;
+  contracted: Numeric;
+  received: Numeric;
+  open_balance: Numeric;
+  overdue: Numeric;
+  agreement_count: number;
+  received_partner_share: Numeric;
+  received_owner_share: Numeric;
+  expenses_total: Numeric;
+  expenses_paid: Numeric;
+  expenses_open: Numeric;
+  expenses_reimbursable: Numeric;
+  expense_count: number;
+  net_result: Numeric;
+}
+
+/** Linha da view process_finance_totals. */
+export interface ProcessFinanceTotalsRow {
+  process_count: number;
+  case_value_total: Numeric;
+  fee_total: Numeric;
+  fee_owner_total: Numeric;
+  fee_partner_total: Numeric;
+  contracted_total: Numeric;
+  received_total: Numeric;
+  received_owner_total: Numeric;
+  received_partner_total: Numeric;
+  open_total: Numeric;
+  overdue_total: Numeric;
+  expenses_total: Numeric;
+  expenses_paid_total: Numeric;
+  expenses_open_total: Numeric;
+  net_result_total: Numeric;
+}
+
+export interface ExpenseRow {
+  id: string;
+  legal_process_id: string;
+  legal_case_id: string;
+  category: ExpenseCategory;
+  description: string;
+  amount: Numeric;
+  currency: string;
+  incurred_on: string;
+  paid_on: string | null;
+  reimbursable: boolean;
+  supplier: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  /** Rótulos do processo (embed de leitura, só na lista geral). */
+  legal_processes?: Many<{ title: string | null; cnj_number: string | null; legal_cases?: Many<CaseEmbed> }>;
+}
+
+const zeroMoney = (v: Numeric | null | undefined): number => (v === null || v === undefined ? 0 : money(v));
+
+export function processFinanceFromRow(r: ProcessFinanceRow): ProcessFinanceDTO {
+  return {
+    legalProcessId: r.legal_process_id,
+    legalCaseId: r.legal_case_id,
+    clientId: r.client_id,
+    clientName: r.client_name ?? "",
+    cnjNumber: opt(r.cnj_number),
+    title: r.display_title?.trim() || r.case_title || "",
+    caseTitle: r.case_title ?? "",
+    status: r.status,
+    phase: opt(r.phase),
+    createdAt: r.created_at,
+    caseValue: optMoney(r.case_value),
+    feeAmount: optMoney(r.fee_amount),
+    feePercentage: optMoney(r.fee_percentage),
+    partnerOrganizationId: opt(r.partner_organization_id),
+    partnerPercentage: zeroMoney(r.partner_percentage),
+    ownerPercentage: r.owner_percentage === null || r.owner_percentage === undefined ? 100 : money(r.owner_percentage),
+    feeOwnerShare: zeroMoney(r.fee_owner_share),
+    feePartnerShare: zeroMoney(r.fee_partner_share),
+    contracted: zeroMoney(r.contracted),
+    received: zeroMoney(r.received),
+    openBalance: zeroMoney(r.open_balance),
+    overdue: zeroMoney(r.overdue),
+    agreementCount: Number(r.agreement_count ?? 0),
+    receivedPartnerShare: zeroMoney(r.received_partner_share),
+    receivedOwnerShare: zeroMoney(r.received_owner_share),
+    expensesTotal: zeroMoney(r.expenses_total),
+    expensesPaid: zeroMoney(r.expenses_paid),
+    expensesOpen: zeroMoney(r.expenses_open),
+    expensesReimbursable: zeroMoney(r.expenses_reimbursable),
+    expenseCount: Number(r.expense_count ?? 0),
+    netResult: zeroMoney(r.net_result),
+  };
+}
+
+/** Totais (uma linha). Sem linha (sem acesso) = zeros. */
+export function processFinanceTotalsFromRow(r: ProcessFinanceTotalsRow | null | undefined): ProcessFinanceTotalsDTO {
+  return {
+    processCount: Number(r?.process_count ?? 0),
+    caseValueTotal: zeroMoney(r?.case_value_total),
+    feeTotal: zeroMoney(r?.fee_total),
+    feeOwnerTotal: zeroMoney(r?.fee_owner_total),
+    feePartnerTotal: zeroMoney(r?.fee_partner_total),
+    contractedTotal: zeroMoney(r?.contracted_total),
+    receivedTotal: zeroMoney(r?.received_total),
+    receivedOwnerTotal: zeroMoney(r?.received_owner_total),
+    receivedPartnerTotal: zeroMoney(r?.received_partner_total),
+    openTotal: zeroMoney(r?.open_total),
+    overdueTotal: zeroMoney(r?.overdue_total),
+    expensesTotal: zeroMoney(r?.expenses_total),
+    expensesPaidTotal: zeroMoney(r?.expenses_paid_total),
+    expensesOpenTotal: zeroMoney(r?.expenses_open_total),
+    netResultTotal: zeroMoney(r?.net_result_total),
+  };
+}
+
+/** Situação derivada: cancelada › paga › a pagar. */
+export function expenseStatusOf(r: Pick<ExpenseRow, "cancelled_at" | "paid_on">): ExpenseStatus {
+  if (r.cancelled_at) return "CANCELLED";
+  return r.paid_on ? "PAID" : "OPEN";
+}
+
+export function expenseFromRow(r: ExpenseRow): ExpenseDTO {
+  const process = first(r.legal_processes);
+  const legalCase = first(process?.legal_cases);
+  return {
+    id: r.id,
+    legalProcessId: r.legal_process_id,
+    legalCaseId: r.legal_case_id,
+    category: r.category,
+    description: r.description,
+    amount: money(r.amount),
+    currency: r.currency.trim(),
+    incurredOn: r.incurred_on,
+    paidOn: opt(r.paid_on),
+    reimbursable: r.reimbursable,
+    supplier: opt(r.supplier),
+    notes: opt(r.notes),
+    status: expenseStatusOf(r),
+    createdBy: opt(r.created_by),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    cancelledAt: opt(r.cancelled_at),
+    cancellationReason: opt(r.cancellation_reason),
+    ...(process
+      ? {
+          processTitle: process.title?.trim() || legalCase?.title || undefined,
+          cnjNumber: opt(process.cnj_number),
+          clientName: legalCase ? clientNameOf(legalCase) || undefined : undefined,
+        }
+      : {}),
+  };
+}
+
+const EXPENSE_TO_COLUMN: Record<string, string> = {
+  category: "category",
+  description: "description",
+  amount: "amount",
+  incurredOn: "incurred_on",
+  paidOn: "paid_on",
+  reimbursable: "reimbursable",
+  supplier: "supplier",
+  notes: "notes",
+};
+
+/**
+ * Colunas da despesa nova. Processo do input; CASO lido do processo no
+ * servidor (o banco também o sobrescreve); autor da sessão. Nasce ativa.
+ */
+export function expenseInsert(input: CreateExpenseInput, legalCaseId: ID, actorId: ID): Json {
+  const { processId, ...rest } = input;
+  return {
+    legal_process_id: processId,
+    legal_case_id: legalCaseId,
+    ...columns(rest as Record<string, unknown>, EXPENSE_TO_COLUMN),
+    reimbursable: input.reimbursable ?? false,
+    created_by: actorId,
+  };
+}
+
+export function expenseUpdate(patch: UpdateExpenseInput["patch"]): Json {
+  return columns(patch as Record<string, unknown>, EXPENSE_TO_COLUMN);
+}
+
+/**
+ * Despesas por categoria (pagas × a pagar; canceladas fora) — maior total
+ * primeiro, sem categoria vazia. Centavos inteiros.
+ */
+export function expensesByCategory(rows: Pick<ExpenseRow, "category" | "amount" | "paid_on" | "cancelled_at">[]): ExpenseCategoryPoint[] {
+  const acc = new Map<ExpenseCategory, { paid: number; open: number; count: number }>();
+  for (const r of rows) {
+    if (r.cancelled_at) continue;
+    const cur = acc.get(r.category) ?? { paid: 0, open: 0, count: 0 };
+    if (r.paid_on) cur.paid += toCents(r.amount);
+    else cur.open += toCents(r.amount);
+    cur.count += 1;
+    acc.set(r.category, cur);
+  }
+  const points: ExpenseCategoryPoint[] = [];
+  for (const category of EXPENSE_CATEGORIES) {
+    const v = acc.get(category);
+    if (v) points.push({ category, paid: fromCents(v.paid), open: fromCents(v.open), total: fromCents(v.paid + v.open), count: v.count });
+  }
+  return points.sort((a, b) => b.total - a.total);
+}
+
+/** Despesas PAGAS por mês (data do pagamento — data civil, sem fuso). Canceladas fora. */
+export function monthlyPaidExpenses(rows: Pick<ExpenseRow, "amount" | "paid_on" | "cancelled_at">[], months: string[]): { month: string; amount: number }[] {
+  const byMonth = new Map(months.map((m) => [m, 0]));
+  for (const r of rows) {
+    if (r.cancelled_at || !r.paid_on) continue;
+    const key = r.paid_on.slice(0, 7);
+    if (byMonth.has(key)) byMonth.set(key, (byMonth.get(key) ?? 0) + toCents(r.amount));
+  }
+  return months.map((month) => ({ month, amount: fromCents(byMonth.get(month) ?? 0) }));
 }

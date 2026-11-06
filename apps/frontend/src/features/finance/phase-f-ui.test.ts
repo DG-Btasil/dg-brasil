@@ -89,16 +89,19 @@ describe("recebido por mês — fuso de São Paulo", () => {
 
 describe("formulários do financeiro → schemas reais", () => {
   it("modelo: vazio = ausente na criação, null no PATCH; moeda e percentual em pt-BR", () => {
-    const values = { ...feeModelToValues(), name: " Bancário A ", fixedFee: "1.500,50", installments: "3", successFeePercent: "30" };
+    // Combinação livre (modelo antigo): todos os valores valem.
+    const values = { ...feeModelToValues(), billingType: "CUSTOM" as const, name: " Bancário A ", fixedFee: "1.500,50", installments: "3", successFeePercent: "30" };
     const create = createFeeModelSchema.parse(feeModelCreateInput(values));
     expect(create).toMatchObject({ name: "Bancário A", fixedFee: 1500.5, installments: 3, successFeePercent: 30 });
     expect(create.upfrontFee).toBeUndefined();
     const patch = updateFeeModelSchema.parse({ id: UUID, patch: feeModelPatch(values) });
     expect(patch.patch.upfrontFee).toBeNull();
   });
-  it("acordo: sem termos e com modelo → o servidor copia do modelo; chave obrigatória; nunca moeda nem organização", () => {
+  it("acordo: sem termos e com modelo → o servidor copia do modelo; chave obrigatória; nunca moeda nem organização; é do processo (046)", () => {
     const input = agreementCreateInput(UUID, { feeModelId: UUID, startDate: "", notes: "", activate: true, ...feeTermsFromModel(undefined) });
     expect(Object.keys(input)).not.toContain("currency");
+    expect(input).toMatchObject({ legalProcessId: UUID });
+    expect(Object.keys(input)).not.toContain("legalCaseId");
     expect(createAgreementSchema.safeParse(input).success).toBe(false);
     expect(createAgreementSchema.parse({ ...input, idempotencyKey: KEY })).toMatchObject({ feeModelId: UUID, activate: true });
   });

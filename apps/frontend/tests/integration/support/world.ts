@@ -81,3 +81,16 @@ export async function expectDomainError(promise: Promise<unknown>, code: DomainE
   expect((error as DomainError).code).toBe(code);
   if (message) expect((error as DomainError).publicMessage).toMatch(message);
 }
+
+/**
+ * Roadmap 2.0 (046): contrato de honorários é do PROCESSO. Devolve um
+ * processo do caso (cria um, pela service role, se o caso ainda não tiver).
+ */
+export async function processForCase(caseId: string): Promise<string> {
+  const db = serviceDb();
+  const found = await db.from("legal_processes").select("id").eq("legal_case_id", caseId).is("deleted_at", null).order("created_at").limit(1).maybeSingle();
+  if (found.data?.id) return found.data.id as string;
+  const created = await db.from("legal_processes").insert({ legal_case_id: caseId, title: "Processo do contrato (teste)" }).select("id").single();
+  if (created.error) throw created.error;
+  return created.data.id as string;
+}

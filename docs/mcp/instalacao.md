@@ -12,6 +12,30 @@ estão.
 
 ---
 
+## Jeito rápido: um comando (Roadmap 2.0)
+
+1. No DG Brasil (ADMIN): **DG Brasil → Computador do escritório → Autorizar
+   computador** → dê um nome → **Gerar token**. O diálogo mostra o comando e o token.
+2. No computador do escritório, abra o **PowerShell** (como a pessoa que usa o
+   Claude Code) e cole:
+
+   ```powershell
+   irm https://app.dgbrasil.adv.br/executor/instalar.ps1 | iex
+   ```
+
+3. Quando pedir, cole o token (`dgx_...`).
+
+O instalador (`apps/frontend/public/executor/instalar.ps1`) confere Node.js 22+ e o
+Claude Code, baixa o conector já compilado (`/executor/dg-executor.mjs`, gerado
+com `npm run bundle` em `apps/executor`), grava o token em
+`%APPDATA%\DGBrasil\executor.json` (só a conta do Windows lê), cria
+`C:\DGBrasil\sessao` com o `.mcp.json` e as permissões da seção 4 e roda o
+diagnóstico. Depois: `cd C:\DGBrasil\sessao`, `claude`, `/mcp__dg-brasil__trabalhos`.
+Rodar de novo atualiza o conector. O passo a passo manual continua abaixo.
+
+> Ao mudar o código de `apps/executor`, rode `npm run bundle` e faça commit do
+> `apps/frontend/public/executor/dg-executor.mjs` atualizado.
+
 ## 1. O que precisa
 
 | Item | Como conferir |
@@ -19,7 +43,7 @@ estão.
 | Windows 10/11 com o Claude Code instalado e logado | `claude --version` no terminal |
 | Node.js 22 ou mais novo | `node --version` |
 | Git (para baixar o repositório) | `git --version` |
-| Acesso ADMIN ao DG Brasil (para gerar o token) | Configurações → Computador do escritório |
+| Acesso ADMIN ao DG Brasil (para gerar o token) | DG Brasil → Computador do escritório |
 | BitLocker ligado no disco (recomendado) | Configurações do Windows → Criptografia de dispositivo |
 
 ## 2. Baixar e compilar o pacote
@@ -38,7 +62,7 @@ npm test          # 13 testes; não fala com o DG Brasil de verdade
 
 ## 3. Autorizar o computador no DG Brasil
 
-1. **Gere o token.** No navegador, como ADMIN, abra **Configurações → Computador do
+1. **Gere o token.** No navegador, como ADMIN, abra **DG Brasil → Computador do
    escritório → Autorizar computador**, dê um nome (ex.: "Computador da recepção")
    e clique em **Gerar token**.
 2. **Copie o conteúdo mostrado.** O token aparece **uma única vez**. Se perder,

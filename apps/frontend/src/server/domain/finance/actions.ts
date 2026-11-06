@@ -4,6 +4,12 @@ import { z } from "zod";
 import { runAction } from "@/server/core/action";
 import * as service from "./service";
 import { partnerShareDetailSchema, createPaymentScheduleSchema,
+  cancelExpenseSchema,
+  createExpenseSchema,
+  listExpensesSchema,
+  listProcessFinanceSchema,
+  processFinanceSchema,
+  updateExpenseSchema,
   cancelPaymentSchema,
   cancelTransferSchema,
   changeAgreementStatusSchema,
@@ -189,4 +195,43 @@ export async function getMyPartnerFinanceAction() {
 /** "Valores da parceria" de um caso (4.3.1): só leitura. ADMIN ou PARTNER_ADMIN (o próprio escritório). */
 export async function getPartnerShareDetailAction(input: unknown) {
   return runAction({ name: "finance.partner_share_detail", schema: partnerShareDetailSchema, input, handler: service.getPartnerShareDetail });
+}
+
+/* Financeiro por processo (Roadmap 2.0, 046) — só ADMIN */
+
+/** Uma linha por processo (view process_finance_overview), paginada, com busca e filtros. */
+export async function listProcessFinanceAction(input: unknown) {
+  return runAction({ name: "finance.processes.list", permission: "finance.view", schema: listProcessFinanceSchema, input, handler: service.listProcessFinance });
+}
+
+/** Financeiro de um processo: linha consolidada + contratos + despesas (primeiras páginas). */
+export async function getProcessFinanceAction(input: unknown) {
+  return runAction({ name: "finance.processes.get", permission: "finance.view", schema: processFinanceSchema, input, handler: (ctx, { processId }) => service.getProcessFinance(ctx, processId) });
+}
+
+/** Totais do escritório (view process_finance_totals). */
+export async function getProcessFinanceTotalsAction(input?: unknown) {
+  return runAction({ name: "finance.processes.totals", permission: "finance.view", schema: z.unknown(), input, handler: (ctx) => service.getProcessFinanceTotals(ctx) });
+}
+
+/** Gráficos de despesas da visão geral (últimos 12 meses). */
+export async function getExpenseSummaryAction(input?: unknown) {
+  return runAction({ name: "finance.expenses.summary", permission: "finance.view", schema: z.unknown(), input, handler: (ctx) => service.getExpenseSummary(ctx) });
+}
+
+export async function listExpensesAction(input: unknown) {
+  return runAction({ name: "finance.expenses.list", permission: "finance.view", schema: listExpensesSchema, input, handler: service.listExpenses });
+}
+
+export async function createExpenseAction(input: unknown) {
+  return runAction({ name: "finance.expenses.create", permission: "finance.manage", schema: createExpenseSchema, input, handler: service.createExpense });
+}
+
+/** Corrige a despesa ou marca como paga (`patch.paidOn`). */
+export async function updateExpenseAction(input: unknown) {
+  return runAction({ name: "finance.expenses.update", permission: "finance.manage", schema: updateExpenseSchema, input, handler: service.updateExpense });
+}
+
+export async function cancelExpenseAction(input: unknown) {
+  return runAction({ name: "finance.expenses.cancel", permission: "finance.manage", schema: cancelExpenseSchema, input, handler: service.cancelExpense });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { FolderOpen, Plus, SearchX, X } from "lucide-react";
 import { LEGAL_AREA_LABEL, LEGAL_AREAS } from "@/lib/constants/legal";
 import { LEGAL_CASE_STATUS_LABEL, LEGAL_CASE_STATUSES } from "@/lib/constants/status";
@@ -39,10 +39,13 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
 
 /** Casos jurídicos (equipe interna), ligados ao backend: Cliente → Caso → Processo(s). */
 export function CaseList({
+  insights,
   initialQuery,
   initialResult,
   initialClientLabel,
 }: {
+  /** Indicadores e gráficos da aba (Roadmap 2.0), logo abaixo do título. */
+  insights?: ReactNode;
   initialQuery: CaseListQuery;
   initialResult: ActionResult<Page<CaseListItem>>;
   initialClientLabel?: string;
@@ -95,6 +98,7 @@ export function CaseList({
         description="Cada caso reúne o cliente, a origem, a análise, as revisões, os processos judiciais e o financeiro de uma demanda."
         actions={cta}
       />
+      {insights}
       {page && page.total === 0 && active === 0 && query.page === 1 ? (
         <Panel>
           <EmptyState icon={FolderOpen} title="Nenhum caso cadastrado." description="Crie um caso a partir de um cliente ou receba casos enviados pelos parceiros." action={cta} />

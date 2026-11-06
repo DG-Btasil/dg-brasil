@@ -22,6 +22,9 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith("/api/executor/")) return NextResponse.next();
   // Rotas agendadas (Vercel Cron): autenticadas pela própria rota (CRON_SECRET).
   if (pathname.startsWith("/api/cron/")) return NextResponse.next();
+  // Instalador do computador do escritório (Roadmap 2.0): arquivos estáticos
+  // públicos, sem segredo — o token é colado pela pessoa no próprio computador.
+  if (pathname.startsWith("/executor/")) return NextResponse.next();
   const withPath = () => {
     const headers = new Headers(request.headers);
     headers.set("x-dg-pathname", `${pathname}${request.nextUrl.search}`);

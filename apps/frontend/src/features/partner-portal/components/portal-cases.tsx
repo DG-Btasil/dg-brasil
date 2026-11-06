@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { FolderOpen, FolderPlus, Plus } from "lucide-react";
 import { LEGAL_CASE_STATUS_TONE, PARTNER_CASE_STATUS_LABEL } from "@/lib/constants/status";
 import { formatDateTime, formatEventTime } from "@/lib/formatting";
@@ -37,7 +37,9 @@ const STATUS_OPTIONS = PARTNER_STATUS_GROUPS.map((g) => ({ value: g.label, label
 const CLOSED_FOR_SUBMISSION = new Set(["REJECTED", "ARCHIVED"]);
 
 /** Casos do escritório parceiro (RLS: só os casos do próprio escritório). */
-export function PortalCaseList({ initialQuery, initialResult }: { initialQuery: PortalListQuery; initialResult: ActionResult<Page<CaseListItem>> }) {
+export function PortalCaseList({ insights, initialQuery, initialResult }: {
+  /** Indicadores e gráficos da aba (Roadmap 2.0), logo abaixo do título. */
+  insights?: ReactNode; initialQuery: PortalListQuery; initialResult: ActionResult<Page<CaseListItem>> }) {
   const names = useOrganizationNames();
   const { owner } = useOrgDirectory();
   const cta = (
@@ -49,6 +51,7 @@ export function PortalCaseList({ initialQuery, initialResult }: { initialQuery: 
   );
   return (
     <PortalServerList
+      insights={insights}
       title="Casos"
       description="Casos do seu escritório enviados à Bárbara Cardoso Advocacia."
       cta={cta}

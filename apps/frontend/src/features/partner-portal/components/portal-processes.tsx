@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { Scale } from "lucide-react";
 import { BRAZILIAN_STATES, COURTS } from "@/lib/constants/legal";
@@ -40,7 +40,9 @@ import { partnerProcessInput, type PartnerProcessValues } from "../server-input"
 import { PortalServerList } from "./portal-list";
 
 /** Processos dos casos do escritório parceiro (RLS). */
-export function PortalProcessList({ initialQuery, initialResult }: { initialQuery: PortalListQuery; initialResult: ActionResult<Page<ProcessListItem>> }) {
+export function PortalProcessList({ insights, initialQuery, initialResult }: {
+  /** Indicadores e gráficos da aba (Roadmap 2.0), logo abaixo do título. */
+  insights?: ReactNode; initialQuery: PortalListQuery; initialResult: ActionResult<Page<ProcessListItem>> }) {
   const cta = (
     <Can permission="partnerPortal.processes.create">
       <ButtonLink href="/processos/novo" variant="secondary" icon={<Scale className="size-4" aria-hidden />}>
@@ -50,6 +52,7 @@ export function PortalProcessList({ initialQuery, initialResult }: { initialQuer
   );
   return (
     <PortalServerList
+      insights={insights}
       title="Processos"
       description="Processos dos casos do seu escritório, conduzidos pela Bárbara Cardoso Advocacia."
       cta={cta}

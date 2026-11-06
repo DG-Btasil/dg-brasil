@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Briefcase, Plus, SearchX, X } from "lucide-react";
 import { COURTS } from "@/lib/constants/legal";
 import { PROCESS_ORIGIN_LABEL, PROCESS_ORIGINS, PROCESS_PHASE_LABEL, PROCESS_PHASES, PROCESS_STATUS_LABEL, PROCESS_STATUSES } from "@/lib/constants/status";
@@ -35,11 +35,14 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
 
 /** Carteira processual (equipe interna), com busca, filtros, ordem e páginas no servidor. */
 export function ProcessList({
+  insights,
   initialQuery,
   initialResult,
   initialClientLabel,
   summary,
 }: {
+  /** Indicadores e gráficos da aba (Roadmap 2.0), logo abaixo do título. */
+  insights?: ReactNode;
   initialQuery: ProcessListQuery;
   initialResult: ActionResult<Page<ProcessListItem>>;
   initialClientLabel?: string;
@@ -87,6 +90,7 @@ export function ProcessList({
   return (
     <PageContainer>
       <PageHeader title="Processos" description="Carteira processual do escritório: prazos, fases e origem de cada processo." actions={cta} />
+      {insights}
       {summary?.ok && <ProcessSummaryStrip summary={summary.data} onDueSoon={() => setQuery({ ...query, deadline: "NEXT_5_DAYS", page: 1 })} />}
       {page && page.total === 0 && active === 0 && query.page === 1 ? (
         <Panel>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { BadgeCheck, Plus, Star, Trash2 } from "lucide-react";
 import { SkeletonRows } from "@/components/feedback/states";
 import { Badge } from "@/components/ui/badge";
@@ -28,10 +28,15 @@ export function MyOabsPanel() {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = useCallback(async () => setResult(await callAction(() => listMyOabsAction())), []);
+  const [version, setVersion] = useState(0);
+  const load = () => setVersion((v) => v + 1);
   useEffect(() => {
-    void load();
-  }, [load]);
+    let alive = true;
+    void callAction(() => listMyOabsAction()).then((r) => alive && setResult(r));
+    return () => {
+      alive = false;
+    };
+  }, [version]);
 
   async function add() {
     const oab = normalizeOab({ number, state });
@@ -44,7 +49,7 @@ export function MyOabsPanel() {
     setNumber("");
     setState("");
     toast({ tone: "success", title: "OAB cadastrada", description: formatOab(oab.number, oab.state) });
-    await load();
+    load();
   }
 
   async function act(id: string, kind: "primary" | "remove") {
@@ -52,7 +57,7 @@ export function MyOabsPanel() {
     const r = await callAction(() => (kind === "primary" ? setMyPrimaryOabAction({ id }) : removeMyOabAction({ id })));
     setBusy(null);
     if (!r.ok) return failed(r, "Não foi possível atualizar a OAB.");
-    await load();
+    load();
   }
 
   const list = result?.ok ? result.data : [];

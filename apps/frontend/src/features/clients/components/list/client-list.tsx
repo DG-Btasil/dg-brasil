@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { SearchX, UserPlus, Users } from "lucide-react";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState, SkeletonRows } from "@/components/feedback/states";
@@ -26,7 +26,9 @@ import { ClientTable } from "./client-table";
  * ordem e paginação acontecem no servidor (`listClientsAction`); a RLS decide
  * o que cada papel enxerga.
  */
-export function ClientList({ initialQuery, initialResult }: { initialQuery: ClientListQuery; initialResult: ActionResult<Page<ClientListItem>> }) {
+export function ClientList({ insights, initialQuery, initialResult }: {
+  /** Indicadores e gráficos da aba (Roadmap 2.0), logo abaixo do título. */
+  insights?: ReactNode; initialQuery: ClientListQuery; initialResult: ActionResult<Page<ClientListItem>> }) {
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
     initialResult,
@@ -64,6 +66,7 @@ export function ClientList({ initialQuery, initialResult }: { initialQuery: Clie
         description="Pessoas físicas e jurídicas atendidas pelo escritório, com o responsável, a origem e a situação de cada cadastro."
         actions={createCta("Cadastrar cliente")}
       />
+      {insights}
       {page && page.total === 0 && !filtered && query.page === 1 ? (
         <Panel>
           <EmptyState

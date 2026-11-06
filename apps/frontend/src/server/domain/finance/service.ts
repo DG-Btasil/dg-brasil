@@ -5,12 +5,17 @@ import type {
   AgreementListItemDTO,
   AllocationDTO,
   CasePartnershipDTO,
+  ExpenseDTO,
+  ExpenseSummaryDTO,
   FeeModelDTO,
   FinanceSummaryDTO,
   FinancialAgreementDTO,
   PartnerAgreementShareDTO,
   PartnerFinanceDTO,
   PaymentDTO,
+  ProcessFinanceDetailDTO,
+  ProcessFinanceDTO,
+  ProcessFinanceTotalsDTO,
   ReceiptDTO,
   ReceiptResultDTO,
   TransferInternalDTO,
@@ -25,13 +30,20 @@ import {
   agreementShareFromRows,
   agreementUpdate,
   allocationFromRow,
+  expenseFromRow,
+  expenseInsert,
+  expenseUpdate,
+  expensesByCategory,
   feeModelFromRow,
   feeModelInsert,
   feeModelUpdate,
   fromCents,
+  monthlyPaidExpenses,
   partnershipInternalFromRow,
   partnershipPartnerFromRow,
   paymentFromRows,
+  processFinanceFromRow,
+  processFinanceTotalsFromRow,
   receiptFromRow,
   shareTotals,
   toCents,
@@ -41,18 +53,22 @@ import {
   type TransferRow, shareTransfersFromRows, compositionByFeeModel } from "./mappers";
 import * as repo from "./repository";
 import type {
+  CancelExpenseInput,
   CancelPaymentInput,
   CancelTransferInput,
   ChangeAgreementStatusInput,
   CreateAgreementInput,
+  CreateExpenseInput,
   CreateFeeModelInput,
   CreatePaymentInput,
   CreateTransferInput,
   ListAgreementsInput,
   ListAllocationsInput,
+  ListExpensesInput,
   ListFeeModelsInput,
   ListPartnerAgreementSharesInput,
   ListPaymentsInput,
+  ListProcessFinanceInput,
   ListReceiptsInput,
   ListTransfersInput,
   MarkTransferPaidInput,
@@ -61,6 +77,7 @@ import type {
   RegisterReceiptInput,
   RegisterReversalInput,
   UpdateAgreementInput,
+  UpdateExpenseInput,
   UpdateFeeModelInput,
   UpdatePaymentInput, CreatePaymentScheduleInput } from "./schemas";
 
@@ -152,7 +169,7 @@ export async function updateFeeModel(ctx: ServiceContext, input: UpdateFeeModelI
 
 export async function listAgreements(ctx: ServiceContext, input: ListAgreementsInput): Promise<Page<FinancialAgreementDTO>> {
   requireFinance(ctx, "finance.view");
-  const { rows, total } = await repo.listAgreements(ctx.db, { legalCaseId: input.legalCaseId, status: input.status }, input, {
+  const { rows, total } = await repo.listAgreements(ctx.db, { legalCaseId: input.legalCaseId, legalProcessId: input.legalProcessId, status: input.status }, input, {
     column: input.column,
     ascending: input.ascending,
   });
@@ -167,15 +184,20 @@ export async function getAgreement(ctx: ServiceContext, id: string): Promise<Fin
 }
 
 /**
- * Cria o acordo do caso (rascunho ou já ativo). Com modelo de honorários e sem
- * termos informados, copia os termos do modelo (lido do banco, não do navegador).
- * Um ATIVO por caso: o índice único do banco decide a corrida.
+ * Cria o contrato do PROCESSO (rascunho ou já ativo; Roadmap 2.0, 046). O caso
+ * é lido do processo no servidor (excluído ou sem acesso = não encontrado).
+ * Com modelo de honorários e sem termos informados, copia os termos do modelo
+ * (lido do banco, não do navegador). Um ATIVO por processo: o índice único do
+ * banco decide a corrida.
  */
 export async function createAgreement(ctx: ServiceContext, input: CreateAgreementInput): Promise<{ id: string; deduplicated: boolean }> {
   requireFinance(ctx, "finance.manage");
   const actorId = ctx.session.userId;
   const existing = await repo.findByIdempotencyKey(ctx.db, "financial_agreements", actorId, input.idempotencyKey);
   if (existing) return { id: existing, deduplicated: true };
+
+  const process = await repo.getProcessRef(ctx.db, input.legalProcessId);
+  if (!process) throw validation({ legalProcessId: ["Processo não encontrado ou excluído."] }, "Processo não encontrado ou excluído.");
 
   let terms = input;
   if (input.feeModelId) {
@@ -187,15 +209,15 @@ export async function createAgreement(ctx: ServiceContext, input: CreateAgreemen
       terms = { ...input, upfrontFee: m.upfrontFee, fixedFee: m.fixedFee, installments: m.installments, monthlyFee: m.monthlyFee, successFeePercent: m.successFeePercent };
     }
   }
-  const result = await repo.insertIdempotent(ctx.db, "financial_agreements", agreementInsert(terms, actorId), actorId, input.idempotencyKey);
-  if (!result.deduplicated) ctx.log.info("finance.agreement.created", { agreementId: result.id, legalCaseId: input.legalCaseId });
+  const result = await repo.insertIdempotent(ctx.db, "financial_agreements", agreementInsert(terms, actorId, process.legal_case_id), actorId, input.idempotencyKey);
+  if (!result.deduplicated) ctx.log.info("finance.agreement.created", { agreementId: result.id, legalCaseId: process.legal_case_id, legalProcessId: process.id });
   return result;
 }
 
-/** Lista de acordos com rótulos do caso e totais do ledger (somados no servidor, por página). */
+/** Lista de acordos com rótulos do caso/processo e totais do ledger (somados no servidor, por página). */
 export async function listAgreementRows(ctx: ServiceContext, input: ListAgreementsInput): Promise<Page<AgreementListItemDTO>> {
   requireFinance(ctx, "finance.view");
-  const { rows, total } = await repo.listAgreementRows(ctx.db, { legalCaseId: input.legalCaseId, status: input.status }, input, {
+  const { rows, total } = await repo.listAgreementRows(ctx.db, { legalCaseId: input.legalCaseId, legalProcessId: input.legalProcessId, status: input.status }, input, {
     column: input.column,
     ascending: input.ascending,
   });
@@ -675,4 +697,112 @@ export async function getPartnerShareDetail(ctx: ServiceContext, input: { agreem
       transfers: shareTransfersFromRows(items),
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Financeiro por processo (Roadmap 2.0, 046) — só ADMIN               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Visão por processo: uma linha por processo, somada NO BANCO (view
+ * process_finance_overview). Busca por cliente/título/CNJ; filtros "com
+ * atraso", "com despesas a pagar", "sem contrato"; ordenação por whitelist.
+ */
+export async function listProcessFinance(ctx: ServiceContext, input: ListProcessFinanceInput): Promise<Page<ProcessFinanceDTO>> {
+  requireFinance(ctx, "finance.view");
+  const { rows, total } = await repo.listProcessFinance(
+    ctx.db,
+    { q: input.q, legalCaseId: input.legalCaseId, overdueOnly: input.overdueOnly, openExpensesOnly: input.openExpensesOnly, withoutAgreement: input.withoutAgreement },
+    input,
+    { column: input.column, ascending: input.ascending },
+  );
+  return toPage(rows.map(processFinanceFromRow), total, input);
+}
+
+/** Primeira página dos contratos e das despesas do processo (o painel pagina depois pelas listagens). */
+const DETAIL_PAGE = { page: 1, pageSize: 25 } as const;
+
+/** Financeiro de UM processo: linha consolidada + contratos do processo + despesas. */
+export async function getProcessFinance(ctx: ServiceContext, processId: string): Promise<ProcessFinanceDetailDTO> {
+  requireFinance(ctx, "finance.view");
+  const [row, agreements, expenses] = await Promise.all([
+    repo.getProcessFinance(ctx.db, processId),
+    listAgreementRows(ctx, { legalProcessId: processId, ...DETAIL_PAGE, column: "created_at", ascending: false }),
+    listExpenses(ctx, { processId, ...DETAIL_PAGE, column: "incurred_on", ascending: false }),
+  ]);
+  if (!row) throw notFound("Processo não encontrado.");
+  return { process: processFinanceFromRow(row), agreements, expenses };
+}
+
+/** Totais do escritório (view process_finance_totals, uma linha). */
+export async function getProcessFinanceTotals(ctx: ServiceContext): Promise<ProcessFinanceTotalsDTO> {
+  requireFinance(ctx, "finance.view");
+  return processFinanceTotalsFromRow(await repo.getProcessFinanceTotals(ctx.db));
+}
+
+/** Despesas: todas (com rótulos do processo) ou de um processo; filtros por categoria e situação. */
+export async function listExpenses(ctx: ServiceContext, input: ListExpensesInput): Promise<Page<ExpenseDTO>> {
+  requireFinance(ctx, "finance.view");
+  const { rows, total } = await repo.listExpenses(
+    ctx.db,
+    { processId: input.processId, category: input.category, status: input.status },
+    input,
+    { column: input.column, ascending: input.ascending },
+    !input.processId,
+  );
+  return toPage(rows.map(expenseFromRow), total, input);
+}
+
+/**
+ * Nova despesa do processo (ADMIN). O caso vem do processo, lido aqui (o banco
+ * também o sobrescreve); processo excluído ou sem acesso = recusado.
+ * process_expenses não tem chave de idempotência: a tela trava o botão
+ * enquanto envia.
+ */
+export async function createExpense(ctx: ServiceContext, input: CreateExpenseInput): Promise<{ id: string }> {
+  requireFinance(ctx, "finance.manage");
+  const process = await repo.getProcessRef(ctx.db, input.processId);
+  if (!process) throw validation({ processId: ["Processo não encontrado ou excluído."] }, "Processo não encontrado ou excluído.");
+  const id = await repo.insertExpense(ctx.db, expenseInsert(input, process.legal_case_id, ctx.session.userId));
+  ctx.log.info("finance.expense.created", { expenseId: id, legalProcessId: process.id, category: input.category });
+  return { id };
+}
+
+/** Corrige a despesa ou marca como paga (`paidOn`). Cancelada é histórico: não muda. */
+export async function updateExpense(ctx: ServiceContext, input: UpdateExpenseInput): Promise<void> {
+  requireFinance(ctx, "finance.manage");
+  const row = await repo.getExpense(ctx.db, input.id);
+  if (!row) throw notFound("Despesa não encontrada.");
+  if (row.cancelled_at) throw invalidState("Despesa cancelada é histórico: não muda.");
+  await repo.updateActiveExpense(ctx.db, input.id, expenseUpdate(input.patch));
+  ctx.log.info("finance.expense.updated", { expenseId: input.id, fields: Object.keys(input.patch).join(",") });
+}
+
+/** Cancela a despesa com motivo (nunca apaga). O banco grava quem cancelou. */
+export async function cancelExpense(ctx: ServiceContext, input: CancelExpenseInput): Promise<void> {
+  requireFinance(ctx, "finance.manage");
+  const row = await repo.getExpense(ctx.db, input.id);
+  if (!row) throw notFound("Despesa não encontrada.");
+  if (row.cancelled_at) throw invalidState("Despesa já cancelada.");
+  await repo.updateActiveExpense(ctx.db, input.id, { cancelled_at: new Date().toISOString(), cancellation_reason: input.reason });
+  ctx.log.info("finance.expense.cancelled", { expenseId: input.id });
+}
+
+/**
+ * Gráficos de despesas da visão geral (últimos 12 meses), agregados no SERVIDOR
+ * sobre a lista de despesas ativas — volume do escritório cabe no teto de
+ * leitura (`truncated` avisa se passar). Por categoria: pela data da despesa.
+ * Por mês: pagas, pela data do pagamento (mesmo regime do "Recebido por mês").
+ */
+export async function getExpenseSummary(ctx: ServiceContext, now = new Date()): Promise<ExpenseSummaryDTO> {
+  requireFinance(ctx, "finance.view");
+  const months = lastMonths(now, 12);
+  const fromDate = `${months[0]}-01`;
+  const { rows, truncated } = await repo.activeExpensesSince(ctx.db, fromDate);
+  if (truncated) ctx.log.warn("finance.expense_summary_truncated", {});
+  return {
+    byCategory: expensesByCategory(rows.filter((r) => r.incurred_on >= fromDate)),
+    monthlyPaid: monthlyPaidExpenses(rows, months),
+    truncated,
+  };
 }

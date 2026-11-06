@@ -9,7 +9,7 @@ import {
   listPaymentsSchema,
   registerReceiptSchema,
 } from "@/server/domain/finance/schemas";
-import { ctxFor, expectDomainError, fakeCpf, serviceDb, world } from "./support/world";
+import { ctxFor, expectDomainError, fakeCpf, serviceDb, world, processForCase } from "./support/world";
 
 /**
  * Etapa 4.3.1 — financeiro (migration 035) no Supabase DEV real: cronograma
@@ -34,7 +34,7 @@ async function acceptedPartnerCase(title: string): Promise<string> {
 }
 
 const newAgreement = async (caseId: string, activate = false, feeModelId?: string) =>
-  (await finance.createAgreement(await ctxFor("ADMIN"), createAgreementSchema.parse({ idempotencyKey: key(), legalCaseId: caseId, fixedFee: 1000, activate, feeModelId }))).id;
+  (await finance.createAgreement(await ctxFor("ADMIN"), createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(caseId), fixedFee: 1000, activate, feeModelId }))).id;
 
 const schedule = (agreementId: string, over: Record<string, unknown> = {}) =>
   createPaymentScheduleSchema.parse({ idempotencyKey: key(), agreementId, total: 100, installments: 3, firstDueDate: "2027-01-31", frequency: "MONTHLY", ...over });

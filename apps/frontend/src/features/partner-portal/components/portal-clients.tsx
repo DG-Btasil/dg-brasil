@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -51,9 +51,12 @@ const newClientCta = (
 );
 
 /** Clientes do escritório parceiro (RLS: só relacionamentos ativos do próprio escritório). */
-export function PortalClientList({ initialQuery, initialResult }: { initialQuery: PortalListQuery; initialResult: ActionResult<Page<ClientListItem>> }) {
+export function PortalClientList({ insights, initialQuery, initialResult }: {
+  /** Indicadores e gráficos da aba (Roadmap 2.0), logo abaixo do título. */
+  insights?: ReactNode; initialQuery: PortalListQuery; initialResult: ActionResult<Page<ClientListItem>> }) {
   return (
     <PortalServerList
+      insights={insights}
       title="Clientes"
       description="Clientes do seu escritório enviados à Bárbara Cardoso Advocacia."
       cta={newClientCta}

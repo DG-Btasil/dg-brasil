@@ -89,21 +89,26 @@ export type UpdateFeeModelInput = z.infer<typeof updateFeeModelSchema>;
 export const AGREEMENT_SORT_FIELDS = { createdAt: "created_at", updatedAt: "updated_at", startDate: "start_date" } as const;
 
 export const listAgreementsSchema = pageInputSchema
-  .extend({ legalCaseId: zUuid().optional(), status: z.enum(AGREEMENT_DB_STATUSES).optional() })
+  .extend({ legalCaseId: zUuid().optional(), legalProcessId: zUuid().optional(), status: z.enum(AGREEMENT_DB_STATUSES).optional() })
   .and(sortSchema(AGREEMENT_SORT_FIELDS, "createdAt"));
 export type ListAgreementsInput = z.infer<typeof listAgreementsSchema>;
 
 export const idSchema = z.object({ id: zUuid() });
 
+/**
+ * Contrato de honorários do PROCESSO (Roadmap 2.0, 046). O caso NÃO vem do
+ * navegador: o servidor lê o caso do processo (processo excluído ou sem
+ * acesso = recusado).
+ */
 export const createAgreementSchema = z.object({
-  legalCaseId: zUuid(),
+  legalProcessId: zUuid(),
   /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
   idempotencyKey: zUuid(),
   feeModelId: zUuid().optional(),
   ...feeTermsFields,
   startDate: zIsoDate().optional(),
   notes: zOptionalText(2000),
-  /** true = já nasce ACTIVE (um ativo por caso); false = rascunho. */
+  /** true = já nasce ACTIVE (um ativo por processo); false = rascunho. */
   activate: z.boolean().default(false),
 });
 export type CreateAgreementInput = z.infer<typeof createAgreementSchema>;
@@ -315,3 +320,105 @@ export type ListPartnerAgreementSharesInput = z.infer<typeof listPartnerAgreemen
 
 /** "Valores da parceria" de um caso (só leitura). */
 export const partnerShareDetailSchema = z.object({ agreementId: zUuid() });
+
+/* ------------------------------------------------------------------ */
+/* Financeiro por processo (Roadmap 2.0, 046)                          */
+/* ------------------------------------------------------------------ */
+
+/** Categorias de despesa (check do banco, process_expenses.category). */
+export const EXPENSE_CATEGORIES = ["COURT_COSTS", "HIRED_LAWYER", "EXPERT_FEE", "HEARING", "TRAVEL", "NOTARY", "OTHER"] as const;
+/** Situação DERIVADA da despesa: cancelada (cancelled_at) › paga (paid_on) › a pagar. */
+export const EXPENSE_STATUSES = ["OPEN", "PAID", "CANCELLED"] as const;
+
+/** Ordenação da visão por processo (whitelist → coluna da view process_finance_overview). */
+export const PROCESS_FINANCE_SORT_FIELDS = {
+  received: "received",
+  contracted: "contracted",
+  expenses: "expenses_total",
+  net: "net_result",
+  title: "display_title",
+  createdAt: "created_at",
+} as const;
+
+export const listProcessFinanceSchema = pageInputSchema
+  .extend({
+    /** Cliente, título do processo/caso ou número CNJ (só dígitos = prefixo do CNJ). */
+    q: z.string().trim().max(200).optional(),
+    legalCaseId: zUuid().optional(),
+    /** Só processos com obrigação vencida e saldo em aberto. */
+    overdueOnly: z.boolean().optional(),
+    /** Só processos com despesa a pagar. */
+    openExpensesOnly: z.boolean().optional(),
+    /** Só processos sem contrato de honorários (não cancelado). */
+    withoutAgreement: z.boolean().optional(),
+  })
+  .and(sortSchema(PROCESS_FINANCE_SORT_FIELDS, "received", "desc"));
+export type ListProcessFinanceInput = z.infer<typeof listProcessFinanceSchema>;
+
+export const processFinanceSchema = z.object({ processId: zUuid() });
+export type ProcessFinanceInput = z.infer<typeof processFinanceSchema>;
+
+export const EXPENSE_SORT_FIELDS = { incurredOn: "incurred_on", amount: "amount", createdAt: "created_at" } as const;
+
+export const listExpensesSchema = pageInputSchema
+  .extend({
+    processId: zUuid().optional(),
+    category: z.enum(EXPENSE_CATEGORIES).optional(),
+    status: z.enum(EXPENSE_STATUSES).optional(),
+  })
+  .and(sortSchema(EXPENSE_SORT_FIELDS, "incurredOn", "desc"));
+export type ListExpensesInput = z.infer<typeof listExpensesSchema>;
+
+const SP_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** Hoje (YYYY-MM-DD) no fuso de São Paulo. */
+export function todaySaoPaulo(now = new Date()): string {
+  return SP_DATE.format(now);
+}
+
+/** Data do pagamento: fato, nunca no futuro (dia de São Paulo). A data da despesa pode ser futura (ex.: audiência marcada). */
+const zPaidOn = () => zIsoDate().refine((v) => v <= todaySaoPaulo(), "A data do pagamento não pode estar no futuro.");
+const zExpenseDescription = () => zText(500, "Descreva a despesa.");
+
+/**
+ * Nova despesa do processo. O caso vem do processo (o banco também sobrescreve);
+ * autor da sessão. Sem `paidOn` = a pagar.
+ */
+export const createExpenseSchema = z.object({
+  processId: zUuid(),
+  category: z.enum(EXPENSE_CATEGORIES),
+  description: zExpenseDescription(),
+  amount: zPositiveMoney(),
+  incurredOn: zIsoDate(),
+  paidOn: zPaidOn().optional(),
+  reimbursable: z.boolean().default(false),
+  supplier: zOptionalText(200),
+  notes: zOptionalText(2000),
+});
+export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
+
+/** PATCH da despesa (ativa). `paidOn: null` volta para "a pagar". Processo nunca muda. */
+export const updateExpenseSchema = z.object({
+  id: zUuid(),
+  patch: z
+    .object({
+      category: z.enum(EXPENSE_CATEGORIES),
+      description: zExpenseDescription(),
+      amount: zPositiveMoney(),
+      incurredOn: zIsoDate(),
+      paidOn: zPaidOn().nullable(),
+      reimbursable: z.boolean(),
+      supplier: zOptionalText(200).nullable(),
+      notes: zOptionalText(2000).nullable(),
+    })
+    .partial()
+    .refine((p) => Object.keys(p).length > 0, "Nada para alterar."),
+});
+export type UpdateExpenseInput = z.infer<typeof updateExpenseSchema>;
+
+/** Despesa nunca é apagada: cancelar exige motivo e fica no histórico. */
+export const cancelExpenseSchema = z.object({
+  id: zUuid(),
+  reason: zText(500, "Informe o motivo do cancelamento."),
+});
+export type CancelExpenseInput = z.infer<typeof cancelExpenseSchema>;

@@ -1,17 +1,17 @@
 "use client";
 
-import { Suspense, type ComponentType } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, type ComponentType } from "react";
 import { PageContainer } from "@/components/layout/guards";
 import { PageHeader } from "@/components/ui/display";
-import { Skeleton } from "@/components/feedback/states";
+import { Callout, Skeleton } from "@/components/feedback/states";
+import { useCan } from "@/features/auth/hooks";
 import { cn } from "@/lib/cn";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
-import { SECTION_META, useAllowedSections, type SettingsSection } from "../hooks";
+import { MOVED_SECTIONS, SECTION_META, useAllowedSections, type SettingsSection } from "../hooks";
 import { AccountSection } from "./sections/account-section";
-import { AiSection } from "./sections/ai-section";
-import { FeesSection } from "./sections/fees-section";
 import { GeneralSection } from "./sections/general-section";
-import { IntegrationsSection } from "./sections/integrations-section";
 import { NotificationsSection } from "./sections/notifications-section";
 import { SecuritySection } from "./sections/security-section";
 import { TeamSection } from "./sections/team-section";
@@ -19,9 +19,6 @@ import { TeamSection } from "./sections/team-section";
 const SECTION_COMPONENT: Record<SettingsSection, ComponentType> = {
   geral: GeneralSection,
   equipe: TeamSection,
-  integracoes: IntegrationsSection,
-  ia: AiSection,
-  honorarios: FeesSection,
   notificacoes: NotificationsSection,
   conta: AccountSection,
   seguranca: SecuritySection,
@@ -38,10 +35,39 @@ export function SettingsPage() {
   );
 }
 
+/**
+ * Link antigo para uma seção que mudou de lugar (ex.: `?secao=honorarios`):
+ * quem tem acesso vai para o novo lugar; os demais ficam na seção padrão.
+ */
+function useMovedSection() {
+  const router = useRouter();
+  const can = useCan();
+  const raw = useSearchParams().get("secao") ?? "";
+  const moved = Object.hasOwn(MOVED_SECTIONS, raw) ? MOVED_SECTIONS[raw] : undefined;
+  const allowed = !!moved && can(moved.permission);
+  useEffect(() => {
+    if (moved && allowed) router.replace(moved.href);
+  }, [moved, allowed, router]);
+  return moved && allowed ? moved : undefined;
+}
+
 function SettingsContent() {
   const allowed = useAllowedSections();
   const [section, setSection] = useUrlTab<SettingsSection>(allowed, allowed[0] ?? "geral", "secao");
+  const moved = useMovedSection();
   const Section = SECTION_COMPONENT[section];
+
+  if (moved) {
+    return (
+      <Callout tone="info" title="Esta seção mudou de lugar.">
+        Abrindo{" "}
+        <Link href={moved.href} className="text-navy-700 underline underline-offset-2">
+          {moved.label}
+        </Link>
+        …
+      </Callout>
+    );
+  }
 
   return (
     <div className="grid grid-cols-[232px_minmax(0,1fr)] items-start gap-8">

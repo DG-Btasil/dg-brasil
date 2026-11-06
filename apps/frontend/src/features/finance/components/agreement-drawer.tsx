@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { CalendarRange, MoreHorizontal, Plus } from "lucide-react";
-import { formatCurrency, formatDate, formatDateTime, formatPercent } from "@/lib/formatting";
+import { formatCNJ, formatCurrency, formatDate, formatDateTime, formatPercent } from "@/lib/formatting";
 import { loadAllPages } from "@/lib/actions/all-pages";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { usePermission } from "@/features/auth/hooks";
@@ -85,8 +85,8 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
       open
       onOpenChange={(o) => !o && onClose()}
       width={880}
-      title={agreement.caseTitle || "Contrato de honorários"}
-      description={agreement.clientName}
+      title={agreement.processTitle || agreement.caseTitle || "Contrato de honorários"}
+      description={[agreement.clientName, agreement.cnjNumber ? formatCNJ(agreement.cnjNumber) : undefined].filter(Boolean).join(" · ") || undefined}
       footer={
         canManage && open ? (
           <div className="flex w-full justify-between gap-2">

@@ -26,7 +26,9 @@ function useAutofill<T>(
   // O valor que o formulário já trazia (edição) não dispara consulta: só o que a pessoa digitar.
   const last = useRef<string | null>(onlyDigits(value) || null);
   const handler = useRef(onFound);
-  handler.current = onFound;
+  useEffect(() => {
+    handler.current = onFound;
+  });
   const digits = onlyDigits(value);
 
   useEffect(() => {

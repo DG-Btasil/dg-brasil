@@ -51,7 +51,7 @@ function IntegrationItem({ integration, canManage, canSeeAi }: { integration: In
 
   if (i.kind === "AI_PROVIDER") {
     actions = canSeeAi ? (
-      <ButtonLink href="/configuracoes?secao=ia" variant="secondary" size="sm">
+      <ButtonLink href="/dg-brasil/computador" variant="secondary" size="sm">
         Ver conexão e consumo
       </ButtonLink>
     ) : null;

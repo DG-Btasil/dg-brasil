@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChevronRight, FileSignature, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { formatCurrency, formatDate, pluralize } from "@/lib/formatting";
+import { formatCNJ, formatCurrency, formatDate, pluralize } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { useServerList } from "@/lib/hooks/use-server-list";
 import { Can } from "@/components/layout/guards";
@@ -21,21 +21,41 @@ import { listAgreementRowsAction } from "@/server/domain/finance/actions";
 import type { AgreementListItemDTO } from "@/server/domain/finance/dto";
 import { AGREEMENT_DB_STATUSES } from "@/server/domain/finance/schemas";
 import { AGREEMENT_DB_STATUS_LABEL, AGREEMENT_DB_STATUS_TONE } from "../labels";
-import { AGREEMENT_PAGE_SIZE, agreementQueryToInput, agreementQueryToSearchParams, type AgreementListQuery } from "../list-query";
+import { AGREEMENT_PAGE_SIZE, agreementQueryToInput, agreementQueryToSearchParams, withFinanceTab, type AgreementListQuery, type FinanceTab } from "../list-query";
 import { AgreementDrawer } from "./agreement-drawer";
 
 const STATUS_OPTIONS = AGREEMENT_DB_STATUSES.map((s) => ({ value: s, label: AGREEMENT_DB_STATUS_LABEL[s] }));
 
+/** Processo do contrato (046) com link para a aba Financeiro dele; contrato antigo = do caso. */
+function ProcessCell({ row }: { row: AgreementListItemDTO }) {
+  if (!row.legalProcessId) return <span className="text-[12px] text-subtle">Contrato do caso (anterior ao financeiro por processo)</span>;
+  return (
+    <>
+      <Link
+        href={`/processos/${row.legalProcessId}?aba=financeiro`}
+        onClick={(e) => e.stopPropagation()}
+        className="block truncate text-[12.5px] font-medium text-navy hover:underline underline-offset-2"
+      >
+        {row.processTitle || "Abrir processo"}
+      </Link>
+      <span className="block truncate font-mono text-[11.5px] tabular text-muted">{row.cnjNumber ? formatCNJ(row.cnjNumber) : "Sem número CNJ"}</span>
+    </>
+  );
+}
+
 /**
  * Acordos de honorários (ADMIN) lidos do servidor: situação e páginas no
  * banco; contratado/recebido/em aberto vêm do ledger, somados no servidor.
- * Clique abre a gaveta com obrigações e lançamentos.
+ * Clique abre a gaveta com obrigações e lançamentos. Escopo: tudo (Financeiro),
+ * um caso ou um processo (046: o contrato é do processo).
  */
 export function AgreementsPanel({
   initialQuery,
   initialResult,
   legalCaseId,
+  legalProcessId,
   syncUrl = false,
+  urlTab,
   title = "Contratos de honorários",
   description = "Clique em um contrato para ver as obrigações e registrar recebimentos.",
 }: {
@@ -43,22 +63,32 @@ export function AgreementsPanel({
   initialResult: ActionResult<Page<AgreementListItemDTO>>;
   /** Escopo de um caso (aba Financeiro do caso). */
   legalCaseId?: string;
+  /** Escopo de um processo (aba Financeiro do processo). */
+  legalProcessId?: string;
   syncUrl?: boolean;
+  /** Aba do Financeiro que fica na URL junto com a lista (`?aba=`). */
+  urlTab?: FinanceTab;
   title?: string;
   description?: string;
 }) {
-  const scope = legalCaseId ? { legalCaseId } : {};
+  const scope = legalProcessId ? { legalProcessId } : legalCaseId ? { legalCaseId } : {};
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
     initialResult,
     load: (q: AgreementListQuery) => listAgreementRowsAction(agreementQueryToInput(q, scope)),
-    toSearch: syncUrl ? agreementQueryToSearchParams : undefined,
+    toSearch: syncUrl ? (q: AgreementListQuery) => withFinanceTab(agreementQueryToSearchParams(q), urlTab) : undefined,
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const page = result.ok ? result.data : undefined;
   // Sempre a linha ATUAL da página (recarregada do servidor depois de cada mudança).
   const selected = page?.items.find((r) => r.id === selectedId) ?? null;
-  const newHref = legalCaseId ? `/financeiro/contratos/novo?caso=${legalCaseId}` : "/financeiro/contratos/novo";
+  const newHref = legalProcessId
+    ? `/financeiro/contratos/novo?processo=${legalProcessId}`
+    : legalCaseId
+      ? `/financeiro/contratos/novo?caso=${legalCaseId}`
+      : "/financeiro/contratos/novo";
+  const showCase = !legalCaseId && !legalProcessId;
+  const showProcess = !legalProcessId;
   const cta = (
     <Can permission="finance.manage">
       <ButtonLink href={newHref} size="sm" icon={<Plus className="size-4" aria-hidden />}>
@@ -95,7 +125,12 @@ export function AgreementsPanel({
           query.status ? (
             <EmptyState compact title="Nenhum contrato nesta situação." />
           ) : (
-            <EmptyState icon={FileSignature} title="Nenhum contrato de honorários registrado." description="Crie o contrato do caso e registre as obrigações." action={cta} />
+            <EmptyState
+              icon={FileSignature}
+              title="Nenhum contrato de honorários registrado."
+              description={legalProcessId ? "Crie o contrato deste processo e registre as obrigações." : "Crie o contrato do processo e registre as obrigações."}
+              action={cta}
+            />
           )
         ) : (
           <>
@@ -105,7 +140,8 @@ export function AgreementsPanel({
             <Table caption={title}>
               <THead>
                 <tr>
-                  {!legalCaseId && <Th>Cliente / caso</Th>}
+                  {showCase && <Th>Cliente / caso</Th>}
+                  {showProcess && <Th>Processo</Th>}
                   <Th>Modelo</Th>
                   <Th className="text-right">Contratado</Th>
                   <Th className="text-right">Recebido</Th>
@@ -120,12 +156,17 @@ export function AgreementsPanel({
               <TBody>
                 {page.items.map((r) => (
                   <Tr key={r.id} interactive onClick={() => setSelectedId(r.id)}>
-                    {!legalCaseId && (
-                      <Td className="max-w-[280px]">
+                    {showCase && (
+                      <Td className="max-w-[240px]">
                         <span className="block truncate font-medium text-foreground">{r.clientName || "—"}</span>
                         <Link href={`/casos/${r.legalCaseId}`} onClick={(e) => e.stopPropagation()} className="block truncate text-[12px] text-navy hover:underline underline-offset-2">
                           {r.caseTitle || "Abrir caso"}
                         </Link>
+                      </Td>
+                    )}
+                    {showProcess && (
+                      <Td className="max-w-[240px]">
+                        <ProcessCell row={r} />
                       </Td>
                     )}
                     <Td className="text-[12.5px]">{r.feeModelName ?? <span className="text-subtle">Valores próprios</span>}</Td>

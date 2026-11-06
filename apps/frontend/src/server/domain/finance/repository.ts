@@ -7,11 +7,14 @@ import type {
   AgreementRow,
   AllocationBalanceRow,
   AllocationRow,
+  ExpenseRow,
   FeeModelRow,
   PartnershipPartnerRow,
   PartnershipRow,
   PaymentBalanceRow,
   PaymentRow,
+  ProcessFinanceRow,
+  ProcessFinanceTotalsRow,
   ReceiptRow,
   TransferItemRow,
   TransferPartnerRow,
@@ -36,7 +39,7 @@ import type {
 const FEE_MODEL_COLUMNS =
   "id, name, description, legal_area_id, upfront_fee, fixed_fee, installments, monthly_fee, success_fee_percentage, billing_moment, notes, active, created_at, updated_at";
 const AGREEMENT_COLUMNS =
-  "id, legal_case_id, fee_model_id, upfront_fee, fixed_fee, installments, monthly_fee, success_fee_percentage, currency, start_date, status, notes, created_by, created_at, updated_at";
+  "id, legal_case_id, legal_process_id, fee_model_id, upfront_fee, fixed_fee, installments, monthly_fee, success_fee_percentage, currency, start_date, status, notes, created_by, created_at, updated_at";
 const BALANCE_COLUMNS = "payment_id, financial_agreement_id, legal_case_id, amount, currency, due_date, received_amount, balance, last_receipt_at, status";
 const PAYMENT_COLUMNS = "id, payment_type, description, cancelled_at, cancellation_reason, created_at";
 const RECEIPT_COLUMNS = "id, sequence, payment_id, kind, amount, currency, occurred_at, original_receipt_id, method, notes, created_by, created_at";
@@ -62,6 +65,7 @@ const MAX_AGGREGATE_ROWS = 20_000;
 
 /** Índices únicos do financeiro → mensagem de domínio (o core não conhece estes nomes). */
 const FINANCE_UNIQUE: Record<string, string> = {
+  financial_agreements_one_active_per_process: "Este processo já tem um acordo financeiro ativo.",
   financial_agreements_one_active_per_case: "Este caso já tem um acordo financeiro ativo.",
   fee_models_name_key: "Já existe um modelo de honorários com este nome.",
 };
@@ -171,12 +175,13 @@ export async function updateFeeModel(db: SupabaseClient, id: string, values: Rec
 
 export async function listAgreements(
   db: SupabaseClient,
-  filters: { legalCaseId?: string; status?: string },
+  filters: { legalCaseId?: string; legalProcessId?: string; status?: string },
   page: PageInput,
   sort: { column: string; ascending: boolean },
 ): Promise<{ rows: AgreementRow[]; total: number }> {
   let query = db.from("financial_agreements").select(AGREEMENT_COLUMNS, { count: "exact" });
   if (filters.legalCaseId) query = query.eq("legal_case_id", filters.legalCaseId);
+  if (filters.legalProcessId) query = query.eq("legal_process_id", filters.legalProcessId);
   if (filters.status) query = query.eq("status", filters.status);
   const { from, to } = toRange(page);
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);
@@ -184,18 +189,20 @@ export async function listAgreements(
   return { rows: (data ?? []) as AgreementRow[], total: count ?? 0 };
 }
 
-/** Acordos com rótulos do caso (título, cliente, origem) e do modelo — embeds de leitura sob RLS. */
+/** Acordos com rótulos do caso (título, cliente, origem), do processo e do modelo — embeds de leitura sob RLS. */
 const AGREEMENT_LIST_COLUMNS = `${AGREEMENT_COLUMNS}, fee_models(name),
+  legal_processes!financial_agreements_process_fkey(title, cnj_number),
   legal_cases(title, origin_organization_id, clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name)))`;
 
 export async function listAgreementRows(
   db: SupabaseClient,
-  filters: { legalCaseId?: string; status?: string },
+  filters: { legalCaseId?: string; legalProcessId?: string; status?: string },
   page: PageInput,
   sort: { column: string; ascending: boolean },
 ): Promise<{ rows: AgreementListRow[]; total: number }> {
   let query = db.from("financial_agreements").select(AGREEMENT_LIST_COLUMNS, { count: "exact" });
   if (filters.legalCaseId) query = query.eq("legal_case_id", filters.legalCaseId);
+  if (filters.legalProcessId) query = query.eq("legal_process_id", filters.legalProcessId);
   if (filters.status) query = query.eq("status", filters.status);
   const { from, to } = toRange(page);
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);
@@ -585,4 +592,140 @@ export interface ContractedByModelRow {
 /** Contratado por modelo (035): uma linha por modelo, somada no banco (ADMIN pela RLS). */
 export async function contractedByFeeModel(db: SupabaseClient): Promise<ContractedByModelRow[]> {
   return (check(await db.from("financial_contracted_by_fee_model").select("fee_model_id, fee_model_name, agreement_count, contracted_amount").limit(1000)) ?? []) as ContractedByModelRow[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Financeiro por processo (Roadmap 2.0, 046)                          */
+/* ------------------------------------------------------------------ */
+
+const PROCESS_FINANCE_COLUMNS =
+  "legal_process_id, legal_case_id, client_id, client_name, cnj_number, display_title, case_title, status, phase, created_at, case_value, fee_amount, fee_percentage, " +
+  "partner_organization_id, partner_percentage, owner_percentage, fee_owner_share, fee_partner_share, contracted, received, open_balance, overdue, agreement_count, " +
+  "received_partner_share, received_owner_share, expenses_total, expenses_paid, expenses_open, expenses_reimbursable, expense_count, net_result";
+const PROCESS_FINANCE_TOTALS_COLUMNS =
+  "process_count, case_value_total, fee_total, fee_owner_total, fee_partner_total, contracted_total, received_total, received_owner_total, received_partner_total, " +
+  "open_total, overdue_total, expenses_total, expenses_paid_total, expenses_open_total, net_result_total";
+const EXPENSE_COLUMNS =
+  "id, legal_process_id, legal_case_id, category, description, amount, currency, incurred_on, paid_on, reimbursable, supplier, notes, created_by, created_at, updated_at, cancelled_at, cancellation_reason";
+/** Rótulos do processo na lista geral de despesas (título, CNJ, caso e cliente) — embed de leitura sob RLS. */
+const EXPENSE_LABEL_EMBED =
+  "legal_processes!process_expenses_process_fkey(title, cnj_number, legal_cases!legal_processes_legal_case_id_fkey(title, origin_organization_id, clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name))))";
+
+/** Escapa curingas do ILIKE: o texto do usuário nunca vira padrão. */
+function likePattern(text: string): string {
+  return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/** Valor dentro de `or=(...)` do PostgREST: entre aspas, com aspas e barras escapadas (vírgula/parêntese do usuário não viram sintaxe). */
+function orQuoted(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** Busca: só dígitos (≥ 3, com ou sem máscara CNJ) → prefixo do CNJ; texto → cliente, título do processo ou do caso. */
+export function processFinanceSearch(q: string): { kind: "cnj"; digits: string } | { kind: "text"; or: string } | null {
+  const text = q.trim();
+  if (!text) return null;
+  const digits = text.replace(/\D/g, "");
+  if (digits.length >= 3 && digits.length === text.replace(/[\s.-]/g, "").length) return { kind: "cnj", digits };
+  const pattern = orQuoted(likePattern(text));
+  return { kind: "text", or: `client_name.ilike.${pattern},display_title.ilike.${pattern},case_title.ilike.${pattern}` };
+}
+
+export interface ProcessFinanceFilters {
+  q?: string;
+  legalCaseId?: string;
+  legalProcessId?: string;
+  overdueOnly?: boolean;
+  openExpensesOnly?: boolean;
+  withoutAgreement?: boolean;
+}
+
+/** Visão por processo (view process_finance_overview; security_invoker — só ADMIN vê dinheiro). */
+export async function listProcessFinance(
+  db: SupabaseClient,
+  filters: ProcessFinanceFilters,
+  page: PageInput,
+  sort: { column: string; ascending: boolean },
+): Promise<{ rows: ProcessFinanceRow[]; total: number }> {
+  let query = db.from("process_finance_overview").select(PROCESS_FINANCE_COLUMNS, { count: "exact" });
+  const target = filters.q ? processFinanceSearch(filters.q) : null;
+  if (target?.kind === "cnj") query = query.like("cnj_number", `${target.digits}%`);
+  if (target?.kind === "text") query = query.or(target.or);
+  if (filters.legalCaseId) query = query.eq("legal_case_id", filters.legalCaseId);
+  if (filters.legalProcessId) query = query.eq("legal_process_id", filters.legalProcessId);
+  if (filters.overdueOnly) query = query.gt("overdue", 0);
+  if (filters.openExpensesOnly) query = query.gt("expenses_open", 0);
+  if (filters.withoutAgreement) query = query.eq("agreement_count", 0);
+  const { from, to } = toRange(page);
+  let ordered = query.order(sort.column, { ascending: sort.ascending, nullsFirst: false });
+  if (sort.column !== "display_title") ordered = ordered.order("display_title", { ascending: true, nullsFirst: false });
+  const { data, error, count } = await ordered.order("legal_process_id").range(from, to);
+  if (error) throw financeError(error);
+  return { rows: (data ?? []) as unknown as ProcessFinanceRow[], total: count ?? 0 };
+}
+
+export async function getProcessFinance(db: SupabaseClient, processId: string): Promise<ProcessFinanceRow | null> {
+  return check(await db.from("process_finance_overview").select(PROCESS_FINANCE_COLUMNS).eq("legal_process_id", processId).maybeSingle()) as ProcessFinanceRow | null;
+}
+
+export async function getProcessFinanceTotals(db: SupabaseClient): Promise<ProcessFinanceTotalsRow | null> {
+  return check(await db.from("process_finance_totals").select(PROCESS_FINANCE_TOTALS_COLUMNS).maybeSingle()) as ProcessFinanceTotalsRow | null;
+}
+
+/** Processo não excluído (o caso do contrato/despesa vem daqui, nunca do navegador). */
+export async function getProcessRef(db: SupabaseClient, id: string): Promise<{ id: string; legal_case_id: string } | null> {
+  return check(await db.from("legal_processes").select("id, legal_case_id").eq("id", id).is("deleted_at", null).maybeSingle()) as { id: string; legal_case_id: string } | null;
+}
+
+export async function listExpenses(
+  db: SupabaseClient,
+  filters: { processId?: string; category?: string; status?: "OPEN" | "PAID" | "CANCELLED" },
+  page: PageInput,
+  sort: { column: string; ascending: boolean },
+  withLabels: boolean,
+): Promise<{ rows: ExpenseRow[]; total: number }> {
+  let query = db.from("process_expenses").select(withLabels ? `${EXPENSE_COLUMNS}, ${EXPENSE_LABEL_EMBED}` : EXPENSE_COLUMNS, { count: "exact" });
+  if (filters.processId) query = query.eq("legal_process_id", filters.processId);
+  if (filters.category) query = query.eq("category", filters.category);
+  if (filters.status === "CANCELLED") query = query.not("cancelled_at", "is", null);
+  if (filters.status === "PAID") query = query.is("cancelled_at", null).not("paid_on", "is", null);
+  if (filters.status === "OPEN") query = query.is("cancelled_at", null).is("paid_on", null);
+  const { from, to } = toRange(page);
+  const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("created_at", { ascending: false }).order("id").range(from, to);
+  if (error) throw financeError(error);
+  return { rows: (data ?? []) as unknown as ExpenseRow[], total: count ?? 0 };
+}
+
+export async function getExpense(db: SupabaseClient, id: string): Promise<ExpenseRow | null> {
+  return check(await db.from("process_expenses").select(EXPENSE_COLUMNS).eq("id", id).maybeSingle()) as ExpenseRow | null;
+}
+
+export async function insertExpense(db: SupabaseClient, values: Record<string, unknown>): Promise<string> {
+  return (check(await db.from("process_expenses").insert(values).select("id").single()) as { id: string }).id;
+}
+
+/** Só despesa ativa muda (a guarda do banco também recusa mexer em cancelada). */
+export async function updateActiveExpense(db: SupabaseClient, id: string, values: Record<string, unknown>): Promise<void> {
+  requireOne(await db.from("process_expenses").update(values, { count: "exact" }).eq("id", id).is("cancelled_at", null));
+}
+
+export type ExpenseAggregateRow = Pick<ExpenseRow, "category" | "amount" | "incurred_on" | "paid_on" | "cancelled_at">;
+
+/** Despesas ativas lançadas OU pagas desde `fromDate` (gráficos da visão geral), em lotes, até o teto. */
+export async function activeExpensesSince(db: SupabaseClient, fromDate: string): Promise<{ rows: ExpenseAggregateRow[]; truncated: boolean }> {
+  const rows: ExpenseAggregateRow[] = [];
+  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
+    const data = check(
+      await db
+        .from("process_expenses")
+        .select("category, amount, incurred_on, paid_on, cancelled_at")
+        .is("cancelled_at", null)
+        .or(`incurred_on.gte.${fromDate},paid_on.gte.${fromDate}`)
+        .order("id")
+        .range(from, from + CHUNK - 1),
+    ) as ExpenseAggregateRow[] | null;
+    rows.push(...(data ?? []));
+    if (!data || data.length < CHUNK) return { rows, truncated: false };
+  }
+  return { rows, truncated: true };
 }

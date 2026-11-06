@@ -5,9 +5,11 @@ import { useCallback, useMemo } from "react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import {
+  cancelExpenseAction,
   cancelPaymentAction,
   cancelTransferAction,
   changeAgreementStatusAction,
+  createExpenseAction,
   createFeeModelAction,
   createPaymentAction,
   createPaymentScheduleAction,
@@ -17,6 +19,7 @@ import {
   registerReceiptAction,
   registerReversalAction,
   updateAgreementAction,
+  updateExpenseAction,
   updateFeeModelAction,
   updatePaymentAction,
 } from "@/server/domain/finance/actions";
@@ -82,6 +85,12 @@ export function useFinanceActions(onDone?: () => void) {
       markTransferPaid: (id: string, reference?: string) =>
         run(() => markTransferPaidAction({ id, reference }), { title: "Repasse marcado como pago" }, "Não foi possível marcar o repasse como pago."),
       cancelTransfer: (id: string, reason: string) => run(() => cancelTransferAction({ id, reason }), { title: "Repasse cancelado" }, "Não foi possível cancelar o repasse."),
+      createExpense: (input: Record<string, unknown>) => run(() => createExpenseAction(input), { title: "Despesa lançada" }, "Não foi possível lançar a despesa."),
+      updateExpense: (id: string, patch: Record<string, unknown>) => run(() => updateExpenseAction({ id, patch }), { title: "Despesa atualizada" }, "Não foi possível salvar a despesa."),
+      markExpensePaid: (id: string, paidOn: string) =>
+        run(() => updateExpenseAction({ id, patch: { paidOn } }), { title: "Despesa marcada como paga" }, "Não foi possível marcar a despesa como paga."),
+      cancelExpense: (id: string, reason: string) =>
+        run(() => cancelExpenseAction({ id, reason }), { title: "Despesa cancelada", description: "Ela continua no histórico, com o motivo." }, "Não foi possível cancelar a despesa."),
     }),
     [run],
   );

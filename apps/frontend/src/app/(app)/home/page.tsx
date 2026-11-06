@@ -5,17 +5,20 @@ import { AudienceSwitch } from "@/components/layout/server-guards";
 import { HomeDashboard } from "@/features/home/components/home-dashboard";
 import { loadInternalHome, loadPartnerHome } from "@/features/home/load";
 import { PortalHome } from "@/features/partner-portal/components/portal-home";
+import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 
 export const metadata: Metadata = { title: "Home" };
 
 /** Painel interno: dados do servidor, só os blocos que o papel pode ver. */
 async function Internal() {
-  return <HomeDashboard data={await loadInternalHome()} />;
+  const [data, metrics] = await Promise.all([loadInternalHome(), getDashboardMetricsAction({ period: "30" })]);
+  return <HomeDashboard data={data} metrics={metrics} />;
 }
 
 /** Início do portal: dados do servidor, recortados ao escritório da sessão. */
 async function Partner() {
-  return <PortalHome data={await loadPartnerHome()} />;
+  const [data, metrics] = await Promise.all([loadPartnerHome(), getDashboardMetricsAction({ period: "30" })]);
+  return <PortalHome data={data} metrics={metrics} />;
 }
 
 export default async function HomePage({ searchParams }: PageProps<"/home">) {

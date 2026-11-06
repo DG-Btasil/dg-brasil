@@ -97,7 +97,7 @@ export function buildNotifications(): Notification[] {
       description: "A autenticação do provedor de e-mail expirou. Mensagens aprovadas não podem ser enviadas.",
       at: daysFromNowISO(-1, 6, 0),
       read: false,
-      cta: { label: "Ver integração", href: "/configuracoes?secao=integracoes" },
+      cta: { label: "Ver integração", href: "/dg-brasil/integracoes" },
       requiredPermission: "settings.integrations.manage",
     },
     {

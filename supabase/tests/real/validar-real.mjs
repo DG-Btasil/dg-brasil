@@ -653,7 +653,8 @@ await deveFalhar('LAWYER não troca origem de caso aceito', () => r(C.LAWYER.rpc
 
 secao('15/16. Ledger e divisão no Postgres real')
 await deve('1000: +500 PARTIAL, +500 PAID, −500 PARTIAL; parceiro 50% por lançamento', async () => {
-  const fa = (await r(C.ADMIN.from('financial_agreements').insert({ legal_case_id: ids.casoA, status: 'ACTIVE' }).select('id').single())).id
+  // Roadmap 2.0 (046): contrato de honorários é do processo.
+  const fa = (await r(C.ADMIN.from('financial_agreements').insert({ legal_case_id: ids.casoA, legal_process_id: ids.procA, status: 'ACTIVE' }).select('id').single())).id
   const pay = (await r(C.ADMIN.from('payments').insert({ financial_agreement_id: fa, amount: 1000, payment_type: 'OTHER', due_date: '2099-01-01' }).select('id').single())).id
   const st = async () => (await r(C.ADMIN.from('payment_balances').select('status').eq('payment_id', pay).single())).status
   const r1 = (await r(C.ADMIN.from('payment_receipts').insert({ payment_id: pay, kind: 'RECEIPT', amount: 500 }).select('id').single())).id

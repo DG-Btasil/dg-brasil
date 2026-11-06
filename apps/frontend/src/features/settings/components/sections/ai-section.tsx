@@ -245,14 +245,18 @@ function CreateExecutorDialog({ onClose, onCreated }: { onClose: () => void; onC
     onCreated();
   }
 
-  const config = created
-    ? JSON.stringify({ url: typeof window !== "undefined" ? window.location.origin : "", token: created.token }, null, 2)
-    : "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const config = created ? JSON.stringify({ url: origin, token: created.token }, null, 2) : "";
+  // Roadmap 2.0: um comando só no PowerShell do computador do escritório (public/executor/instalar.ps1).
+  const installCommand = origin.endsWith("app.dgbrasil.adv.br")
+    ? `irm ${origin}/executor/instalar.ps1 | iex`
+    : `$env:DG_BRASIL_URL='${origin}'; irm ${origin}/executor/instalar.ps1 | iex`;
 
-  async function copy() {
+  async function copy(text: string, what: string) {
     try {
-      await navigator.clipboard.writeText(config);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
+      toast({ tone: "success", title: `${what} copiado` });
     } catch {
       toast({ tone: "warning", title: "Não foi possível copiar", description: "Selecione o texto e copie à mão." });
     }
@@ -265,7 +269,7 @@ function CreateExecutorDialog({ onClose, onCreated }: { onClose: () => void; onC
       title={created ? `Token do ${created.name}` : "Autorizar computador"}
       description={
         created
-          ? "Copie agora: este token não aparece de novo. Cole no arquivo de configuração do computador, como mostra o guia de instalação."
+          ? "Dois passos no computador do escritório. O token aparece só agora: copie antes de fechar."
           : "Dê um nome para reconhecer o computador na lista (ex.: Computador da recepção)."
       }
       footer={
@@ -284,14 +288,33 @@ function CreateExecutorDialog({ onClose, onCreated }: { onClose: () => void; onC
       }
     >
       {created ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          <div>
+            <p className="mb-1.5 text-[12.5px] font-medium text-foreground">1. Abra o PowerShell no computador e cole este comando:</p>
+            <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[11.5px] text-foreground">{installCommand}</pre>
+            <Button variant="secondary" size="sm" className="mt-1.5" icon={<Copy className="size-4" aria-hidden />} onClick={() => copy(installCommand, "Comando")}>
+              Copiar comando
+            </Button>
+          </div>
+          <div>
+            <p className="mb-1.5 text-[12.5px] font-medium text-foreground">2. Quando o instalador pedir, cole o token:</p>
+            <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[11.5px] text-foreground">{created.token}</pre>
+            <Button variant="secondary" size="sm" className="mt-1.5" icon={<Copy className="size-4" aria-hidden />} onClick={() => copy(created.token, "Token")}>
+              {copied ? "Copiado" : "Copiar token"}
+            </Button>
+          </div>
           <p className="text-[12.5px] text-muted">
-            Conteúdo do arquivo <code className="font-mono">%APPDATA%\DGBrasil\executor.json</code> no computador:
+            O instalador confere o Node.js e o Claude Code, baixa o conector, grava o token só para a conta do Windows, prepara a pasta
+            <code className="mx-1 font-mono">C:\DGBrasil\sessao</code>com as permissões seguras e roda o diagnóstico. Depois: abrir o Claude Code nessa pasta e digitar
+            <code className="ml-1 font-mono">/mcp__dg-brasil__trabalhos</code>.
           </p>
-          <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[11.5px] text-foreground">{config}</pre>
-          <Button variant="secondary" size="sm" icon={<Copy className="size-4" aria-hidden />} onClick={copy}>
-            {copied ? "Copiado" : "Copiar"}
-          </Button>
+          <details className="text-[12.5px] text-muted">
+            <summary className="cursor-pointer">Instalação manual (sem o comando)</summary>
+            <p className="mt-2">
+              Conteúdo do arquivo <code className="font-mono">%APPDATA%\DGBrasil\executor.json</code> (guia em docs/mcp/instalacao.md):
+            </p>
+            <pre className="mt-1.5 overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[11.5px] text-foreground">{config}</pre>
+          </details>
           <Callout tone="warning">Quem tiver este token consegue reservar trabalhos do escritório. Não mande por e-mail ou WhatsApp. Perdeu ou vazou: revogue e gere outro.</Callout>
         </div>
       ) : (

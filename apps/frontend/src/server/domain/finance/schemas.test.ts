@@ -1,15 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  cancelExpenseSchema,
   cancelTransferSchema,
   createAgreementSchema,
+  createExpenseSchema,
   createPaymentSchema,
   createTransferSchema,
+  listAgreementsSchema,
   listAllocationsSchema,
+  listExpensesSchema,
   listPaymentsSchema,
+  listProcessFinanceSchema,
   listTransfersSchema,
+  processFinanceSchema,
   registerAdjustmentSchema,
   registerReceiptSchema,
   registerReversalSchema,
+  todaySaoPaulo,
+  updateExpenseSchema,
   updatePaymentSchema,
 } from "./schemas";
 
@@ -96,8 +104,98 @@ describe("idempotência por chave", () => {
     expect(registerAdjustmentSchema.safeParse({ paymentId: ID, direction: "INCREASE", amount: 5, justification: "x" }).success).toBe(false);
     expect(registerReversalSchema.safeParse({ originalReceiptId: ID }).success).toBe(false);
     expect(createTransferSchema.safeParse({ partnerOrganizationId: ID, amount: 10 }).success).toBe(false);
-    expect(createAgreementSchema.safeParse({ legalCaseId: ID }).success).toBe(false);
-    expect(createAgreementSchema.safeParse({ legalCaseId: ID, idempotencyKey: KEY }).success).toBe(true);
+    expect(createAgreementSchema.safeParse({ legalProcessId: ID }).success).toBe(false);
+    expect(createAgreementSchema.safeParse({ legalProcessId: ID, idempotencyKey: KEY }).success).toBe(true);
+  });
+});
+
+describe("contrato do processo (046)", () => {
+  it("exige o processo; o caso nunca vem do navegador", () => {
+    expect(createAgreementSchema.safeParse({ legalCaseId: ID, idempotencyKey: KEY }).success).toBe(false);
+    const parsed = createAgreementSchema.parse({ legalProcessId: ID, legalCaseId: ID, idempotencyKey: KEY });
+    expect(parsed).not.toHaveProperty("legalCaseId");
+    expect(parsed).toMatchObject({ legalProcessId: ID, activate: false });
+  });
+
+  it("lista de contratos filtra por processo", () => {
+    expect(listAgreementsSchema.parse({ legalProcessId: ID })).toMatchObject({ legalProcessId: ID, column: "created_at", ascending: false });
+    expect(listAgreementsSchema.safeParse({ legalProcessId: "x" }).success).toBe(false);
+  });
+});
+
+describe("financeiro por processo (046)", () => {
+  it("ordenação só pela whitelist; padrão = maior recebido", () => {
+    expect(listProcessFinanceSchema.parse({})).toMatchObject({ page: 1, pageSize: 25, column: "received", ascending: false });
+    expect(listProcessFinanceSchema.parse({ sortBy: "net", sortDirection: "asc" })).toMatchObject({ column: "net_result", ascending: true });
+    expect(listProcessFinanceSchema.parse({ sortBy: "expenses" })).toMatchObject({ column: "expenses_total" });
+    expect(listProcessFinanceSchema.parse({ sortBy: "title" })).toMatchObject({ column: "display_title" });
+    expect(listProcessFinanceSchema.safeParse({ sortBy: "net_result; drop table" }).success).toBe(false);
+  });
+
+  it("filtros booleanos e busca com limite", () => {
+    expect(listProcessFinanceSchema.parse({ q: "  Maria ", overdueOnly: true, openExpensesOnly: true, withoutAgreement: true })).toMatchObject({
+      q: "Maria",
+      overdueOnly: true,
+      openExpensesOnly: true,
+      withoutAgreement: true,
+    });
+    expect(listProcessFinanceSchema.safeParse({ q: "x".repeat(201) }).success).toBe(false);
+    expect(listProcessFinanceSchema.safeParse({ overdueOnly: "sim" }).success).toBe(false);
+  });
+
+  it("processo do detalhe precisa ser UUID", () => {
+    expect(processFinanceSchema.safeParse({ processId: ID }).success).toBe(true);
+    expect(processFinanceSchema.safeParse({ processId: "1" }).success).toBe(false);
+  });
+});
+
+describe("despesas do processo (046)", () => {
+  const base = { processId: ID, category: "COURT_COSTS", description: "Custas iniciais", amount: 150.35, incurredOn: "2026-10-01" };
+
+  it("nova despesa: categoria do check do banco, valor > 0 com 2 casas, descrição obrigatória; sem pagamento = a pagar", () => {
+    expect(createExpenseSchema.parse(base)).toEqual({ ...base, reimbursable: false });
+    expect(createExpenseSchema.safeParse({ ...base, category: "LUNCH" }).success).toBe(false);
+    expect(createExpenseSchema.safeParse({ ...base, amount: 0 }).success).toBe(false);
+    expect(createExpenseSchema.safeParse({ ...base, amount: 1.005 }).success).toBe(false);
+    expect(createExpenseSchema.safeParse({ ...base, description: "   " }).success).toBe(false);
+    expect(createExpenseSchema.safeParse({ ...base, description: "x".repeat(501) }).success).toBe(false);
+    expect(createExpenseSchema.safeParse({ ...base, incurredOn: "2026-02-30" }).success).toBe(false);
+  });
+
+  it("caso, autor e cancelamento nunca vêm do navegador", () => {
+    const parsed = createExpenseSchema.parse({ ...base, legalCaseId: ID, createdBy: ID, cancelledAt: "2026-10-01T00:00:00Z" });
+    for (const field of ["legalCaseId", "createdBy", "cancelledAt"]) expect(parsed).not.toHaveProperty(field);
+  });
+
+  it("data do pagamento não pode estar no futuro; a da despesa pode (audiência marcada)", () => {
+    const tomorrow = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+    expect(createExpenseSchema.safeParse({ ...base, paidOn: tomorrow }).success).toBe(false);
+    expect(createExpenseSchema.safeParse({ ...base, paidOn: todaySaoPaulo() }).success).toBe(true);
+    expect(createExpenseSchema.safeParse({ ...base, incurredOn: tomorrow }).success).toBe(true);
+  });
+
+  it("PATCH: ausente não mexe, null limpa (paidOn null = volta a pagar); vazio é recusado; processo não muda", () => {
+    expect(updateExpenseSchema.parse({ id: ID, patch: { paidOn: null, supplier: null } }).patch).toEqual({ paidOn: null, supplier: null });
+    expect(updateExpenseSchema.safeParse({ id: ID, patch: {} }).success).toBe(false);
+    expect(updateExpenseSchema.safeParse({ id: ID, patch: { processId: ID } }).success).toBe(false);
+    expect(updateExpenseSchema.safeParse({ id: ID, patch: { amount: -1 } }).success).toBe(false);
+  });
+
+  it("cancelar exige motivo", () => {
+    expect(cancelExpenseSchema.safeParse({ id: ID }).success).toBe(false);
+    expect(cancelExpenseSchema.safeParse({ id: ID, reason: "  " }).success).toBe(false);
+    expect(cancelExpenseSchema.safeParse({ id: ID, reason: "Lançada em duplicidade" }).success).toBe(true);
+  });
+
+  it("lista: filtros por processo, categoria e situação; padrão = data da despesa, mais recente primeiro", () => {
+    expect(listExpensesSchema.parse({ processId: ID, category: "HEARING", status: "OPEN" })).toMatchObject({ processId: ID, category: "HEARING", status: "OPEN", column: "incurred_on", ascending: false });
+    expect(listExpensesSchema.safeParse({ status: "PENDING" }).success).toBe(false);
+    expect(listExpensesSchema.safeParse({ sortBy: "description" }).success).toBe(false);
+  });
+
+  it("hoje em São Paulo: 01h UTC ainda é o dia anterior", () => {
+    expect(todaySaoPaulo(new Date("2026-11-07T01:00:00Z"))).toBe("2026-11-06");
+    expect(todaySaoPaulo(new Date("2026-11-07T04:00:00Z"))).toBe("2026-11-07");
   });
 });
 

@@ -9,9 +9,11 @@ export function DgHeader({ active, overview }: { active: DgSection; overview?: D
   return (
     <div className="mb-6">
       <header className="mb-5">
-        <div className="eyebrow mb-1.5">Central de IA</div>
+        <div className="eyebrow mb-1.5">Central de comunicação do escritório com os agentes</div>
         <h1 className="font-serif text-[30px] font-medium leading-tight tracking-[-0.01em] text-foreground">DG Brasil</h1>
-        <p className="mt-1 text-[13.5px] text-muted">Agentes do escritório (executados no Claude Code do computador do escritório) e o conhecimento que eles usam.</p>
+        <p className="mt-1 text-[13.5px] text-muted">
+          Se o escritório está conectado, a esteira de agentes (executados no Claude Code do computador do escritório), as integrações e o conhecimento que os agentes usam.
+        </p>
       </header>
       {overview && <OverviewStrip o={overview} />}
       <SectionNav active={active} />

@@ -119,7 +119,7 @@ function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () =>
     <>
       <PageHeader
         serif
-        breadcrumbs={[{ label: "DG Brasil", href: dgRoutes.home }, { label: "Agentes", href: dgRoutes.home }, { label: agent.name }]}
+        breadcrumbs={[{ label: "DG Brasil", href: dgRoutes.home }, { label: "Agentes", href: dgRoutes.agents }, { label: agent.name }]}
         title={agent.name}
         description={agent.description}
         meta={

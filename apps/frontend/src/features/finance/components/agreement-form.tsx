@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { PencilLine, RotateCcw } from "lucide-react";
 import { todayISO } from "@/lib/clock";
 import { BILLING_MOMENT_LABEL } from "@/lib/constants/status";
@@ -11,10 +11,10 @@ import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
-import { listCasesAction } from "@/server/domain/cases/actions";
 import { createAgreementAction } from "@/server/domain/finance/actions";
 import type { FeeModelDTO } from "@/server/domain/finance/dto";
 import { useToast } from "@/store/ui-store";
+import { searchFinanceProcesses } from "../process-picker";
 import { agreementCreateInput, feeTermsFromModel, type AgreementValues, type FeeTermsValues } from "../server-input";
 
 const TERM_FIELDS: { key: keyof FeeTermsValues; label: string; placeholder: string; numeric?: boolean }[] = [
@@ -25,29 +25,36 @@ const TERM_FIELDS: { key: keyof FeeTermsValues; label: string; placeholder: stri
   { key: "successFeePercent", label: "Percentual de êxito (%)", placeholder: "0" },
 ];
 
-const FIELD_MAP: Record<string, string> = { legalCaseId: "legalCaseId" };
+const FIELD_MAP: Record<string, string> = { legalProcessId: "legalProcessId" };
 
 /**
- * Contrato de honorários de um CASO (createAgreementAction, chave por
+ * Contrato de honorários de um PROCESSO (046; createAgreementAction, chave por
  * intenção). O modelo preenche os termos; "Personalizar" libera a edição. Sem
  * termos e com modelo, o SERVIDOR copia os termos do modelo. As obrigações
  * (parcelas) são registradas depois, na gaveta do contrato.
+ *
+ * Vindo de um caso (`caseProcesses`), pergunta qual processo dele; sem
+ * processo pré-escolhido, busca no servidor.
  */
 export function AgreementForm({
   feeModels,
-  defaultCase,
+  defaultProcess,
+  caseProcesses,
   onCreated,
   onCancel,
 }: {
   feeModels: FeeModelDTO[];
-  defaultCase?: PickerOption;
-  onCreated: (legalCaseId: string) => void;
+  defaultProcess?: PickerOption;
+  /** Processos do caso de origem (?caso=): a escolha fica entre eles. */
+  caseProcesses?: PickerOption[];
+  onCreated: (legalProcessId: string) => void;
   onCancel: () => void;
 }) {
   const toast = useToast();
   const failed = useActionFeedback();
   const idempotency = useIdempotencyKey();
-  const [legalCase, setLegalCase] = useState<PickerOption | null>(defaultCase ?? null);
+  const fromCase = !defaultProcess && !!caseProcesses && caseProcesses.length > 0;
+  const [process, setProcess] = useState<PickerOption | null>(defaultProcess ?? (caseProcesses?.length === 1 ? caseProcesses[0] : null));
   const [values, setValues] = useState<AgreementValues>({ feeModelId: "", startDate: todayISO(), notes: "", activate: false, ...feeTermsFromModel(undefined) });
   const [customized, setCustomized] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -55,12 +62,10 @@ export function AgreementForm({
   const model = feeModels.find((m) => m.id === values.feeModelId);
   const readOnly = !!model && !customized;
   const set = <K extends keyof AgreementValues>(key: K, value: AgreementValues[K]) => setValues((v) => ({ ...v, [key]: value }));
-
-  const searchCases = useCallback(async (q: string): Promise<{ ok: true; options: PickerOption[] } | { ok: false; message: string }> => {
-    const r = await callAction(() => listCasesAction({ q: q.trim() || undefined, pageSize: 10, sortBy: "updatedAt", sortDirection: "desc" }));
-    if (!r.ok) return { ok: false, message: r.error.message };
-    return { ok: true, options: r.data.items.map((c) => ({ id: c.id, label: c.title, description: c.clientName })) };
-  }, []);
+  const pickProcess = (o: PickerOption | null) => {
+    setProcess(o);
+    setErrors((e) => ({ ...e, legalProcessId: "" }));
+  };
 
   function applyModel(id: string) {
     const m = feeModels.find((x) => x.id === id);
@@ -69,11 +74,11 @@ export function AgreementForm({
   }
 
   async function submit() {
-    if (!legalCase) {
-      setErrors({ legalCaseId: "Selecione o caso." });
+    if (!process) {
+      setErrors({ legalProcessId: "Selecione o processo." });
       return;
     }
-    const payload = agreementCreateInput(legalCase.id, values);
+    const payload = agreementCreateInput(process.id, values);
     setSaving(true);
     const result = await callAction(() => createAgreementAction({ ...payload, idempotencyKey: idempotency.keyFor(payload) }));
     setSaving(false);
@@ -85,7 +90,7 @@ export function AgreementForm({
     }
     idempotency.reset();
     toast({ tone: "success", title: values.activate ? "Contrato criado e ativado" : "Contrato criado em rascunho", description: "Registre as obrigações na gaveta do contrato." });
-    onCreated(legalCase.id);
+    onCreated(process.id);
   }
 
   return (
@@ -98,19 +103,25 @@ export function AgreementForm({
       }}
     >
       <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-        <Field label="Caso" requirement="required" error={errors.legalCaseId} hint="O contrato pertence ao caso e abrange todos os processos dele.">
-          {(p) => (
-            <AsyncPicker
-              {...p}
-              value={legalCase}
-              onChange={(o) => {
-                setLegalCase(o);
-                setErrors((e) => ({ ...e, legalCaseId: "" }));
-              }}
-              search={searchCases}
-              placeholder="Buscar caso pelo título"
-            />
-          )}
+        <Field
+          label="Processo"
+          requirement="required"
+          error={errors.legalProcessId}
+          hint={fromCase ? "Escolha o processo do caso. Cada processo tem o seu contrato de honorários." : "O contrato pertence ao processo. Um contrato ativo por processo."}
+        >
+          {(p) =>
+            fromCase ? (
+              <Select
+                {...p}
+                placeholder="Selecione o processo do caso"
+                options={caseProcesses!.map((o) => ({ value: o.id, label: o.description ? `${o.label} — ${o.description}` : o.label }))}
+                value={process?.id ?? ""}
+                onChange={(e) => pickProcess(caseProcesses!.find((o) => o.id === e.target.value) ?? null)}
+              />
+            ) : (
+              <AsyncPicker {...p} value={process} onChange={pickProcess} search={searchFinanceProcesses} placeholder="Buscar por cliente, título ou número CNJ" />
+            )
+          }
         </Field>
         <Field label="Modelo de honorários" requirement="recommended" hint={model ? BILLING_MOMENT_LABEL[model.billingMoment] : "Sem modelo, os valores são definidos manualmente."} error={errors.feeModelId}>
           {(p) => (
@@ -127,7 +138,7 @@ export function AgreementForm({
       <div className="flex items-center gap-2">
         {model && !customized && (
           <Button variant="secondary" icon={<PencilLine className="size-4" aria-hidden />} onClick={() => setCustomized(true)}>
-            Personalizar para este caso
+            Personalizar para este processo
           </Button>
         )}
         {model && customized && (
@@ -167,7 +178,7 @@ export function AgreementForm({
       </div>
       <Checkbox
         label="Ativar agora"
-        description="Ativo recebe lançamentos e congela os termos. Um contrato ativo por caso. Sem marcar, nasce em rascunho."
+        description="Ativo recebe lançamentos e congela os termos. Um contrato ativo por processo. Sem marcar, nasce em rascunho."
         checked={values.activate}
         onChange={(e) => set("activate", e.target.checked)}
       />

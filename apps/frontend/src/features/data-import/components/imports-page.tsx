@@ -69,7 +69,7 @@ export function ImportsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumbs={[{ label: "Configurações", href: "/configuracoes?secao=integracoes" }, { label: "Importações" }]}
+        breadcrumbs={[{ label: "DG Brasil", href: "/dg-brasil/integracoes" }, { label: "Importações" }]}
         title="Importação de planilhas"
         description="Traga clientes e processos de outro sistema ou de planilhas (Excel .xlsx ou CSV). Antes de gravar, o DG Brasil simula a importação, mostra o que vai acontecer linha a linha e pede sua decisão em cada conflito."
         actions={<NewImportButton />}

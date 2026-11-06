@@ -20,7 +20,7 @@ const TYPE_OPTIONS = PAYMENT_TYPES.map((t) => ({ value: t, label: PAYMENT_TYPE_L
 const METHOD_OPTIONS = RECEIPT_METHODS.map((m) => ({ value: m, label: RECEIPT_METHOD_LABEL[m] }));
 
 /** Casca comum: título, descrição, erro geral e botão de confirmar com "carregando". */
-function FinanceDialog({
+export function FinanceDialog({
   title,
   description,
   confirmLabel,
@@ -29,6 +29,7 @@ function FinanceDialog({
   onConfirm,
   onClose,
   children,
+  size,
 }: {
   title: string;
   description?: ReactNode;
@@ -38,6 +39,7 @@ function FinanceDialog({
   onConfirm: () => void;
   onClose: () => void;
   children: ReactNode;
+  size?: "sm" | "md" | "lg";
 }) {
   return (
     <Dialog
@@ -45,6 +47,7 @@ function FinanceDialog({
       onOpenChange={(o) => !o && !saving && onClose()}
       title={title}
       description={description}
+      size={size}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={saving}>

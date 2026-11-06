@@ -19,10 +19,9 @@ import { DocumentsPanel } from "@/features/documents/components/documents-panel"
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState } from "@/components/feedback/states";
 import { Panel, PanelHeader } from "@/components/ui/panel";
-import { AgreementsPanel } from "@/features/finance/components/agreements-table";
-import { DEFAULT_AGREEMENT_QUERY } from "@/features/finance/list-query";
+import { ProcessFinancePanel } from "@/features/finance/components/process-finance-panel";
 import { ReviewTable } from "@/features/reviews/components/review-table";
-import type { AgreementListItemDTO } from "@/server/domain/finance/dto";
+import type { ProcessFinanceDetailDTO } from "@/server/domain/finance/dto";
 import type { ReviewListItem } from "@/server/domain/reviews/dto";
 import type { ProcessEventDTO, ProcessInternalDTO, ProcessPartyDTO } from "@/server/domain/processes/dto";
 import { useCan } from "@/features/auth/hooks";
@@ -69,7 +68,7 @@ export function ProcessDetail({
   /** Só ADMIN/LAWYER (reviews.view). */
   reviews?: ActionResult<Page<ReviewListItem>>;
   /** Só ADMIN (finance.view): contratos do CASO do processo. */
-  agreements?: ActionResult<Page<AgreementListItemDTO>>;
+  agreements?: ActionResult<ProcessFinanceDetailDTO>;
 }) {
   const responsible = useDirectoryUser(process.responsibleUserId);
   const can = useCan();
@@ -179,15 +178,8 @@ export function ProcessDetail({
             )}
           </Panel>
         )}
-        {active === "financeiro" && agreements && (
-          <AgreementsPanel
-            legalCaseId={process.legalCaseId}
-            initialQuery={DEFAULT_AGREEMENT_QUERY}
-            initialResult={agreements}
-            title="Contratos de honorários do caso"
-            description="O financeiro pertence ao caso: estes contratos abrangem todos os processos dele."
-          />
-        )}
+        {/* Roadmap 2.0: o financeiro é do PROCESSO (valor da causa, honorários, divisão, contrato, recebimentos e despesas). */}
+        {active === "financeiro" && agreements && <ProcessFinancePanel processId={process.id} initial={agreements} />}
       </TabPanel>
 
       {dialog?.kind === "delete" && <DeleteProcessDialog process={process} openDeadlines={openDeadlines.length} onClose={close} />}

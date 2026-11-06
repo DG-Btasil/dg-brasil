@@ -13,7 +13,7 @@ export default async function AgentPage({ params }: PageProps<"/dg-brasil/agente
     getDgCatalogAction(),
     listAgentRunsAction(agentRunQueryToInput(DEFAULT_AGENT_RUN_QUERY, { agentId: id })),
   ]);
-  if (!agent.ok || !catalog.ok) return <DgNotFound title="Agente não encontrado" backHref={dgRoutes.home} backLabel="Voltar para os agentes" />;
+  if (!agent.ok || !catalog.ok) return <DgNotFound title="Agente não encontrado" backHref={dgRoutes.agents} backLabel="Voltar para os agentes" />;
   return (
     <PageContainer>
       <AgentDetail agent={agent.data} catalog={catalog.data} runs={runs} />

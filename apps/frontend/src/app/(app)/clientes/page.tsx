@@ -1,3 +1,5 @@
+import { MetricsBoard } from "@/features/metrics/components/metrics-board";
+import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 import { PageContainer } from "@/components/layout/guards";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
 import { ClientList } from "@/features/clients/components/list/client-list";
@@ -9,14 +11,15 @@ import { listClientsAction } from "@/server/domain/clients/actions";
 /** Primeira página carregada no servidor, já com os filtros da URL. */
 async function InternalClientList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const query = clientQueryFromSearchParams(searchParams);
-  const result = await listClientsAction(clientQueryToInput(query));
-  return <ClientList initialQuery={query} initialResult={result} />;
+  const [result, metrics] = await Promise.all([listClientsAction(clientQueryToInput(query)), getDashboardMetricsAction({ period: "30" })]);
+  return <ClientList initialQuery={query} initialResult={result} insights={<MetricsBoard variant="clients" initial={metrics} />} />;
 }
 
 /** Portal: primeira página dos clientes do próprio escritório (RLS). */
 async function PartnerClientList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const query = portalQueryFromSearchParams(searchParams);
-  return <PortalClientList initialQuery={query} initialResult={await listClientsAction(portalClientInput(query))} />;
+  const [result, metrics] = await Promise.all([listClientsAction(portalClientInput(query)), getDashboardMetricsAction({ period: "30" })]);
+  return <PortalClientList initialQuery={query} initialResult={result} insights={<MetricsBoard variant="clients" initial={metrics} />} />;
 }
 
 export default async function ClientsPage({ searchParams }: PageProps<"/clientes">) {
