@@ -173,18 +173,19 @@ describe("PF — três estados no PATCH: ausente / valor / null", () => {
     expect(parse(full)).toMatchObject({ birthDate: "1975-06-07", gender: "MALE", maritalStatus: "SINGLE", identityDocument: { type: "RG", number: "123", issuer: "SSP", state: "SP" } });
   });
 
-  it("documento de identidade é um bloco: tipo e número juntos", () => {
+  it("documento de identidade é opcional: sem número, nada é exigido (Roadmap 2.0)", () => {
     const ok = (o: Partial<ReturnType<typeof pf>>) => individualFormSchema.safeParse(pf(o)).success;
     expect(ok({})).toBe(true);
     expect(ok({ idType: "RG", idNumber: "1" })).toBe(true);
-    expect(ok({ idType: "RG" })).toBe(false);
+    expect(ok({ idType: "RG" })).toBe(true);
+    expect(ok({ idIssuer: "SSP" })).toBe(true);
+    expect(ok({ idState: "SP" })).toBe(true);
     expect(ok({ idNumber: "1" })).toBe(false);
-    expect(ok({ idIssuer: "SSP" })).toBe(false);
   });
 
   it("todo erro do bloco cai num campo que a tela mostra (QA 4.3, BUG-01)", () => {
     const fields = readFileSync(join(__dirname, "components", "form", "individual-fields.tsx"), "utf-8");
-    for (const partial of [{ idType: "RG" }, { idNumber: "1" }, { idIssuer: "SSP" }, { idState: "SP" }]) {
+    for (const partial of [{ idNumber: "1" }]) {
       const r = individualFormSchema.safeParse(pf(partial));
       expect(r.success).toBe(false);
       for (const issue of r.success ? [] : r.error.issues) {

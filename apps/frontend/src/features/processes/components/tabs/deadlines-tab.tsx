@@ -59,7 +59,7 @@ export function DeadlinesTab({
         <PanelHeader
           title="Prazos em aberto"
           as="h3"
-          description="Ordenados pelo vencimento. Hoje e vencidos em vermelho, amanhã em laranja, até 5 dias em amarelo."
+          description="Ordenados pela data do prazo. Hoje e vencidos em vermelho, amanhã em laranja, até 5 dias em amarelo."
           actions={
             <Can permission="processes.edit">
               <Button size="sm" icon={<CalendarPlus className="size-3.5" aria-hidden />} onClick={onAdd}>
@@ -76,7 +76,7 @@ export function DeadlinesTab({
               <tr>
                 <Th>Prazo</Th>
                 <Th>Tipo</Th>
-                <Th>Vencimento</Th>
+                <Th>Data do prazo</Th>
                 <Th>Responsável</Th>
                 <Th>Urgência</Th>
                 <Th>Situação</Th>
@@ -150,7 +150,7 @@ export function DeadlinesTab({
                 <tr>
                   <Th>Prazo</Th>
                   <Th>Tipo</Th>
-                  <Th>Vencimento</Th>
+                  <Th>Data do prazo</Th>
                   <Th>Responsável</Th>
                   <Th>Situação</Th>
                 </tr>

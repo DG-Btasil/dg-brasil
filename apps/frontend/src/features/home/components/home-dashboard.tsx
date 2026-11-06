@@ -52,8 +52,8 @@ export function HomeDashboard({ data }: { data: InternalHomeData }) {
       </header>
 
       <section aria-label="Indicadores do escritório" data-tour="home-kpis" className="grid grid-cols-2 gap-4 xl:grid-cols-5">
-        <Stat label="Casos ativos" value={num(k.activeCases)} icon={FolderOpen} href="/casos" hint="Em análise, aceitos e em andamento" />
-        <Stat label="Casos aguardando a equipe" value={num(k.awaitingCases)} icon={Hourglass} href="/casos" hint="Enviados ou aguardando documentos" />
+        <Stat label="Casos ativos" value={num(k.activeCases)} icon={FolderOpen} href="/casos?situacao=ativos" hint="Em análise, aceitos e em andamento" />
+        <Stat label="Casos aguardando a equipe" value={num(k.awaitingCases)} icon={Hourglass} href="/casos?situacao=aguardando" hint="Enviados ou aguardando documentos" />
         <Stat label="Processos ativos" value={num(k.activeProcesses)} icon={Briefcase} href="/processos" hint="Todos os status, exceto encerrados" />
         {k.pendingReviews !== undefined ? (
           <Stat

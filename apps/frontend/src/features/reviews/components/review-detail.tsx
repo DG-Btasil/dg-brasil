@@ -174,7 +174,7 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
 
 /** Rótulos dos campos de proposta (contrato em server/executor/contract.ts). */
 const PAYLOAD_LABEL: Record<string, string> = {
-  title: "Título", description: "Descrição", due_at: "Vence em", priority: "Prioridade", legal_process_id: "Processo",
+  title: "Título", description: "Descrição", due_at: "Data do prazo", priority: "Prioridade", legal_process_id: "Processo",
   responsible_user_id: "Responsável", category: "Categoria", label: "Documento", required: "Obrigatório",
   message_to_partner: "Mensagem ao parceiro", summary: "Resumo", status: "Situação", cnj_number: "Número CNJ", court: "Tribunal",
   court_unit: "Vara", district: "Comarca", state: "UF", legal_class: "Classe", subject: "Assunto", client_side: "Polo do cliente",

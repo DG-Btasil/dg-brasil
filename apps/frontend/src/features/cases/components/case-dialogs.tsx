@@ -294,12 +294,11 @@ export function EditCaseDialog({ legalCase, open, onOpenChange, catalog }: Dialo
   const actions = useCaseActions();
   const [title, setTitle] = useState(legalCase.title);
   const [area, setArea] = useState<string>(legalCase.area);
-  const [caseTypeId, setCaseTypeId] = useState(legalCase.caseTypeId ?? "");
   const [opposingParty, setOpposingParty] = useState(legalCase.opposingParty ?? "");
   const [summary, setSummary] = useState(legalCase.summary);
   const [errors, setErrors] = useState<Record<string, string[]>>();
   const [saving, setSaving] = useState(false);
-  const { areas, types } = useCatalogOptions(catalog, area);
+  const { areas } = useCatalogOptions(catalog, area);
   const invalid = !title.trim() || !area || !summary.trim();
 
   async function confirm() {
@@ -307,8 +306,7 @@ export function EditCaseDialog({ legalCase, open, onOpenChange, catalog }: Dialo
     setSaving(true);
     const result = await actions.update(legalCase.id, {
       title: title.trim(),
-      ...(area !== legalCase.area ? { area } : {}),
-      caseTypeId: caseTypeId || null,
+      ...(area !== legalCase.area ? { area, caseTypeId: null } : {}),
       opposingParty: opposingParty.trim(),
       summary: summary.trim(),
     });
@@ -343,16 +341,10 @@ export function EditCaseDialog({ legalCase, open, onOpenChange, catalog }: Dialo
             <Select
               {...p}
               value={area}
-              onChange={(e) => {
-                setArea(e.target.value);
-                setCaseTypeId("");
-              }}
+              onChange={(e) => setArea(e.target.value)}
               options={areas}
             />
           )}
-        </Field>
-        <Field label="Tipo" requirement="optional" error={errors?.caseTypeId?.[0]} hint={types.length ? undefined : "Nenhum tipo cadastrado para esta área."}>
-          {(p) => <Select {...p} value={caseTypeId} onChange={(e) => setCaseTypeId(e.target.value)} options={types} placeholder="Sem tipo" disabled={!types.length} />}
         </Field>
         <Field label="Parte contrária" requirement="optional" className="col-span-2" error={errors?.opposingParty?.[0]}>
           {(p) => <Input {...p} value={opposingParty} onChange={(e) => setOpposingParty(e.target.value)} maxLength={300} />}

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { CASE_STATUS_GROUPS } from "@/features/cases/list-query";
 import { PROCESS_STATUSES, type LegalCaseStatus, type ProcessStatus } from "@/lib/constants/status";
 import type { ActionResult } from "@/lib/actions/result";
 import { can } from "@/lib/permissions";
@@ -34,8 +35,8 @@ import type { ReviewListItem } from "@/server/domain/reviews/dto";
 type R<T> = ActionResult<T>;
 const total = <T>(r: R<Page<T>>): number | undefined => (r.ok ? r.data.total : undefined);
 
-const ACTIVE_CASE: LegalCaseStatus[] = ["READY_FOR_ANALYSIS", "ANALYZING", "WAITING_REVIEW", "ACCEPTED", "IN_PROGRESS"];
-const AWAITING_CASE: LegalCaseStatus[] = ["SUBMITTED", "WAITING_DOCUMENTS"];
+const ACTIVE_CASE: LegalCaseStatus[] = [...CASE_STATUS_GROUPS.ativos];
+const AWAITING_CASE: LegalCaseStatus[] = [...CASE_STATUS_GROUPS.aguardando];
 
 export interface HomeKpis {
   activeCases?: number;

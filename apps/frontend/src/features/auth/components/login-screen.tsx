@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
-import { Checkbox, Field, Input } from "@/components/ui/form";
+import { Checkbox, Field, Input, PasswordInput } from "@/components/ui/form";
 import { loginErrorMessage } from "@/lib/auth/errors";
 import { AUTH_ROUTES, safeNextPath } from "@/lib/auth/redirects";
 import { rememberPreferenceCookie } from "@/lib/auth/session-cookies";
@@ -82,7 +82,7 @@ export function LoginScreen({ next, notice }: { next?: string; notice?: string }
         </Field>
         <Field label="Senha" requirement="required">
           {(p) => (
-            <Input {...p} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <PasswordInput {...p} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           )}
         </Field>
         <Checkbox

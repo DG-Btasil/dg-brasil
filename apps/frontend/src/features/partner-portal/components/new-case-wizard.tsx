@@ -149,7 +149,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
   } = form;
   const kind = useWatch({ control, name: "kind" });
   const area = useWatch({ control, name: "area" });
-  const { areas, types } = useCatalogOptions(catalog, area);
+  const { areas } = useCatalogOptions(catalog, area);
   const areaName = useMemo(() => new Map(areas.map((a) => [a.value, a.label])), [areas]);
 
   const flow: StepKey[] = target?.mode === "EXISTING" ? ["identify", "case", "documents", "review"] : ["identify", "basic", "case", "documents", "review"];
@@ -572,9 +572,6 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
                 />
               )}
             </Field>
-            <Field label="Tipo" requirement="optional" error={errors.caseTypeId?.message} hint={area && types.length === 0 ? "Sem tipos cadastrados para esta área." : undefined}>
-              {(p) => <Select {...p} placeholder={types.length ? "Selecione" : "—"} options={types} disabled={types.length === 0} {...register("caseTypeId")} />}
-            </Field>
             <Field label="Parte contrária" requirement="recommended" className="col-span-2">
               {(p) => <Input {...p} maxLength={300} {...register("opposingParty")} />}
             </Field>
@@ -646,7 +643,6 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
                 items={[
                   { label: "Nome", value: v.title },
                   { label: "Área", value: areaName.get(v.area) },
-                  { label: "Tipo", value: types.find((t) => t.value === v.caseTypeId)?.label },
                   { label: "Origem do caso", value: originLabel(v.caseOriginId) },
                   { label: "Parte contrária", value: blank(v.opposingParty) },
                   { label: "Relato", value: v.summary, wide: true },

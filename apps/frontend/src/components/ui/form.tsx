@@ -3,12 +3,13 @@
 import {
   forwardRef,
   useId,
+  useState,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { INPUT_MASKS, type InputMaskName } from "@/lib/formatting/masks";
 
@@ -75,6 +76,33 @@ export function Field({ label, requirement, hint, error, className, children }: 
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...props }, ref) {
   return <input ref={ref} className={cn(control, "h-9", className)} {...props} />;
+});
+
+/**
+ * Senha com o "olhinho": os dígitos ficam ocultos e aparecem enquanto a
+ * pessoa quiser (clique de novo esconde). O botão não envia o formulário e
+ * não rouba o foco do campo.
+ */
+export const PasswordInput = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLInputElement>, "type">>(function PasswordInput(
+  { className, ...props },
+  ref,
+) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input ref={ref} type={visible ? "text" : "password"} className={cn(control, "h-9 pr-10", className)} {...props} />
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? "Esconder a senha" : "Mostrar a senha"}
+        aria-pressed={visible}
+        className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-subtle transition-colors hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/40"
+      >
+        {visible ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+      </button>
+    </div>
+  );
 });
 
 interface MaskedInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> {

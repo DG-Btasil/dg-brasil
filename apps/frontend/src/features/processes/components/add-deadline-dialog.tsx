@@ -99,7 +99,7 @@ export function AddDeadlineDialog({
         <Field label="Tipo" requirement="required" error={errors.type?.message}>
           {(a) => <Select {...a} {...register("type")} options={typeOptions} />}
         </Field>
-        <Field label="Vencimento" requirement="required" error={errors.dueDate?.message}>
+        <Field label="Data do prazo" requirement="required" error={errors.dueDate?.message}>
           {(a) => <Input {...a} type="date" {...register("dueDate")} />}
         </Field>
         <Field label="Responsável" requirement="required" className="col-span-2" error={errors.responsibleUserId?.message}>

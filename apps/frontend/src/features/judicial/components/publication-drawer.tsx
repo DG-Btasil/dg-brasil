@@ -224,7 +224,7 @@ function DeadlineForm({ p, onCancel, onDone }: { p: JudicialPublicationDetailDTO
         <Field label="Dias úteis" hint="15, 5…">
           {(a) => <Input {...a} type="number" min={1} max={120} value={days} onChange={(e) => recount(e.target.value)} />}
         </Field>
-        <Field label="Vencimento" requirement="required" hint="Calculado; ajuste se o tribunal tiver feriado local não cadastrado.">
+        <Field label="Data do prazo" requirement="required" hint="Calculado; ajuste se o tribunal tiver feriado local não cadastrado.">
           {(a) => <Input {...a} type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} />}
         </Field>
       </div>

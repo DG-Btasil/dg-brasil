@@ -50,6 +50,15 @@ function ProcessNotFound() {
  * Sem acesso, id inexistente ou malformado → "não encontrado".
  */
 async function InternalProcess({ id }: { id: string }) {
+  // Tudo que só depende do id sai junto com a ficha (antes era em sequência).
+  const session = await requireAppSession();
+  const pending = Promise.all([
+    listProcessPartiesAction({ processId: id, pageSize: 50 }),
+    listProcessEventsAction({ processId: id, pageSize: 50 }),
+    listDeadlinesAction({ processId: id, pageSize: 50 }),
+    listDocumentsAction(documentListInput({ legalProcessId: id })),
+    can(session.role, "reviews.view") ? listReviewsAction({ processId: id, pageSize: 50 }) : Promise.resolve(undefined),
+  ]);
   const result = await getProcessAction({ id });
   if (!result.ok) {
     if (result.error.code === "NOT_FOUND" || result.error.code === "VALIDATION") return <ProcessNotFound />;
@@ -60,13 +69,8 @@ async function InternalProcess({ id }: { id: string }) {
     );
   }
   if (result.data.surface !== "INTERNAL") return <ProcessNotFound />;
-  const session = await requireAppSession();
-  const [parties, events, deadlines, documents, reviews, agreements] = await Promise.all([
-    listProcessPartiesAction({ processId: id, pageSize: 50 }),
-    listProcessEventsAction({ processId: id, pageSize: 50 }),
-    listDeadlinesAction({ processId: id, pageSize: 50 }),
-    listDocumentsAction(documentListInput({ legalProcessId: id })),
-    can(session.role, "reviews.view") ? listReviewsAction({ processId: id, pageSize: 50 }) : Promise.resolve(undefined),
+  const [[parties, events, deadlines, documents, reviews], agreements] = await Promise.all([
+    pending,
     can(session.role, "finance.view") ? listAgreementRowsAction(agreementQueryToInput(DEFAULT_AGREEMENT_QUERY, { legalCaseId: result.data.process.legalCaseId })) : Promise.resolve(undefined),
   ]);
   return (

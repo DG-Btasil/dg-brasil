@@ -49,18 +49,14 @@ export const individualSchema = z.object({
 export type IndividualFormValues = z.infer<typeof individualSchema>;
 
 /**
- * Documento de identidade é um bloco: tipo e número andam juntos (o banco
- * exige os dois ou nenhum). Emissor/UF sem tipo e número não são gravados;
- * para apagar o documento, deixe tipo e número vazios.
+ * Documento de identidade é OPCIONAL. Sem número, nada do bloco é gravado
+ * (tipo, emissor e UF soltos são ignorados, sem erro). Com número, o tipo é
+ * necessário (o banco guarda os dois juntos).
  */
 export const individualFormSchema = individualSchema.superRefine((v, ctx) => {
   const hasType = !!v.idType.trim();
   const hasNumber = !!v.idNumber.trim();
-  if (hasType && !hasNumber) ctx.addIssue({ code: "custom", path: ["idNumber"], message: "Informe o número do documento (ou limpe o tipo)." });
   if (!hasType && hasNumber) ctx.addIssue({ code: "custom", path: ["idType"], message: "Selecione o tipo do documento (ou limpe o número)." });
-  if (!hasType && !hasNumber && (v.idIssuer.trim() || v.idState.trim())) {
-    ctx.addIssue({ code: "custom", path: ["idNumber"], message: "Informe tipo e número, ou limpe também emissor e UF." });
-  }
 });
 
 const representativeSchema = z.object({

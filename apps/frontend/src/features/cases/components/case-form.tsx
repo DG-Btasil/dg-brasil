@@ -71,7 +71,7 @@ export function CaseForm({ catalog, defaultClient }: { catalog: CaseCatalogDTO; 
   const [linkPartner, setLinkPartner] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState<"draft" | "submit" | null>(null);
-  const { areas, types } = useCatalogOptions(catalog, values.area);
+  const { areas } = useCatalogOptions(catalog, values.area);
   const set = <K extends keyof Values>(key: K, value: Values[K]) => setValues((v) => ({ ...v, [key]: value }));
   const partnerOrigin = !!values.originOrganizationId && values.originOrganizationId !== owner.id;
 
@@ -153,9 +153,6 @@ export function CaseForm({ catalog, defaultClient }: { catalog: CaseCatalogDTO; 
                       placeholder="Selecione a área"
                     />
                   )}
-                </Field>
-                <Field label="Tipo" requirement="optional" error={errors.caseTypeId} hint={values.area && !types.length ? "Nenhum tipo cadastrado para esta área." : undefined}>
-                  {(p) => <Select {...p} value={values.caseTypeId} onChange={(e) => set("caseTypeId", e.target.value)} options={types} placeholder="Sem tipo" disabled={!types.length} />}
                 </Field>
                 <Field label="Parte contrária" requirement="optional" error={errors.opposingParty}>
                   {(p) => <Input {...p} value={values.opposingParty} maxLength={300} onChange={(e) => set("opposingParty", e.target.value)} />}

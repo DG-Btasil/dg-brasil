@@ -9,12 +9,28 @@ import { LEGAL_CASE_STATUSES, type LegalCaseStatus } from "@/lib/constants/statu
  */
 
 export type CaseSortField = "updatedAt" | "createdAt" | "submittedAt" | "title" | "status";
+
+/**
+ * Grupos de situação usados pelos indicadores da Início (Roadmap 2.0): o
+ * cartão "Casos ativos" abre a lista já filtrada, e não a lista inteira.
+ * `?situacao=ativos` / `?situacao=aguardando` na URL.
+ */
+export const CASE_STATUS_GROUPS = {
+  ativos: ["READY_FOR_ANALYSIS", "ANALYZING", "WAITING_REVIEW", "ACCEPTED", "IN_PROGRESS"],
+  aguardando: ["SUBMITTED", "WAITING_DOCUMENTS"],
+} as const satisfies Record<string, readonly LegalCaseStatus[]>;
+export type CaseStatusGroup = keyof typeof CASE_STATUS_GROUPS;
+export const CASE_STATUS_GROUP_LABEL: Record<CaseStatusGroup, string> = {
+  ativos: "Ativos (em análise, aceitos e em andamento)",
+  aguardando: "Aguardando a equipe (enviados e aguardando documentos)",
+};
+const CASE_GROUP_KEYS = Object.keys(CASE_STATUS_GROUPS) as CaseStatusGroup[];
 export const CASE_PERIODS = ["7", "30", "90"] as const;
 export type CasePeriod = (typeof CASE_PERIODS)[number];
 
 export interface CaseListQuery {
   search: string;
-  status: LegalCaseStatus | "";
+  status: LegalCaseStatus | CaseStatusGroup | "";
   area: LegalArea | "";
   lawyer: string;
   origin: string;
@@ -54,7 +70,7 @@ export function caseQueryFromSearchParams(params: Record<string, string | string
   const uuid = (v: string) => (UUID.test(v) ? v : "");
   return {
     search: isUrlSafe(search) ? search : "",
-    status: oneOf(LEGAL_CASE_STATUSES, first(params.situacao)),
+    status: oneOf(LEGAL_CASE_STATUSES, first(params.situacao)) || oneOf(CASE_GROUP_KEYS, first(params.situacao)),
     area: oneOf(LEGAL_AREAS, first(params.area)),
     lawyer: uuid(first(params.responsavel)),
     origin: uuid(first(params.origem)),
@@ -95,7 +111,7 @@ export function caseQueryToInput(q: CaseListQuery, now = new Date()): Record<str
     page: q.page,
     pageSize: CASE_PAGE_SIZE,
     q: q.search.trim() || undefined,
-    status: q.status || undefined,
+    status: q.status ? ((CASE_GROUP_KEYS as string[]).includes(q.status) ? [...CASE_STATUS_GROUPS[q.status as CaseStatusGroup]] : q.status) : undefined,
     area: q.area || undefined,
     assignedLawyerId: q.lawyer || undefined,
     originOrganizationId: q.origin || undefined,

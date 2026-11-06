@@ -41,16 +41,16 @@ export function IndividualIdentificationFields() {
         {(p) => <Input type="date" {...p} {...register("birthDate")} />}
       </Field>
       <div className="col-span-2 grid grid-cols-[1fr_1.3fr_1fr_0.7fr] gap-x-5">
-        <Field label="Documento de identidade" requirement="recommended" error={errors.idType?.message}>
+        <Field label="Documento de identidade" requirement="optional" error={errors.idType?.message}>
           {(p) => <Select placeholder="Tipo" options={ID_OPTIONS} {...p} {...register("idType")} />}
         </Field>
-        <Field label="Número do documento" requirement="recommended" error={errors.idNumber?.message}>
+        <Field label="Número do documento" requirement="optional" error={errors.idNumber?.message}>
           {(p) => <Input placeholder="00.000.000-0" {...p} {...register("idNumber")} />}
         </Field>
-        <Field label="Órgão emissor" requirement="recommended" error={errors.idIssuer?.message}>
+        <Field label="Órgão emissor" requirement="optional" error={errors.idIssuer?.message}>
           {(p) => <Input placeholder="SSP" {...p} {...register("idIssuer")} />}
         </Field>
-        <Field label="UF" requirement="recommended" error={errors.idState?.message}>
+        <Field label="UF" requirement="optional" error={errors.idState?.message}>
           {(p) => <Select placeholder="—" options={UF_OPTIONS} {...p} {...register("idState")} />}
         </Field>
       </div>

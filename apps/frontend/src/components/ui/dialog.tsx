@@ -44,7 +44,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
               <X className="size-4" />
             </RadixDialog.Close>
           </div>
-          {children && <div className="max-h-[62vh] overflow-y-auto px-6 py-5">{children}</div>}
+          {children && <div className="max-h-[72vh] overflow-y-auto px-6 py-5">{children}</div>}
           {footer && <div className="flex items-center justify-end gap-2 border-t border-line bg-surface-muted px-6 py-3.5 rounded-b-lg">{footer}</div>}
         </RadixDialog.Content>
       </RadixDialog.Portal>

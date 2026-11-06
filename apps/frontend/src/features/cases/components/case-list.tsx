@@ -22,10 +22,13 @@ import type { CaseListItem } from "@/server/domain/cases/dto";
 import { usePermission } from "@/features/auth/hooks";
 import { searchActiveClients } from "@/features/clients/picker";
 import { useDirectoryUserMap, useLawyerOptions, useOrganizationNames, useOrgDirectory } from "@/features/directory/directory-context";
-import { CASE_PAGE_SIZE, CASE_PERIODS, caseQueryToInput, caseQueryToSearchParams, countCaseFilters, DEFAULT_CASE_QUERY, type CaseListQuery, type CaseSortField } from "../list-query";
+import { CASE_PAGE_SIZE, CASE_PERIODS, CASE_STATUS_GROUP_LABEL, type CaseStatusGroup, caseQueryToInput, caseQueryToSearchParams, countCaseFilters, DEFAULT_CASE_QUERY, type CaseListQuery, type CaseSortField } from "../list-query";
 import { CaseListTable } from "./case-list-table";
 
-const statusOptions = LEGAL_CASE_STATUSES.map((s) => ({ value: s, label: LEGAL_CASE_STATUS_LABEL[s] }));
+const statusOptions = [
+  ...(Object.keys(CASE_STATUS_GROUP_LABEL) as CaseStatusGroup[]).map((g) => ({ value: g, label: CASE_STATUS_GROUP_LABEL[g] })),
+  ...LEGAL_CASE_STATUSES.map((s) => ({ value: s, label: LEGAL_CASE_STATUS_LABEL[s] })),
+];
 const areaOptions = LEGAL_AREAS.map((a) => ({ value: a, label: LEGAL_AREA_LABEL[a] }));
 const PERIOD_LABEL: Record<(typeof CASE_PERIODS)[number], string> = { "7": "Últimos 7 dias", "30": "Últimos 30 dias", "90": "Últimos 90 dias" };
 const periodOptions = CASE_PERIODS.map((p) => ({ value: p, label: PERIOD_LABEL[p] }));

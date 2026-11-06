@@ -32,6 +32,29 @@ import { listAgreementRowsAction, listCasePartnershipsAction } from "@/server/do
  * encontrado": nunca revela se o caso existe para outro escritório.
  */
 async function InternalCase({ id }: { id: string }) {
+  const session = await requireAppSession();
+  // Análises e revisões: só ADMIN/LAWYER (ASSISTANT não tem as abas nem a leitura).
+  const canAnalyses = can(session.role, "analyses.start");
+  const canReviews = can(session.role, "reviews.view");
+  const canFinance = can(session.role, "finance.view");
+  const canAudit = can(session.role, "audit.view");
+  // Tudo que só depende do id sai junto com a ficha (antes eram 4 rodadas em sequência).
+  const batch = Promise.all([
+    getCaseCatalogAction(),
+    listCaseProcessesAction({ caseId: id, pageSize: 50 }),
+    listDocumentsAction(documentListInput({ legalCaseId: id })),
+    listRequirementsAction({ legalCaseId: id, pageSize: 50 }),
+    listPartnerRequestsAction(requestListInput({ legalCaseId: id })),
+    canAnalyses ? listAnalysesAction({ legalCaseId: id, pageSize: 50 }) : Promise.resolve(undefined),
+    canReviews ? listReviewsAction({ legalCaseId: id, pageSize: 50 }) : Promise.resolve(undefined),
+    canFinance
+      ? Promise.all([listAgreementRowsAction(agreementQueryToInput(DEFAULT_AGREEMENT_QUERY, { legalCaseId: id })), listCasePartnershipsAction({ legalCaseId: id })])
+      : Promise.resolve(undefined),
+    canAudit ? listAuditEventsAction(auditTimelineInput(id)) : Promise.resolve(undefined),
+    canAnalyses
+      ? Promise.all([listAgentRunsAction(agentRunQueryToInput(DEFAULT_AGENT_RUN_QUERY, { legalCaseId: id })), getOfficeStatusAction(), getAnalysisSetupAction({ legalCaseId: id })])
+      : Promise.resolve(undefined),
+  ]);
   const result = await getCaseAction({ id });
   if (!result.ok) {
     if (result.error.code === "NOT_FOUND" || result.error.code === "VALIDATION") return <CaseNotFound />;
@@ -39,32 +62,13 @@ async function InternalCase({ id }: { id: string }) {
   }
   if (result.data.surface !== "INTERNAL") return <CaseNotFound />;
   const withPartner = !!result.data.legalCase.partnerOrganizationId;
-  const session = await requireAppSession();
-  // Análises e revisões: só ADMIN/LAWYER (ASSISTANT não tem as abas nem a leitura).
-  const canAnalyses = can(session.role, "analyses.start");
-  const canReviews = can(session.role, "reviews.view");
-  const canFinance = can(session.role, "finance.view");
-  const canAudit = can(session.role, "audit.view");
-  const [catalog, processes, documents, requirements, partnerRequests, analyses, reviews, finance, activity] = await Promise.all([
-    getCaseCatalogAction(),
-    listCaseProcessesAction({ caseId: id, pageSize: 50 }),
-    listDocumentsAction(documentListInput({ legalCaseId: id })),
-    listRequirementsAction({ legalCaseId: id, pageSize: 50 }),
-    withPartner ? listPartnerRequestsAction(requestListInput({ legalCaseId: id })) : Promise.resolve(undefined),
-    canAnalyses ? listAnalysesAction({ legalCaseId: id, pageSize: 50 }) : Promise.resolve(undefined),
-    canReviews ? listReviewsAction({ legalCaseId: id, pageSize: 50 }) : Promise.resolve(undefined),
-    canFinance
-      ? Promise.all([listAgreementRowsAction(agreementQueryToInput(DEFAULT_AGREEMENT_QUERY, { legalCaseId: id })), listCasePartnershipsAction({ legalCaseId: id })])
-      : Promise.resolve(undefined),
-    canAudit ? listAuditEventsAction(auditTimelineInput(id)) : Promise.resolve(undefined),
-  ]);
+  const [catalog, processes, documents, requirements, requests, analyses, reviews, finance, activity, analysisExtras] = await batch;
+  const partnerRequests = withPartner ? requests : undefined;
   if (!catalog.ok) return <ActionErrorState error={catalog} title="Não foi possível abrir o caso." />;
   // Análise atual: a em curso, ou a mais recente; com os rótulos dos campos do modelo.
   const latest = analyses?.ok ? (analyses.data.items.find((a) => IN_FLIGHT_STATUSES.includes(a.dbStatus)) ?? analyses.data.items[0]) : undefined;
-  const [current, setup] = latest ? await Promise.all([getAnalysisAction({ id: latest.id }), getAnalysisSetupAction({ legalCaseId: id })]) : [undefined, undefined];
-  const [runs, ai] = canAnalyses
-    ? await Promise.all([listAgentRunsAction(agentRunQueryToInput(DEFAULT_AGENT_RUN_QUERY, { legalCaseId: id })), getOfficeStatusAction()])
-    : [undefined, undefined];
+  const current = latest ? await getAnalysisAction({ id: latest.id }) : undefined;
+  const [runs, ai, setup] = analysisExtras ?? [undefined, undefined, undefined];
   const fieldDefs = (latest && setup?.ok && setup.data.templates.find((t) => t.id === latest.templateId)?.fields) || [];
   return (
     <Suspense fallback={<SkeletonRows rows={6} />}>

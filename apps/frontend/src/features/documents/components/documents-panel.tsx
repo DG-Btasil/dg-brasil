@@ -100,7 +100,12 @@ export function DocumentsPanel({
             </span>
           )}
         </div>
-        <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-60")}>
+        {/* Área que usa a tela: começa alta, cresce com a lista e pode ser
+            redimensionada pela alça do canto (arrastar para baixo/cima). */}
+        <div
+          aria-busy={pending || undefined}
+          className={cn("min-h-[min(60vh,560px)] resize-y overflow-auto transition-opacity", pending && "opacity-60")}
+        >
           {!result.ok ? (
             <ActionErrorState error={result} onRetry={retry} title="Não foi possível carregar os documentos." />
           ) : !page ? (
@@ -160,10 +165,10 @@ export function DocumentsPanel({
                     ];
                     return (
                       <Tr key={doc.id} className={doc.status === "ARCHIVED" ? "text-muted" : undefined}>
-                        <Td className="max-w-[300px]">
-                          <span className="block truncate font-medium text-foreground">{doc.title}</span>
+                        <Td className="min-w-[260px]">
+                          <span className="block break-words font-medium text-foreground">{doc.title}</span>
                           {v?.fileName && (
-                            <span className="block truncate text-[12px] text-muted">
+                            <span className="block break-all text-[12px] text-muted">
                               {v.fileName}
                               {v.sizeBytes ? ` · ${formatBytes(v.sizeBytes)}` : ""}
                             </span>
