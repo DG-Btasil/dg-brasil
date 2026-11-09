@@ -233,6 +233,7 @@ Convidar um parceiro com um Gmail real falhou com "O convite não pôde ser envi
 | E-09 | Configurações → Geral | Tirar "e unidades" da descrição de Atuação (R2-08) |
 | E-10 | Portal do parceiro | Mesma arrumação de indicadores, gráficos, altura, rolagem e posicionamento do escritório, na Início, no Financeiro e demais telas |
 | E-11 | Parceiros → ficha do parceiro | A edição da divisão já existe ("Alterar divisão da parceria", só para novos casos, auditada). Deixar visível e adicionar confirmação mostrando divisão atual → nova antes de salvar |
+| E-13 | Portal → Convidar usuário e primeiro acesso | OAB **opcional** para o usuário do parceiro, que pode ser secretária ou outra função sem OAB. No primeiro acesso a pessoa informa se tem OAB (opção "Não sou advogado(a)") e depois cadastra quantas quiser em Minha conta → Minhas OABs. Hoje é obrigatória em `lib/auth/oab.ts:11` e em `first-access-screen.tsx:19` |
 | E-12 | Convidar parceiro | Campo "Porcentagem do parceiro (%)", com texto claro: "É a parte dos honorários que fica com o parceiro. Ex.: 30 = 30% para o parceiro e 70% para o seu escritório." e prévia "Parceiro X% · Escritório Y%" |
 
 **Indicadores de Revisões (E-05):** faixa como `ProcessSummaryStrip`, contada no banco para a fila inteira.
@@ -288,6 +289,11 @@ pedido nos itens 4 e 5. Leia docs/qa/roadmap-2.0/qa-roadmap-2.0.md, seção 9.
    Ficha do parceiro (E-11): manter ChangeShareDialog, deixar o botão visível e pedir
    confirmação com a divisão atual e a nova. Continua valendo só para novos casos.
    Mensagem do convite: não dizer "Nada foi criado" (R2-16).
+   OAB do convidado (E-13): tirar PARTNER_USER de OAB_REQUIRED_ROLES e colocar em
+   OAB_OPTIONAL_ROLES em lib/auth/oab.ts; igualar a cópia local em
+   features/auth/components/first-access-screen.tsx (o ideal é importar de lib/auth/oab.ts);
+   conferir o servidor do aceite e os testes. No convite, o campo aparece como opcional.
+   Continua obrigatória para LAWYER do escritório. O painel Minhas OABs não muda.
 
 7. Revisão geral: percorra Início, Clientes, Casos, Processos, Revisões, Parceiros,
    Financeiro (todas as abas), DG Brasil, Configurações e todas as telas do portal
