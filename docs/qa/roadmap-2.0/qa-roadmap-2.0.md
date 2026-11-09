@@ -8,12 +8,12 @@ publicado `app.dgbrasil.adv.br`, que usa esse mesmo banco. Commit validado:
 
 **Veredito: APROVADO COM PENDÊNCIAS.** Nenhum defeito que bloqueie o uso foi
 encontrado no que foi possível testar. O veredito não é "aprovado" porque ficaram
-sem teste o portal do parceiro, o primeiro acesso do parceiro e o `validar:real`.
+sem teste o portal do parceiro e o primeiro acesso do parceiro.
 
 | Item | Situação |
 |---|---|
 | Parte 1 — migrations 045–049 | Aprovada |
-| Parte 2 — testes automáticos | Com ressalvas: `validar:real` não rodou, integração só passa com fixtures ajustadas (R2-01), lint com 2 erros (R2-04) |
+| Parte 2 — testes automáticos | Com ressalvas: integração só passa com fixtures ajustadas (R2-01), lint com 2 erros (R2-04) |
 | Parte 3 — telas do escritório (ADMIN) | Aprovada, com achados menores |
 | Parte 3 — portal do parceiro | **Não feita:** sem login de parceiro |
 | Parte 3 — convite até o primeiro acesso | **Parcial:** falta uma caixa de e-mail real |
@@ -65,7 +65,7 @@ Target:    VERIFIED parcial (Supabase DEV e site publicado; portal NOT PERFORMED
 | Comando | Resultado |
 |---|---|
 | `npm run verificar` | **833/833** |
-| `npm run validar:real` | **Não rodou.** Parou na trava do pré-flight (R2-02) |
+| `npm run validar:real` | **152/152**, depois de remover o cliente de R2-02 |
 | `npm run typecheck` | Limpo |
 | `npm run lint` | **2 erros**, 997 avisos (R2-04) |
 | `npm test` (frontend) | **598/598** |
@@ -85,7 +85,7 @@ entre os que passaram com o ajuste.
 | ID | O quê | Onde | Como reproduzir | Gravidade | Print |
 |---|---|---|---|---|---|
 | R2-01 | 63 testes e 3 arquivos de integração falham porque as fixtures não acompanharam a 045: faltam os campos agora obrigatórios, `finance` cria contrato sem processo e `imports` lê a coluna apagada. Não é defeito do produto, mas a suíte fica inútil até corrigir | `apps/frontend/tests/integration/*` (`finance.int.test.ts:199`, `imports.int.test.ts:100`) | `npm run test:integration` | Incomoda | — |
-| R2-02 | `validar:real` não roda: há 1 cliente fora do padrão de teste, criado em 2026-11-06 por `qa.advogado`, com 3 casos (id `55ced8af-f813-43a2-afbb-de900ed348d5`). Não foi apagado por ser anterior a esta validação | `supabase/tests/real/validar-real.mjs:96` | `npm run validar:real` | **Bloqueia** esta verificação | — |
+| R2-02 | `validar:real` não roda: há 1 cliente fora do padrão de teste, criado em 2026-11-06 por `qa.advogado`, com 3 casos (id `55ced8af-f813-43a2-afbb-de900ed348d5`). Removido a pedido do Miguel; na segunda rodada, 152/152 | `supabase/tests/real/validar-real.mjs:96` | `npm run validar:real` | **Resolvido** em 2026-11-09 | — |
 | R2-03 | Com o CPF desligado, o campo mostra "Consultando a Receita Federal…" por um instante e o navegador chama o servidor. O guia pede que nada seja consultado nem apareça aviso. A Receita não é chamada de fato | `features/lookup/use-autofill.ts:64` e `autofillHint` | Novo cliente PF, digitar um CPF válido | Incomoda | `b6-cep-cpf.png` |
 | R2-04 | O lint analisa o arquivo gerado e minificado do executor, que não está nos ignores | `apps/frontend/eslint.config.mjs`, `public/executor/dg-executor.mjs` | `npm run lint` | Cosmético | — |
 | R2-05 | Diálogos altos não rolam. Em janela de 611 px de altura, "Nova despesa" termina em 682 px e o botão de confirmar fica inalcançável | Diálogo `position: fixed` sem `max-height` | Janela com menos de ~680 px de altura, Processo → Financeiro → Nova despesa | Incomoda | — |
@@ -172,10 +172,9 @@ um endereço digitado por mim, `/dg-brasil/agentes`, que não é link do sistema
 Antes de dado real:
 
 1. Testar o convite de parceiro com e-mail real, do link até o portal. É o fluxo novo de maior risco e não foi visto de ponta a ponta.
-2. Rodar `validar:real` no DEV depois de resolver R2-02.
-3. Corrigir R2-01, para a integração voltar a proteger as próximas mudanças.
-4. A 045 apaga dados: os 1.043 responsáveis de cliente do DEV seriam, em produção, informação real. Fazer backup antes e decidir se o responsável precisa ir para o caso.
-5. A conferência em dupla dos prazos continua valendo (`ROADMAP.md`).
+2. Corrigir R2-01, para a integração voltar a proteger as próximas mudanças.
+3. A 045 apaga dados: os 1.043 responsáveis de cliente do DEV seriam, em produção, informação real. Fazer backup antes e decidir se o responsável precisa ir para o caso.
+4. A conferência em dupla dos prazos continua valendo (`ROADMAP.md`).
 
 ## 7. Dados criados no DEV
 
@@ -188,9 +187,10 @@ Tudo fictício, com "QA R2" no nome:
 - Massa habitual das rodadas de integração (`@dgbrasil.test`).
 - OABs de teste do usuário `adm`: removidas; o painel voltou a ficar vazio.
 
+Removido a pedido do Miguel: o cliente de R2-02 com 3 casos, 4 documentos e 56 notificações, em exclusão física numa única transação. Os 2 registros de acesso LGPD desse cliente e as 4 versões de documento também saíram, pela operação administrativa prevista na migration 001 (`dg.allow_physical_delete`). Os arquivos desses documentos no Storage não foram confirmados: a remoção retornou 0 itens.
+
 ## 8. Para concluir
 
-1. Decidir o cliente de R2-02 e rodar `npm run validar:real`.
-2. Convidar um parceiro com uma caixa de e-mail real e seguir o link num navegador anônimo.
-3. Com esse parceiro logado, percorrer os itens de portal dos blocos 1, 5, 6 e 8.
-4. Parte 4, com alguém no computador do escritório.
+1. Convidar um parceiro com uma caixa de e-mail real e seguir o link num navegador anônimo.
+2. Com esse parceiro logado, percorrer os itens de portal dos blocos 1, 5, 6 e 8.
+3. Parte 4, com alguém no computador do escritório.
