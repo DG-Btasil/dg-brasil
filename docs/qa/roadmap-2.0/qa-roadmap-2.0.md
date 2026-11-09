@@ -383,7 +383,7 @@ Um escritório fictício pendente, "Convite: QA Rodada Dois" (`qa.r2.retrynjte@d
 | KPIs: Início | OK | 5 indicadores numa linha em 1024, 1440 e 1920 (antes, 2 + 2 + 1 abaixo de 1280). `home-1024.png` |
 | KPIs: Financeiro do processo | OK | 11 indicadores em 3 linhas; "Resultado" em duas colunas fecha a última linha até a borda. `processo-financeiro.png` |
 | Portal (Início 5 KPIs, Financeiro 1 KPI e textos, Minha conta) | Não testado | Precisa de login de parceiro; o ADMIN não abre o portal |
-| Janela de aceitar caso de parceiro (texto) | Não testado | Não abri para não arriscar aceitar um caso; texto conferido no código |
+| Janela de aceitar caso de parceiro | OK | Caso 031 (origem Parceiro A imw9qdbkc): a janela diz "com a divisão de Parceiro A imw9qdbkc vigente quando o caso foi criado…". Aceito com autorização da Barbara (dados de teste): Financeiro do caso mostra o acordo 50% / 50%, ativo desde 09/11/2026 18:38. `aceitar-caso-parceiro.png`, `caso-aceito-financeiro.png` |
 
 ### Pendências
 
@@ -394,4 +394,4 @@ Nenhuma falha. Falta só conferir no portal, logado como parceiro:
 
 ### Dados criados no DEV nesta rodada
 
-Nenhum. Só leitura, e cliques nos filtros de Revisões.
+O "Caso 031" (`/casos/19b76187-f90c-465a-a203-6df6ce76737b`, dados de teste) foi aceito, com "Teste LAWYER" como responsável. Fora isso, só leitura e cliques nos filtros de Revisões.
