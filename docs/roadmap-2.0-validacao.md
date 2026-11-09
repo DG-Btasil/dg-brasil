@@ -20,6 +20,28 @@ devolva o relatório no formato da última seção. O plano e as decisões estã
 
 ---
 
+## Skills do projeto: use em cada parte
+
+O repositório traz skills em `.claude/skills/` (cópia do ECC, licença MIT). O
+Claude Code as carrega sozinho ao abrir o projeto: chame pelo nome (ex.:
+`/ecc-browser-qa`) ou peça "use a skill ecc-browser-qa". Em cada parte abaixo,
+**carregue a skill indicada antes de começar** e siga o método dela, sem trocar
+o que este guia manda verificar.
+
+| Parte | Skill | Para quê |
+|---|---|---|
+| 1 — Migrations no DEV | `ecc-database-migrations` | Conferir o push com segurança: dry-run, o que cada migration apaga ou converte, e o que fazer se falhar no meio |
+| 1 — Migrations no DEV | `ecc-postgres-patterns` | Revisar RLS, índices e as funções novas (`get_dashboard_metrics`, visões do financeiro) |
+| 2 — Testes automáticos | `ecc-verification-loop` | Rodar build, tipos, lint, testes e revisão do diff, com o veredito PASS/FAIL por fase |
+| 3 — Telas | `ecc-browser-qa` | Navegar pelo Playwright (a Barbara faz o login), erros no console, telas em 3 larguras e acessibilidade |
+| 3 — Telas | `ecc-e2e-testing` | Organizar os roteiros das telas (passos, prints, telas que falham de vez em quando) |
+| 3 — Segurança | `ecc-security-review` | Conferir convites e primeiro acesso do parceiro, OABs, consultas de CEP/CNPJ, instalador público `/executor/` e o que o parceiro consegue ver |
+| Relatório | `ecc-production-audit` | Fechar com "o que quebra em produção?" e listar o que falta antes de dado real |
+
+`ecc-nextjs-turbopack`, `ecc-react-patterns` e `ecc-typescript-patterns` são de
+apoio: use só se precisar entender o código de um achado. Não corrija código
+de produção nesta validação; registre o achado.
+
 ## Parte 0: Preparar
 
 1. `git pull`; o último commit tem "roadmap-2.0" na mensagem.
@@ -175,7 +197,9 @@ Só se a Barbara estiver no computador do escritório. Senão, marque "não feit
 
 Crie `docs/qa/roadmap-2.0/qa-roadmap-2.0.md` com:
 
-1. Resumo: APROVADO / APROVADO COM PENDÊNCIAS / REPROVADO.
+1. Resumo: APROVADO / APROVADO COM PENDÊNCIAS / REPROVADO, e quais skills foram
+   usadas em cada parte (com o veredito do `ecc-verification-loop` e do
+   `ecc-browser-qa`).
 2. Contagens da Parte 1 (antes e depois) e resultado de cada comando da Parte 2.
 3. Tabela de achados: `R2-01, R2-02…` — o quê, onde, como reproduzir, gravidade
    (bloqueia / incomoda / cosmético), print.
