@@ -95,6 +95,7 @@ entre os que passaram com o ajuste.
 | R2-09 | Acessibilidade (axe, WCAG 2.2 AA): contraste insuficiente em 3 a 29 elementos por tela; na Início, 2 elementos focáveis dentro de `aria-hidden` (gráficos) | 5 telas verificadas | Rodar axe-core | Cosmético | — |
 | R2-10 | Falha única na criação de caso (erro interno) durante a integração; passou na repetição. Causa não identificada | `createCaseOnce`, teste "prazo: criar (data civil)…" | Não reproduzido | Incomoda | — |
 | R2-11 | Resto de código: a importação ainda monta `client.responsible_user_id`. A migration ignora a chave | `server/domain/imports/normalize.ts:416` | Leitura de código | Cosmético | — |
+| R2-16 | Convite por e-mail falhou com endereço real (Gmail); a mensagem diz "Nada foi criado", mas ficam escritórios inativos. Causa provável: SMTP padrão do Supabase (seção 9) | Parceiros → Convidar parceiro; `server/auth/team-actions.ts:297` | Convidar com e-mail fora da equipe do projeto Supabase | **Bloqueia** o primeiro acesso do parceiro | — |
 | R2-13 | No portal, depois do CEP o foco fica no próprio CEP; no escritório vai para o número, como o guia pede | `features/partner-portal/components/new-case-wizard.tsx:196` | Portal → Novo caso → digitar o CEP | Cosmético | `b6-portal-cep.png` |
 | R2-14 | Telefone é obrigatório no cadastro do escritório e opcional no do portal. O roadmap não lista telefone entre os obrigatórios | Formulários de cliente | Comparar `/clientes/novo` e o assistente do portal | Cosmético | `b6-portal-cliente-novo.png` |
 | R2-15 | Observado uma vez no portal: "Selecione o estado civil" continuou depois de escolher a opção, e o primeiro clique em Continuar não avançou; o segundo avançou sem mudar nada. Não reproduzido | Assistente de novo caso do portal | Enviar vazio, preencher, Continuar | Cosmético | — |
@@ -188,6 +189,7 @@ Tudo fictício, com "QA R2" no nome:
 - Computador "Computador QA R2": revogado.
 - 2 escritórios "Convite: qa.r2.parceiro…" inativos e 1 convite revogado.
 - Pelo portal: cliente "Cliente Validacao Portal", caso `5a3f985c-…`, 1 solicitação e 1 documento fictício (no escritório "Parceiro QA A").
+- Tentativas de convite feitas pelo Miguel: 2 escritórios "Convite: …" inativos e 2 convites revogados.
 - Massa habitual das rodadas de integração (`@dgbrasil.test`).
 - OABs de teste do usuário `adm`: removidas; o painel voltou a ficar vazio.
 
@@ -195,5 +197,97 @@ Removido a pedido do Miguel: o cliente de R2-02 com 3 casos, 4 documentos e 56 n
 
 ## 8. Para concluir
 
-1. Convidar um parceiro com uma caixa de e-mail real e seguir o link num navegador anônimo.
+1. Ligar o SMTP próprio no DEV (R2-16), convidar um parceiro com uma caixa de e-mail real e seguir o link num navegador anônimo.
 2. Parte 4, com alguém no computador do escritório.
+
+## 9. Correções pedidas depois da validação (2026-11-09)
+
+Pedidas pelo Miguel ao revisar as telas. Nada disto foi implementado ainda.
+
+### Convite por e-mail (R2-16)
+
+Convidar um parceiro com um Gmail real falhou com "O convite não pôde ser enviado por e-mail. Nada foi criado; tente novamente."
+
+- **Causa provável:** o DEV usa o SMTP padrão do Supabase, que só entrega para e-mails da equipe do projeto (`docs/auth.md`, item 6). `supabase/config.toml` não tem SMTP próprio. **Não confirmado:** os logs do Auth e da Vercel não estavam acessíveis nesta validação, e o erro exato só vai para o log do servidor.
+- **O que corrigir:**
+  1. Ligar SMTP próprio no Supabase (Resend), como em `docs/deploy/producao.md`, e repetir o convite.
+  2. Se ainda falhar, ler o erro em `[equipe] envio do convite` nos logs da Vercel.
+  3. Corrigir a mensagem: "Nada foi criado" não é verdade. As 2 tentativas deixaram 2 escritórios "Convite: …" inativos (R2-06).
+  4. Só criar o escritório depois de o convite sair, ou reaproveitar o pendente na nova tentativa.
+- Sem isso, o primeiro acesso do parceiro não pode ser testado.
+
+### Correções estéticas
+
+| ID | Tela | O que mudar |
+|---|---|---|
+| E-01 | Parceiros | "Casos por escritório" e "Clientes por escritório" com a mesma altura de "Casos novos × aceitos", com rolagem interna na lista |
+| E-02 | Início | "Casos por escritório de origem" e "Como os clientes chegaram" com a mesma altura, rolagem interna, sem espaço branco abaixo |
+| E-03 | Clientes | "Escritório de origem" e "Como chegaram" com a mesma altura de "Novos clientes" |
+| E-04 | Casos | Hoje "Escritório de origem" fica sozinho e muito alto, com "Como chegaram" quase vazio ao lado. Transformar em faixa larga e baixa, ocupando a largura toda, com a lista em colunas e rolagem |
+| E-05 | Revisões | Indicadores clicáveis no modelo de Processos, que funcionam como filtro (lista abaixo) |
+| E-06 | Financeiro → Visão geral | Quarto gráfico no espaço vazio ao lado de "Contratado por modelo" |
+| E-07 | Todas as telas | Revisar alinhamento, altura e posição de todos os blocos (ver o prompt) |
+| E-08 | Portal | Foco no número depois do CEP (R2-13) e telefone igual ao do escritório (R2-14) |
+| E-09 | Configurações → Geral | Tirar "e unidades" da descrição de Atuação (R2-08) |
+
+**Indicadores de Revisões (E-05):** faixa como `ProcessSummaryStrip`, contada no banco para a fila inteira.
+
+| Indicador | Ao clicar |
+|---|---|
+| Aguardando decisão | Visão "Aguardando decisão" |
+| Urgentes e alta prioridade | Filtra a prioridade |
+| Vencendo em até 7 dias (inclui vencidas) | Filtro novo pelo prazo (`due_at`) |
+| Sem responsável | Liga "Sem responsável" |
+
+**Quarto gráfico do Financeiro (E-06), recomendado: "A receber por vencimento".** Barras com o saldo em aberto em: em atraso, até 30 dias, 31 a 60, 61 a 90 e acima de 90. Responde "quanto entra e quando", o que nenhum dos três gráficos atuais mostra, e destaca o atraso. Alternativa: "Honorários por mês: escritório × parceiro".
+
+### Prompt para a correção
+
+```text
+No projeto DG Brasil (apps/frontend), corrija a estética dos indicadores e gráficos.
+Não mude regras de negócio, permissões nem as consultas existentes, exceto o que for
+pedido nos itens 4 e 5. Leia docs/qa/roadmap-2.0/qa-roadmap-2.0.md, seção 9.
+
+1. Altura padrão dos painéis (features/metrics/components/metrics-board.tsx)
+   - Hoje o componente Trend tem gráfico de 200 px, e Categories cresce com o número
+     de linhas. Com muitos escritórios, ele fica enorme.
+   - Faça Categories ter o corpo com a mesma altura do gráfico de Trend, com o
+     cabeçalho fixo e rolagem vertical só na lista.
+   - Todos os painéis da mesma linha devem ter altura igual (h-full, sem sobra
+     branca), inclusive os estados vazios e com poucas linhas.
+   - Rolagem acessível por teclado (tabIndex=0 e aria-label na área rolável).
+   - Vale para Parceiros, Início, Clientes, Casos, Processos e portal.
+
+2. Início: os Tiles compactos da terceira coluna devem ocupar a mesma altura dos
+   painéis ao lado.
+
+3. Casos: são 4 painéis numa grade de 3 colunas, e o último fica sozinho.
+   Faça "Escritório de origem" ocupar a largura toda (xl:col-span-3), baixo, com a
+   lista em 2 ou 3 colunas e a mesma altura máxima com rolagem.
+   Se houver só um escritório, o painel não aparece: a grade não pode ficar com buraco.
+
+4. Revisões (features/reviews/components/review-queue.tsx): acrescente, acima das
+   abas, uma faixa no modelo de ProcessSummaryStrip com: Aguardando decisão, Urgentes
+   e alta prioridade, Vencendo em até 7 dias (inclui vencidas) e Sem responsável.
+   Conte no banco para a fila inteira, respeitando a RLS. Cada indicador é um botão
+   que aplica o filtro na URL (aria-pressed); clicar de novo limpa. O filtro por
+   prazo é novo: crie-o no servidor, com schema Zod e teste.
+
+5. Financeiro → Visão geral (features/finance/components/finance-overview.tsx):
+   adicione o gráfico "A receber por vencimento" (em atraso, até 30, 31 a 60, 61 a 90,
+   acima de 90 dias), com o saldo em aberto somado no servidor, no quarto espaço da
+   grade, seguindo chart-theme.ts. Contratos antigos seguem a mesma regra dos totais.
+
+6. Correções pequenas: R2-08, R2-13 e R2-14 do relatório.
+
+7. Revisão geral: percorra Início, Clientes, Casos, Processos, Revisões, Parceiros,
+   Financeiro (todas as abas), DG Brasil, Configurações e o portal do parceiro e
+   confira: mesma altura entre blocos da mesma linha; bordas e margens alinhadas;
+   espaçamento regular; nenhum buraco na grade; nenhum bloco muito maior que os
+   vizinhos; textos sem corte.
+
+Aceite: prints em 1440 e 1920 px de cada tela, antes e depois, em
+docs/qa/roadmap-2.0/estetica/, testando com muitas linhas (o DEV tem 260+ escritórios)
+e com poucas. Rode typecheck, lint, testes unitários e build. Não aplique migration
+destrutiva.
+```
