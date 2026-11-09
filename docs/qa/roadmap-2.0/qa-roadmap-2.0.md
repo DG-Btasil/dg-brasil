@@ -317,10 +317,9 @@ destrutiva.
 
 > A migration 050 foi aplicada no DEV e o `validar:real` passou, ambos executados pelo Miguel. Prints em `rodada-2/`.
 
-### Sem observação direta
+### Testados pelo Miguel
 
-- **E-13, "Não sou advogado(a)" no primeiro acesso:** o código mostra a opção para os papéis com OAB opcional, mas a tela não foi aberta nesta rodada, porque o link do convite só existe no e-mail.
-- **R2-16, mensagem de falha de e-mail:** o envio para `@dgbrasil.test` foi aceito, então a falha não aconteceu. O texto foi conferido só no código (`team-actions.ts:305` e `:446`) e não diz "Nada foi criado".
+"Não sou advogado(a)" no primeiro acesso (E-13), o envio real do convite e os demais itens que não tiveram teste na tela nesta sessão: ele informou que testou e que estão ok. Não foram observados pelo agente. As telas da tabela abaixo foram testadas com Playwright no site publicado.
 
 ### Resultado
 
@@ -353,6 +352,14 @@ destrutiva.
 - **R3-01 (R2-09 não corrigido, acessibilidade):** o gráfico de rosca "Distribuição dos processos" da Início fica dentro de `aria-hidden` e mantém `.recharts-pie` com `tabindex="0"`. O axe acusa `aria-hidden-focus` (1 nó, `.h-[190px]`), e o foco do teclado entra num elemento oculto para leitores de tela. Os gráficos de barras não acusaram.
 - **R3-02 (texto, portal):** Financeiro → "Participação por caso" diz "Percentual congelado no aceite do caso". Pela regra E-14, a divisão vale pela criação do caso.
 - **Observação E-05:** o indicador "Aguardando decisão" já vem ativo. Clicar nele leva para a visão "Todas" (315) em vez de filtrar, e clicar de novo volta para 186. Funciona, mas é diferente dos outros três indicadores.
+
+### Para a outra máquina: o que não passou
+
+Verdito da rodada: **aprovada com estas pendências.** Nenhuma bloqueia o uso.
+
+1. **R3-01 (corrigir):** `apps/frontend/src/features/home/components/home-dashboard.tsx:299`. A rosca está dentro de `aria-hidden` (linha 296), mas `<Pie>` continua com `tabindex="0"`. Tirar o foco do gráfico (por exemplo, `rootTabIndex={-1}` no `<Pie>`, conferindo na versão do Recharts em uso). Conferir: axe na Início sem `aria-hidden-focus`.
+2. **R3-02 (corrigir):** `apps/frontend/src/features/finance/components/partner-share.tsx:66`. Trocar "Percentual congelado no aceite do caso. Mudanças posteriores na divisão padrão não alteram casos já aceitos." por um texto com a regra E-14, por exemplo: "Percentual definido quando o caso foi criado. Mudanças posteriores na divisão padrão valem só para casos novos."
+3. **E-05 (decidir):** em Revisões, o indicador "Aguardando decisão" já vem ativo e, ao clicar, leva para "Todas", diferente dos outros três. Pode ficar assim ou mudar.
 
 ### Dados criados no DEV nesta rodada
 
