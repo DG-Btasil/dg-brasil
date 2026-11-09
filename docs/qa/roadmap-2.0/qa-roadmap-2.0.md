@@ -234,6 +234,7 @@ Convidar um parceiro com um Gmail real falhou com "O convite não pôde ser envi
 | E-10 | Portal do parceiro | Mesma arrumação de indicadores, gráficos, altura, rolagem e posicionamento do escritório, na Início, no Financeiro e demais telas |
 | E-11 | Parceiros → ficha do parceiro | A edição da divisão já existe ("Alterar divisão da parceria", só para novos casos, auditada). Deixar visível e adicionar confirmação mostrando divisão atual → nova antes de salvar |
 | E-13 | Portal → Convidar usuário e primeiro acesso | OAB **opcional** para o usuário do parceiro, que pode ser secretária ou outra função sem OAB. No primeiro acesso a pessoa informa se tem OAB (opção "Não sou advogado(a)") e depois cadastra quantas quiser em Minha conta → Minhas OABs. Hoje é obrigatória em `lib/auth/oab.ts:11` e em `first-access-screen.tsx:19` |
+| E-14 | Divisão do parceiro (decisão do Miguel) | Regra: o caso fica com a divisão vigente **quando foi criado**. Se o parceiro era 50/50 e mudou para 60/40, só os casos criados depois da mudança ficam 60/40. **Hoje o banco fixa a divisão no aceite** (`20261005000011_finance.sql:213-229`): um caso criado antes da mudança e aceito depois pegaria a divisão nova. Ajustar para valer a data de criação |
 | E-12 | Convidar parceiro | Campo "Porcentagem do parceiro (%)", com texto claro: "É a parte dos honorários que fica com o parceiro. Ex.: 30 = 30% para o parceiro e 70% para o seu escritório." e prévia "Parceiro X% · Escritório Y%" |
 
 **Indicadores de Revisões (E-05):** faixa como `ProcessSummaryStrip`, contada no banco para a fila inteira.
@@ -294,6 +295,11 @@ pedido nos itens 4 e 5. Leia docs/qa/roadmap-2.0/qa-roadmap-2.0.md, seção 9.
    features/auth/components/first-access-screen.tsx (o ideal é importar de lib/auth/oab.ts);
    conferir o servidor do aceite e os testes. No convite, o campo aparece como opcional.
    Continua obrigatória para LAWYER do escritório. O painel Minhas OABs não muda.
+   Divisão do parceiro (E-14): o caso deve ficar com a divisão vigente na CRIAÇÃO do
+   caso, não no aceite. Grave a divisão ao criar o caso (nova migration, sem editar as
+   antigas) e use-a no snapshot do aceite. Acordos já existentes não mudam. Cubra em
+   npm run verificar: criar a 50/50, mudar para 60/40, aceitar e conferir 50/50; caso
+   criado depois da mudança fica 60/40.
 
 7. Revisão geral: percorra Início, Clientes, Casos, Processos, Revisões, Parceiros,
    Financeiro (todas as abas), DG Brasil, Configurações e todas as telas do portal
