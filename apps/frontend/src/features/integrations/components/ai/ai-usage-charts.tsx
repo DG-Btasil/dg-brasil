@@ -32,7 +32,7 @@ export function DailyUsageChart({ daily }: { daily: AIUsage["daily"] }) {
         <figure>
           <div className="h-[220px]" aria-hidden>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <AreaChart accessibilityLayer={false} data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                 <CartesianGrid vertical={false} stroke={CHART_GRID_STROKE} />
                 <XAxis dataKey="label" tick={CHART_AXIS_TICK} tickLine={false} axisLine={{ stroke: CHART_GRID_STROKE }} interval={6} />
                 <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} width={40} tickFormatter={(v: number) => formatNumber(v)} />
@@ -61,7 +61,7 @@ export function RunsByAgentChart({ data }: { data: AgentUsagePoint[] }) {
         <figure>
           <div className="h-[200px]" aria-hidden>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 0 }} barCategoryGap="30%">
+              <BarChart accessibilityLayer={false} data={data} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 0 }} barCategoryGap="30%">
                 <CartesianGrid horizontal={false} stroke={CHART_GRID_STROKE} />
                 <XAxis type="number" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={(v: number) => formatNumber(v)} />
                 <YAxis type="category" dataKey="name" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} width={150} />

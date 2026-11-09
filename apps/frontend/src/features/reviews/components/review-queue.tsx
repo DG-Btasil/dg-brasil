@@ -2,7 +2,6 @@
 
 import { CheckCircle2, SearchX } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { PRIORITIES, PRIORITY_LABEL, type Priority } from "@/lib/constants/status";
 import { pluralize } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { useServerList } from "@/lib/hooks/use-server-list";
@@ -17,38 +16,60 @@ import { Panel } from "@/components/ui/panel";
 import { Tabs } from "@/components/ui/tabs";
 import type { Page } from "@/server/core/pagination";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
-import type { ReviewListItem } from "@/server/domain/reviews/dto";
+import type { ReviewListItem, ReviewSummaryDTO } from "@/server/domain/reviews/dto";
 import {
+  countReviewFilters,
   DEFAULT_REVIEW_QUERY,
   REVIEW_DB_STATUSES,
+  REVIEW_DUE_FILTERS,
+  REVIEW_DUE_LABEL,
   REVIEW_KIND_LABEL,
   REVIEW_KINDS,
   REVIEW_PAGE_SIZE,
+  REVIEW_PRIORITY_OPTIONS,
   REVIEW_VIEW_LABEL,
   REVIEW_VIEWS,
   reviewQueryToInput,
   reviewQueryToSearchParams,
+  toggleReviewCounter,
   type ReviewListQuery,
 } from "../list-query";
 import { DB_STATUS_LABEL, ReviewTable } from "./review-table";
+import { ReviewSummaryStrip, useReviewSummary } from "./review-summary-strip";
 
-const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }));
 const KIND_OPTIONS = REVIEW_KINDS.map((k) => ({ value: k, label: REVIEW_KIND_LABEL[k] }));
 const STATUS_OPTIONS = REVIEW_DB_STATUSES.map((s) => ({ value: s, label: DB_STATUS_LABEL[s] }));
+const DUE_OPTIONS = REVIEW_DUE_FILTERS.map((d) => ({ value: d, label: REVIEW_DUE_LABEL[d] }));
 
 /**
  * Fila de revisões humanas (ADMIN e LAWYER) lida do servidor: visões, filtros
  * e páginas no banco (RLS), estado na URL. "IA executa. Humano decide."
+ * Acima das abas, os indicadores da fila inteira (contados no banco), que
+ * também são atalhos de filtro.
  */
-export function ReviewQueue({ initialQuery, initialResult }: { initialQuery: ReviewListQuery; initialResult: ActionResult<Page<ReviewListItem>> }) {
+export function ReviewQueue({
+  initialQuery,
+  initialResult,
+  initialSummary,
+}: {
+  initialQuery: ReviewListQuery;
+  initialResult: ActionResult<Page<ReviewListItem>>;
+  /** Indicadores da fila, contados no servidor junto com a primeira página. */
+  initialSummary?: ActionResult<ReviewSummaryDTO>;
+}) {
+  const { summary, refresh: refreshSummary } = useReviewSummary(initialSummary);
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
     initialResult,
-    load: (q: ReviewListQuery) => listReviewsAction(reviewQueryToInput(q)),
+    load: (q: ReviewListQuery) => {
+      // A lista recarrega a cada filtro: os indicadores são recontados junto (a fila pode ter mudado).
+      refreshSummary();
+      return listReviewsAction(reviewQueryToInput(q));
+    },
     toSearch: reviewQueryToSearchParams,
   });
   const page = result.ok ? result.data : undefined;
-  const filtered = !!query.priority || !!query.kind || !!query.status || query.unassigned;
+  const filtered = countReviewFilters(query) > 0;
   const tabs = REVIEW_VIEWS.map((key) => ({ key, label: REVIEW_VIEW_LABEL[key] }));
 
   return (
@@ -57,15 +78,16 @@ export function ReviewQueue({ initialQuery, initialResult }: { initialQuery: Rev
         title="Revisões"
         description="Tudo o que os agentes produzem passa por aqui antes de seguir. Nada vira ação externa sem a sua decisão."
       />
+      {summary?.ok && <ReviewSummaryStrip summary={summary.data} query={query} onToggle={(counter) => setQuery(toggleReviewCounter(query, counter))} />}
       <Tabs items={tabs} value={query.view} onChange={(view) => setQuery({ ...DEFAULT_REVIEW_QUERY, view })} label="Visões da fila de revisões" className="mb-4" />
       <Panel>
         <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3" role="search" aria-label="Filtrar revisões">
           <Select
             aria-label="Prioridade"
             placeholder="Todas as prioridades"
-            options={PRIORITY_OPTIONS}
+            options={REVIEW_PRIORITY_OPTIONS}
             value={query.priority}
-            onChange={(e) => setQuery({ ...query, priority: e.target.value as Priority | "", page: 1 })}
+            onChange={(e) => setQuery({ ...query, priority: e.target.value as ReviewListQuery["priority"], page: 1 })}
             className="h-8 w-[180px] text-[12.5px]"
           />
           <Select
@@ -86,6 +108,14 @@ export function ReviewQueue({ initialQuery, initialResult }: { initialQuery: Rev
               className="h-8 w-[200px] text-[12.5px]"
             />
           )}
+          <Select
+            aria-label="Prazo"
+            placeholder="Qualquer prazo"
+            options={DUE_OPTIONS}
+            value={query.due}
+            onChange={(e) => setQuery({ ...query, due: e.target.value as ReviewListQuery["due"], page: 1 })}
+            className="h-8 w-[260px] text-[12.5px]"
+          />
           {query.view !== "minhas" && (
             <Checkbox label="Sem responsável" checked={query.unassigned} onChange={(e) => setQuery({ ...query, unassigned: e.target.checked, page: 1 })} className="items-center" />
           )}

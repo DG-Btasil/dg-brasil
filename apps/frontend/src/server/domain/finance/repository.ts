@@ -237,6 +237,50 @@ export async function allBalances(db: SupabaseClient): Promise<{ rows: BalanceTo
   return { rows, truncated: true };
 }
 
+type OpenBalanceRow = Pick<PaymentBalanceRow, "financial_agreement_id" | "due_date" | "balance" | "status">;
+
+/** Obrigações EM ABERTO com saldo (A receber por vencimento), em lotes, até o teto. `truncated` = passou do teto. */
+export async function openBalances(db: SupabaseClient): Promise<{ rows: OpenBalanceRow[]; truncated: boolean }> {
+  const rows: OpenBalanceRow[] = [];
+  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
+    const data = check(
+      await db
+        .from("payment_balances")
+        .select("financial_agreement_id, due_date, balance, status")
+        .in("status", ["PENDING", "PARTIAL", "OVERDUE"])
+        .gt("balance", 0)
+        .order("payment_id")
+        .range(from, from + CHUNK - 1),
+    ) as OpenBalanceRow[] | null;
+    rows.push(...(data ?? []));
+    if (!data || data.length < CHUNK) return { rows, truncated: false };
+  }
+  return { rows, truncated: true };
+}
+
+/**
+ * Ids dos contratos de PROCESSO: `legal_process_id` preenchido e processo não
+ * excluído — a mesma regra de process_finance_totals (046). Contrato antigo,
+ * só do caso, não entra. Em lotes, até o teto.
+ */
+export async function processAgreementIds(db: SupabaseClient): Promise<{ ids: string[]; truncated: boolean }> {
+  const ids: string[] = [];
+  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
+    const data = check(
+      await db
+        .from("financial_agreements")
+        .select("id, legal_processes!financial_agreements_process_fkey!inner(deleted_at)")
+        .not("legal_process_id", "is", null)
+        .is("legal_processes.deleted_at", null)
+        .order("id")
+        .range(from, from + CHUNK - 1),
+    ) as { id: string }[] | null;
+    ids.push(...(data ?? []).map((r) => r.id));
+    if (!data || data.length < CHUNK) return { ids, truncated: false };
+  }
+  return { ids, truncated: true };
+}
+
 type ReceiptMonthRow = { amount: number | string; occurred_at: string };
 
 /** Lançamentos do ledger desde `fromIso` (valor com sinal e data), em lotes, até o teto. */

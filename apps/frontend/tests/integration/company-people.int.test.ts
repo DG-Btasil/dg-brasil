@@ -6,6 +6,7 @@ import { companyPeopleInput } from "@/features/clients/server-input";
 import { companyPeopleToValues, type CompanyPeopleFormValues } from "@/features/clients/schemas";
 import type { CompanyClient } from "@/types";
 import { ctxFor, dbFor, expectDomainError, fakeCnpj, fakeCpf, serviceDb, world, type WorldRole } from "./support/world";
+import { validPfClient, validPjClient } from "./support/fixtures";
 
 /**
  * Migration 028 no Supabase DEV: representantes e sócios de Cliente PJ
@@ -17,21 +18,20 @@ import { ctxFor, dbFor, expectDomainError, fakeCnpj, fakeCpf, serviceDb, world, 
 async function newCompany(): Promise<string> {
   const { id } = await clients.createClient(
     await ctxFor("LAWYER"),
-    createClientSchema.parse({
-      kind: "COMPANY",
-      cnpj: fakeCnpj(),
-      legalName: `PJ 028 ${world.run} ${randomUUID().slice(0, 6)}`,
-      originOfficeId: world.owner,
-      representatives: [
-        { name: "Rep Um", cpf: fakeCpf(), role: "Diretor", isPrimary: true },
-        { name: "Rep Dois", cpf: fakeCpf(), role: "Procurador", isPrimary: false },
-      ],
-      partners: [
-        { name: "Sócio A", sharePercent: 40 },
-        { name: "Sócio B", sharePercent: 30 },
-        { name: "Sócio C", sharePercent: 30 },
-      ],
-    }),
+    createClientSchema.parse(
+      validPjClient(fakeCnpj(), {
+        legalName: `PJ 028 ${world.run} ${randomUUID().slice(0, 6)}`,
+        representatives: [
+          { name: "Rep Um", cpf: fakeCpf(), role: "Diretor", isPrimary: true },
+          { name: "Rep Dois", cpf: fakeCpf(), role: "Procurador", isPrimary: false },
+        ],
+        partners: [
+          { name: "Sócio A", sharePercent: 40 },
+          { name: "Sócio B", sharePercent: 30 },
+          { name: "Sócio C", sharePercent: 30 },
+        ],
+      }),
+    ),
   );
   return id;
 }
@@ -110,7 +110,7 @@ describe("028 — bloco societário de PJ (estado final, atômico)", () => {
   it("Cliente PF recusa a operação", async () => {
     const { id } = await clients.createClient(
       await ctxFor("LAWYER"),
-      createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "PF 028", originOfficeId: world.owner }),
+      createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "PF 028" })),
     );
     await expectDomainError(
       clients.replaceCompanyPeople(await ctxFor("ADMIN"), replaceCompanyPeopleSchema.parse({ clientId: id, representatives: [], partners: [] })),

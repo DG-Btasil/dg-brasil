@@ -195,14 +195,18 @@ describe("financeiro — ADMIN", () => {
   it("regras do acordo e da obrigação", async () => {
     const admin = await ctxFor("ADMIN");
     const caseId = await acceptedPartnerCase("Caso regras do acordo");
-    // Primeiro acordo ATIVO gravado direto no banco (como ADMIN).
-    const direct = await admin.db.from("financial_agreements").insert({ legal_case_id: caseId, status: "ACTIVE", fixed_fee: 100 }).select("id").single();
+    // Roadmap 2.0 (046): contrato é do processo; um ATIVO por processo.
+    const processId = await processForCase(caseId);
+    // Primeiro acordo ATIVO gravado direto no banco (como ADMIN); sem processo o banco recusa.
+    const noProcess = await admin.db.from("financial_agreements").insert({ legal_case_id: caseId, status: "ACTIVE", fixed_fee: 100 });
+    expect(noProcess.error?.message).toMatch(/do processo/);
+    const direct = await admin.db.from("financial_agreements").insert({ legal_case_id: caseId, legal_process_id: processId, status: "ACTIVE", fixed_fee: 100 }).select("id").single();
     expect(direct.error).toBeNull();
     const agreementId = (direct.data as { id: string }).id;
-    await expectDomainError(finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(caseId), activate: true })), "CONFLICT", /acordo financeiro ativo/);
+    await expectDomainError(finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: processId, activate: true })), "CONFLICT", /acordo financeiro ativo/);
 
     // Reenvio do mesmo formulário (mesma chave) devolve o mesmo rascunho; chave nova cria outro.
-    const draftInput = createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: await processForCase(caseId), fixedFee: 10 });
+    const draftInput = createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: processId, fixedFee: 10 });
     const draftA = await finance.createAgreement(admin, draftInput);
     expect(await finance.createAgreement(admin, draftInput)).toEqual({ id: draftA.id, deduplicated: true });
     const draftC = await finance.createAgreement(admin, { ...draftInput, idempotencyKey: key() });

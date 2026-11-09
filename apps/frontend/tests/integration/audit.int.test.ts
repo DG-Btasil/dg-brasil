@@ -6,6 +6,7 @@ import { createClientSchema } from "@/server/domain/clients/schemas";
 import * as orgs from "@/server/domain/organizations/service";
 import { createPartnerSchema } from "@/server/domain/organizations/schemas";
 import { ctxFor, expectDomainError, fakeCnpj, fakeCpf, world } from "./support/world";
+import { validPfClient } from "./support/fixtures";
 
 /** Auditoria no Supabase DEV real: leitura só ADMIN, DTO sanitizado, nenhuma escrita possível. */
 
@@ -61,7 +62,7 @@ describe("auditoria — leitura ADMIN", () => {
     const lawyer = await ctxFor("LAWYER");
     const { id: clientId } = await clients.createClient(
       lawyer,
-      createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "Titular Auditoria", originOfficeId: world.owner }),
+      createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "Titular Auditoria" })),
     );
     await clients.getClient(lawyer, clientId);
     const page = await audit.listPersonalDataAccessEvents(await ctxFor("ADMIN"), listPersonalDataAccessSchema.parse({ clientId }));

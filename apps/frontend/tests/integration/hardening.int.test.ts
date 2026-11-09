@@ -8,6 +8,7 @@ import * as organizations from "@/server/domain/organizations/service";
 import * as processes from "@/server/domain/processes/service";
 import { createPartnerProcessSchema, createProcessSchema } from "@/server/domain/processes/schemas";
 import { ctxFor, expectDomainError, fakeCnj, fakeCpf, serviceDb, world } from "./support/world";
+import { validPartnerPfClient, validPfClient } from "./support/fixtures";
 
 /**
  * Etapa 4.2.1 no Supabase DEV: idempotência genérica (027) na criação de caso
@@ -19,7 +20,7 @@ import { ctxFor, expectDomainError, fakeCnj, fakeCpf, serviceDb, world } from ".
 async function internalClient(): Promise<string> {
   const { id } = await clients.createClient(
     await ctxFor("LAWYER"),
-    createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "Cliente Hardening", originOfficeId: world.owner }),
+    createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "Cliente Hardening" })),
   );
   return id;
 }
@@ -79,7 +80,7 @@ describe("idempotência — criação de caso", () => {
     const title = `Caso portal hardening ${randomUUID()}`;
     const input = partnerSubmitCaseSchema.parse({
       idempotencyKey: key,
-      client: { kind: "INDIVIDUAL", document: fakeCpf(), fullName: "Cliente Portal Hardening", origin: "OWN_OFFICE" },
+      client: validPartnerPfClient(fakeCpf(), { fullName: "Cliente Portal Hardening", origin: "OWN_OFFICE" }),
       case: { area: "BANKING", title, origin: "OWN_OFFICE" },
     });
     const [a, b] = await Promise.all([cases.partnerSubmitCase(pa, input), cases.partnerSubmitCase(pa, input)]);
@@ -142,7 +143,7 @@ describe("idempotência — criação de processo", () => {
       pa,
       partnerSubmitCaseSchema.parse({
         idempotencyKey: randomUUID(),
-        client: { kind: "INDIVIDUAL", document: fakeCpf(), fullName: "Cliente Processo Hardening", origin: "OWN_OFFICE" },
+        client: validPartnerPfClient(fakeCpf(), { fullName: "Cliente Processo Hardening", origin: "OWN_OFFICE" }),
         case: { area: "BANKING", title: `Caso parceiro p/ processo ${randomUUID()}`, origin: "OWN_OFFICE" },
       }),
     );

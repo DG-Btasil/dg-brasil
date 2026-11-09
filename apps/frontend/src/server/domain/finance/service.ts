@@ -18,8 +18,10 @@ import type {
   ProcessFinanceTotalsDTO,
   ReceiptDTO,
   ReceiptResultDTO,
+  ReceivableAgingDTO,
   TransferInternalDTO,
   TransferListItemDTO, PartnerShareDetailDTO } from "./dto";
+import { receivableAging } from "./aging";
 import {
   agreementFromRow,
   agreementInsert,
@@ -255,6 +257,23 @@ export async function getFinanceSummary(ctx: ServiceContext, now = new Date()): 
     byFeeModel: compositionByFeeModel(byModel),
     truncated: balances.truncated || receipts.truncated,
   };
+}
+
+/**
+ * "A receber por vencimento" (E-06, ADMIN): saldo em aberto das obrigações
+ * dos contratos de PROCESSO por faixa (em atraso, até 30, 31–60, 61–90, acima
+ * de 90 dias), somado no SERVIDOR. Duas leituras em paralelo (saldos em aberto
+ * da view payment_balances e os contratos de processo), cruzadas aqui: sem
+ * embed a partir da view. Contrato antigo (só do caso) fica fora, como nos
+ * totais por processo (046) — o aviso de contratos antigos da visão geral
+ * cobre a diferença.
+ */
+export async function getReceivableAging(ctx: ServiceContext, now = new Date()): Promise<ReceivableAgingDTO> {
+  requireFinance(ctx, "finance.view");
+  const [balances, agreements] = await Promise.all([repo.openBalances(ctx.db), repo.processAgreementIds(ctx.db)]);
+  const truncated = balances.truncated || agreements.truncated;
+  if (truncated) ctx.log.warn("finance.receivable_aging_truncated", {});
+  return { ...receivableAging(balances.rows, now, new Set(agreements.ids)), truncated };
 }
 
 /** Termos só mudam em rascunho. Acordo ativo/encerrado é histórico de negócio. */

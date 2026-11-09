@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Conector do computador do escritório, gerado e minificado (apps/executor: npm run bundle).
+    "public/executor/**",
   ]),
 ]);
 

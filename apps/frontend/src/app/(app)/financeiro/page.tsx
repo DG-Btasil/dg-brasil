@@ -24,6 +24,7 @@ import {
   getFinanceSummaryAction,
   getMyPartnerFinanceAction,
   getProcessFinanceTotalsAction,
+  getReceivableAgingAction,
   listAgreementRowsAction,
   listExpensesAction,
   listFeeModelsAction,
@@ -63,8 +64,8 @@ async function InternalTab({ tab, searchParams }: { tab: FinanceTab; searchParam
       return <FeeModelsPanel models={models} areas={areas} />;
     }
     default: {
-      const [summary, totals, expenses] = await Promise.all([getFinanceSummaryAction(), getProcessFinanceTotalsAction(), getExpenseSummaryAction()]);
-      return <FinanceOverviewTab summary={summary} totals={totals} expenses={expenses} />;
+      const [summary, totals, expenses, aging] = await Promise.all([getFinanceSummaryAction(), getProcessFinanceTotalsAction(), getExpenseSummaryAction(), getReceivableAgingAction()]);
+      return <FinanceOverviewTab summary={summary} totals={totals} expenses={expenses} aging={aging} />;
     }
   }
 }

@@ -295,7 +295,7 @@ function ProcessDistribution({ distribution }: { distribution: InternalHomeData[
         <PanelBody className="flex flex-1 flex-col gap-5">
           <div className="relative mx-auto h-[190px] w-[190px]" aria-hidden>
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
+              <PieChart accessibilityLayer={false}>
                 <Pie data={slices} dataKey="count" nameKey="name" innerRadius={62} outerRadius={88} paddingAngle={1.5} stroke="var(--surface)" strokeWidth={2} startAngle={90} endAngle={-270} isAnimationActive={false}>
                   {slices.map((d) => (
                     <Cell key={d.status} fill={d.color} />

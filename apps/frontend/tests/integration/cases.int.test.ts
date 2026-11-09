@@ -5,6 +5,7 @@ import { createCaseSchema, listCasesSchema, partnerSubmitCaseSchema } from "@/se
 import * as clients from "@/server/domain/clients/service";
 import { createClientSchema } from "@/server/domain/clients/schemas";
 import { ctxFor, expectDomainError, fakeCpf, serviceDb, world, type WorldRole } from "./support/world";
+import { validPartnerPfClient, validPfClient } from "./support/fixtures";
 
 /**
  * Casos no Supabase DEV real: máquina de estados, aceite (advogado + snapshot
@@ -17,7 +18,7 @@ const CLIENT_NAME = "Cliente Caso Integração";
 async function newClient(): Promise<string> {
   const { id } = await clients.createClient(
     await ctxFor("LAWYER"),
-    createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: CLIENT_NAME, originOfficeId: world.owner }),
+    createClientSchema.parse(validPfClient(fakeCpf(), { fullName: CLIENT_NAME })),
   );
   return id;
 }
@@ -34,7 +35,7 @@ async function partnerCase(role: WorldRole, origin: "OWN_OFFICE" | "OWNER" = "OW
   return cases.partnerSubmitCase(
     await ctxFor(role),
     partnerSubmitCaseSchema.parse({ idempotencyKey: randomUUID(),
-      client: { kind: "INDIVIDUAL", document: fakeCpf(), fullName: "Cliente do Parceiro" },
+      client: validPartnerPfClient(fakeCpf(), { fullName: "Cliente do Parceiro" }),
       case: { area: "BANKING", title, origin, summary: "Resumo enviado pelo parceiro" },
     }),
   );

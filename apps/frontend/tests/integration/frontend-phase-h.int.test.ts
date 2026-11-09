@@ -12,6 +12,7 @@ import * as reviews from "@/server/domain/reviews/service";
 import { listReviewsSchema } from "@/server/domain/reviews/schemas";
 import { auditTimelineInput } from "@/features/audit/query";
 import { ctxFor, expectDomainError, fakeCpf, serviceDb, world } from "./support/world";
+import { validPfClient } from "./support/fixtures";
 
 /**
  * Etapa 4.3, Fase H — leituras novas no Supabase DEV real: filtro de prazo da
@@ -25,7 +26,7 @@ let processId = "";
 
 beforeAll(async () => {
   const lawyer = await ctxFor("LAWYER");
-  const { id: clientId } = await clients.createClient(lawyer, createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: `Cliente Fase H ${world.run}`, originOfficeId: world.owner }));
+  const { id: clientId } = await clients.createClient(lawyer, createClientSchema.parse(validPfClient(fakeCpf(), { fullName: `Cliente Fase H ${world.run}` })));
   caseId = (
     await cases.createCase(
       lawyer,

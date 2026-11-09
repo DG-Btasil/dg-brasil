@@ -97,7 +97,8 @@ describe("importação de planilhas (042) — Supabase DEV", () => {
     const r = await processAll(state.jobCsv);
     expect(r).toMatchObject({ status: "COMPLETED", imported: 3, failed: 1, failedOnSave: 0, clientsCreated: 2, processesCreated: 2, deadlinesCreated: 1 });
 
-    const { data: client } = await svc.from("clients").select("id, responsible_user_id").eq("cpf", state.cpfA).single();
+    // Roadmap 2.0 (045): cliente não tem mais responsável; o advogado padrão fica no caso e no processo.
+    const { data: client } = await svc.from("clients").select("id").eq("cpf", state.cpfA).single();
     const { data: procs } = await svc
       .from("legal_processes")
       .select("id, technical_origin, cnj_number, responsible_user_id, legal_cases!inner(client_id, status, assigned_lawyer_id, origin_organization_id)")
@@ -107,6 +108,7 @@ describe("importação de planilhas (042) — Supabase DEV", () => {
       const lc = (Array.isArray(p.legal_cases) ? p.legal_cases[0] : p.legal_cases) as { client_id: string; status: string; assigned_lawyer_id: string; origin_organization_id: string };
       expect([p.technical_origin, lc.client_id, lc.status, lc.origin_organization_id]).toEqual(["IMPORT", client!.id, "IN_PROGRESS", world.owner]);
       expect(lc.assigned_lawyer_id).toBe(lawyerId);
+      expect(p.responsible_user_id).toBe(lawyerId);
     }
     const { data: ev } = await svc.from("process_events").select("source").eq("legal_process_id", procs![0]!.id).eq("source", "IMPORT");
     expect(ev).toHaveLength(1);

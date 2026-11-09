@@ -42,7 +42,6 @@ export interface ClientPayload {
   email?: string;
   phone?: string;
   address?: { postal_code?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string };
-  responsible_user_id?: string;
   notes?: string;
 }
 
@@ -412,8 +411,6 @@ export function normalizeRows(
     if (email) client.email = email;
     if (phone) client.phone = phone;
     if (Object.keys(address).length) client.address = address;
-    const clientResponsible = responsibleId ?? ctx.lawyerId;
-    if (clientResponsible) client.responsible_user_id = clientResponsible;
     if (v["client.notes"]) client.notes = clip(v["client.notes"], 4000);
     return { ...base, payload: process ? { client, process } : { client } };
   });

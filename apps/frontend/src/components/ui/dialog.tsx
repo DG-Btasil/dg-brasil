@@ -27,11 +27,12 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
         <RadixDialog.Overlay className="fixed inset-0 z-50 bg-navy-950/40 animate-fade-in" />
         <RadixDialog.Content
           className={cn(
-            "fixed left-1/2 top-[12vh] z-50 w-[calc(100vw-32px)] -translate-x-1/2 rounded-lg border border-line bg-surface shadow-overlay animate-panel-down focus:outline-none",
+            // Nunca passa da altura da janela: o corpo rola e o rodapé (botões) fica sempre visível (QA R2-05).
+            "fixed left-1/2 top-[12vh] z-50 flex max-h-[calc(100dvh-12vh-1rem)] w-[calc(100vw-32px)] -translate-x-1/2 flex-col rounded-lg border border-line bg-surface shadow-overlay animate-panel-down focus:outline-none",
             width,
           )}
         >
-          <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-6 py-4">
             <div>
               <RadixDialog.Title className="text-[15px] font-semibold text-foreground">{title}</RadixDialog.Title>
               {description ? (
@@ -44,8 +45,8 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
               <X className="size-4" />
             </RadixDialog.Close>
           </div>
-          {children && <div className="max-h-[72vh] overflow-y-auto px-6 py-5">{children}</div>}
-          {footer && <div className="flex items-center justify-end gap-2 border-t border-line bg-surface-muted px-6 py-3.5 rounded-b-lg">{footer}</div>}
+          {children && <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>}
+          {footer && <div className="flex shrink-0 items-center justify-end gap-2 border-t border-line bg-surface-muted px-6 py-3.5 rounded-b-lg">{footer}</div>}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>

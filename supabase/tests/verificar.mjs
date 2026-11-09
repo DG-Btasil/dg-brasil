@@ -5381,9 +5381,9 @@ await deve('quem vê a OAB de quem: a própria pessoa e o ADMIN; o parceiro não
   igual((await como(ids.almeidaAdm, async (tx) => linhas(tx, `select 1 from profile_oabs where user_id = $1`, [ids.lucas]))).length, 0, 'parceiro')
 })
 await deve('convite de parceiro só com o e-mail: escritório pendente; no 1º acesso o administrador vê que falta o cadastro', async () => {
-  ids.parc048 = await como(ids.barbara, async (tx) => (await um(tx, `select public.create_partner_invite_office('dra.ana@parceiro048.test', 40) id`)).id)
+  ids.parc048 = await como(ids.barbara, async (tx) => (await um(tx, `select public.create_partner_invite_office('Ana Souza', 'dra.ana@parceiro048.test', 40) id`)).id)
   const st = await um(db, `select o.status, o.name, s.default_partner_percentage::text p from organizations o join partner_office_settings s on s.organization_id = o.id where o.id = $1`, [ids.parc048])
-  igual([st.status, st.name, st.p], ['PENDING', 'Convite: dra.ana@parceiro048.test', '40.00'], 'escritório pendente')
+  igual([st.status, st.name, st.p], ['PENDING', 'Convite: Ana Souza', '40.00'], 'escritório pendente (nome do contato)')
   igual((await um(db, `select profile_completed_at from partner_office_settings where organization_id = $1`, [ids.parc048])).profile_completed_at, null, 'a completar')
   const inv = await convidar(ids.barbara, 'dra.ana@parceiro048.test', 'PARTNER_ADMIN', ids.parc048)
   await comoServico((tx) => tx.query(`select public.set_invitation_oab($1, '98.765', 'sp')`, [inv.invitation_id]))
@@ -5417,7 +5417,7 @@ await deveFalhar('usuário comum do parceiro não completa cadastro do escritór
   como(ids.almeidaAdm, (tx) => tx.query(`select public.complete_partner_office_profile($1)`, [JSON.stringify({ name: 'X', document: '99904800001', phone: '11999990048' })])),
   /já foi completado|não é seu/)
 await deveFalhar('LAWYER não convida parceiro', () =>
-  como(ids.lucas, (tx) => tx.query(`select public.create_partner_invite_office('x@y.test')`)), /Somente ADMIN/)
+  como(ids.lucas, (tx) => tx.query(`select public.create_partner_invite_office('X', 'x@y.test')`)), /Somente ADMIN/)
 await deve('escritório cadastrado pelo formulário completo (ADMIN) não pede cadastro no 1º acesso', async () => {
   const id = await como(ids.barbara, async (tx) => (await um(tx, `select private.create_partner_office($1, '{}') id`, [JSON.stringify({ name: 'Completo 048' })])).id)
   igual((await um(db, `select profile_completed_at is not null done from partner_office_settings where organization_id = $1`, [id])).done, true, 'completo')
@@ -5471,6 +5471,57 @@ await deve('sem escolha do ADMIN, o orquestrador é o agente ativo "orquestrador
   await db.query(`update agents set slug = $2 where id = $1`, [ids.agente, antigo])
   await como(ids.barbara, (tx) => tx.query(`select public.save_process_task_settings($1)`, [ids.agente]))
 })
+
+// ═════════════════════════════ Roadmap 2.0 — correções da validação [050] ═
+
+secao('Roadmap 2.0 — divisão do parceiro vale pela criação do caso (E-14) e índices (R2-12) [050]')
+await deve('caso criado a 50/50, divisão muda para 60/40, aceite depois: o caso fica 50/50; caso novo fica 60/40', async () => {
+  const p = await parceiro('Parceiro 050', 50)
+  const novoCaso = async (titulo) => (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, partner_organization_id,
+      origin_organization_id, created_by_organization_id) values ($1, $2, $3, 'SUBMITTED', $4, $4, $4) returning id`,
+    [ids.joao, ids.banking, titulo, p])).id
+  const antes = await novoCaso('Caso 050 antes da mudança')
+  igual((await um(db, `select partner_split_partner_percentage::text p from legal_cases where id = $1`, [antes])).p, '50.00', 'divisão guardada na criação')
+  await db.query(`update partner_office_settings set default_partner_percentage = 60, default_owner_percentage = 40 where organization_id = $1`, [p])
+  const depois = await novoCaso('Caso 050 depois da mudança')
+  for (const c of [antes, depois]) {
+    await como(ids.lucas, (tx) => tx.query(`update legal_cases set status = 'ACCEPTED', assigned_lawyer_id = $2 where id = $1`, [c, ids.lucas]))
+  }
+  const a = await linhas(db, `select legal_case_id, partner_percentage::text p, owner_percentage::text o from case_partnership_agreements
+    where legal_case_id = any ($1) and cancelled_at is null`, [[antes, depois]])
+  igual([a.find((x) => x.legal_case_id === antes)?.p, a.find((x) => x.legal_case_id === antes)?.o], ['50.00', '50.00'], 'criado antes: 50/50')
+  igual([a.find((x) => x.legal_case_id === depois)?.p, a.find((x) => x.legal_case_id === depois)?.o], ['60.00', '40.00'], 'criado depois: 60/40')
+})
+await deve('caso do escritório principal não guarda divisão; trocar a origem para um parceiro guarda a divisão dele', async () => {
+  const c = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id)
+    values ($1, $2, 'Caso 050 proprietário', 'DRAFT', $3, $3) returning id`, [ids.joao, ids.banking, ids.owner])).id
+  igual((await um(db, `select partner_split_partner_percentage p from legal_cases where id = $1`, [c])).p, null, 'sem divisão')
+  await db.query(`update legal_cases set origin_organization_id = $2 where id = $1`, [c, ids.ferreira])
+  const r = await um(db, `select partner_split_organization_id o, partner_split_partner_percentage::text p from legal_cases where id = $1`, [c])
+  igual([r.o, r.p], [ids.ferreira, '60.00'], 'divisão do novo parceiro')
+})
+await deve('chaves estrangeiras novas com índice', async () => {
+  const faltam = await linhas(db, `
+    select c.conrelid::regclass::text t, a.attname col
+    from pg_constraint c
+    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+    where c.contype = 'f' and array_length(c.conkey, 1) = 1
+      and c.conrelid::regclass::text in ('process_expenses', 'process_tasks', 'process_task_settings')
+      and not exists (select 1 from pg_index i where i.indrelid = c.conrelid and i.indkey[0] = c.conkey[1])`)
+  igual(faltam, [], 'FKs sem índice')
+})
+
+await deve('convite de parceiro: nova tentativa para o mesmo e-mail reaproveita o escritório que não completou o cadastro (R2-06)', async () => {
+  const a = await como(ids.barbara, async (tx) => (await um(tx, `select public.create_partner_invite_office('Carla Lima', 'carla@parceiro050.test', 30) id`)).id)
+  await db.query(`update organizations set status = 'INACTIVE' where id = $1`, [a])   // a falha do e-mail desativa
+  const b = await como(ids.barbara, async (tx) => (await um(tx, `select public.create_partner_invite_office('Carla Lima Souza', 'Carla@Parceiro050.test', 35) id`)).id)
+  igual(b, a, 'mesmo escritório')
+  const o = await um(db, `select o.status, o.name, s.default_partner_percentage::text p from organizations o join partner_office_settings s on s.organization_id = o.id where o.id = $1`, [a])
+  igual([o.status, o.name, o.p], ['PENDING', 'Convite: Carla Lima Souza', '35.00'], 'reativado e atualizado')
+  igual((await um(db, `select count(*)::int n from organizations where email = 'carla@parceiro050.test'`)).n, 1, 'um só escritório')
+})
+await deveFalhar('convite sem nome do contato é recusado antes de criar o escritório', () =>
+  como(ids.barbara, (tx) => tx.query(`select public.create_partner_invite_office('  ', 'z@parceiro050.test')`)), /nome do contato/)
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
 

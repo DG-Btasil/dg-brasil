@@ -4,6 +4,7 @@ import { createClientSchema } from "@/server/domain/clients/schemas";
 import * as orgs from "@/server/domain/organizations/service";
 import { createPartnerSchema, listOrganizationUsersSchema, listPartnersSchema, updateOwnerOfficeSchema } from "@/server/domain/organizations/schemas";
 import { ctxFor, expectDomainError, fakeCnpj, fakeCpf, serviceDb, world } from "./support/world";
+import { validPfClient } from "./support/fixtures";
 
 /** Organizações no Supabase DEV real: parceiros (ADMIN), divisão × snapshot, OWNER protegido, isolamento A × B. */
 
@@ -106,7 +107,7 @@ describe("divisão padrão × snapshot do caso", () => {
     // Cenário: cliente real (service de clientes) + caso já aceito com origem neste parceiro.
     const { id: clientId } = await clients.createClient(
       await ctxFor("LAWYER"),
-      createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "Cliente Snapshot", originOfficeId: world.owner }),
+      createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "Cliente Snapshot" })),
     );
     const db = serviceDb();
     const { data: legalCase, error } = await db

@@ -61,8 +61,15 @@ export function useCnpjAutofill(cnpj: string | undefined, onFound: (c: CompanyLo
   return useAutofill(cnpj, (d) => isCnpjFormat(d) && !taxIdProblem(d, "cnpj"), (d) => callAction(() => lookupCnpjAction({ cnpj: d })), onFound, enabled);
 }
 
+/**
+ * CPF na Receita (Serpro) é atualização futura (docs/deploy/producao.md, item 12):
+ * enquanto `NEXT_PUBLIC_CPF_LOOKUP` não for "1", o navegador nem chama o
+ * servidor e nada aparece embaixo do campo (QA R2-03).
+ */
+const CPF_LOOKUP_ON = process.env.NEXT_PUBLIC_CPF_LOOKUP === "1";
+
 export function useCpfAutofill(cpf: string | undefined, onFound: (p: PersonLookup) => void, enabled = true) {
-  return useAutofill(cpf, (d) => isCpfFormat(d) && !taxIdProblem(d, "cpf"), (d) => callAction(() => lookupCpfAction({ cpf: d })), onFound, enabled);
+  return useAutofill(cpf, (d) => isCpfFormat(d) && !taxIdProblem(d, "cpf"), (d) => callAction(() => lookupCpfAction({ cpf: d })), onFound, enabled && CPF_LOOKUP_ON);
 }
 
 /** Texto curto para mostrar embaixo do campo. */

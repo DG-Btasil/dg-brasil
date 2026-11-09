@@ -65,14 +65,31 @@ export function InvitePartnerDialog({ onClose }: { onClose: () => void }) {
         <Field label="E-mail" requirement="required">
           {(p) => <Input {...p} type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />}
         </Field>
-        <Field label="Participação do parceiro (%)" requirement="required" hint="Divisão padrão dos honorários dos casos deste parceiro. O escritório fica com o restante.">
+        <Field
+          label="Porcentagem do parceiro (%)"
+          requirement="required"
+          hint="É a parte dos honorários que fica com o parceiro. Ex.: 30 = 30% para o parceiro e 70% para o seu escritório. Vale para os casos criados a partir de agora."
+        >
           {(p) => <Input {...p} inputMode="decimal" value={percentage} onChange={(e) => setPercentage(e.target.value)} className="max-w-[120px]" />}
         </Field>
+        <SplitPreview value={percentage} />
         <Callout tone="info">
           Por segurança, o convite vai como um link de uso único (vale 7 dias) em vez de uma senha por e-mail: é o link que faz o papel da primeira senha.
         </Callout>
         <button type="submit" hidden />
       </form>
     </Dialog>
+  );
+}
+
+/** Prévia da divisão (QA E-12): "Parceiro X% · Escritório Y%". */
+function SplitPreview({ value }: { value: string }) {
+  const pct = Number(value.replace(",", "."));
+  if (!value.trim() || !Number.isFinite(pct) || pct < 0 || pct > 100) return null;
+  const fmt = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  return (
+    <p className="-mt-2 text-[12.5px] text-muted" aria-live="polite">
+      Divisão: <strong className="text-foreground">Parceiro {fmt(pct)}%</strong> · <strong className="text-foreground">Escritório {fmt(100 - pct)}%</strong>
+    </p>
   );
 }

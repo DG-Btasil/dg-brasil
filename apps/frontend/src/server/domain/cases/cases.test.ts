@@ -162,7 +162,7 @@ describe("domínio → banco", () => {
     const input = partnerSubmitCaseSchema.parse({ idempotencyKey: KEY,
       client: {
         kind: "INDIVIDUAL", document: "999.000.111-22", fullName: "Maria", nationality: "Brasileira", maritalStatus: "SINGLE", profession: "Aposentada",
-        email: "maria@x.com", acquisitionChannel: "WHATSAPP", address: { zipCode: "01001-000", street: "Rua A", number: "1", district: "Centro", city: "São Paulo", state: "sp" },
+        email: "maria@x.com", phone: "11999990000", acquisitionChannel: "WHATSAPP", address: { zipCode: "01001-000", street: "Rua A", number: "1", district: "Centro", city: "São Paulo", state: "sp" },
       },
       case: { area: "BANKING", title: "Caso", origin: "OWNER" },
     });

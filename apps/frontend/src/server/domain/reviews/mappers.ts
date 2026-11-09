@@ -7,10 +7,10 @@ import {
   type DbReviewPriority,
   type DbReviewStatus,
 } from "@/repositories/api/db-mappings";
-import type { DocumentCategory, ReviewDecisionKind } from "@/lib/constants/status";
+import type { DocumentCategory, Priority, ReviewDecisionKind } from "@/lib/constants/status";
 import { resultFromRow } from "../analyses/mappers";
 import type { ReviewDecisionDTO, ReviewListItem, ReviewTargetDTO, ReviewTargetKind } from "./dto";
-import type { AssignReviewInput } from "./schemas";
+import type { AssignReviewInput, ReviewDueFilter } from "./schemas";
 import { PROPOSAL_TYPE_LABEL } from "./labels";
 
 /**
@@ -125,6 +125,37 @@ export function decisionToDb(decision: ReviewDecisionKind): Exclude<DbReviewDeci
 export function statusFilterToDb(filter: string | undefined): DbReviewStatus[] | undefined {
   if (!filter) return undefined;
   return filter === "OPEN" ? ["PENDING", "REOPENED"] : [filter as DbReviewStatus];
+}
+
+const OPEN_REVIEW_STATUSES: readonly DbReviewStatus[] = ["PENDING", "REOPENED"];
+
+/** Prioridades do indicador "Urgentes e alta prioridade". */
+export const TOP_REVIEW_PRIORITIES: readonly Priority[] = ["URGENT", "HIGH"];
+
+/** Filtro de prioridade (uma ou várias) → lista para `in` no banco, sem repetição. */
+export function priorityFilterToDb(filter: Priority | Priority[] | undefined): Priority[] | undefined {
+  if (!filter) return undefined;
+  return [...new Set(Array.isArray(filter) ? filter : [filter])];
+}
+
+/**
+ * Com o filtro de prazo, só revisões em aberto (PENDING/REOPENED) entram —
+ * dentro do status pedido, se houver (decidida não está "vencendo").
+ */
+export function dueStatuses(statuses: DbReviewStatus[] | undefined): DbReviewStatus[] {
+  return (statuses ?? [...OPEN_REVIEW_STATUSES]).filter((s) => OPEN_REVIEW_STATUSES.includes(s));
+}
+
+/**
+ * Limite do filtro de prazo: "até 7 dias" = antes do início do 8º dia no fuso
+ * de São Paulo (UTC−3, sem horário de verão), o que inclui as vencidas. Mesmo
+ * critério do "prazo em até 5 dias" dos processos.
+ */
+export function reviewDueCutoff(kind: ReviewDueFilter, now = new Date()): string {
+  const days = { NEXT_7_DAYS: 7 }[kind];
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(now);
+  const [y, m, d] = today.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days + 1, 3, 0, 0)).toISOString();
 }
 
 /* ------------------------------------------------------------------ */

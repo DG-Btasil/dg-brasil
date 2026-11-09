@@ -7,6 +7,7 @@ import { createClientSchema } from "@/server/domain/clients/schemas";
 import * as finance from "@/server/domain/finance/service";
 import { createAgreementSchema, createPaymentSchema, listAgreementsSchema, registerReceiptSchema, registerReversalSchema } from "@/server/domain/finance/schemas";
 import { ctxFor, expectDomainError, fakeCpf, world, processForCase } from "./support/world";
+import { validPfClient } from "./support/fixtures";
 
 /**
  * Etapa 4.3, Fase F — financeiro das telas no Supabase DEV real:
@@ -20,7 +21,7 @@ const key = () => randomUUID();
 /** Caso interno novo (pelos services reais), para não disputar o "um ativo por caso" com outros testes. */
 async function internalCase(title: string): Promise<string> {
   const admin = await ctxFor("ADMIN");
-  const { id: clientId } = await clients.createClient(admin, createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "Cliente Financeiro 030", originOfficeId: world.owner }));
+  const { id: clientId } = await clients.createClient(admin, createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "Cliente Financeiro 030" })));
   const input = createCaseSchema.parse({ idempotencyKey: randomUUID(), clientId, area: "BANKING", title, originOrganizationId: world.owner });
   return (await cases.createCase(admin, input)).id;
 }

@@ -302,7 +302,7 @@ export async function inviteUser(input: InviteInput): Promise<ActionResult> {
         ok: false,
         error: rateLimited
           ? "Muitos e-mails em pouco tempo para este endereço. Aguarde um minuto e tente de novo."
-          : "O convite não pôde ser enviado por e-mail. Nada foi criado; tente novamente.",
+          : "O convite não pôde ser enviado por e-mail. O convite foi cancelado; tente novamente.",
       };
     }
     return { ok: true };
@@ -427,16 +427,24 @@ export async function invitePartnerOffice(input: { email: string; contactName: s
     if (session.role !== "ADMIN") return { ok: false, error: "Somente o administrador convida parceiros." };
     const email = input.email.trim().toLowerCase();
     if (!EMAIL.test(email) || email.length > 254) return { ok: false, error: "Informe um e-mail válido." };
+    // Tudo é conferido ANTES de criar o escritório (QA R2-06).
+    const contactName = normalizePersonName(input.contactName);
+    const nameProblem = personNameProblem(contactName);
+    if (nameProblem) return { ok: false, error: nameProblem };
     const pct = Number(input.partnerPercentage);
-    if (!Number.isFinite(pct) || pct < 0 || pct > 100) return { ok: false, error: "Percentual do parceiro entre 0 e 100." };
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) return { ok: false, error: "Porcentagem do parceiro entre 0 e 100." };
     const supabase = await createSupabaseServerClient();
-    const { data: orgId, error } = await supabase.rpc("create_partner_invite_office", { p_contact: email, p_partner_percentage: pct });
+    // Nova tentativa para o mesmo e-mail reaproveita o escritório que ainda não completou o cadastro (050).
+    const { data: orgId, error } = await supabase.rpc("create_partner_invite_office", { p_contact: contactName, p_email: email, p_partner_percentage: pct });
     if (error || typeof orgId !== "string") return { ok: false, error: error ? dbErrorMessage(error, session) : GENERIC };
-    const invited = await inviteUser({ email, fullName: input.contactName, role: "PARTNER_ADMIN", organizationId: orgId });
+    const invited = await inviteUser({ email, fullName: contactName, role: "PARTNER_ADMIN", organizationId: orgId });
     if (!invited.ok) {
-      // Sem convite, o escritório pendente não serve: fica inativo (nada é apagado).
+      // Sem convite, o escritório pendente fica desativado; a próxima tentativa o reaproveita (QA R2-16).
       await supabase.from("organizations").update({ status: "INACTIVE" }).eq("id", orgId);
-      return { ok: false, error: invited.error };
+      return {
+        ok: false,
+        error: `${invited.error.replace(/ O convite foi cancelado; tente novamente\.?/, "")} O escritório pendente ficou desativado e será reaproveitado quando você tentar de novo.`.trim(),
+      };
     }
     return { ok: true, data: { organizationId: orgId } };
   });

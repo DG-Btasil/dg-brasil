@@ -16,6 +16,7 @@ import { normalizeDjenItem, type DjenItem } from "@/server/integrations/judicial
 import { JUDICIAL_DB_FUNCTIONS, runJudicialSync, type JudicialDbFunction } from "@/server/integrations/judicial/sync";
 import { integrationEnv } from "./support/env";
 import { ctxFor, dbFor, expectDomainError, fakeCnj, fakeCpf, serviceDb, world } from "./support/world";
+import { validPfClient } from "./support/fixtures";
 
 /**
  * Integração judicial (migration 043) contra o Supabase DEV real. O DJEN e o
@@ -91,7 +92,7 @@ beforeAll(async () => {
     idempotencyKey: randomUUID(), legalCaseId: state.partnerCase, title: `Processo judicial A ${world.run}`, cnj: state.partnerCnj,
   }))).id;
 
-  const { id: clientId } = await clients.createClient(lawyer, createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "Cliente Judicial Interno", originOfficeId: world.owner }));
+  const { id: clientId } = await clients.createClient(lawyer, createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "Cliente Judicial Interno" })));
   state.internalCase = randomUUID();
   const ins = await lawyer.db.from("legal_cases").insert({ id: state.internalCase, client_id: clientId, legal_area_id: world.bankingAreaId,
     title: `Caso judicial interno ${world.run}`, origin_organization_id: world.owner, status: "DRAFT", assigned_lawyer_id: world.users.LAWYER.id });

@@ -9,6 +9,7 @@ import { createRequirementSchema, listRequirementsSchema } from "@/server/domain
 import * as clients from "@/server/domain/clients/service";
 import { createClientSchema } from "@/server/domain/clients/schemas";
 import { ctxFor, expectDomainError, fakeCpf, serviceDb, world, type WorldRole } from "./support/world";
+import { validPfClient } from "./support/fixtures";
 
 /**
  * Documentos no Supabase DEV real: upload em dois passos (idempotente),
@@ -152,7 +153,7 @@ describe("documentos — visibilidade e isolamento (sem Storage)", () => {
     const lawyer = await ctxFor("LAWYER");
     const { id: ownClient } = await clients.createClient(
       lawyer,
-      createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "Cliente Documento Interno", originOfficeId: world.owner }),
+      createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "Cliente Documento Interno" })),
     );
     const clientDoc = await newDocument("LAWYER", { clientId: ownClient });
     await seedVersion(clientDoc, ownClient);
@@ -206,7 +207,7 @@ describe("pendências de documento do caso", () => {
 
     const { id: otherClient } = await clients.createClient(
       lawyer,
-      createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "Outro Cliente", originOfficeId: world.owner }),
+      createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "Outro Cliente" })),
     );
     const otherDoc = await newDocument("LAWYER", { clientId: otherClient });
     const otherVersion = await seedVersion(otherDoc, otherClient);

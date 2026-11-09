@@ -4,9 +4,12 @@ import {
   decisionFromRow,
   decisionToDb,
   documentVersionTargetFromRow,
+  dueStatuses,
   listItemFromRow,
+  priorityFilterToDb,
   proposalTargetFromRow,
   requiresAdminDecision,
+  reviewDueCutoff,
   statusFilterToDb,
   targetOf,
   type ReviewRow,
@@ -103,5 +106,42 @@ describe("schemas", () => {
     expect(listReviewsSchema.parse({ assignee: "me", status: "OPEN" })).toMatchObject({ assignee: "me", status: "OPEN", column: "created_at" });
     expect(listReviewsSchema.safeParse({ assignee: "todos" }).success).toBe(false);
     expect(listReviewsSchema.safeParse({ sortBy: "status" }).success).toBe(false);
+  });
+
+  it("listagem: prioridade única ou várias; lista vazia ou valor fora do enum é recusado", () => {
+    expect(listReviewsSchema.parse({ priority: "URGENT" }).priority).toBe("URGENT");
+    expect(listReviewsSchema.parse({ priority: ["URGENT", "HIGH"] }).priority).toEqual(["URGENT", "HIGH"]);
+    expect(listReviewsSchema.safeParse({ priority: [] }).success).toBe(false);
+    expect(listReviewsSchema.safeParse({ priority: ["URGENT", "MAX"] }).success).toBe(false);
+  });
+
+  it("listagem: filtro de prazo só aceita o valor conhecido", () => {
+    expect(listReviewsSchema.parse({ due: "NEXT_7_DAYS" }).due).toBe("NEXT_7_DAYS");
+    expect(listReviewsSchema.parse({}).due).toBeUndefined();
+    expect(listReviewsSchema.safeParse({ due: "NEXT_30_DAYS" }).success).toBe(false);
+    expect(listReviewsSchema.safeParse({ due: "2026-11-01" }).success).toBe(false);
+  });
+});
+
+describe("filtros da fila (E-05)", () => {
+  it("prazo em até 7 dias = antes do início do 8º dia em São Paulo (inclui as vencidas)", () => {
+    expect(reviewDueCutoff("NEXT_7_DAYS", new Date("2026-11-09T15:00:00Z"))).toBe("2026-11-17T03:00:00.000Z");
+    // 01h UTC do dia 10 ainda é dia 9 em SP.
+    expect(reviewDueCutoff("NEXT_7_DAYS", new Date("2026-11-10T01:00:00Z"))).toBe("2026-11-17T03:00:00.000Z");
+    // Virada de mês.
+    expect(reviewDueCutoff("NEXT_7_DAYS", new Date("2026-11-28T12:00:00Z"))).toBe("2026-12-06T03:00:00.000Z");
+  });
+
+  it("com prazo, só revisões em aberto — dentro do status pedido", () => {
+    expect(dueStatuses(undefined)).toEqual(["PENDING", "REOPENED"]);
+    expect(dueStatuses(statusFilterToDb("OPEN"))).toEqual(["PENDING", "REOPENED"]);
+    expect(dueStatuses(statusFilterToDb("REOPENED"))).toEqual(["REOPENED"]);
+    expect(dueStatuses(statusFilterToDb("APPROVED"))).toEqual([]);
+  });
+
+  it("prioridade única ou várias vira a lista do banco, sem repetição", () => {
+    expect(priorityFilterToDb(undefined)).toBeUndefined();
+    expect(priorityFilterToDb("HIGH")).toEqual(["HIGH"]);
+    expect(priorityFilterToDb(["URGENT", "HIGH", "URGENT"])).toEqual(["URGENT", "HIGH"]);
   });
 });

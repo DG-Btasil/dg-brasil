@@ -38,6 +38,21 @@ export interface ReviewListItem {
   decidedAt?: ISODateTime;
 }
 
+/**
+ * Indicadores da fila (revisões EM ABERTO), contados no banco para a fila
+ * inteira com a RLS de quem pede — não só a página carregada.
+ */
+export interface ReviewSummaryDTO {
+  /** Aguardando decisão (PENDING ou REOPENED). */
+  open: number;
+  /** Em aberto com prioridade URGENT ou HIGH. */
+  topPriority: number;
+  /** Em aberto com prazo até o fim do 7º dia (inclui vencidas). */
+  dueSoon: number;
+  /** Em aberto sem responsável. */
+  unassigned: number;
+}
+
 export type ReviewTargetDTO =
   | {
       kind: "ANALYSIS";

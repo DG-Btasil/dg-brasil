@@ -122,9 +122,14 @@ export function PartnerDetail({
         actions={
           admin && (
             <Can permission="partners.manage">
-              <Button variant="secondary" icon={<Pencil className="size-4" aria-hidden />} onClick={() => setDialog("edit")}>
-                Editar dados
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" icon={<Percent className="size-4" aria-hidden />} onClick={() => setDialog("share")}>
+                  Alterar divisão da parceria
+                </Button>
+                <Button variant="secondary" icon={<Pencil className="size-4" aria-hidden />} onClick={() => setDialog("edit")}>
+                  Editar dados
+                </Button>
+              </div>
             </Can>
           )
         }
@@ -216,7 +221,7 @@ function OverviewTab({
               actions={
                 <Can permission="partners.manage">
                   <Button size="sm" variant="secondary" icon={<Percent className="size-3.5" aria-hidden />} onClick={onShare}>
-                    Alterar
+                    Alterar divisão
                   </Button>
                 </Can>
               }

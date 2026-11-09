@@ -2,19 +2,20 @@ import { describe, expect, it } from "vitest";
 import * as clients from "@/server/domain/clients/service";
 import { createClientSchema, listClientsSchema } from "@/server/domain/clients/schemas";
 import { ctxFor, expectDomainError, fakeCpf, serviceDb, world } from "./support/world";
+import { validPfClient } from "./support/fixtures";
 
 /** Clientes no Supabase DEV real: deduplicação canônica, isolamento A × B, DTO por superfície. */
 
+/** Cadastro novo completo (Roadmap 2.0: qualificação, e-mail e endereço obrigatórios). */
 const newIndividual = (cpf: string, name = "Cliente Integração") =>
-  createClientSchema.parse({
-    kind: "INDIVIDUAL",
-    cpf,
-    fullName: name,
-    originOfficeId: world.owner,
-    contact: { email: "cliente.integracao@dgbrasil.test", phone: "11999990000" },
-    address: { zipCode: "01001000", city: "São Paulo", state: "SP" },
-    notes: "nota interna sigilosa",
-  });
+  createClientSchema.parse(
+    validPfClient(cpf, {
+      fullName: name,
+      contact: { email: "cliente.integracao@dgbrasil.test", phone: "11999990000" },
+      address: { zipCode: "01001000", city: "São Paulo", state: "SP" },
+      notes: "nota interna sigilosa",
+    }),
+  );
 
 describe("clientes — equipe interna", () => {
   it("ASSISTANT cria; ficha interna traz dados internos; acesso LGPD é registrado", async () => {
@@ -125,7 +126,8 @@ describe("clientes — Portal do Parceiro (A × B)", () => {
     expect(detail.surface).toBe("PARTNER");
     const json = JSON.stringify(detail);
     expect(json).not.toContain("não pode vazar");
-    for (const field of ["notes", "legalSummary", "inactivation", "responsibleUserId", "representatives", "partners"]) {
+    // Roadmap 2.0: cliente não tem mais responsável; o canal de aquisição é dado interno.
+    for (const field of ["notes", "legalSummary", "inactivation", "acquisitionChannel", "acquisitionDetail", "representatives", "partners"]) {
       expect(detail.client).not.toHaveProperty(field);
     }
     // Parceiro B não abre o cliente de A.

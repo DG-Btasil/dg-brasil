@@ -2,17 +2,21 @@ import { hasRole, requireInternal, requirePermission, type ServiceContext } from
 import { businessRule, forbidden, invalidState, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
 import type { DbReviewStatus } from "@/repositories/api/db-mappings";
-import type { ReviewDetailDTO, ReviewListItem, ReviewTargetDTO } from "./dto";
+import type { ReviewDetailDTO, ReviewListItem, ReviewSummaryDTO, ReviewTargetDTO } from "./dto";
 import {
   analysisTargetFromRow,
   assignPayload,
   decisionFromRow,
   decisionToDb,
   documentVersionTargetFromRow,
+  dueStatuses,
   listItemFromRow,
+  priorityFilterToDb,
   proposalTargetFromRow,
+  reviewDueCutoff,
   statusFilterToDb,
   targetOf,
+  TOP_REVIEW_PRIORITIES,
   type ReviewRow,
 } from "./mappers";
 import * as repo from "./repository";
@@ -51,13 +55,38 @@ export async function listReviews(ctx: ServiceContext, input: ListReviewsInput):
         : input.assignee
           ? { kind: "user" as const, id: input.assignee }
           : undefined;
+  const statuses = statusFilterToDb(input.status);
   const { rows, total } = await repo.list(
     ctx.db,
-    { statuses: statusFilterToDb(input.status), priority: input.priority, assignee, legalCaseId: input.legalCaseId, processId: input.processId, targetKind: input.targetKind },
+    {
+      // Prazo só corre em revisão aberta: com o filtro de prazo, as decididas saem.
+      statuses: input.due ? dueStatuses(statuses) : statuses,
+      priorities: priorityFilterToDb(input.priority),
+      assignee,
+      legalCaseId: input.legalCaseId,
+      processId: input.processId,
+      targetKind: input.targetKind,
+      dueBefore: input.due ? reviewDueCutoff(input.due) : undefined,
+    },
     input,
     { column: input.column, ascending: input.ascending },
   );
   return toPage(rows.map(listItemFromRow), total, input);
+}
+
+/**
+ * Indicadores da fila (E-05): quatro contagens de revisões EM ABERTO, no banco
+ * (head, sem linhas), em paralelo e com a RLS de quem pede.
+ */
+export async function getReviewSummary(ctx: ServiceContext, now = new Date()): Promise<ReviewSummaryDTO> {
+  requireReviewer(ctx, "reviews.view");
+  const [open, topPriority, dueSoon, unassigned] = await Promise.all([
+    repo.count(ctx.db, { statuses: OPEN }),
+    repo.count(ctx.db, { statuses: OPEN, priorities: [...TOP_REVIEW_PRIORITIES] }),
+    repo.count(ctx.db, { statuses: OPEN, dueBefore: reviewDueCutoff("NEXT_7_DAYS", now) }),
+    repo.count(ctx.db, { statuses: OPEN, assignee: { kind: "unassigned" } }),
+  ]);
+  return { open, topPriority, dueSoon, unassigned };
 }
 
 async function loadTarget(ctx: ServiceContext, row: ReviewRow): Promise<ReviewTargetDTO | null> {

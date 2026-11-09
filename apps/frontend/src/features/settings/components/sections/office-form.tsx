@@ -98,7 +98,7 @@ export function OfficeForm({ office, onSaved }: { office: Office; onSaved: () =>
         </Field>
       </FormSection>
 
-      <FormSection title="Atuação" description="Estados em que o escritório atua e unidades.">
+      <FormSection title="Atuação" description="Estados em que o escritório atua.">
         <Controller
           control={control}
           name="statesOfPractice"

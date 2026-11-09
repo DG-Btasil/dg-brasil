@@ -206,3 +206,50 @@ Crie `docs/qa/roadmap-2.0/qa-roadmap-2.0.md` com:
 4. Prints em `docs/qa/roadmap-2.0/`.
 
 Faça commit só da pasta `docs/qa/roadmap-2.0/` e envie.
+
+---
+
+## Rodada 2: correções da validação (2026-11-09)
+
+Confere as correções do relatório [qa/roadmap-2.0/qa-roadmap-2.0.md](qa/roadmap-2.0/qa-roadmap-2.0.md).
+Mesmas regras do início. Registre o resultado numa seção nova "Rodada 2" do
+mesmo relatório (OK/FALHA por item, com print em `docs/qa/roadmap-2.0/rodada-2/`).
+
+### Banco
+
+```bash
+cd supabase
+npx supabase db push --remote --dry-run   # deve listar SÓ 20261109000050_roadmap2_qa_fixes.sql
+npx supabase db push --remote
+npm run verificar                         # esperado: 839 verificações
+npm run validar:real
+```
+
+- [ ] **E-14 (divisão pela criação do caso):** a seção "[050]" do `verificar` cobre:
+  caso criado a 50/50, divisão muda para 60/40, aceite depois → 50/50; caso novo → 60/40.
+  No DEV: `select count(*) from legal_cases where accepted_at is null and partner_split_organization_id is not null;`
+  (casos de parceiro ainda não aceitos ganharam a divisão vigente no dia do push).
+- [ ] **R2-12:** as chaves estrangeiras novas têm índice (teste "[050] chaves estrangeiras novas com índice").
+
+### Testes
+
+- [ ] `cd apps/frontend && npm run lint` — **0 erros** (o conector gerado em `public/executor/` não é mais analisado, R2-04).
+- [ ] `npm test` e `npm run typecheck` limpos.
+- [ ] `npm run test:integration` — esperado: todos passam **sem** ajustar fixtures (R2-01). Anote qualquer falha com nome e mensagem.
+
+### Telas
+
+- [ ] **R2-03:** novo cliente PF e novo caso no portal: digitar um CPF válido **não** mostra "Consultando…" nem chama o servidor (aba Rede do navegador sem `lookup.cpf`).
+- [ ] **R2-05:** janela com ~600 px de altura → Processo → Financeiro → Nova despesa: o corpo do diálogo rola e o botão de confirmar fica visível.
+- [ ] **R2-06 / R2-16 / E-12:** Convidar parceiro com nome inválido (ex.: com número) dá erro **sem** criar escritório. O campo se chama "Porcentagem do parceiro (%)", explica quem fica com o quê e mostra a prévia "Parceiro X% · Escritório Y%". O escritório pendente leva o nome do contato. Se o e-mail falhar, a mensagem não diz "Nada foi criado" e uma nova tentativa para o mesmo e-mail reaproveita o mesmo escritório (não cria outro).
+- [ ] **E-11:** ficha do parceiro → botão "Alterar divisão da parceria" no cabeçalho → "Revisar" mostra divisão atual → nova → "Confirmar nova divisão".
+- [ ] **E-13:** convidar usuário do parceiro (PARTNER_USER): OAB **opcional**. No primeiro acesso aparece "Não sou advogado(a)" (também para o administrador do parceiro que completa o escritório). Advogado do escritório (LAWYER) continua com OAB obrigatória.
+- [ ] **R2-13 / R2-14 / E-08:** portal → novo caso → cliente novo: depois do CEP o foco vai para o número; telefone obrigatório.
+- [ ] **R2-08 / E-09:** Configurações → Geral → Atuação: descrição sem "e unidades".
+- [ ] **E-01 a E-04 e E-10:** Início, Clientes, Casos, Processos, Parceiros e portal (Início e Financeiro): os painéis da mesma linha têm a **mesma altura**; listas longas (Parceiros, com 260+ escritórios) rolam dentro do painel, também pelo teclado; em Casos, "Escritório de origem" é uma faixa larga e baixa embaixo, com a lista em colunas; nenhum buraco na grade (testar com muitos e com poucos dados). Prints em 1440 e 1920 px.
+- [ ] **E-05:** Revisões: faixa de indicadores (Aguardando decisão, Urgentes e alta prioridade, Vencendo em até 7 dias, Sem responsável); clicar filtra a lista e clicar de novo limpa. Cada número bate com a lista filtrada ("até 7 dias" = prazo até o fim do 7º dia, no horário de São Paulo). O filtro aparece na barra ("Prazo", "Urgente e alta") e no endereço (`?prazo=7dias`).
+- [ ] **E-06:** Financeiro → Visão geral: gráfico "A receber por vencimento" no quarto espaço (em atraso, até 30, 31 a 60, 61 a 90, acima de 90 dias). A soma das barras é igual a "Em aberto"; se houver obrigação sem vencimento, aparece a barra extra "Sem vencimento". Só entram contratos de processo (regra da 046).
+- [ ] **R2-09:** axe-core na Início: nenhum elemento focável dentro de `aria-hidden` nos gráficos; o texto cinza-claro passou a ter contraste AA (o número de avisos de contraste deve cair bastante).
+
+Fica de fora desta rodada, por decisão: layout de celular (R2-07, a confirmar com a Barbara), R2-10 (falha única não reproduzida) e R2-15 (não reproduzido).
+

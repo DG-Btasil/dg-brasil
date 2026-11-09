@@ -240,7 +240,7 @@ describe("validação linha a linha (simulação)", () => {
     const [r] = normalizeRows(headers, [row(2, ["Ana Lima", "529.982.247-25", "+55 (11) 98888-7777", "sp", cnj(10), "Revisional", "Em andamento", "Lucas", "10/12/2026", "R$ 1.500,00"])], mapping, ctx);
     expect(r!.status).toBe("VALID");
     expect(r!.payload).toEqual({
-      client: { kind: "INDIVIDUAL", document: "52998224725", name: "Ana Lima", phone: "11988887777", address: { state: "SP" }, responsible_user_id: "u-lucas" },
+      client: { kind: "INDIVIDUAL", document: "52998224725", name: "Ana Lima", phone: "11988887777", address: { state: "SP" } },
       process: { cnj: cnj(10), legal_class: "Revisional", status: "ACTIVE", case_value: 1500, due_date: "2026-12-10", responsible_user_id: "u-lucas" },
     });
     expect(r!.raw_data.Nome).toBe("Ana Lima");
@@ -294,7 +294,8 @@ describe("validação linha a linha (simulação)", () => {
     const w = r!.warnings.join("\n");
     for (const re of [/zero à esquerda/, /Dígito verificador do CPF/, /Telefone/, /UF “ZZ”/, /Status “\?\?\?”/, /Fulano/, /já passou/, /Valor da causa/]) expect(w).toMatch(re);
     expect(r!.payload!.process).toEqual({ cnj: cnj(13) });
-    expect(r!.payload!.client.responsible_user_id).toBe("u-padrao");
+    // Roadmap 2.0 (045): cliente não tem responsável; o advogado responde pelo caso/processo.
+    expect(r!.payload!.client).not.toHaveProperty("responsible_user_id");
   });
 
   it("mesmo CPF com outro nome: aviso apontando a primeira linha SEM erro; linha só de cliente não tem processo", () => {

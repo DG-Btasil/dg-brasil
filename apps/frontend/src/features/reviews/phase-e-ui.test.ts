@@ -6,7 +6,16 @@ import type { TemplateSetupRow } from "@/server/domain/analyses/repository";
 import { startAnalysisSchema, sendAnalysisToAgentSchema } from "@/server/domain/analyses/schemas";
 import type { TemplateFieldDTO } from "@/server/domain/analyses/dto";
 import { fieldsPayload, formatFieldValue, validateFields } from "@/features/analyses/fields";
-import { DEFAULT_REVIEW_QUERY, reviewQueryFromSearchParams, reviewQueryToInput, reviewQueryToSearchParams, type ReviewListQuery } from "./list-query";
+import {
+  DEFAULT_REVIEW_QUERY,
+  isReviewCounterActive,
+  REVIEW_TOP_PRIORITY,
+  reviewQueryFromSearchParams,
+  reviewQueryToInput,
+  reviewQueryToSearchParams,
+  toggleReviewCounter,
+  type ReviewListQuery,
+} from "./list-query";
 
 const UUID = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
 
@@ -16,8 +25,22 @@ const UUID = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
 
 describe("fila de revisões — URL e entrada da action", () => {
   it("ida e volta pela URL", () => {
-    const q: ReviewListQuery = { view: "todas", priority: "URGENT", kind: "ANALYSIS", status: "APPROVED", unassigned: true, page: 2 };
+    const q: ReviewListQuery = { view: "todas", priority: "URGENT", kind: "ANALYSIS", status: "APPROVED", due: "NEXT_7_DAYS", unassigned: true, page: 2 };
     expect(reviewQueryFromSearchParams(Object.fromEntries(reviewQueryToSearchParams(q)))).toEqual(q);
+    const top: ReviewListQuery = { ...DEFAULT_REVIEW_QUERY, priority: REVIEW_TOP_PRIORITY };
+    expect(reviewQueryToSearchParams(top).toString()).toBe("prioridade=URGENT_HIGH");
+    expect(reviewQueryFromSearchParams(Object.fromEntries(reviewQueryToSearchParams(top)))).toEqual(top);
+  });
+  it("prazo: ?prazo=7dias vira o filtro do servidor; valor desconhecido é ignorado", () => {
+    const q = reviewQueryFromSearchParams({ prazo: "7dias" });
+    expect(q.due).toBe("NEXT_7_DAYS");
+    expect(listReviewsSchema.parse(reviewQueryToInput(q))).toMatchObject({ due: "NEXT_7_DAYS", status: "OPEN" });
+    expect(reviewQueryFromSearchParams({ prazo: "30dias" }).due).toBe("");
+  });
+  it("urgentes e alta: o atalho manda as duas prioridades e passa no schema real", () => {
+    const input = listReviewsSchema.parse(reviewQueryToInput({ ...DEFAULT_REVIEW_QUERY, priority: REVIEW_TOP_PRIORITY }));
+    expect(input.priority).toEqual(["URGENT", "HIGH"]);
+    expect(listReviewsSchema.parse(reviewQueryToInput({ ...DEFAULT_REVIEW_QUERY, priority: "LOW" })).priority).toBe("LOW");
   });
   it("padrão não polui a URL; valores inválidos voltam ao padrão", () => {
     expect(reviewQueryToSearchParams(DEFAULT_REVIEW_QUERY).toString()).toBe("");
@@ -33,6 +56,36 @@ describe("fila de revisões — URL e entrada da action", () => {
     expect(listReviewsSchema.parse(reviewQueryToInput({ ...DEFAULT_REVIEW_QUERY, view: "minhas" }))).toMatchObject({ assignee: "me" });
     expect(listReviewsSchema.parse(reviewQueryToInput({ ...DEFAULT_REVIEW_QUERY, unassigned: true }))).toMatchObject({ assignee: "unassigned" });
     expect(listReviewsSchema.parse(reviewQueryToInput({ ...DEFAULT_REVIEW_QUERY, view: "todas", status: "REJECTED" }))).toMatchObject({ status: "REJECTED", ascending: false });
+  });
+});
+
+describe("indicadores da fila — botões de filtro (E-05)", () => {
+  it("aplicar e clicar de novo limpa só aquele filtro, voltando à página 1", () => {
+    const start = { ...DEFAULT_REVIEW_QUERY, kind: "ANALYSIS" as const, page: 3 };
+    for (const counter of ["topPriority", "dueSoon", "unassigned"] as const) {
+      const on = toggleReviewCounter(start, counter);
+      expect(isReviewCounterActive(on, counter)).toBe(true);
+      expect(on).toMatchObject({ kind: "ANALYSIS", page: 1 });
+      const off = toggleReviewCounter(on, counter);
+      expect(isReviewCounterActive(off, counter)).toBe(false);
+      expect(off).toEqual({ ...start, page: 1 });
+    }
+  });
+  it("os indicadores contam revisões em aberto: aplicar a partir de 'Todas' volta para 'Aguardando decisão'", () => {
+    const todas: ReviewListQuery = { ...DEFAULT_REVIEW_QUERY, view: "todas", status: "APPROVED" };
+    expect(toggleReviewCounter(todas, "topPriority")).toMatchObject({ view: "abertas", status: "", priority: REVIEW_TOP_PRIORITY });
+    expect(toggleReviewCounter(todas, "dueSoon")).toMatchObject({ view: "abertas", status: "", due: "NEXT_7_DAYS" });
+    expect(toggleReviewCounter({ ...DEFAULT_REVIEW_QUERY, view: "minhas" }, "dueSoon")).toMatchObject({ view: "minhas", due: "NEXT_7_DAYS" });
+  });
+  it("'Sem responsável' sai de 'Atribuídas a mim'; 'Aguardando decisão' liga a visão e, de novo, mostra todas", () => {
+    expect(toggleReviewCounter({ ...DEFAULT_REVIEW_QUERY, view: "minhas" }, "unassigned")).toMatchObject({ view: "abertas", unassigned: true });
+    expect(isReviewCounterActive(DEFAULT_REVIEW_QUERY, "open")).toBe(true);
+    expect(toggleReviewCounter(DEFAULT_REVIEW_QUERY, "open")).toMatchObject({ view: "todas" });
+    expect(toggleReviewCounter({ ...DEFAULT_REVIEW_QUERY, view: "todas", status: "REJECTED" }, "open")).toMatchObject({ view: "abertas", status: "" });
+  });
+  it("o filtro aplicado vai para a URL", () => {
+    expect(reviewQueryToSearchParams(toggleReviewCounter(DEFAULT_REVIEW_QUERY, "dueSoon")).toString()).toBe("prazo=7dias");
+    expect(reviewQueryToSearchParams(toggleReviewCounter(DEFAULT_REVIEW_QUERY, "unassigned")).toString()).toBe("sem_responsavel=1");
   });
 });
 

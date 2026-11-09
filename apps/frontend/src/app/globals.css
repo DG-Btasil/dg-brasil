@@ -28,7 +28,8 @@
   --surface-sunken: #eef1f4;
   --foreground: #18222d;
   --muted: #5f6b79;
-  --subtle: #8a95a1;
+  /* AA: 4,6:1 sobre o fundo (antes #8a95a1, 2,8:1 — QA R2-09). */
+  --subtle: #66717f;
   --line: #dde2e7;
   --line-strong: #c7ced6;
 

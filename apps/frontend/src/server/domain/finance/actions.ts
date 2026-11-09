@@ -214,6 +214,11 @@ export async function getProcessFinanceTotalsAction(input?: unknown) {
   return runAction({ name: "finance.processes.totals", permission: "finance.view", schema: z.unknown(), input, handler: (ctx) => service.getProcessFinanceTotals(ctx) });
 }
 
+/** "A receber por vencimento" da visão geral: saldo em aberto dos contratos de processo, por faixa (somado no servidor). */
+export async function getReceivableAgingAction(input?: unknown) {
+  return runAction({ name: "finance.receivables.aging", permission: "finance.view", schema: z.unknown(), input, handler: (ctx) => service.getReceivableAging(ctx) });
+}
+
 /** Gráficos de despesas da visão geral (últimos 12 meses). */
 export async function getExpenseSummaryAction(input?: unknown) {
   return runAction({ name: "finance.expenses.summary", permission: "finance.view", schema: z.unknown(), input, handler: (ctx) => service.getExpenseSummary(ctx) });

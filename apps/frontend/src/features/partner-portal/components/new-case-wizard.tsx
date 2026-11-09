@@ -161,6 +161,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
     setError,
     trigger,
     getValues,
+    setFocus,
     formState: { errors },
   } = form;
   const kind = useWatch({ control, name: "kind" });
@@ -199,6 +200,8 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
     if (a.district) setValue("district", a.district, opts);
     if (a.city) setValue("city", a.city, opts);
     if (a.state) setValue("state", a.state, opts);
+    // Como no escritório: depois do CEP, o foco vai para o número (QA R2-13).
+    setTimeout(() => setFocus("number"), 0);
   });
   const { areas } = useCatalogOptions(catalog, area);
   const areaName = useMemo(() => new Map(areas.map((a) => [a.value, a.label])), [areas]);
@@ -517,8 +520,8 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
             <Field label="E-mail" requirement="required" error={errors.email?.message}>
               {(p) => <Input {...p} type="email" {...register("email", { validate: (x) => (!!x.trim() && /\S+@\S+\.\S+/.test(x)) || msg.email })} />}
             </Field>
-            <Field label="Telefone" requirement="recommended" error={errors.phone?.message}>
-              {(p) => <MaskedInput mask="phone" {...p} {...register("phone", { validate: (x) => !x || isPhoneFormat(x) || msg.phone })} />}
+            <Field label="Telefone" requirement="required" error={errors.phone?.message}>
+              {(p) => <MaskedInput mask="phone" {...p} {...register("phone", { validate: (x) => (!!x.trim() && isPhoneFormat(x)) || msg.phone })} />}
             </Field>
             <Field label="CEP" requirement="required" error={errors.zipCode?.message} hint={autofillHint(cepStatus, "CEP") ?? "Digite o CEP: o endereço é preenchido sozinho."}>
               {(p) => <MaskedInput mask="cep" {...p} {...register("zipCode", { validate: (x) => x.replace(/\D/g, "").length === 8 || msg.cep })} />}

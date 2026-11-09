@@ -13,11 +13,20 @@ export const REVIEW_SORT_FIELDS = { createdAt: "created_at", updatedAt: "updated
 export const REVIEW_TARGET_KINDS = ["DOCUMENT_VERSION", "ANALYSIS", "AGENT_PROPOSAL"] as const;
 /** Status do banco + "OPEN" (PENDING ou REOPENED: aguardando decisão). */
 export const REVIEW_STATUS_FILTERS = ["OPEN", "PENDING", "REOPENED", "CHANGES_REQUESTED", "APPROVED", "REJECTED"] as const;
+/**
+ * Prazo da revisão (`due_at`). "NEXT_7_DAYS" = vence até o fim do 7º dia (fuso
+ * de São Paulo), inclusive as já vencidas. Só revisões em aberto têm prazo
+ * correndo: com este filtro, as decididas ficam de fora.
+ */
+export const REVIEW_DUE_FILTERS = ["NEXT_7_DAYS"] as const;
+export type ReviewDueFilter = (typeof REVIEW_DUE_FILTERS)[number];
 
 export const listReviewsSchema = pageInputSchema
   .extend({
     status: z.enum(REVIEW_STATUS_FILTERS).optional(),
-    priority: z.enum(PRIORITIES).optional(),
+    /** Uma prioridade ou várias (o indicador "Urgentes e alta prioridade" manda URGENT + HIGH). */
+    priority: z.union([z.enum(PRIORITIES), z.array(z.enum(PRIORITIES)).min(1).max(PRIORITIES.length)]).optional(),
+    due: z.enum(REVIEW_DUE_FILTERS).optional(),
     /** "me" = atribuídas a mim; "unassigned" = sem responsável; ou o id do revisor. */
     assignee: z.union([z.literal("me"), z.literal("unassigned"), zUuid()]).optional(),
     legalCaseId: zUuid().optional(),

@@ -230,6 +230,8 @@ function refineNewPartnerClient(v: Record<string, unknown>, ctx: z.RefinementCtx
   if (!isNew) return;
   const need = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
   if (!v.email) need(["email"], "Informe o e-mail.");
+  // Telefone obrigatório como no cadastro do escritório (QA R2-14).
+  if (!v.phone) need(["phone"], "Informe o telefone com DDD.");
   const a = (v.address ?? {}) as Record<string, unknown>;
   if (!a.zipCode) need(["address", "zipCode"], "Informe o CEP.");
   if (!a.street) need(["address", "street"], "Informe o logradouro.");

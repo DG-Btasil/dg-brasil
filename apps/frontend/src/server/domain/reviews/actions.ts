@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { runAction } from "@/server/core/action";
 import * as manual from "./manual-revision";
 import * as service from "./service";
@@ -12,6 +13,11 @@ import { assignReviewSchema, decideReviewSchema, listReviewsSchema, reopenReview
 
 export async function listReviewsAction(input: unknown) {
   return runAction({ name: "reviews.list", permission: "reviews.view", schema: listReviewsSchema, input, handler: service.listReviews });
+}
+
+/** Indicadores da fila (aguardando, urgentes/alta, vencendo em 7 dias, sem responsável), contados no banco. */
+export async function getReviewSummaryAction(input?: unknown) {
+  return runAction({ name: "reviews.summary", permission: "reviews.view", schema: z.unknown(), input, handler: (ctx) => service.getReviewSummary(ctx) });
 }
 
 export async function getReviewAction(input: unknown) {

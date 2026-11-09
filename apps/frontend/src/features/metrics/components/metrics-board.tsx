@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Children, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { callAction, type ActionResult } from "@/lib/actions/result";
@@ -107,8 +107,10 @@ function Variant({ variant, m }: { variant: MetricsVariant; m: DashboardMetricsD
             <Trend title="Casos novos × aceitos" m={m} series={[{ key: "cases", label: "Novos", color: "var(--chart-2)" }, { key: "accepted", label: "Aceitos", color: "var(--chart-3)" }]} />
             <Categories title="Situação dos casos" rows={statusRows(m.cases.by_status, LEGAL_CASE_STATUSES, LEGAL_CASE_STATUS_LABEL)} />
             <Categories title="Como chegaram" description="Canal de aquisição dos casos novos do período." rows={channelRows(m.cases.by_channel)} />
-            {m.cases.by_origin.length > 1 && <Categories title="Escritório de origem" description="Casos novos do período por escritório." rows={originRows(m.cases.by_origin)} />}
           </Grid>
+          {m.cases.by_origin.length > 1 && (
+            <Categories wide title="Escritório de origem" description="Casos novos do período por escritório." rows={originRows(m.cases.by_origin)} />
+          )}
         </>
       );
     case "processes":
@@ -204,15 +206,25 @@ export function EntriesTrend({ metrics, title = "Entradas nos últimos 30 dias" 
   );
 }
 
+/** Altura do corpo de TODOS os painéis de indicadores (gráfico e listas), para a linha ficar alinhada. */
+const BODY_HEIGHT = "h-[200px]";
+
+/**
+ * Grade dos painéis: colunas conforme a quantidade de blocos (nunca deixa
+ * buraco) e todos com a mesma altura na linha (QA E-01..E-04, E-07, E-10).
+ */
 function Grid({ children }: { children: ReactNode }) {
-  return <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">{children}</div>;
+  const count = Children.toArray(children).filter(Boolean).length;
+  const cols = count >= 3 ? "lg:grid-cols-2 xl:grid-cols-3" : count === 2 ? "lg:grid-cols-2" : "";
+  return <div className={cn("grid items-stretch gap-4", cols)}>{children}</div>;
 }
 
 function Tiles({ items, compact }: { items: { label: string; value: number | string; hint?: string; emphasis?: boolean }[]; compact?: boolean }) {
   return (
-    <dl className={cn("grid gap-3", compact ? "grid-cols-2 content-start" : "grid-cols-2 md:grid-cols-3 xl:grid-cols-6")}>
+    // Compacto (ao lado de painéis): ocupa a altura toda da linha, em 2×2 (QA E-02).
+    <dl className={cn("grid gap-3", compact ? "h-full grid-cols-2 auto-rows-fr" : "grid-cols-2 md:grid-cols-3 xl:grid-cols-6")}>
       {items.map((i) => (
-        <div key={i.label} className="rounded-lg border border-line bg-surface px-4 py-3 shadow-hairline" title={i.hint}>
+        <div key={i.label} className={cn("rounded-lg border border-line bg-surface px-4 py-3 shadow-hairline", compact && "flex flex-col justify-center")} title={i.hint}>
           <dt className="text-[11.5px] font-medium uppercase tracking-[0.05em] text-subtle">{i.label}</dt>
           <dd className={cn("mt-1 text-[20px] font-semibold tabular", i.emphasis ? "text-navy" : "text-foreground")}>{typeof i.value === "number" ? formatNumber(i.value) : i.value}</dd>
         </div>
@@ -233,16 +245,16 @@ function Trend({ title, m, series }: { title: string; m: DashboardMetricsDTO; se
   const summary = points.map((p) => `${p.label}: ${series.map((s) => `${s.label} ${(p as Record<string, unknown>)[s.key]}`).join(", ")}`).join("; ");
   const empty = points.every((p) => series.every((s) => !(p as unknown as Record<string, number>)[s.key]));
   return (
-    <Panel>
+    <Panel className="flex h-full flex-col">
       <PanelHeader title={title} description={m.period.unit === "week" ? "Por semana" : "Por mês"} as="h3" />
-      <PanelBody>
+      <PanelBody className="flex-1">
         {empty ? (
-          <p className="py-10 text-center text-[13px] text-muted">Nada no período.</p>
+          <p className={cn(BODY_HEIGHT, "flex items-center justify-center text-[13px] text-muted")}>Nada no período.</p>
         ) : (
           <figure>
-            <div className="h-[200px]" aria-hidden>
+            <div className={BODY_HEIGHT} aria-hidden>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={points} margin={{ top: 4, right: 4, bottom: 0, left: -18 }} barCategoryGap="24%">
+                <BarChart accessibilityLayer={false} data={points} margin={{ top: 4, right: 4, bottom: 0, left: -18 }} barCategoryGap="24%">
                   <CartesianGrid vertical={false} stroke={CHART_GRID_STROKE} />
                   <XAxis dataKey="label" tick={CHART_AXIS_TICK} tickLine={false} axisLine={{ stroke: CHART_GRID_STROKE }} interval="preserveStartEnd" />
                   <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -266,13 +278,13 @@ function MoneyBars({ title, description, m }: { title: string; description: stri
   const rows = m.series.map((p) => ({ label: bucketLabel(p.bucket, m.period.unit), value: Number(p.partner_share) }));
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
-    <Panel>
+    <Panel className="flex h-full flex-col">
       <PanelHeader title={title} description={description} as="h3" />
-      <PanelBody>
+      <PanelBody className="flex-1">
         {rows.every((r) => r.value === 0) ? (
-          <p className="py-8 text-center text-[13px] text-muted">Nenhum valor no período.</p>
+          <p className={cn(BODY_HEIGHT, "flex items-center justify-center text-[13px] text-muted")}>Nenhum valor no período.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className={cn(BODY_HEIGHT, "space-y-2 overflow-y-auto pr-1")} tabIndex={0} aria-label={title}>
             {rows.map((r) => (
               <li key={r.label} className="grid grid-cols-[64px_minmax(0,1fr)_96px] items-center gap-3 text-[12.5px]">
                 <span className="text-muted">{r.label}</span>
@@ -293,17 +305,27 @@ function MoneyBars({ title, description, m }: { title: string; description: stri
 
 type Row = { label: string; value: number };
 
-function Categories({ title, description, rows }: { title: string; description?: string; rows: Row[] }) {
+/**
+ * Lista com barras. O corpo tem a mesma altura do gráfico ao lado; com muitas
+ * linhas (ex.: 260 escritórios), rola só a lista, também pelo teclado.
+ * `wide`: faixa larga e baixa, com a lista em colunas (QA E-04).
+ */
+function Categories({ title, description, rows, wide }: { title: string; description?: string; rows: Row[]; wide?: boolean }) {
   const total = rows.reduce((t, r) => t + r.value, 0);
   const max = Math.max(1, ...rows.map((r) => r.value));
+  const height = wide ? "max-h-[160px]" : BODY_HEIGHT;
   return (
-    <Panel>
+    <Panel className={cn("flex flex-col", wide ? "mt-4" : "h-full")}>
       <PanelHeader title={title} description={description} as="h3" />
-      <PanelBody>
+      <PanelBody className="flex-1">
         {total === 0 ? (
-          <p className="py-8 text-center text-[13px] text-muted">Nada no período.</p>
+          <p className={cn(height, "flex items-center justify-center text-[13px] text-muted")}>Nada no período.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul
+            className={cn(height, "overflow-y-auto pr-1", wide ? "grid gap-x-8 gap-y-2 md:grid-cols-2 xl:grid-cols-3" : "space-y-2")}
+            tabIndex={0}
+            aria-label={`${title} (lista com rolagem)`}
+          >
             {rows
               .filter((r) => r.value > 0)
               .map((r) => (

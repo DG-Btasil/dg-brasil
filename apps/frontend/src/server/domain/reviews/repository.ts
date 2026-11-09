@@ -26,14 +26,30 @@ const REVIEW_COLUMNS = `id, legal_case_id, legal_process_id, document_version_id
 
 export interface ReviewFilters {
   statuses?: DbReviewStatus[];
-  priority?: Priority;
+  priorities?: Priority[];
   assignee?: { kind: "user"; id: string } | { kind: "unassigned" };
   legalCaseId?: string;
   processId?: string;
   targetKind?: "DOCUMENT_VERSION" | "ANALYSIS" | "AGENT_PROPOSAL";
+  /** Prazo (`due_at`) antes deste instante. Revisão sem prazo não entra. */
+  dueBefore?: string;
 }
 
 const TARGET_COLUMN = { DOCUMENT_VERSION: "document_version_id", ANALYSIS: "legal_analysis_id", AGENT_PROPOSAL: "agent_proposal_id" } as const;
+
+/** Consulta de revisões com os filtros — a MESMA para a lista e para as contagens. */
+function filtered(db: SupabaseClient, columns: string, filters: ReviewFilters, head = false) {
+  let query = db.from("reviews").select(columns, { count: "exact", head });
+  if (filters.statuses) query = query.in("status", filters.statuses);
+  if (filters.priorities) query = query.in("priority", filters.priorities);
+  if (filters.assignee?.kind === "user") query = query.eq("assigned_reviewer_id", filters.assignee.id);
+  if (filters.assignee?.kind === "unassigned") query = query.is("assigned_reviewer_id", null);
+  if (filters.legalCaseId) query = query.eq("legal_case_id", filters.legalCaseId);
+  if (filters.processId) query = query.eq("legal_process_id", filters.processId);
+  if (filters.targetKind) query = query.not(TARGET_COLUMN[filters.targetKind], "is", null);
+  if (filters.dueBefore) query = query.lt("due_at", filters.dueBefore);
+  return query;
+}
 
 export async function list(
   db: SupabaseClient,
@@ -41,18 +57,20 @@ export async function list(
   page: PageInput,
   sort: { column: string; ascending: boolean },
 ): Promise<{ rows: ReviewRow[]; total: number }> {
-  let query = db.from("reviews").select(REVIEW_COLUMNS, { count: "exact" });
-  if (filters.statuses) query = query.in("status", filters.statuses);
-  if (filters.priority) query = query.eq("priority", filters.priority);
-  if (filters.assignee?.kind === "user") query = query.eq("assigned_reviewer_id", filters.assignee.id);
-  if (filters.assignee?.kind === "unassigned") query = query.is("assigned_reviewer_id", null);
-  if (filters.legalCaseId) query = query.eq("legal_case_id", filters.legalCaseId);
-  if (filters.processId) query = query.eq("legal_process_id", filters.processId);
-  if (filters.targetKind) query = query.not(TARGET_COLUMN[filters.targetKind], "is", null);
   const { from, to } = toRange(page);
-  const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);
+  const { data, error, count } = await filtered(db, REVIEW_COLUMNS, filters)
+    .order(sort.column, { ascending: sort.ascending, nullsFirst: false })
+    .order("id")
+    .range(from, to);
   if (error) throw fromDbError(error);
   return { rows: (data ?? []) as unknown as ReviewRow[], total: count ?? 0 };
+}
+
+/** Só o total (`head`: nenhuma linha trafega), contado no banco com a RLS de quem pergunta. */
+export async function count(db: SupabaseClient, filters: ReviewFilters): Promise<number> {
+  const { error, count: total } = await filtered(db, "id", filters, true);
+  if (error) throw fromDbError(error);
+  return total ?? 0;
 }
 
 export async function getById(db: SupabaseClient, id: string): Promise<ReviewRow | null> {

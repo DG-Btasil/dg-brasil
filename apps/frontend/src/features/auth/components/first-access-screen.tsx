@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input, MaskedInput, Select } from "@/components/ui/form";
 import { passwordProblem } from "@/lib/auth/password-policy";
 import { BRAZILIAN_STATES } from "@/lib/constants/legal";
+import { OAB_OPTIONAL_ROLES, OAB_REQUIRED_ROLES } from "@/lib/auth/oab";
 import { formatCNPJ, formatCPF } from "@/lib/formatting";
 import { taxIdProblem } from "@/lib/validation";
 import { completeInvitation, type InvitationContext } from "@/server/auth/actions";
@@ -15,10 +16,6 @@ import { OnboardingSteps } from "./onboarding-steps";
 import { PasswordFields } from "./password-fields";
 
 const UF_OPTIONS = BRAZILIAN_STATES.map((uf) => ({ value: uf, label: uf }));
-/** Papéis em que a OAB é obrigatória (advogado da casa e usuário do parceiro). */
-const OAB_REQUIRED_ROLES = new Set(["LAWYER", "PARTNER_USER"]);
-/** Papéis que podem ter OAB (administradores: opcional). */
-const OAB_OPTIONAL_ROLES = new Set(["ADMIN", "PARTNER_ADMIN"]);
 
 /**
  * Primeiro acesso por convite: nome + senha e, conforme o convite (048):
@@ -39,8 +36,8 @@ export function FirstAccessScreen({
   invitation?: InvitationContext;
 }) {
   const role = invitation?.role ?? "";
-  const oabRequired = OAB_REQUIRED_ROLES.has(role);
-  const oabAllowed = oabRequired || OAB_OPTIONAL_ROLES.has(role);
+  const oabRequired = (OAB_REQUIRED_ROLES as readonly string[]).includes(role);
+  const oabAllowed = oabRequired || (OAB_OPTIONAL_ROLES as readonly string[]).includes(role);
   const needsOffice = !!invitation?.needsOfficeProfile;
 
   const [fullName, setFullName] = useState(defaultName ?? "");
@@ -60,7 +57,7 @@ export function FirstAccessScreen({
     const problem = passwordProblem(password, { email, name: fullName });
     if (problem) return setError(problem);
     if (password !== confirm) return setError("As senhas não coincidem.");
-    const wantsOab = oabAllowed && !noOab && (oabRequired || needsOffice || oabNumber.trim() !== "");
+    const wantsOab = oabAllowed && !noOab && (oabRequired || oabNumber.trim() !== "");
     if (wantsOab && (!oabNumber.trim() || !oabState)) return setError("Informe o número e a UF da OAB.");
     if (needsOffice) {
       if (!office.name.trim()) return setError("Informe o nome do escritório.");
@@ -100,15 +97,15 @@ export function FirstAccessScreen({
         {oabAllowed && (
           <fieldset className="space-y-3 rounded-lg border border-line p-4">
             <legend className="px-1 text-[12.5px] font-semibold text-foreground">Sua OAB</legend>
-            {!oabRequired && !needsOffice && (
+            {!oabRequired && (
               <Checkbox checked={noOab} onChange={(e) => setNoOab(e.target.checked)} label="Não sou advogado(a)" description="Você pode cadastrar OABs depois, em Minha conta." />
             )}
             {!noOab && (
               <div className="grid grid-cols-[1fr_96px] gap-3">
-                <Field label="Número da OAB" requirement={oabRequired || needsOffice ? "required" : "optional"} hint="Outras seccionais você cadastra depois, em Minha conta.">
+                <Field label="Número da OAB" requirement={oabRequired ? "required" : "optional"} hint="Outras seccionais você cadastra depois, em Minha conta.">
                   {(p) => <Input {...p} inputMode="numeric" value={oabNumber} onChange={(e) => setOabNumber(e.target.value)} placeholder="000000" />}
                 </Field>
-                <Field label="UF" requirement={oabRequired || needsOffice ? "required" : "optional"}>
+                <Field label="UF" requirement={oabRequired ? "required" : "optional"}>
                   {(p) => <Select {...p} placeholder="—" options={UF_OPTIONS} value={oabState} onChange={(e) => setOabState(e.target.value)} />}
                 </Field>
               </div>

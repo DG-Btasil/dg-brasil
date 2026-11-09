@@ -13,6 +13,7 @@ import { processQueryToInput, DEFAULT_PROCESS_QUERY } from "@/features/processes
 import { processCreateInput, processEditPatch } from "@/features/processes/server-input";
 import type { ProcessFormValues } from "@/features/processes/schemas";
 import { ctxFor, expectDomainError, fakeCnj, fakeCpf, world } from "./support/world";
+import { validPartnerPfClient, validPfClient } from "./support/fixtures";
 
 /**
  * Etapa 4.3 — Fase B no Supabase DEV: o que as TELAS de Casos e Processos
@@ -23,7 +24,7 @@ import { ctxFor, expectDomainError, fakeCnj, fakeCpf, world } from "./support/wo
 async function newClient(name = "Cliente Fase B"): Promise<string> {
   const { id } = await clients.createClient(
     await ctxFor("LAWYER"),
-    createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: `${name} ${world.run}`, originOfficeId: world.owner }),
+    createClientSchema.parse(validPfClient(fakeCpf(), { fullName: `${name} ${world.run}` })),
   );
   return id;
 }
@@ -163,7 +164,7 @@ describe("Fase B — processos, prazos e andamentos pela UI", () => {
       pa,
       partnerSubmitCaseSchema.parse({
         idempotencyKey: randomUUID(),
-        client: { kind: "INDIVIDUAL", document: fakeCpf(), fullName: "Cliente Portal Fase B", origin: "OWN_OFFICE" },
+        client: validPartnerPfClient(fakeCpf(), { fullName: "Cliente Portal Fase B", origin: "OWN_OFFICE" }),
         case: { area: "BANKING", title: `Caso parceiro Fase B ${randomUUID()}`, origin: "OWN_OFFICE" },
       }),
     );

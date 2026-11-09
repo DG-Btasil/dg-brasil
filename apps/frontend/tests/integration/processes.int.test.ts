@@ -7,6 +7,7 @@ import * as deadlines from "@/server/domain/processes/deadlines/service";
 import { addPartySchema, createEventSchema, createPartnerProcessSchema, createProcessSchema, listEventsSchema, listPartiesSchema, listProcessesSchema } from "@/server/domain/processes/schemas";
 import { createDeadlineSchema, listDeadlinesSchema, listOverdueSchema, listUpcomingSchema } from "@/server/domain/processes/deadlines/schemas";
 import { ctxFor, expectDomainError, fakeCnj, fakeCpf, serviceDb, world } from "./support/world";
+import { validPfClient } from "./support/fixtures";
 
 /**
  * Processos, partes, movimentações e prazos no Supabase DEV real: CNJ único,
@@ -19,7 +20,7 @@ async function internalCase(): Promise<{ caseId: string; clientId: string }> {
   const lawyer = await ctxFor("LAWYER");
   const { id: clientId } = await clients.createClient(
     lawyer,
-    createClientSchema.parse({ kind: "INDIVIDUAL", cpf: fakeCpf(), fullName: "Cliente Processo Interno", originOfficeId: world.owner }),
+    createClientSchema.parse(validPfClient(fakeCpf(), { fullName: "Cliente Processo Interno" })),
   );
   const caseId = randomUUID();
   const { error } = await lawyer.db.from("legal_cases").insert({

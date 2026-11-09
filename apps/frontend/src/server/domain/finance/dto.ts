@@ -2,6 +2,7 @@ import type { BillingMoment, PaymentStatus, ProcessPhase, ProcessStatus } from "
 import type { DbPaymentStatus } from "@/repositories/api/db-mappings";
 import type { Page } from "@/server/core/pagination";
 import type { ID, ISODate, ISODateTime } from "@/types";
+import type { ReceivableAging } from "./aging";
 import type { AGREEMENT_DB_STATUSES, EXPENSE_CATEGORIES, EXPENSE_STATUSES, PAYMENT_TYPES, RECEIPT_KINDS, TRANSFER_STATUSES } from "./schemas";
 
 /**
@@ -427,5 +428,15 @@ export interface ExpenseSummaryDTO {
   byCategory: ExpenseCategoryPoint[];
   /** Do mais antigo ao atual (America/Sao_Paulo), alinhado com FinanceSummaryDTO.monthly. */
   monthlyPaid: { month: string; amount: number }[];
+  truncated: boolean;
+}
+
+/**
+ * "A receber por vencimento" (E-06): saldo em aberto (PENDING, PARTIAL,
+ * OVERDUE; saldo > 0) dos contratos de PROCESSO, por faixa de vencimento a
+ * partir de hoje em São Paulo — somado no servidor. Contratos antigos (só do
+ * caso) ficam fora, como em process_finance_totals (046).
+ */
+export interface ReceivableAgingDTO extends ReceivableAging {
   truncated: boolean;
 }
