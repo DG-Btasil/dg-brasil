@@ -8,7 +8,7 @@ publicado `app.dgbrasil.adv.br`, que usa esse mesmo banco. Commit validado:
 
 **Veredito: APROVADO COM PENDÊNCIAS.** Nenhum defeito que bloqueie o uso foi
 encontrado no que foi possível testar. O veredito não é "aprovado" porque ficaram
-sem teste o primeiro acesso de um parceiro convidado e a Parte 4.
+correções a fazer (seção 9) e a Parte 4, que é opcional.
 
 | Item | Situação |
 |---|---|
@@ -16,7 +16,7 @@ sem teste o primeiro acesso de um parceiro convidado e a Parte 4.
 | Parte 2 — testes automáticos | Com ressalvas: integração só passa com fixtures ajustadas (R2-01), lint com 2 erros (R2-04) |
 | Parte 3 — telas do escritório (ADMIN) | Aprovada, com achados menores |
 | Parte 3 — portal do parceiro | Aprovada (PARTNER_ADMIN de teste), com achados menores |
-| Parte 3 — convite até o primeiro acesso | **Parcial:** o convite funciona até o envio; falta uma caixa de e-mail real para o link |
+| Parte 3 — convite até o primeiro acesso | Aprovada: teste manual do Miguel em 2026-11-09, com e-mail real, depois de corrigir o SMTP (R2-16) |
 | Parte 4 — orquestrador ponta a ponta | Não feita (opcional, exige o computador do escritório) |
 
 Skills usadas (`.claude/skills/`):
@@ -95,7 +95,7 @@ entre os que passaram com o ajuste.
 | R2-09 | Acessibilidade (axe, WCAG 2.2 AA): contraste insuficiente em 3 a 29 elementos por tela; na Início, 2 elementos focáveis dentro de `aria-hidden` (gráficos) | 5 telas verificadas | Rodar axe-core | Cosmético | — |
 | R2-10 | Falha única na criação de caso (erro interno) durante a integração; passou na repetição. Causa não identificada | `createCaseOnce`, teste "prazo: criar (data civil)…" | Não reproduzido | Incomoda | — |
 | R2-11 | Resto de código: a importação ainda monta `client.responsible_user_id`. A migration ignora a chave | `server/domain/imports/normalize.ts:416` | Leitura de código | Cosmético | — |
-| R2-16 | Convite por e-mail falhou com endereço real (Gmail); a mensagem diz "Nada foi criado", mas ficam escritórios inativos. O Auth tenta enviar e o SMTP falha; causa em aberto (seção 9) | Parceiros → Convidar parceiro; `server/auth/team-actions.ts:297` | Convidar com e-mail fora da equipe do projeto Supabase | **Bloqueia** o primeiro acesso do parceiro | — |
+| R2-16 | Convite por e-mail falhou com endereço real (Gmail); a mensagem diz "Nada foi criado", mas ficam escritórios inativos. O Auth tenta enviar e o SMTP falha; causa em aberto (seção 9) | Parceiros → Convidar parceiro; `server/auth/team-actions.ts:297` | Convidar com e-mail fora da equipe do projeto Supabase | **Resolvido** em 2026-11-09 (envio); falta corrigir a mensagem | — |
 | R2-13 | No portal, depois do CEP o foco fica no próprio CEP; no escritório vai para o número, como o guia pede | `features/partner-portal/components/new-case-wizard.tsx:196` | Portal → Novo caso → digitar o CEP | Cosmético | `b6-portal-cep.png` |
 | R2-14 | Telefone é obrigatório no cadastro do escritório e opcional no do portal. O roadmap não lista telefone entre os obrigatórios | Formulários de cliente | Comparar `/clientes/novo` e o assistente do portal | Cosmético | `b6-portal-cliente-novo.png` |
 | R2-15 | Observado uma vez no portal: "Selecione o estado civil" continuou depois de escolher a opção, e o primeiro clique em Continuar não avançou; o segundo avançou sem mudar nada. Não reproduzido | Assistente de novo caso do portal | Enviar vazio, preencher, Continuar | Cosmético | — |
@@ -138,7 +138,7 @@ um endereço digitado por mim, `/dg-brasil/agentes`, que não é link do sistema
 - OK — Minhas OABs: adicionar duas, tornar principal, remover (`b5-minhas-oabs.png`).
 - OK — Advogado exige OAB; Administrador tem "É advogado(a)" e OAB opcional (`b5-convite-exige-oab.png`).
 - OK — Geral → Atuação sem "Unidades" (ver R2-08).
-- **Parcial** — Convidar parceiro: formulário e reversão funcionam, mas o e-mail não sai para endereço `@dgbrasil.test`. Com isso o convite é revogado e o escritório fica inativo. Primeiro acesso, OAB, dados do escritório, termos e MFA **não testados**. O link só existe em claro no e-mail, de propósito.
+- OK — Convidar parceiro: com e-mail real, Miguel aceitou o convite e informou que o primeiro acesso funcionou. O agente não acompanhou esse teste na tela. Em endereço `@dgbrasil.test` o e-mail não sai: o convite é revogado e o escritório fica inativo.
 - OK — Portal → Pendências → Anexar documento: a resposta aparece com "Documento anexado", e o documento fica no caso (`b5-portal-documento-anexado.png`, `b5-portal-doc-no-caso.png`). Solicitação criada nesta validação.
 
 **Bloco 6**
@@ -197,7 +197,7 @@ Removido a pedido do Miguel: o cliente de R2-02 com 3 casos, 4 documentos e 56 n
 
 ## 8. Para concluir
 
-1. Corrigir o envio de e-mail no DEV (R2-16), convidar um parceiro com uma caixa de e-mail real e seguir o link num navegador anônimo.
+1. Implementar as correções da seção 9 e atualizar os testes de integração (R2-01).
 2. Parte 4, com alguém no computador do escritório.
 
 ## 9. Correções pedidas depois da validação (2026-11-09)
@@ -208,7 +208,8 @@ Pedidas pelo Miguel ao revisar as telas. Nada disto foi implementado ainda.
 
 Convidar um parceiro com um Gmail real falhou com "O convite não pôde ser enviado por e-mail. Nada foi criado; tente novamente."
 
-- **Situação:** o Miguel informou que já ligou o SMTP próprio. Um convite de diagnóstico direto no Auth do DEV, para endereço fictício, devolveu `500 Error sending invite email`. Esse erro indica que o Auth tentou enviar e o envio falhou. O bloqueio do SMTP padrão costuma vir como `Email address not authorized`.
+- **Atualização:** resolvido depois de ajustar a configuração do Resend; o convite chegou e foi aceito. Restam os itens 3 e 4 abaixo.
+- **Diagnóstico:** o Miguel informou que já ligou o SMTP próprio. Um convite de diagnóstico direto no Auth do DEV, para endereço fictício, devolveu `500 Error sending invite email`. Esse erro indica que o Auth tentou enviar e o envio falhou. O bloqueio do SMTP padrão costuma vir como `Email address not authorized`.
 - **Causa ainda não identificada.** O motivo real só aparece no log do Auth. Hipóteses a conferir: usuário ou senha do SMTP errados, remetente fora do domínio verificado, porta, ou plano sem SMTP (o Zoho gratuito não tem, ver `docs/deploy/producao.md`, item 4 da seção de e-mail).
 - **O que fazer:**
   1. No Supabase DEV, abrir **Logs → Auth** e ler a linha do erro de envio.
@@ -230,6 +231,9 @@ Convidar um parceiro com um Gmail real falhou com "O convite não pôde ser envi
 | E-07 | Todas as telas | Revisar alinhamento, altura e posição de todos os blocos (ver o prompt) |
 | E-08 | Portal | Foco no número depois do CEP (R2-13) e telefone igual ao do escritório (R2-14) |
 | E-09 | Configurações → Geral | Tirar "e unidades" da descrição de Atuação (R2-08) |
+| E-10 | Portal do parceiro | Mesma arrumação de indicadores, gráficos, altura, rolagem e posicionamento do escritório, na Início, no Financeiro e demais telas |
+| E-11 | Parceiros → ficha do parceiro | A edição da divisão já existe ("Alterar divisão da parceria", só para novos casos, auditada). Deixar visível e adicionar confirmação mostrando divisão atual → nova antes de salvar |
+| E-12 | Convidar parceiro | Campo "Porcentagem do parceiro (%)", com texto claro: "É a parte dos honorários que fica com o parceiro. Ex.: 30 = 30% para o parceiro e 70% para o seu escritório." e prévia "Parceiro X% · Escritório Y%" |
 
 **Indicadores de Revisões (E-05):** faixa como `ProcessSummaryStrip`, contada no banco para a fila inteira.
 
@@ -279,11 +283,15 @@ pedido nos itens 4 e 5. Leia docs/qa/roadmap-2.0/qa-roadmap-2.0.md, seção 9.
    acima de 90 dias), com o saldo em aberto somado no servidor, no quarto espaço da
    grade, seguindo chart-theme.ts. Contratos antigos seguem a mesma regra dos totais.
 
-6. Correções pequenas: R2-08, R2-13 e R2-14 do relatório.
+6. Correções pequenas: R2-08, R2-13 e R2-14 do relatório. Convite de parceiro (E-12):
+   rótulo "Porcentagem do parceiro (%)", explicação de quem fica com o quê e prévia.
+   Ficha do parceiro (E-11): manter ChangeShareDialog, deixar o botão visível e pedir
+   confirmação com a divisão atual e a nova. Continua valendo só para novos casos.
+   Mensagem do convite: não dizer "Nada foi criado" (R2-16).
 
 7. Revisão geral: percorra Início, Clientes, Casos, Processos, Revisões, Parceiros,
-   Financeiro (todas as abas), DG Brasil, Configurações e o portal do parceiro e
-   confira: mesma altura entre blocos da mesma linha; bordas e margens alinhadas;
+   Financeiro (todas as abas), DG Brasil, Configurações e todas as telas do portal
+   do parceiro (MetricsBoard variants portal-home e portal-finance) e confira: mesma altura entre blocos da mesma linha; bordas e margens alinhadas;
    espaçamento regular; nenhum buraco na grade; nenhum bloco muito maior que os
    vizinhos; textos sem corte.
 
