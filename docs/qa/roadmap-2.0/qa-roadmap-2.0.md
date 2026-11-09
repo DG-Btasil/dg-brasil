@@ -312,3 +312,48 @@ docs/qa/roadmap-2.0/estetica/, testando com muitas linhas (o DEV tem 260+ escrit
 e com poucas. Rode typecheck, lint, testes unitários e build. Não aplique migration
 destrutiva.
 ```
+
+## 10. Rodada 2 (2026-11-09, sobre `e858841`)
+
+> A migration 050 foi aplicada no DEV e o `validar:real` passou, ambos executados pelo Miguel. Prints em `rodada-2/`.
+
+### Sem observação direta
+
+- **E-13, "Não sou advogado(a)" no primeiro acesso:** o código mostra a opção para os papéis com OAB opcional, mas a tela não foi aberta nesta rodada, porque o link do convite só existe no e-mail.
+- **R2-16, mensagem de falha de e-mail:** o envio para `@dgbrasil.test` foi aceito, então a falha não aconteceu. O texto foi conferido só no código (`team-actions.ts:305` e `:446`) e não diz "Nada foi criado".
+
+### Resultado
+
+| Item | Resultado | Evidência |
+|---|---|---|
+| `db push` da 050 no DEV | OK | Dry-run depois do push: "Remote database is up to date" |
+| `validar:real` | OK | Informado pelo Miguel; não observado nesta sessão |
+| R2-01 `test:integration` | OK | 243/243, 32 arquivos, sem ajustar fixtures |
+| E-14 no DEV | OK | 821 casos de parceiro não aceitos com divisão guardada; 0 sem divisão |
+| `verificar` (PGlite local) | OK | 839/839, inclui E-14 e R2-12 da seção [050] |
+| R2-04 `npm run lint` | OK | 0 erros |
+| `npm test` e `typecheck` | OK | 617/617; tsc limpo |
+| R2-03 CPF sem consulta | OK | App e portal: sem "Consultando" e nenhum POST ao digitar |
+| R2-05 diálogo em 600 px | OK | Corpo rola (343 de 457 px); "Lançar despesa" visível. `r2-05-dialogo-600px.png` |
+| R2-06 nome inválido | OK | Erro na tela; parceiros seguem em 268. `r2-06-nome-invalido.png` |
+| E-12 texto do convite | OK | "Porcentagem do parceiro (%)", explicação e prévia. `e12-convite.png` |
+| E-11 alterar divisão | OK | Cabeçalho, Revisar, atual → nova, "Confirmar nova divisão". Não confirmado de propósito; continua 50. `e11-*.png` |
+| E-13 convite | OK | PARTNER_USER e PARTNER_ADMIN: "É advogado(a)", OAB sem obrigatório. LAWYER: "OAB do convidado*" e UF*. `e13-*.png` |
+| R2-06 / R2-16 reaproveitamento | OK | Dois convites para o mesmo e-mail: 281 → 281 parceiros, um único escritório "Convite: QA Rodada Dois", PENDING. Envio real com Gmail feito pelo Miguel |
+| R2-13 / R2-14 / E-08 | OK | Foco vai para Número após o CEP; Telefone obrigatório. `r2-13-portal-cep-foco.png` |
+| R2-08 / E-09 | OK | "Estados em que o escritório atua."; sem "e unidades" |
+| E-01 a E-04 e E-10 | OK, com ressalva | Mesma altura por linha em 1440 e 1920 px, sem buraco; "Escritório de origem" em faixa larga; rolagem interna, também por teclado. Só testado com muitos dados no escritório |
+| E-05 Revisões | OK, com observação | 59, 1 e 127 batem com a lista filtrada; URL e barra corretas; clicar de novo limpa. Observação abaixo |
+| E-06 A receber por vencimento | OK | 770,00 + 1.040,00 + 1.067,68 + 10.733,32 + 400,00 = 14.011,00 = "Em aberto"; "Sem vencimento" aparece |
+| R2-09 aria-hidden | **FALHA** | Ver R3-01 |
+| R2-09 contraste | OK | 0 violações de contraste no axe da Início |
+
+### Novos achados
+
+- **R3-01 (R2-09 não corrigido, acessibilidade):** o gráfico de rosca "Distribuição dos processos" da Início fica dentro de `aria-hidden` e mantém `.recharts-pie` com `tabindex="0"`. O axe acusa `aria-hidden-focus` (1 nó, `.h-[190px]`), e o foco do teclado entra num elemento oculto para leitores de tela. Os gráficos de barras não acusaram.
+- **R3-02 (texto, portal):** Financeiro → "Participação por caso" diz "Percentual congelado no aceite do caso". Pela regra E-14, a divisão vale pela criação do caso.
+- **Observação E-05:** o indicador "Aguardando decisão" já vem ativo. Clicar nele leva para a visão "Todas" (315) em vez de filtrar, e clicar de novo volta para 186. Funciona, mas é diferente dos outros três indicadores.
+
+### Dados criados no DEV nesta rodada
+
+Um escritório fictício pendente, "Convite: QA Rodada Dois" (`qa.r2.retrynjte@dgbrasil.test`), além do que `validar:real` e `test:integration` criam a cada execução.
