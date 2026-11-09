@@ -284,3 +284,23 @@ mesmo relatório, com prints em `docs/qa/roadmap-2.0/rodada-3/`.
   - processo → aba Financeiro: 11 indicadores em 4 colunas, com "Resultado" ocupando duas e fechando a última linha;
   - com rótulo de duas linhas, os números da mesma faixa continuam alinhados embaixo.
 
+---
+
+## Rodada 4: portal do parceiro, R2-10 e R2-15 (2026-11-09)
+
+A Rodada 3 foi validada no site (seção 11 do relatório), menos o portal. Celular
+fica fora por decisão da Barbara (R2-07). **Sem migration nova.** Registre numa
+seção "Rodada 4" do relatório, com prints em `docs/qa/roadmap-2.0/rodada-4/`.
+
+### Testes
+
+- [ ] `npm run typecheck`, `npm run lint` e `npm test` limpos (esperado: 620 testes).
+- [ ] `npm run test:integration` duas vezes seguidas. **R2-10:** a criação de caso agora repete sozinha quando a falha é passageira (rede, deadlock ou serialização), e a repetição é segura porque a chave de idempotência devolve o mesmo caso. Esperado: nenhuma falha de "erro interno" na criação de caso.
+
+### Portal (logado como administrador de um parceiro de teste)
+
+- [ ] **R2-15:** Novo caso → cliente novo → clicar em Continuar com tudo vazio → escolher o estado civil: o aviso "Selecione o estado civil" some **na hora**, sem sair do campo. Preencher o resto e clicar **uma vez** em Continuar: avança.
+- [ ] Início: 5 KPIs numa linha, de borda a borda.
+- [ ] Financeiro: "Sua participação no período" com a largura toda e o rótulo numa linha; "Participação por caso" diz "Percentual definido quando o caso foi criado…".
+- [ ] Minha conta → "Divisão padrão": "Vale para os casos criados a partir de agora. Cada caso mantém a divisão de quando foi criado."
+

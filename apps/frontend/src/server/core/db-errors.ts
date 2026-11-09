@@ -68,6 +68,32 @@ export function fromDbError(error: DbErrorLike | null | undefined): DomainError 
   return new DomainError("INTERNAL", undefined, { technicalCode });
 }
 
+/**
+ * Falha passageira, que vale repetir: conflito de concorrência no Postgres
+ * (deadlock, serialização) ou a requisição que não chegou ao banco (rede).
+ * Só repita operações IDEMPOTENTES (chave de idempotência, leitura).
+ */
+export function isTransientDbError(error: DbErrorLike | null | undefined): boolean {
+  if (!error) return false;
+  const code = error.code ?? "";
+  if (code === "40001" || code === "40P01") return true;
+  return !code && /fetch failed|network|ECONNRESET|ETIMEDOUT|socket hang up|EAI_AGAIN/i.test(error.message ?? "");
+}
+
+/**
+ * Chama `call` de novo (até `attempts` vezes no total, com espera curta e
+ * crescente) enquanto o erro for passageiro. QA R2-10: uma criação de caso
+ * falhou uma vez com erro interno e passou na repetição.
+ */
+export async function retryTransient<T extends { error: DbErrorLike | null }>(call: () => PromiseLike<T>, attempts = 3): Promise<T> {
+  let result = await call();
+  for (let i = 1; i < attempts && isTransientDbError(result.error); i++) {
+    await new Promise((r) => setTimeout(r, 150 * i));
+    result = await call();
+  }
+  return result;
+}
+
 /** Lança `DomainError` se a resposta do Supabase trouxe erro; devolve os dados. */
 export function unwrap<T>(result: { data: T; error: DbErrorLike | null }): T {
   if (result.error) throw fromDbError(result.error);

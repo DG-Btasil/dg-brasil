@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { AlertTriangle, Building2, CheckCircle2, FileUp, Loader2, Plus, Search, Trash2, UserRound } from "lucide-react";
 import { ACQUISITION_CHANNEL_OPTIONS, BRAZILIAN_STATES, MARITAL_STATUS_LABEL, MARITAL_STATUSES } from "@/lib/constants/legal";
@@ -166,6 +166,22 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
   } = form;
   const kind = useWatch({ control, name: "kind" });
   const area = useWatch({ control, name: "area" });
+
+  // QA R2-15: com mode "onTouched", um campo só revalidava depois de perder o
+  // foco. Escolher o estado civil deixava o aviso de erro na tela; no clique em
+  // "Continuar" o campo perdia o foco, o aviso sumia, o botão subia no meio do
+  // clique e o clique se perdia. Campo COM ERRO agora revalida a cada mudança.
+  const { subscribe, getFieldState } = form;
+  useEffect(
+    () =>
+      subscribe({
+        formState: { values: true },
+        callback: ({ name, type }) => {
+          if (type === "change" && name && getFieldState(name as keyof Values).error) void trigger(name as keyof Values);
+        },
+      }),
+    [subscribe, getFieldState, trigger],
+  );
 
   // Roadmap 2.0: cliente NOVO → CPF/CNPJ consultado na Receita (nome, nascimento,
   // dados da empresa) e CEP completando o endereço. A pessoa confere e corrige.

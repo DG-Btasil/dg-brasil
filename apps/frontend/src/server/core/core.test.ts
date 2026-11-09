@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { fromDbError, isOurDbMessage } from "./db-errors";
+import { fromDbError, isOurDbMessage, isTransientDbError, retryTransient } from "./db-errors";
 import { DomainError, failure } from "./errors";
 import { createLogger, redact, sanitizeFields, setLogSink, type LogFields } from "./logger";
 import { pageInputSchema, sortSchema, toPage, toRange } from "./pagination";
@@ -100,5 +100,31 @@ describe("validação de entrada", () => {
     expect(zIsoDate().safeParse("2026-02-30").success).toBe(false);
     expect(zIsoDate().safeParse("30/01/2026").success).toBe(false);
     expect(zOptionalText().parse("  ")).toBeUndefined();
+  });
+});
+
+describe("falha passageira do banco: repetir só o que é idempotente (QA R2-10)", () => {
+  it("deadlock, serialização e rede são passageiros; erro de regra não é", () => {
+    expect(isTransientDbError({ code: "40P01", message: "deadlock detected" })).toBe(true);
+    expect(isTransientDbError({ code: "40001", message: "could not serialize access" })).toBe(true);
+    expect(isTransientDbError({ code: "", message: "TypeError: fetch failed" })).toBe(true);
+    expect(isTransientDbError({ code: "23505", message: "duplicate key" })).toBe(false);
+    expect(isTransientDbError({ code: "55P03", message: "envio em andamento" })).toBe(false);
+    expect(isTransientDbError(null)).toBe(false);
+  });
+  it("repete até dar certo, no máximo 3 vezes, e não repete erro de regra", async () => {
+    let calls = 0;
+    const ok = await retryTransient(async () => (++calls < 3 ? { data: null, error: { code: "40P01" } } : { data: "id", error: null }));
+    expect(ok).toEqual({ data: "id", error: null });
+    expect(calls).toBe(3);
+
+    calls = 0;
+    const still = await retryTransient(async () => (++calls, { data: null, error: { code: "40001" } }));
+    expect(still.error?.code).toBe("40001");
+    expect(calls).toBe(3);
+
+    calls = 0;
+    await retryTransient(async () => (++calls, { data: null, error: { code: "23514" } }));
+    expect(calls).toBe(1);
   });
 });

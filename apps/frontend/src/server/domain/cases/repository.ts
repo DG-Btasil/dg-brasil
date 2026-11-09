@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fromDbError, type DbErrorLike } from "@/server/core/db-errors";
+import { fromDbError, retryTransient, type DbErrorLike } from "@/server/core/db-errors";
 import { DomainError } from "@/server/core/errors";
 import { toRange, type PageInput } from "@/server/core/pagination";
 import type { CaseInternalRow, CaseListRow, CasePartnerRow, CaseRow, CaseStateRow } from "./mappers";
@@ -230,8 +230,9 @@ export async function createCaseOnce(
   payload: Record<string, unknown>,
   internalNotes: string | null,
 ): Promise<{ legal_case_id: string; deduplicated: boolean }> {
+  // Idempotente pela chave: repetir após falha passageira devolve o mesmo caso (QA R2-10).
   return unwrapCase(
-    await db.rpc("create_legal_case_once", { p_key: key, p_case: payload, p_internal: internalNotes ? { internal_notes: internalNotes } : null }),
+    await retryTransient(() => db.rpc("create_legal_case_once", { p_key: key, p_case: payload, p_internal: internalNotes ? { internal_notes: internalNotes } : null })),
   ) as { legal_case_id: string; deduplicated: boolean };
 }
 
@@ -241,7 +242,7 @@ export async function partnerSubmitOnce(
   key: string,
   payload: { p_client: Record<string, unknown>; p_case: Record<string, unknown> },
 ): Promise<{ client_id: string; legal_case_id: string; client_existed: boolean; deduplicated: boolean }> {
-  return unwrapCase(await db.rpc("partner_submit_case_once", { p_key: key, ...payload })) as {
+  return unwrapCase(await retryTransient(() => db.rpc("partner_submit_case_once", { p_key: key, ...payload }))) as {
     client_id: string;
     legal_case_id: string;
     client_existed: boolean;
