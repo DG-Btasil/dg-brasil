@@ -386,8 +386,8 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onD
             <PanelBody className="space-y-2 text-[13px]">
               <p className="text-[12.5px] text-muted">
                 {isAccepted(legalCase.status)
-                  ? "O acordo de parceria foi registrado no aceite, com a divisão vigente do parceiro naquele momento (snapshot). Os valores aparecem no Financeiro."
-                  : "O acordo de parceria é criado no aceite, com a divisão vigente do parceiro naquele momento."}
+                  ? "O acordo de parceria foi registrado no aceite, com a divisão do parceiro vigente quando o caso foi criado. Os valores aparecem no Financeiro."
+                  : "O acordo de parceria é criado no aceite, com a divisão do parceiro vigente quando o caso foi criado."}
               </p>
               <p className="text-[12.5px] text-muted">
                 {legalCase.partnerOrganizationId ? "O parceiro tem acesso operacional a este caso." : "O parceiro de origem não tem acesso operacional a este caso (vínculo não habilitado)."}

@@ -66,7 +66,7 @@ export function HomeDashboard({ data, metrics }: { data: InternalHomeData; metri
         </p>
       </header>
 
-      <section aria-label="Indicadores do escritório" data-tour="home-kpis" className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+      <section aria-label="Indicadores do escritório" data-tour="home-kpis" className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat label="Casos ativos" value={num(k.activeCases)} icon={FolderOpen} href="/casos?situacao=ativos" hint="Em análise, aceitos e em andamento" />
         <Stat label="Casos aguardando a equipe" value={num(k.awaitingCases)} icon={Hourglass} href="/casos?situacao=aguardando" hint="Enviados ou aguardando documentos" />
         <Stat label="Processos ativos" value={num(k.activeProcesses)} icon={Briefcase} href="/processos" hint="Todos os status, exceto recebidos e arquivados" />
@@ -296,7 +296,7 @@ function ProcessDistribution({ distribution }: { distribution: InternalHomeData[
           <div className="relative mx-auto h-[190px] w-[190px]" aria-hidden>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart accessibilityLayer={false}>
-                <Pie data={slices} dataKey="count" nameKey="name" innerRadius={62} outerRadius={88} paddingAngle={1.5} stroke="var(--surface)" strokeWidth={2} startAngle={90} endAngle={-270} isAnimationActive={false}>
+                <Pie rootTabIndex={-1} data={slices} dataKey="count" nameKey="name" innerRadius={62} outerRadius={88} paddingAngle={1.5} stroke="var(--surface)" strokeWidth={2} startAngle={90} endAngle={-270} isAnimationActive={false}>
                   {slices.map((d) => (
                     <Cell key={d.status} fill={d.color} />
                   ))}

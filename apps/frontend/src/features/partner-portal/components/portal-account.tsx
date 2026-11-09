@@ -75,7 +75,7 @@ export function PortalAccount({
         </Panel>
         {settings && (
           <Panel className="col-span-12 xl:col-span-5">
-            <PanelHeader title="Divisão padrão" description="Vale para novos casos. Casos já aceitos mantêm o acordo registrado no aceite." />
+            <PanelHeader title="Divisão padrão" description="Vale para os casos criados a partir de agora. Cada caso mantém a divisão de quando foi criado." />
             {!settings.ok ? (
               <ActionErrorState error={settings} title="Não foi possível carregar a divisão." />
             ) : (

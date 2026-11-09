@@ -78,8 +78,8 @@ export function AcceptCaseDialog({ legalCase, open, onOpenChange }: DialogBase) 
         </Field>
         {partnerOrigin ? (
           <Callout tone="info" title="Acordo de parceria">
-            Ao aceitar, será criado o acordo de parceria com a divisão vigente de {partnerName ?? "o escritório parceiro de origem"}. Mudanças futuras na divisão padrão
-            não alteram este caso.
+            Ao aceitar, será criado o acordo de parceria com a divisão de {partnerName ?? "o escritório parceiro de origem"} vigente quando o caso foi criado.
+            Mudanças na divisão padrão feitas depois não alteram este caso.
           </Callout>
         ) : (
           <p className="text-[12.5px] text-muted">Caso próprio de {owner.name}: sem acordo de parceria.</p>

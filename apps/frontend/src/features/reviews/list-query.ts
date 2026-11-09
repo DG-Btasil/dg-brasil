@@ -99,11 +99,15 @@ export function countReviewFilters(q: ReviewListQuery): number {
 /** Um indicador por chave de ReviewSummaryDTO. */
 export type ReviewCounter = "open" | "topPriority" | "dueSoon" | "unassigned";
 
-/** O indicador está aplicado na consulta atual? (vira o aria-pressed do botão) */
+/**
+ * O indicador está aplicado na consulta atual? "Aguardando decisão" conta a
+ * fila em aberto inteira: só fica marcado quando a lista mostra exatamente
+ * isso (visão "Aguardando decisão" sem nenhum filtro).
+ */
 export function isReviewCounterActive(q: ReviewListQuery, counter: ReviewCounter): boolean {
   switch (counter) {
     case "open":
-      return q.view === "abertas";
+      return q.view === "abertas" && countReviewFilters(q) === 0;
     case "topPriority":
       return q.priority === REVIEW_TOP_PRIORITY;
     case "dueSoon":
@@ -114,18 +118,19 @@ export function isReviewCounterActive(q: ReviewListQuery, counter: ReviewCounter
 }
 
 /**
- * Clique no indicador: aplica o filtro (os demais filtros ficam) ou, se já
- * aplicado, limpa só ele. Os indicadores contam revisões EM ABERTO, então
- * aplicar a partir de "Todas" volta para "Aguardando decisão"; "Sem
- * responsável" não combina com "Atribuídas a mim" e também volta para lá.
- * Sempre recomeça da página 1.
+ * Clique no indicador. "Aguardando decisão" mostra a fila em aberto inteira
+ * (limpa os filtros; nunca leva para "Todas" — QA rodada 2, E-05). Os outros
+ * três aplicam o filtro (os demais filtros ficam) ou, se já aplicado, limpam
+ * só ele. Os indicadores contam revisões EM ABERTO, então aplicar a partir de
+ * "Todas" volta para "Aguardando decisão"; "Sem responsável" não combina com
+ * "Atribuídas a mim" e também volta para lá. Sempre recomeça da página 1.
  */
 export function toggleReviewCounter(q: ReviewListQuery, counter: ReviewCounter): ReviewListQuery {
   const active = isReviewCounterActive(q, counter);
   const openView = (view: ReviewView): Pick<ReviewListQuery, "view" | "status"> => (view === "todas" ? { view: "abertas", status: "" } : { view, status: q.status });
   switch (counter) {
     case "open":
-      return active ? { ...q, view: "todas", page: 1 } : { ...q, view: "abertas", status: "", page: 1 };
+      return { ...DEFAULT_REVIEW_QUERY };
     case "topPriority":
       return active ? { ...q, priority: "", page: 1 } : { ...q, ...openView(q.view), priority: REVIEW_TOP_PRIORITY, page: 1 };
     case "dueSoon":

@@ -16,9 +16,9 @@ import { AgreementsPanel } from "./agreements-table";
 import { ExpensesPanel } from "./expenses-panel";
 
 /** Indicador compacto (a aba do processo mostra muitos; o Stat grande da visão geral não cabe). */
-function Tile({ label, value, hint, tone }: { label: string; value: string; hint?: ReactNode; tone?: "danger" | "success" | "warning" }) {
+function Tile({ label, value, hint, tone, className }: { label: string; value: string; hint?: ReactNode; tone?: "danger" | "success" | "warning"; className?: string }) {
   return (
-    <div className="rounded-lg border border-line bg-surface px-4 py-3 shadow-hairline">
+    <div className={cn("rounded-lg border border-line bg-surface px-4 py-3 shadow-hairline", className)}>
       <span className="block text-[12px] font-medium text-muted">{label}</span>
       <span
         className={cn(
@@ -43,7 +43,7 @@ function ProcessFinanceSummary({ p }: { p: ProcessFinanceDTO }) {
         title="Resumo financeiro do processo"
         description={
           partner
-            ? `Divisão da parceria do caso: escritório ${percentLabel(p.ownerPercentage)} · parceiro ${percentLabel(p.partnerPercentage)} (congelada no aceite).`
+            ? `Divisão da parceria do caso: escritório ${percentLabel(p.ownerPercentage)} · parceiro ${percentLabel(p.partnerPercentage)} (definida quando o caso foi criado).`
             : "Processo sem parceria: os honorários são do escritório."
         }
       />
@@ -64,7 +64,9 @@ function ProcessFinanceSummary({ p }: { p: ProcessFinanceDTO }) {
           <Tile label="Em atraso" value={formatCurrency(p.overdue)} tone={p.overdue > 0 ? "danger" : undefined} hint={p.overdue > 0 ? "Obrigações vencidas com saldo" : "Nada vencido"} />
           <Tile label="Despesas pagas" value={formatCurrency(p.expensesPaid)} hint={p.expensesReimbursable > 0 ? `${formatCurrency(p.expensesReimbursable)} reembolsáveis pelo cliente` : undefined} />
           <Tile label="Despesas a pagar" value={formatCurrency(p.expensesOpen)} tone={p.expensesOpen > 0 ? "warning" : undefined} />
+          {/* 11 indicadores em 4 colunas: o Resultado ocupa duas e fecha a última linha sem buraco. */}
           <Tile
+            className="col-span-2"
             label="Resultado"
             value={formatCurrency(p.netResult)}
             tone={p.netResult < 0 ? "danger" : undefined}

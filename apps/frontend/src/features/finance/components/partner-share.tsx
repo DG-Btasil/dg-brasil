@@ -63,7 +63,7 @@ export function PartnerShareView({
       )}
 
       <Panel>
-        <PanelHeader title="Participação por caso" description="Percentual congelado no aceite do caso. Mudanças posteriores na divisão padrão não alteram casos já aceitos." />
+        <PanelHeader title="Participação por caso" description="Percentual definido quando o caso foi criado. Mudanças posteriores na divisão padrão valem só para casos novos." />
         {!shares.ok ? (
           <ActionErrorState error={shares} title="Não foi possível carregar a participação por caso." />
         ) : shares.data.items.length === 0 ? (

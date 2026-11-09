@@ -219,12 +219,27 @@ function Grid({ children }: { children: ReactNode }) {
   return <div className={cn("grid items-stretch gap-4", cols)}>{children}</div>;
 }
 
+/**
+ * Colunas da faixa de KPIs conforme a quantidade: a faixa vai sempre de uma
+ * borda à outra, alinhada com os painéis de baixo, sem espaço sobrando à
+ * direita nem buraco (ex.: 4 KPIs em Clientes ocupavam 4 de 6 colunas).
+ */
+const TILE_COLS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-2 lg:grid-cols-4",
+  5: "grid-cols-2 lg:grid-cols-5",
+  6: "grid-cols-3 xl:grid-cols-6",
+};
+
 function Tiles({ items, compact }: { items: { label: string; value: number | string; hint?: string; emphasis?: boolean }[]; compact?: boolean }) {
   return (
     // Compacto (ao lado de painéis): ocupa a altura toda da linha, em 2×2 (QA E-02).
-    <dl className={cn("grid gap-3", compact ? "h-full grid-cols-2 auto-rows-fr" : "grid-cols-2 md:grid-cols-3 xl:grid-cols-6")}>
+    <dl className={cn("grid gap-3", compact ? "h-full grid-cols-2 auto-rows-fr" : (TILE_COLS[items.length] ?? "grid-cols-3 xl:grid-cols-6"))}>
       {items.map((i) => (
-        <div key={i.label} className={cn("rounded-lg border border-line bg-surface px-4 py-3 shadow-hairline", compact && "flex flex-col justify-center")} title={i.hint}>
+        // Rótulo em cima e número embaixo: com rótulo de duas linhas, os números da faixa continuam alinhados.
+        <div key={i.label} className={cn("flex flex-col rounded-lg border border-line bg-surface px-4 py-3 shadow-hairline", compact ? "justify-center" : "justify-between")} title={i.hint}>
           <dt className="text-[11.5px] font-medium uppercase tracking-[0.05em] text-subtle">{i.label}</dt>
           <dd className={cn("mt-1 text-[20px] font-semibold tabular", i.emphasis ? "text-navy" : "text-foreground")}>{typeof i.value === "number" ? formatNumber(i.value) : i.value}</dd>
         </div>

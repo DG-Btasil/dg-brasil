@@ -45,7 +45,7 @@ export function usePartnerOfficeActions() {
       changeShare: (id: ID, partnershipPercentage: number, ownerPercentage: number) =>
         run(
           () => changePartnerShareAction({ id, partnershipPercentage, ownerPercentage }),
-          { title: "Divisão atualizada", description: "Vale para novos casos. Casos já aceitos mantêm o acordo original." },
+          { title: "Divisão atualizada", description: "Vale para os casos criados a partir de agora. Os casos já criados mantêm a divisão anterior." },
           "Não foi possível alterar a divisão.",
         ),
     }),

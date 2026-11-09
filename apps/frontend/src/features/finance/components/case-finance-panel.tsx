@@ -36,7 +36,7 @@ export function CaseFinancePanel({
     <div className="space-y-5">
       <AgreementsPanel legalCaseId={legalCaseId} initialQuery={DEFAULT_AGREEMENT_QUERY} initialResult={agreements} title="Contratos de honorários do caso" />
       <Panel>
-        <PanelHeader title="Parceria" description="Divisão registrada no aceite do caso de origem parceira. Mudar a divisão padrão do parceiro não altera este registro." />
+        <PanelHeader title="Parceria" description="Divisão do parceiro vigente quando o caso foi criado, registrada no aceite. Mudar a divisão padrão depois não altera este caso." />
         {!partnerships.ok ? (
           <ActionErrorState error={partnerships} title="Não foi possível carregar a parceria do caso." />
         ) : partnerships.data.surface !== "INTERNAL" || partnerships.data.items.length === 0 ? (

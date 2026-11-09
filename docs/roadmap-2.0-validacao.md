@@ -253,3 +253,34 @@ npm run validar:real
 
 Fica de fora desta rodada, por decisão: layout de celular (R2-07, a confirmar com a Barbara), R2-10 (falha única não reproduzida) e R2-15 (não reproduzido).
 
+---
+
+## Rodada 3: pendências da rodada 2 e alinhamento dos KPIs (2026-11-09)
+
+Confere as pendências da seção 10 do relatório e um pedido da Barbara que não
+estava no relatório (faixas de KPI de borda a borda). **Sem migration nova**:
+não há `db push` nesta rodada. Registre o resultado numa seção "Rodada 3" do
+mesmo relatório, com prints em `docs/qa/roadmap-2.0/rodada-3/`.
+
+### Testes
+
+- [ ] `cd apps/frontend && npm run lint`, `npm run typecheck` e `npm test` limpos (esperado: 618 testes).
+- [ ] `npm run test:integration`: nada mudou no servidor; rode só se der tempo.
+
+### Telas (1440 e 1920 px, como ADMIN e no portal)
+
+- [ ] **R3-01:** axe-core na Início: **nenhum** `aria-hidden-focus` (a rosca "Distribuição dos processos" não recebe mais foco pelo teclado: Tab não para nela).
+- [ ] **R3-02 e textos da divisão (E-14):** nenhuma tela diz mais que a divisão é "congelada no aceite". Conferir:
+  - portal → Financeiro → "Participação por caso": "Percentual definido quando o caso foi criado…";
+  - portal → Minha conta → "Divisão padrão": "Vale para os casos criados a partir de agora…";
+  - processo de parceiro → aba Financeiro: "(definida quando o caso foi criado)";
+  - caso de parceiro → Financeiro → "Parceria", painel "Parceria" do caso e a janela de **aceitar** caso de parceiro;
+  - ficha do parceiro → "Divisão padrão" e o aviso depois de alterar a divisão.
+- [ ] **E-05 (decisão tomada):** Revisões → "Aguardando decisão" mostra a fila em aberto **inteira**: fica marcado só quando nenhum outro filtro está aplicado; clicar nele limpa os filtros (Prazo, Urgente e alta, Sem responsável, Tipo) e **nunca** leva para "Todas"; clicar de novo não muda nada. Os outros três continuam ligando e desligando o próprio filtro.
+- [ ] **KPIs de borda a borda (pedido da Barbara):** a faixa de indicadores ocupa a largura toda, alinhada com as bordas dos painéis de baixo, sem espaço sobrando à direita:
+  - Clientes (4 KPIs em 4 colunas), Processos (5 em 5), Casos (6 em 6), portal → Início (5 em 5);
+  - portal → Financeiro: "Sua participação no período" ocupa a largura toda, com o rótulo numa linha só;
+  - Início: os 5 indicadores numa linha também em telas de 1024 a 1279 px (antes ficavam 2 + 2 + 1);
+  - processo → aba Financeiro: 11 indicadores em 4 colunas, com "Resultado" ocupando duas e fechando a última linha;
+  - com rótulo de duas linhas, os números da mesma faixa continuam alinhados embaixo.
+

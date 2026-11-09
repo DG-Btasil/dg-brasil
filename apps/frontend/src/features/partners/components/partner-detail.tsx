@@ -217,7 +217,7 @@ function OverviewTab({
           <Panel>
             <PanelHeader
               title="Divisão atual da parceria"
-              description="Padrão para novos casos. Cada caso aceito guarda a própria divisão."
+              description="Padrão para os casos criados a partir de agora. Cada caso guarda a divisão de quando foi criado."
               actions={
                 <Can permission="partners.manage">
                   <Button size="sm" variant="secondary" icon={<Percent className="size-3.5" aria-hidden />} onClick={onShare}>

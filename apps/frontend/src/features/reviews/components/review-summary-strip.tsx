@@ -18,8 +18,10 @@ const COUNTERS: { key: ReviewCounter; label: string; icon: LucideIcon; emphasis?
 
 /**
  * Indicadores da fila no modelo de ProcessSummaryStrip — contados no BANCO
- * para a fila inteira (revisões em aberto, RLS de quem vê). Cada um é um
- * botão de filtro: aplica na URL e, clicado de novo, limpa (aria-pressed).
+ * para a fila inteira (revisões em aberto, RLS de quem vê). Os três filtros
+ * aplicam na URL e, clicados de novo, limpam (aria-pressed). "Aguardando
+ * decisão" mostra a fila em aberto inteira: marcado (aria-current) quando a
+ * lista é exatamente essa.
  */
 export function ReviewSummaryStrip({ summary, query, onToggle }: { summary: ReviewSummaryDTO; query: ReviewListQuery; onToggle: (counter: ReviewCounter) => void }) {
   return (
@@ -27,13 +29,23 @@ export function ReviewSummaryStrip({ summary, query, onToggle }: { summary: Revi
       {COUNTERS.map(({ key, label, icon: Icon, emphasis }) => {
         const value = summary[key];
         const pressed = isReviewCounterActive(query, key);
+        const isAll = key === "open";
         return (
           <button
             key={key}
             type="button"
-            aria-pressed={pressed}
+            aria-pressed={isAll ? undefined : pressed}
+            aria-current={isAll && pressed ? "true" : undefined}
             onClick={() => onToggle(key)}
-            title={pressed ? "Clique para limpar este filtro" : "Clique para filtrar a lista"}
+            title={
+              isAll
+                ? pressed
+                  ? "A lista mostra todas as revisões aguardando decisão"
+                  : "Clique para ver todas as revisões aguardando decisão (limpa os filtros)"
+                : pressed
+                  ? "Clique para limpar este filtro"
+                  : "Clique para filtrar a lista"
+            }
             className={cn(
               "flex items-center gap-3 px-5 py-3 text-left transition-colors first:rounded-l-lg last:rounded-r-lg hover:bg-surface-muted",
               pressed && "bg-navy-50 shadow-[inset_0_-2px_0_var(--navy-900)] hover:bg-navy-50",

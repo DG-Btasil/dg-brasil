@@ -77,11 +77,19 @@ describe("indicadores da fila — botões de filtro (E-05)", () => {
     expect(toggleReviewCounter(todas, "dueSoon")).toMatchObject({ view: "abertas", status: "", due: "NEXT_7_DAYS" });
     expect(toggleReviewCounter({ ...DEFAULT_REVIEW_QUERY, view: "minhas" }, "dueSoon")).toMatchObject({ view: "minhas", due: "NEXT_7_DAYS" });
   });
-  it("'Sem responsável' sai de 'Atribuídas a mim'; 'Aguardando decisão' liga a visão e, de novo, mostra todas", () => {
+  it("'Sem responsável' sai de 'Atribuídas a mim'", () => {
     expect(toggleReviewCounter({ ...DEFAULT_REVIEW_QUERY, view: "minhas" }, "unassigned")).toMatchObject({ view: "abertas", unassigned: true });
+  });
+  it("'Aguardando decisão' mostra a fila em aberto inteira e nunca leva para 'Todas' (QA rodada 2)", () => {
+    // marcado só quando a lista é exatamente a fila em aberto, sem filtro
     expect(isReviewCounterActive(DEFAULT_REVIEW_QUERY, "open")).toBe(true);
-    expect(toggleReviewCounter(DEFAULT_REVIEW_QUERY, "open")).toMatchObject({ view: "todas" });
-    expect(toggleReviewCounter({ ...DEFAULT_REVIEW_QUERY, view: "todas", status: "REJECTED" }, "open")).toMatchObject({ view: "abertas", status: "" });
+    expect(isReviewCounterActive({ ...DEFAULT_REVIEW_QUERY, due: "NEXT_7_DAYS" }, "open")).toBe(false);
+    expect(isReviewCounterActive({ ...DEFAULT_REVIEW_QUERY, view: "todas" }, "open")).toBe(false);
+    // clicar de novo não muda a lista
+    expect(toggleReviewCounter(DEFAULT_REVIEW_QUERY, "open")).toEqual(DEFAULT_REVIEW_QUERY);
+    // de qualquer filtro ou visão, volta para a fila em aberto sem filtros, página 1
+    expect(toggleReviewCounter({ ...DEFAULT_REVIEW_QUERY, view: "todas", status: "REJECTED", page: 3 }, "open")).toEqual(DEFAULT_REVIEW_QUERY);
+    expect(toggleReviewCounter({ ...DEFAULT_REVIEW_QUERY, priority: "URGENT_HIGH", due: "NEXT_7_DAYS", unassigned: true }, "open")).toEqual(DEFAULT_REVIEW_QUERY);
   });
   it("o filtro aplicado vai para a URL", () => {
     expect(reviewQueryToSearchParams(toggleReviewCounter(DEFAULT_REVIEW_QUERY, "dueSoon")).toString()).toBe("prazo=7dias");
