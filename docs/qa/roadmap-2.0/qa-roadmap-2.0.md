@@ -35,7 +35,7 @@ VERIFICATION REPORT (ecc-verification-loop)
 Build:     PASS  (clone em caminho sem acento)
 Types:     PASS  (0 erros)
 Lint:      FAIL  (2 erros, 997 avisos, todos em public/executor/dg-executor.mjs)
-Tests:     FAIL no repositório (integração 180/243); PASS com fixtures ajustadas (243/243)
+Tests:     FAIL no repositório (integração: 164 passam, 63 falham, 16 ignorados); PASS com fixtures ajustadas (243/243)
            Unitários 598/598, verificar 833/833, executor 13/13. Cobertura não medida.
 Security:  PASS  (nenhum segredo no código; a única ocorrência é um valor fictício em teste)
 Diff:      222 arquivos (64363fb..4ed6d8d), revisados por amostragem nos pontos de segurança
@@ -69,7 +69,7 @@ Target:    VERIFIED parcial (Supabase DEV e site publicado; portal NOT PERFORMED
 | `npm run typecheck` | Limpo |
 | `npm run lint` | **2 erros**, 997 avisos (R2-04) |
 | `npm test` (frontend) | **598/598** |
-| `npm run test:integration` | **180 de 243**, 14 arquivos com falha (R2-01) |
+| `npm run test:integration` | **164 passam, 63 falham, 16 ignorados** (243), 14 arquivos com falha (R2-01) |
 | Integração com fixtures ajustadas | **243 de 243** (226 na rodada completa; os 17 restantes passaram ao corrigir o ajuste e repetir 3 arquivos) |
 | `npm test` (executor) | **13/13** |
 | `npm run build` | OK, em clone sem acento no caminho |
