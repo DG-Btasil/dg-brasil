@@ -364,3 +364,34 @@ Verdito da rodada: **aprovada com estas pendências.** Nenhuma bloqueia o uso.
 ### Dados criados no DEV nesta rodada
 
 Um escritório fictício pendente, "Convite: QA Rodada Dois" (`qa.r2.retrynjte@dgbrasil.test`), além do que `validar:real` e `test:integration` criam a cada execução.
+
+## 11. Rodada 3 (2026-11-09, sobre `bd25526`)
+
+> Sem migration nesta rodada. Validado pelo Claude nesta máquina, com Playwright no site publicado (deploy da Vercel de `bd25526` concluído), logado como ADMIN. Medidas tiradas do próprio navegador (posição e tamanho dos elementos). Prints em `rodada-3/`.
+
+### Resultado
+
+| Item | Resultado | Evidência |
+|---|---|---|
+| `typecheck`, `lint`, `npm test`, `next build` | OK | tsc limpo, 0 erros de lint, 618/618, build ok (rodados antes do envio) |
+| R3-01 rosca da Início | OK | `.recharts-pie` com `tabindex="-1"`; nenhum focável dentro de `aria-hidden` em 1024, 1440 e 1920 px; axe (`aria-hidden-focus` e `color-contrast`) sem nenhuma violação. `home-1440.png` |
+| R3-02 e textos da divisão (E-14) | OK | Processo de parceiro → Financeiro: "(definida quando o caso foi criado)". Caso: "registrado no aceite, com a divisão do parceiro vigente quando o caso foi criado". Caso → Financeiro: "Divisão do parceiro vigente quando o caso foi criado, registrada no aceite…". Ficha do parceiro: "Padrão para os casos criados a partir de agora…". Nenhuma tela visitada contém "congelad" |
+| E-05 "Aguardando decisão" | OK | Inicial: marcado (`aria-current`), 198. "Vencendo em até 7 dias" → `?prazo=7dias` e "Aguardando decisão" desmarca. Clicar em "Aguardando decisão" → `/revisoes` sem filtro; clicar de novo não muda nada. De "Todas" → volta para `/revisoes`. Com "Urgentes" + "Sem responsável" (`?prioridade=URGENT_HIGH&sem_responsavel=1`), "Aguardando decisão" limpa os dois. `revisoes-*.png` |
+| KPIs de borda a borda: Clientes | OK | 4 KPIs em 4 colunas, uma linha, nas larguras 1024, 1440 e 1920; borda esquerda e direita iguais às dos painéis de baixo (ex.: 32–1393 px em 1440); números alinhados. `clientes-*.png` |
+| KPIs: Processos | OK | 5 em 5 colunas nas três larguras, mesmas bordas dos painéis. `processos-*.png` |
+| KPIs: Casos | OK | 6 em 6 colunas em 1440 e 1920; em 1024 px, 3 + 3 (duas linhas cheias, sem buraco). `casos-*.png` |
+| KPIs: Início | OK | 5 indicadores numa linha em 1024, 1440 e 1920 (antes, 2 + 2 + 1 abaixo de 1280). `home-1024.png` |
+| KPIs: Financeiro do processo | OK | 11 indicadores em 3 linhas; "Resultado" em duas colunas fecha a última linha até a borda. `processo-financeiro.png` |
+| Portal (Início 5 KPIs, Financeiro 1 KPI e textos, Minha conta) | Não testado | Precisa de login de parceiro; o ADMIN não abre o portal |
+| Janela de aceitar caso de parceiro (texto) | Não testado | Não abri para não arriscar aceitar um caso; texto conferido no código |
+
+### Pendências
+
+Nenhuma falha. Falta só conferir no portal, logado como parceiro:
+- portal → Início: 5 KPIs numa linha;
+- portal → Financeiro: "Sua participação no período" com a largura toda e o texto "Percentual definido quando o caso foi criado…";
+- portal → Minha conta → "Divisão padrão": "Vale para os casos criados a partir de agora…".
+
+### Dados criados no DEV nesta rodada
+
+Nenhum. Só leitura, e cliques nos filtros de Revisões.
