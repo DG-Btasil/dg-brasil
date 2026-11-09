@@ -75,7 +75,8 @@ export function autofillHint(status: AutofillStatus, what: "CEP" | "CNPJ" | "CPF
     case "not_found":
       return what === "CEP" ? "CEP não encontrado. Preencha o endereço à mão." : `${what} não encontrado na Receita. Preencha à mão.`;
     case "not_configured":
-      return "Consulta de CPF na Receita ainda não contratada: preencha à mão.";
+      // CPF na Receita (Serpro) fica para a produção (docs/deploy/producao.md, item 12): sem aviso na tela.
+      return undefined;
     case "unavailable":
       return "Consulta indisponível agora. Preencha à mão.";
     default:

@@ -25,11 +25,9 @@ devolva o relatório no formato da última seção. O plano e as decisões estã
 1. `git pull`; o último commit tem "roadmap-2.0" na mensagem.
 2. Caminho do repositório **sem acento**; Node 24; Supabase CLI logada no DEV;
    `supabase/.env.real` e `apps/frontend/.env.local` como antes.
-3. Variáveis novas (opcionais) no `apps/frontend/.env.local` e na Vercel:
-   - `SERPRO_CPF_TRIAL=1` — liga a consulta de CPF na **demonstração pública** do
-     Serpro (só CPFs de teste). Sem ela, a tela diz "consulta não contratada".
-   - `SERPRO_CPF_CONSUMER_KEY` / `SERPRO_CPF_CONSUMER_SECRET` — só quando a Barbara
-     contratar a Consulta CPF (não é para esta validação).
+3. **Nenhuma variável nova é obrigatória.** A consulta de CPF na Receita (Serpro)
+   é atualização futura (produção, `docs/deploy/producao.md` item 12): **não**
+   configure `SERPRO_CPF_*` nesta validação.
 
 ## Parte 1: Migrations 045–049 no DEV
 
@@ -73,14 +71,14 @@ npx supabase db push --remote
 ## Parte 2: Testes automáticos
 
 ```bash
-cd supabase && npm run verificar              # esperado: 832 verificações, todas passaram
+cd supabase && npm run verificar              # esperado: 833 verificações, todas passaram
 cd supabase && npm run validar:real           # contra o DEV (o teste de ledger agora usa o processo do caso)
 cd apps/frontend && npm run typecheck && npm run lint && npm test   # esperado: 598 testes
 cd apps/frontend && npm run test:integration  # contra o DEV
 cd apps/executor && npm test                  # 13 testes
 ```
 
-- [ ] `verificar` 832/832. Seções novas: "[045]" cadastros, "[046]" financeiro por
+- [ ] `verificar` 833/833. Seções novas: "[045]" cadastros, "[046]" financeiro por
   processo, "[047]" tarefas, "[048]" OABs/convites/parceiro, "[049]" indicadores.
 - [ ] `validar:real` sem falha.
 - [ ] Unitários 598/598; lint sem erro; typecheck limpo.
@@ -121,7 +119,9 @@ Para cada item: print em `docs/qa/roadmap-2.0/` e OK/FALHA.
 - [ ] Configurações **não** tem mais "Honorários"; `/configuracoes?secao=honorarios` leva ao Financeiro → Modelos.
 
 **Bloco 4 — tarefas para os agentes**
-- [ ] DG Brasil → Conexões: escolher um agente de teste como **orquestrador**.
+- [ ] DG Brasil → Conexões, cartão "Agentes e orquestrador": escolher um agente de
+  teste como **orquestrador** (sem escolha, vale o agente ativo de identificador
+  `orquestrador`, se existir).
 - [ ] Processo → aba "Tarefas para os agentes" → Nova tarefa → "Criar e enviar": fica "Na fila do orquestrador"; aparece na aba Movimentações (só para a equipe).
 - [ ] No banco, simular a execução (como `postgres`): `update agent_runs set status='RUNNING', started_at=now(), claimed_by='qa', claimed_at=now() where id = '<agent_run_id da tarefa>';` → tela mostra "Agente trabalhando"; `... set status='WAITING_HUMAN'` → "Para revisar" com o botão **Concluir**.
 - [ ] Concluir com nota → tarefa riscada como "Concluída" e movimentação "Tarefa concluída".
@@ -138,7 +138,7 @@ Para cada item: print em `docs/qa/roadmap-2.0/` e OK/FALHA.
 **Bloco 6 — preenchimento automático**
 - [ ] Novo cliente: digitar o CEP `01001-000` → logradouro, bairro, município e UF preenchidos; foco vai para o número.
 - [ ] Novo cliente PJ: CNPJ `00.000.000/0001-91` → razão social, nome fantasia, telefone e sede preenchidos.
-- [ ] Com `SERPRO_CPF_TRIAL=1`: CPF `404.428.201-35` → nome "Rone Pereira" e nascimento 14/11/1970. Sem a variável: aviso "consulta não contratada".
+- [ ] CPF: **nada** é consultado nem aparece aviso (atualização futura, produção).
 - [ ] Portal → Novo caso → cliente novo: os mesmos preenchimentos funcionam.
 
 **Bloco 7 — Central DG Brasil**
@@ -152,6 +152,24 @@ Para cada item: print em `docs/qa/roadmap-2.0/` e OK/FALHA.
 - [ ] Início: abaixo da distribuição dos processos, o gráfico "Entradas nos últimos 30 dias"; a distribuição mostra os status novos, cada um com sua cor; seção "O escritório em números" com filtro de período.
 - [ ] Clientes, Casos, Processos e Parceiros: bloco "Indicadores" com filtro (7/30/90 dias, 12 meses, desde o início) — trocar o filtro atualiza os números.
 - [ ] Portal do parceiro (logar como PARTNER_ADMIN de teste): Início com "Seu escritório em números"; Financeiro com "Participação no período" (barras horizontais). Os números são só do escritório do parceiro.
+
+## Parte 4 (opcional, com uma pessoa no computador do escritório): orquestrador ponta a ponta
+
+Só se a Barbara estiver no computador do escritório. Senão, marque "não feito".
+
+1. Copiar `docs/mcp/pilotos/agentes/orquestrador.md` para
+   `%USERPROFILE%\.claudegents\orquestrador.md` e conferir a tabela de agentes
+   locais dentro dele.
+2. No DG Brasil → Agentes → Novo agente: nome "Orquestrador", identificador
+   `orquestrador`, agente local `orquestrador`, ativo.
+3. DG Brasil → Conexões: o cartão "Agentes e orquestrador" mostra o Orquestrador
+   (sozinho, sem escolher) e o computador do escritório "Conectado".
+4. Processo de teste → Tarefas para os agentes → "Redigir uma procuração para o
+   cliente" → Criar e enviar.
+5. No computador: `cd C:\DGBrasil\sessao`, `claude`, `/mcp__dg-brasil__trabalhos`.
+   A lista mostra "tarefa do processo"; o orquestrador responde
+   `AGENTE: lucas …` e a sessão chama o Lucas.
+6. A entrega aparece em Revisões; a tarefa fica "Para revisar"; concluir dá o check.
 
 ## Relatório
 

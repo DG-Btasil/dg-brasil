@@ -16,7 +16,10 @@
 --     IN_REVIEW   o agente entregou: aguardando revisão/conferência humana
 --     DONE        conferida e concluída por uma pessoa (o "check")
 --     CANCELLED   cancelada (com motivo)
---   process_task_settings: qual agente é o orquestrador (ADMIN escolhe).
+--   process_task_settings: qual agente é o orquestrador (ADMIN escolhe). Sem
+--   escolha, vale o agente ativo de identificador "orquestrador": o agente do
+--   Claude Code do computador do escritório que recebe as tarefas pelo MCP e
+--   distribui entre os outros agentes locais.
 --
 -- O agente recebe a tarefa como o "pedido" da execução (agent_run_inputs),
 -- que o MCP do escritório já mostra (ver_trabalho). Nada é consumado sem
@@ -132,7 +135,23 @@ as $$
   ), 20000)
 $$;
 
--- Agente da tarefa: o escolhido ou o orquestrador da configuração.
+-- Orquestrador em vigor: o escolhido pelo ADMIN ou, sem escolha, o agente
+-- ativo com identificador "orquestrador".
+create or replace function private.process_task_orchestrator()
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    (select s.orchestrator_agent_id from public.process_task_settings s
+       join public.agents a on a.id = s.orchestrator_agent_id and a.status = 'ACTIVE' and a.deleted_at is null
+      where s.id),
+    (select a.id from public.agents a where a.slug = 'orquestrador' and a.status = 'ACTIVE' and a.deleted_at is null))
+$$;
+
+-- Agente da tarefa: o escolhido pela pessoa ou o orquestrador em vigor.
 create or replace function private.process_task_agent(p_task public.process_tasks)
 returns uuid
 language sql
@@ -140,7 +159,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select coalesce(p_task.agent_id, (select s.orchestrator_agent_id from public.process_task_settings s where s.id))
+  select coalesce(p_task.agent_id, private.process_task_orchestrator())
 $$;
 
 -- Põe a tarefa na fila: nova execução com o pedido. Sem agente → fica ABERTA.
@@ -338,7 +357,7 @@ security definer
 set search_path = ''
 as $$
   select a.id, a.name, a.purpose,
-         a.id = (select s.orchestrator_agent_id from public.process_task_settings s where s.id)
+         a.id is not distinct from private.process_task_orchestrator()
   from public.agents a
   where private.has_internal_role('ADMIN', 'LAWYER')
     and a.status = 'ACTIVE' and a.deleted_at is null
@@ -408,5 +427,6 @@ grant execute on function public.list_task_agents() to authenticated;
 revoke all on function private.process_task_event(public.process_tasks, text, text, text) from public, anon, authenticated;
 revoke all on function private.process_task_request(public.process_tasks, text) from public, anon, authenticated;
 revoke all on function private.process_task_agent(public.process_tasks) from public, anon, authenticated;
+revoke all on function private.process_task_orchestrator() from public, anon, authenticated;
 revoke all on function private.process_task_enqueue(uuid, text) from public, anon, authenticated;
 revoke all on function private.process_tasks_follow_run() from public, anon, authenticated;

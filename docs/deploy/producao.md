@@ -289,9 +289,10 @@ acrescente:
 
 ## 12. Consulta de CPF na Receita (Serpro) — Roadmap 2.0
 
-- **Hoje:** o cadastro já tenta preencher nome e nascimento pelo CPF, mas sem as
-  chaves do Serpro a consulta diz "ainda não contratada" e nada é preenchido.
-  CEP (ViaCEP/BrasilAPI) e CNPJ (BrasilAPI) são gratuitos e já funcionam.
+- **Hoje:** atualização futura, por decisão da Barbara (2026-11-09). O código
+  está pronto e DESLIGADO: sem as chaves do Serpro, o CPF não consulta nada e a
+  tela não mostra aviso. CEP (ViaCEP/BrasilAPI) e CNPJ (BrasilAPI) são gratuitos
+  e já funcionam.
 - **Por que não agora:** a API Consulta CPF do Serpro é paga por consulta e o
   contrato é do escritório (Loja Serpro, contratação online, pós-pago).
 - **Na produção:** contratar a **Consulta CPF** na Loja Serpro e pôr na Vercel:

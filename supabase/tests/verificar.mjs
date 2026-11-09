@@ -5460,6 +5460,18 @@ await deve('canal de aquisição dos novos clientes aparece no agrupamento', asy
 })
 await deveFalhar('período invertido é recusado', () => metricas(ids.barbara, '2026-12-31', '2026-01-01'), /Período inválido/)
 
+await deve('sem escolha do ADMIN, o orquestrador é o agente ativo "orquestrador" (o do computador do escritório)', async () => {
+  const antigo = (await um(db, `select slug from agents where id = $1`, [ids.agente])).slug
+  await como(ids.barbara, (tx) => tx.query(`select public.save_process_task_settings(null)`))
+  await db.query(`update agents set slug = 'orquestrador' where id = $1`, [ids.agente])
+  const r = await tarefa047(ids.lucas, ids.proc046a, 'Organizar a pasta')
+  igual((await um(db, `select agent_id from agent_runs where id = $1`, [r.agent_run_id])).agent_id, ids.agente, 'foi para o orquestrador')
+  const l = await como(ids.lucas, async (tx) => linhas(tx, `select id, is_orchestrator from public.list_task_agents()`))
+  igual(l.find((a) => a.id === ids.agente)?.is_orchestrator, true, 'aparece como orquestrador')
+  await db.query(`update agents set slug = $2 where id = $1`, [ids.agente, antigo])
+  await como(ids.barbara, (tx) => tx.query(`select public.save_process_task_settings($1)`, [ids.agente]))
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(
