@@ -95,7 +95,7 @@ entre os que passaram com o ajuste.
 | R2-09 | Acessibilidade (axe, WCAG 2.2 AA): contraste insuficiente em 3 a 29 elementos por tela; na Início, 2 elementos focáveis dentro de `aria-hidden` (gráficos) | 5 telas verificadas | Rodar axe-core | Cosmético | — |
 | R2-10 | Falha única na criação de caso (erro interno) durante a integração; passou na repetição. Causa não identificada | `createCaseOnce`, teste "prazo: criar (data civil)…" | Não reproduzido | Incomoda | — |
 | R2-11 | Resto de código: a importação ainda monta `client.responsible_user_id`. A migration ignora a chave | `server/domain/imports/normalize.ts:416` | Leitura de código | Cosmético | — |
-| R2-16 | Convite por e-mail falhou com endereço real (Gmail); a mensagem diz "Nada foi criado", mas ficam escritórios inativos. Causa provável: SMTP padrão do Supabase (seção 9) | Parceiros → Convidar parceiro; `server/auth/team-actions.ts:297` | Convidar com e-mail fora da equipe do projeto Supabase | **Bloqueia** o primeiro acesso do parceiro | — |
+| R2-16 | Convite por e-mail falhou com endereço real (Gmail); a mensagem diz "Nada foi criado", mas ficam escritórios inativos. O Auth tenta enviar e o SMTP falha; causa em aberto (seção 9) | Parceiros → Convidar parceiro; `server/auth/team-actions.ts:297` | Convidar com e-mail fora da equipe do projeto Supabase | **Bloqueia** o primeiro acesso do parceiro | — |
 | R2-13 | No portal, depois do CEP o foco fica no próprio CEP; no escritório vai para o número, como o guia pede | `features/partner-portal/components/new-case-wizard.tsx:196` | Portal → Novo caso → digitar o CEP | Cosmético | `b6-portal-cep.png` |
 | R2-14 | Telefone é obrigatório no cadastro do escritório e opcional no do portal. O roadmap não lista telefone entre os obrigatórios | Formulários de cliente | Comparar `/clientes/novo` e o assistente do portal | Cosmético | `b6-portal-cliente-novo.png` |
 | R2-15 | Observado uma vez no portal: "Selecione o estado civil" continuou depois de escolher a opção, e o primeiro clique em Continuar não avançou; o segundo avançou sem mudar nada. Não reproduzido | Assistente de novo caso do portal | Enviar vazio, preencher, Continuar | Cosmético | — |
@@ -197,7 +197,7 @@ Removido a pedido do Miguel: o cliente de R2-02 com 3 casos, 4 documentos e 56 n
 
 ## 8. Para concluir
 
-1. Ligar o SMTP próprio no DEV (R2-16), convidar um parceiro com uma caixa de e-mail real e seguir o link num navegador anônimo.
+1. Corrigir o envio de e-mail no DEV (R2-16), convidar um parceiro com uma caixa de e-mail real e seguir o link num navegador anônimo.
 2. Parte 4, com alguém no computador do escritório.
 
 ## 9. Correções pedidas depois da validação (2026-11-09)
@@ -208,10 +208,11 @@ Pedidas pelo Miguel ao revisar as telas. Nada disto foi implementado ainda.
 
 Convidar um parceiro com um Gmail real falhou com "O convite não pôde ser enviado por e-mail. Nada foi criado; tente novamente."
 
-- **Causa provável:** o DEV usa o SMTP padrão do Supabase, que só entrega para e-mails da equipe do projeto (`docs/auth.md`, item 6). `supabase/config.toml` não tem SMTP próprio. **Não confirmado:** os logs do Auth e da Vercel não estavam acessíveis nesta validação, e o erro exato só vai para o log do servidor.
-- **O que corrigir:**
-  1. Ligar SMTP próprio no Supabase (Resend), como em `docs/deploy/producao.md`, e repetir o convite.
-  2. Se ainda falhar, ler o erro em `[equipe] envio do convite` nos logs da Vercel.
+- **Situação:** o Miguel informou que já ligou o SMTP próprio. Um convite de diagnóstico direto no Auth do DEV, para endereço fictício, devolveu `500 Error sending invite email`. Esse erro indica que o Auth tentou enviar e o envio falhou. O bloqueio do SMTP padrão costuma vir como `Email address not authorized`.
+- **Causa ainda não identificada.** O motivo real só aparece no log do Auth. Hipóteses a conferir: usuário ou senha do SMTP errados, remetente fora do domínio verificado, porta, ou plano sem SMTP (o Zoho gratuito não tem, ver `docs/deploy/producao.md`, item 4 da seção de e-mail).
+- **O que fazer:**
+  1. No Supabase DEV, abrir **Logs → Auth** e ler a linha do erro de envio.
+  2. Corrigir a configuração indicada e repetir o convite.
   3. Corrigir a mensagem: "Nada foi criado" não é verdade. As 2 tentativas deixaram 2 escritórios "Convite: …" inativos (R2-06).
   4. Só criar o escritório depois de o convite sair, ou reaproveitar o pendente na nova tentativa.
 - Sem isso, o primeiro acesso do parceiro não pode ser testado.
