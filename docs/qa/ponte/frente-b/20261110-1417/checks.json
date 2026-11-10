@@ -1,0 +1,54 @@
+{
+    "PB-01":  {
+                  "resultado":  "OK",
+                  "detalhe":  "passo da ponte apareceu no instalador"
+              },
+    "PB-02":  {
+                  "resultado":  "OK",
+                  "detalhe":  "agentes: clara-hiscon, lucas-procuracao, alice-inicial, atlas-revisional, vicente-agregados, murilo-replica, pedro-provas, laura-emenda, gabriel-embargos, rafael-recurso, paulo-agravo, beatriz-cumprimento, teresa-audiencia | raizes: G:\\Meu Drive\\000. PASTA CLIENTES NOVOS ; G:\\Meu Drive\\01. ADVOCACIA — CLIENTES"
+              },
+    "PB-03":  {
+                  "resultado":  "OK",
+                  "detalhe":  "agentes da ponte instalados: porteiro-dg, arquivista-dg, mensageiro-dg"
+              },
+    "PB-04":  {
+                  "resultado":  "OK",
+                  "detalhe":  "allow ponte/internet e deny dos conectores"
+              },
+    "PB-05":  {
+                  "resultado":  "OK",
+                  "detalhe":  "doctor sem FALHA"
+              },
+    "PB-06":  {
+                  "resultado":  "OK",
+                  "detalhe":  "versao do conector: 1.1.0"
+              },
+    "PB-VIGIA":  {
+                     "resultado":  "FALHOU",
+                     "detalhe":  "vigia aberta pelo atalho:  processo(s)"
+                 },
+    "PB-10":  {
+                  "resultado":  "FALHOU",
+                  "detalhe":  "HISCON.pdf e DADOS DO CADASTRO.txt na pasta de teste"
+              },
+    "PB-11":  {
+                  "resultado":  "FALHOU",
+                  "detalhe":  "roteiro da Clara gravado na pasta de teste"
+              },
+    "PB-20":  {
+                  "resultado":  "FALHOU",
+                  "detalhe":  "procuracao e declaracao do Lucas na pasta de teste"
+              },
+    "PB-09":  {
+                  "resultado":  "FALHOU",
+                  "detalhe":  "porteiro.json capturado em 0 trabalho(s)"
+              },
+    "PB-16/18":  {
+                     "resultado":  "NAO TESTADO",
+                     "detalhe":  "porteiro.json com suspeito/recusado: 0"
+                 },
+    "PB-14":  {
+                  "resultado":  "NAO TESTADO",
+                  "detalhe":  "todos os trabalhos vistos terminaram (vigia nao ficou parada esperando confirmacao)"
+              }
+}
