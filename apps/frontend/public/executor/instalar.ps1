@@ -51,6 +51,18 @@ Ok $Exe
 
 Passo 'Token deste computador'
 $token = $env:DG_BRASIL_TOKEN
+# Reinstalação: reaproveita o token que já está neste computador (ninguém precisa
+# colar de novo). Para trocar de token, rode com $env:DG_BRASIL_TOKEN.
+if (-not $token -and (Test-Path $Cfg)) {
+  try {
+    $anteriorCfg = Get-Content -Raw -Encoding UTF8 $Cfg | ConvertFrom-Json
+    if ($anteriorCfg.token -and "$($anteriorCfg.token)".StartsWith('dgx_') -and "$($anteriorCfg.url)".TrimEnd('/') -eq $Base) {
+      $token = "$($anteriorCfg.token)"
+      Ok 'Token deste computador reaproveitado da instalação anterior'
+    }
+  } catch { Aviso 'Não deu para ler a configuração anterior; o token será pedido.' }
+  Remove-Variable anteriorCfg -ErrorAction SilentlyContinue
+}
 if (-not $token) {
   Write-Host '    No DG Brasil: DG Brasil → Computador do escritório → Autorizar computador → Gerar token.'
   $seguro = Read-Host '    Cole o token (dgx_...) e tecle Enter' -AsSecureString
