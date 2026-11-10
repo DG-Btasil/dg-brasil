@@ -84,9 +84,14 @@ produziria, numa pasta temporária.
 
 1. `git log origin/master -1` mostra o commit da ponte; o deploy do Vercel desse
    commit está **Ready**.
-   - [ ] **PA-13** a rota nova existe:
-     `curl.exe -s -o NUL -w "%{http_code}" https://app.dgbrasil.adv.br/api/executor/v1/jobs/11111111-2222-4333-8444-555555555555/bridge`
-     responde `401` (sem token), e não `404`.
+   - [ ] **PA-13** o que o site publica é o do commit:
+     - `https://app.dgbrasil.adv.br/executor/dg-executor.mjs` contém `verificar_arquivos`;
+     - `https://app.dgbrasil.adv.br/executor/agentes/porteiro-dg.md` responde 200;
+     - `https://app.dgbrasil.adv.br/executor/instalar.ps1` contém `ComPonte`.
+
+     (A rota `/bridge` sem token responde 401, mas qualquer rota da API responde
+     401 sem token: isso não prova que ela existe. Ela é conferida de verdade na
+     Frente B, PB-08.)
 2. **Na máquina do Supabase DEV:** `git pull`, `cd supabase`,
    `supabase db push` (a única pendente é `20261110000051_ponte_agentes.sql`) e
    `supabase db push --dry-run`.
