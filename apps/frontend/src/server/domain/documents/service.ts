@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isPartner, requireAnyPermission, requireInternal, requirePermission, requireRole, type ServiceContext } from "@/server/core/context";
 import { businessRule, conflict, DomainError, forbidden, invalidState, notFound, validation } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
@@ -29,6 +29,7 @@ import {
   DOWNLOAD_URL_TTL_SECONDS,
   LEGAL_DOCUMENTS_BUCKET,
   legalDocumentObjectName,
+  MAX_FILE_SIZE_BYTES,
   objectNameMatchesVersion,
   sanitizeFilename,
   type DocumentStorage,
@@ -273,6 +274,22 @@ export async function prepareUpload(ctx: ServiceContext, input: PrepareUploadInp
   return { documentId: doc.id, versionId, signedUrl: upload.signedUrl, token: upload.token, bucket: LEGAL_DOCUMENTS_BUCKET, path };
 }
 
+/**
+ * sha256 do arquivo que de fato está no Storage (não o que o navegador diz).
+ * Com ele, o computador do escritório confere cada documento baixado (MP-08).
+ * Melhor esforço: se a leitura falhar, a versão é registrada sem checksum,
+ * como antes, e o envio não é bloqueado.
+ */
+async function storedChecksum(ctx: ServiceContext, storage: DocumentStorage, path: string, ids: { documentId: string; versionId: string }): Promise<string | null> {
+  try {
+    const bytes = await storage.downloadObject(path, MAX_FILE_SIZE_BYTES);
+    return createHash("sha256").update(bytes).digest("hex");
+  } catch {
+    ctx.log.warn("document.checksum_unavailable", ids);
+    return null;
+  }
+}
+
 /** A versão já registrada é ESTA (mesmo documento e mesmo objeto)? */
 async function existingConfirmation(ctx: ServiceContext, versionId: string, documentId: string, path: string): Promise<boolean> {
   const existing = await repo.getVersion(ctx.db, versionId);
@@ -308,8 +325,10 @@ export async function confirmUpload(ctx: ServiceContext, input: ConfirmUploadInp
   }
   assertSamePath(ctx, path, expected, { documentId: doc.id, versionId });
 
-  const info = await storageOf(deps).getObjectInfo(path);
+  const storage = storageOf(deps);
+  const info = await storage.getObjectInfo(path);
   if (!info) throw invalidState("O arquivo ainda não chegou. Envie o arquivo e confirme de novo.");
+  const checksum = await storedChecksum(ctx, storage, path, { documentId: doc.id, versionId });
 
   const result = await repo.insertVersion(ctx.db, {
     id: versionId,
@@ -318,6 +337,7 @@ export async function confirmUpload(ctx: ServiceContext, input: ConfirmUploadInp
     original_filename: input.fileName,
     mime_type: info.contentType ?? input.mimeType ?? null,
     file_size: info.sizeBytes ?? null,
+    checksum_sha256: checksum,
     source: "UPLOAD",
     created_by: ctx.session.userId,
   });

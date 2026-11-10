@@ -58,7 +58,7 @@ export class Trabalhos {
     const r = await this.api.reservar(id)
     if (!r.claimed) {
       const motivo: Record<string, string> = {
-        DISABLED: 'A execução pelo escritório está DESLIGADA no DG Brasil (Configurações → Computador do escritório). Peça a um ADMIN para ligar.',
+        DISABLED: 'A execução pelo escritório está DESLIGADA no DG Brasil (DG Brasil → Computador do escritório). Peça a um ADMIN para ligar.',
         NOT_AVAILABLE: 'Este trabalho não está mais disponível (outra sessão reservou, foi concluído ou interrompido).',
         MAX_ATTEMPTS: 'Este trabalho atingiu o limite de 3 tentativas e foi marcado como falho.',
       }

@@ -119,6 +119,31 @@ describe("upload: o banco autoriza o caminho antes de qualquer assinatura", () =
   });
 });
 
+describe("upload: checksum calculado no servidor (MP-08)", () => {
+  it("grava o sha256 do objeto que está no Storage", async () => {
+    vi.mocked(repo.getDocument).mockResolvedValue(doc());
+    vi.mocked(repo.getVersion).mockResolvedValue(null);
+    vi.mocked(repo.authorizeUpload).mockImplementation(async (_db, d, v, f) => legalDocumentObjectName(CLIENT, d, v, f));
+    vi.mocked(repo.insertVersion).mockResolvedValue("CREATED");
+    const storage = fakeStorage();
+    storage.downloadObject.mockResolvedValueOnce(new TextEncoder().encode("abc"));
+    await service.confirmUpload(ctxOf("LAWYER"), { documentId: DOC, versionId: VERSION, fileName: "rg.pdf" }, { storage });
+    expect(vi.mocked(repo.insertVersion).mock.calls[0][1].checksum_sha256).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  });
+
+  it("falha ao ler o objeto não bloqueia o envio: versão sem checksum", async () => {
+    vi.mocked(repo.getDocument).mockResolvedValue(doc());
+    vi.mocked(repo.getVersion).mockResolvedValue(null);
+    vi.mocked(repo.authorizeUpload).mockImplementation(async (_db, d, v, f) => legalDocumentObjectName(CLIENT, d, v, f));
+    vi.mocked(repo.insertVersion).mockResolvedValue("CREATED");
+    const storage = fakeStorage();
+    storage.downloadObject.mockRejectedValueOnce(new Error("rede"));
+    const out = await service.confirmUpload(ctxOf("LAWYER"), { documentId: DOC, versionId: VERSION, fileName: "rg.pdf" }, { storage });
+    expect(out.alreadyConfirmed).toBe(false);
+    expect(vi.mocked(repo.insertVersion).mock.calls[0][1].checksum_sha256).toBeNull();
+  });
+});
+
 describe("download: authorize_document_download antes de assinar", () => {
   it("o banco autoriza (e registra LGPD + auditoria) e só então a URL de 60 s é assinada", async () => {
     vi.mocked(repo.getDocument).mockResolvedValue(doc());

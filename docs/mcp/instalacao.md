@@ -30,8 +30,15 @@ Claude Code, baixa o conector já compilado (`/executor/dg-executor.mjs`, gerado
 com `npm run bundle` em `apps/executor`), grava o token em
 `%APPDATA%\DGBrasil\executor.json` (só a conta do Windows lê), cria
 `C:\DGBrasil\sessao` com o `.mcp.json` e as permissões da seção 4 e roda o
-diagnóstico. Depois: `cd C:\DGBrasil\sessao`, `claude`, `/mcp__dg-brasil__trabalhos`.
-Rodar de novo atualiza o conector. O passo a passo manual continua abaixo.
+diagnóstico. Ele também cria na área de trabalho os atalhos **"DG Brasil -
+Sessão"** (modo assistido: digite `/mcp__dg-brasil__trabalhos`) e **"DG Brasil -
+Vigia"** (seção 6). **Abra sempre pelos atalhos:** eles rodam
+`claude --strict-mcp-config --mcp-config .mcp.json`, que carrega só o servidor do
+DG Brasil, sem os conectores do claude.ai nem os servidores MCP do usuário
+(QA da máquina principal, MP-05).
+Rodar de novo atualiza o conector e **mescla** o `deny`: regras acrescentadas à
+mão no computador não se perdem, e o arquivo anterior fica em
+`settings.json.anterior`. O passo a passo manual continua abaixo.
 
 > Ao mudar o código de `apps/executor`, rode `npm run bundle` e faça commit do
 > `apps/frontend/public/executor/dg-executor.mjs` atualizado.
@@ -162,9 +169,18 @@ O que cada regra faz:
   Um PDF com instruções maliciosas não consegue mandar mensagem nem buscar outro
   cliente.
 
-> **A confirmar na primeira vez:** os nomes dos conectores do claude.ai podem ser
-> um pouco diferentes neste computador. Abra o Claude Code na pasta de sessão e
-> digite `/mcp`: a lista mostra os nomes exatos. Ajuste o `deny` se precisar.
+> **Isolamento (2026-11-10, MP-05).** Uma lista de conectores proibidos não
+> basta: na validação, a sessão de trabalhos conseguiu ler o Notion, que não
+> estava na lista, e ainda ofereceu um link para "conectar" outro conector. O
+> instalador agora usa três camadas:
+> 1. `"disableClaudeAiConnectors": true` no `settings.json`: nenhum conector do
+>    claude.ai carrega nesta pasta;
+> 2. os atalhos abrem com `--strict-mcp-config`: só o servidor `dg-brasil`;
+> 3. o `deny` acima, ampliado com `mcp__claude_ai_*`, os conectores conhecidos e
+>    `mcp__djen`, fica como reserva.
+>
+> **Confira:** abra pelo atalho e digite `/mcp`. Só o `dg-brasil` deve aparecer.
+> **Nunca autorize um conector (link de login) pedido pela sessão de trabalhos.**
 
 ## 5. Os agentes locais
 
@@ -181,13 +197,15 @@ Como preparar os agentes reais (Clara, Lucas):
 
 ## 6. Usar
 
+Abra o atalho **"DG Brasil - Sessão"** da área de trabalho. Sem o atalho, o
+equivalente é:
+
 ```powershell
 cd C:\DGBrasil\sessao
-claude
+claude --strict-mcp-config --mcp-config .mcp.json
 ```
 
-1. **Aprove o servidor.** Na primeira vez, o Claude Code pergunta se aprova o
-   servidor `dg-brasil` do `.mcp.json`. Aprove.
+1. **Confira o isolamento.** Em `/mcp`, só o `dg-brasil` aparece.
 2. **Peça a fila.** Digite `/mcp__dg-brasil__trabalhos`. O Claude lista a fila e
    pergunta quais trabalhos processar.
 3. **O Claude processa.** Para cada trabalho escolhido, ele reserva, baixa os
@@ -210,7 +228,7 @@ Para não precisar digitar o comando a cada trabalho: de manhã, abra o atalho
 Claude Code em `C:\DGBrasil\sessao` já rodando:
 
 ```powershell
-claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver."
+claude --strict-mcp-config --mcp-config .mcp.json "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver."
 ```
 
 - Não use `/loop 15m /mcp__dg-brasil__vigiar`: o `/loop` não abre comandos de

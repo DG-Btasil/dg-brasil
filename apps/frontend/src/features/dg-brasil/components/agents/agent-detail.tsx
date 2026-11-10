@@ -157,7 +157,7 @@ function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () =>
         description={
           pausing
             ? "O agente deixa de receber execuções novas. O que já foi entregue continua em Revisões."
-            : "O agente volta a receber trabalhos (se a execução pelo escritório estiver ligada em Configurações → Computador do escritório)."
+            : "O agente volta a receber trabalhos (se a execução pelo escritório estiver ligada em DG Brasil → Computador do escritório)."
         }
         footer={
           <>

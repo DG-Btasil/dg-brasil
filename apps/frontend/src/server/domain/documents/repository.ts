@@ -166,6 +166,8 @@ export interface NewVersionRow {
   original_filename: string;
   mime_type: string | null;
   file_size: number | null;
+  /** sha256 do objeto no Storage, calculado no servidor (MP-08); null se não deu para ler. */
+  checksum_sha256: string | null;
   source: "UPLOAD";
   created_by: string;
 }

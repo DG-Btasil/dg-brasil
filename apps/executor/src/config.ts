@@ -67,7 +67,7 @@ export async function lerConfig(env: NodeJS.ProcessEnv = process.env): Promise<C
     throw new ErroConfig('O endereço do DG Brasil precisa ser https:// (http só para localhost).')
   }
   if (!/^dgx_[A-Za-z0-9_-]{20,100}$/.test(token)) {
-    throw new ErroConfig(`Falta o token do computador, ou ele está em formato inválido ("token" em ${arquivoConfig}). Gere em DG Brasil → Configurações → Computador do escritório.`)
+    throw new ErroConfig(`Falta o token do computador, ou ele está em formato inválido ("token" em ${arquivoConfig}). Gere em DG Brasil → Computador do escritório.`)
   }
   return {
     url,

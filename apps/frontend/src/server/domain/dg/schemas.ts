@@ -96,6 +96,6 @@ export type HistoryInput = z.infer<typeof historySchema>;
 
 export const setAiEnabledSchema = z.object({ enabled: z.boolean(), reason: textoOpcional(500) });
 
-/** Computador do escritório (Configurações → Computador do escritório). */
+/** Computador do escritório (DG Brasil → Computador do escritório). */
 export const createExecutorSchema = z.object({ name: texto(80, "Dê um nome ao computador (ex.: Computador da recepção).") });
 export const revokeExecutorSchema = z.object({ id: zUuid() });

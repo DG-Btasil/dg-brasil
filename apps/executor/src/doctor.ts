@@ -32,7 +32,7 @@ export async function diagnostico(escrever: (l: string) => void = (l) => console
     const eu = await new DgApi(cfg.url, cfg.token, cfg.versaoCliente).eu()
     ok(`DG Brasil em ${cfg.url} reconhece este computador como "${eu.name}"`)
     if (eu.execution_enabled) ok('Execução pelo escritório: LIGADA')
-    else escrever('  AVISO Execução pelo escritório: DESLIGADA (ligue em Configurações → Computador do escritório)')
+    else escrever('  AVISO Execução pelo escritório: DESLIGADA (ligue em DG Brasil → Computador do escritório)')
   } catch (e) {
     falha(e instanceof ErroApi ? `DG Brasil recusou: ${e.message}` : 'Sem conexão com o DG Brasil')
   }

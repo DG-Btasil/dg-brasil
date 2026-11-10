@@ -324,3 +324,19 @@ Nada foi alterado.
 - O texto vem do código: `apps/executor/src/config.ts:70`, `doctor.ts:35`, `trabalhos.ts:61` e, no site,
   `analysis-panel.tsx:160` e `agent-detail.tsx:160`.
 - Ação: trocar por "DG Brasil → Computador do escritório".
+
+## Correções (10/11/2026)
+
+| Achado | O que mudou | Onde |
+|---|---|---|
+| MP-05 | Sessão isolada em três camadas: `disableClaudeAiConnectors` no `settings.json`; atalhos "DG Brasil - Sessão" (novo) e "DG Brasil - Vigia" abrem com `--strict-mcp-config --mcp-config .mcp.json`; `deny` ampliado (`mcp__claude_ai_*`, conectores conhecidos, `mcp__djen`) e **mesclado** com o que já existia, com cópia em `settings.json.anterior`. O roteiro proíbe oferecer ou pedir autorização de conector. A vigia continua igual, só ganhou as flags | `instalar.ps1`, `prompt.ts`, `instalacao.md` |
+| MP-08 | Ao confirmar um envio, o servidor calcula o sha256 do arquivo que está no Storage e grava em `checksum_sha256`. Se a leitura falhar, a versão é registrada sem checksum, como antes. Vale para o escritório e o portal; documentos antigos continuam sem checksum | `documents/service.ts` (+2 testes) |
+| MP-07b | Execução que voltou sozinha para a fila mostra "A tentativa anterior não terminou" e não pede mais para reenviar a análise | `run-detail.tsx` |
+| MP-11 | "Configurações → Computador do escritório" trocado por "DG Brasil → Computador do escritório" | executor (`config`, `doctor`, `trabalhos`) e site |
+| MP-06 | `comprovante-residencia-ficticio.pdf` incluído nos documentos de teste | `docs/mcp/pilotos/documentos/` |
+| MP-02, 03, 04, 07, 10 | Guia ajustado: versão do executor na lista, pausar o acompanhamento depois de cadastrar (o padrão ligado é o esperado), orquestrador em Conexões, esperar mais de 3 min para o aviso, os dois casos de queda, reserva sem confirmação e atalhos | `maquina-principal.md` |
+| MP-01, MP-09, R1 | Sem mudança de código: ligar o BitLocker; o 504 coincidiu com a republicação; o `rodar_otavio.ps1` entra na decisão do R1 | — |
+
+Testes: executor 14/14; site `typecheck` e `lint` limpos, `npm test` 622/622.
+
+**Depois do deploy, na máquina principal:** rodar o instalador de novo (o ajuste manual do `deny` é preservado), abrir pelo atalho "DG Brasil - Sessão" e conferir em `/mcp` que só o `dg-brasil` aparece.

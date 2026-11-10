@@ -157,7 +157,7 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, office }: { ana
       <PanelBody className="space-y-4">
         {office?.enabled === false && (withAgent || sendable) && (
           <Callout tone="warning" title="A execução pelo escritório está desligada pelo administrador.">
-            Pedidos ficam na fila e só começam quando for religada em Configurações → Computador do escritório.
+            Pedidos ficam na fila e só começam quando for religada em DG Brasil → Computador do escritório.
           </Callout>
         )}
         {office?.enabled && !office.online && withAgent && (

@@ -125,9 +125,11 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
           </Callout>
         )}
         {error && run.status !== "CANCELLED" && (
-          <Callout tone="danger" title="A execução não terminou.">
+          <Callout tone={run.status === "QUEUED" ? "warning" : "danger"} title={run.status === "QUEUED" ? "A tentativa anterior não terminou." : "A execução não terminou."}>
             {error}
-            {run.analysisId && " Para tentar de novo, envie a análise pela tela do caso."}
+            {run.status === "QUEUED"
+              ? " O trabalho já voltou sozinho para a fila e será retomado quando o computador do escritório processar a fila."
+              : run.analysisId && " Para tentar de novo, envie a análise pela tela do caso."}
           </Callout>
         )}
         {run.status === "CANCELLED" && <Callout tone="neutral" title="Execução interrompida.">Nada novo foi entregue depois do pedido de interrupção.</Callout>}
