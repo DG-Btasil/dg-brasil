@@ -187,9 +187,31 @@ function birthFromSerpro(v: string | undefined): string | undefined {
   return `${v.slice(4, 8)}-${v.slice(2, 4)}-${v.slice(0, 2)}`;
 }
 
+/**
+ * Respostas da Receita guardadas por 10 minutos (memória desta instância do
+ * servidor): o mesmo CPF digitado de novo (portal e depois o cadastro, ou o
+ * formulário reaberto) não paga outra consulta. Guarda também o "não encontrado".
+ */
+const CPF_CACHE_MS = 10 * 60_000;
+const CPF_CACHE_MAX = 500;
+const cpfCache = new Map<string, { value: PersonLookup | null; expiresAt: number }>();
+
+export function clearCpfCache() {
+  cpfCache.clear();
+}
+
 export async function lookupCpf(cpf: string): Promise<PersonLookup | null> {
   const d = digits(cpf);
   if (d.length !== 11) return null;
+  const cached = cpfCache.get(d);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = await lookupCpfAtReceita(d);
+  if (cpfCache.size >= CPF_CACHE_MAX) cpfCache.delete(cpfCache.keys().next().value as string);
+  cpfCache.set(d, { value, expiresAt: Date.now() + CPF_CACHE_MS });
+  return value;
+}
+
+async function lookupCpfAtReceita(d: string): Promise<PersonLookup | null> {
   const { base, token } = await serproToken();
   const r = await getJson(`${base}/cpf/${d}`, { headers: { Authorization: `Bearer ${token}` } });
   if (r.status === 404) return null;

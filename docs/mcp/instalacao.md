@@ -205,7 +205,7 @@ rodar):
   geram. É esse arquivo que diz quem passa pela ponte; agente fora dele segue o
   fluxo `entrada`/`saida`;
 - baixa os três agentes da ponte (`porteiro-dg`, `arquivista-dg`,
-  `mensageiro-dg`) para `%USERPROFILE%\.claudegents\`;
+  `mensageiro-dg`) para `%USERPROFILE%\.claude\agents\`;
 - acrescenta ao `allow` da sessão: as quatro ferramentas da ponte, as pastas dos
   clientes (`000. PASTA CLIENTES NOVOS` e `01. ADVOCACIA — CLIENTES`), as pastas
   de modelos (só leitura), `~/agentes-juridicos/**` (pasta de trabalho e

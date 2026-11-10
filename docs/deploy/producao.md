@@ -8,9 +8,12 @@ fora **de propósito**:
 
 Esta lista junta tudo isso, com o que fazer e onde mexer.
 
-> **Lançamento do beta (MVP), 10/11/2026:** para lançar, valem os itens 1, 3 a 9
-> e 10. Os itens 2, 12, 13 e 14 ficam para a versão final e estão também em
-> [pos-mvp.md](pos-mvp.md), com o que mais muda depois do beta.
+> **Lançamento (decisão de 10/11/2026):** o DG Brasil é lançado **completo**, não
+> como beta: valem todos os itens desta lista, inclusive o Google Drive (2), a
+> consulta de CPF na Receita (12) e os agentes do escritório pela ponte (14),
+> estes dois últimos depois das validações que faltam. Ficam para depois só o
+> item 13 (validação de formato, prioridade baixa) e o que está em
+> [pos-mvp.md](pos-mvp.md) (domínio consignado e outros).
 
 Os preços foram conferidos nas páginas oficiais em 2026-10-29. Confira de novo na
 hora de contratar.
@@ -20,7 +23,7 @@ hora de contratar.
 | # | O quê | Por que não agora | Custo |
 |---|---|---|---|
 | 1 | Vercel Pro | O plano gratuito (Hobby) é só para uso pessoal, não comercial | US$ 20 por mês por pessoa que publica |
-| 2 | Google Drive a cada 15 minutos (**pós-MVP**) | O Hobby só aceita agendamento uma vez por dia | Já vem com o Vercel Pro |
+| 2 | Google Drive a cada 15 minutos (**no lançamento, depois da validação do Drive**) | O Hobby só aceita agendamento uma vez por dia | Já vem com o Vercel Pro |
 | 3 | Supabase de produção, no plano Pro | O gratuito pausa sem uso e não tem backup | A partir de US$ 25 por mês |
 | 4 | Segurança do login | Recursos do Supabase Pro | Já vem com o Supabase Pro |
 | 5 | E-mail de suporte e envio de e-mails | O envio que recebe e manda é pago | Plano pago do Zoho Mail |
@@ -30,9 +33,9 @@ hora de contratar.
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
 | 10 | Integração judicial: mais buscas por dia e lotes do DataJud | Hobby: 1 rodada por dia, 60 s | Já vem com o Vercel Pro |
 | 11 | ~~Conferir as publicações com o APOGEU~~ | Removido em 2026-11-09: o APOGEU não será usado | — |
-| 12 | Consulta de CPF na Receita (Serpro) (**pós-MVP**) | Paga por consulta; contrato do escritório | Por consulta (Loja Serpro) |
-| 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) (**pós-MVP**) | Pedido para a atualização final | Sem custo |
-| 14 | Agentes reais pelo DG Brasil (ponte, [ponte.md](../ponte.md)) (**pós-MVP**) | Ponte implementada e desligada no beta; falta o piloto na máquina principal | Sem custo |
+| 12 | Consulta de CPF na Receita (Serpro) (**no lançamento**) | Paga por consulta; contrato do escritório | Por consulta (Loja Serpro) |
+| 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) (**depois do lançamento, prioridade baixa**) | Pedido para a atualização final | Sem custo |
+| 14 | Agentes reais pelo DG Brasil (ponte, [ponte.md](../ponte.md)) (**no lançamento, depois da Frente B**) | Ponte implementada e desligada; falta o piloto na máquina principal | Sem custo |
 
 ---
 
@@ -289,27 +292,45 @@ acrescente:
 
 ---
 
-## 12. Consulta de CPF na Receita (Serpro) — Roadmap 2.0
+## 12. Consulta de CPF na Receita (Serpro) — no lançamento
 
-- **Hoje:** atualização futura, por decisão da Barbara (2026-11-09). O código
-  está pronto e DESLIGADO: sem as chaves do Serpro, o CPF não consulta nada e a
-  tela não mostra aviso. CEP (ViaCEP/BrasilAPI) e CNPJ (BrasilAPI) são gratuitos
-  e já funcionam.
-- **Por que não agora:** a API Consulta CPF do Serpro é paga por consulta e o
-  contrato é do escritório (Loja Serpro, contratação online, pós-pago).
-- **Na produção:** contratar a **Consulta CPF** na Loja Serpro e pôr na Vercel:
-  `SERPRO_CPF_CONSUMER_KEY` e `SERPRO_CPF_CONSUMER_SECRET` (opcional:
-  `SERPRO_CPF_BASE_URL`, se o Serpro indicar outro endereço). Para testar sem
-  contrato, `SERPRO_CPF_TRIAL=1` usa a demonstração pública do Serpro (só CPFs
-  de teste, ex.: 404.428.201-35).
-- **Como conferir:** novo cliente PF → digitar um CPF real → o nome e a data de
-  nascimento aparecem com o aviso "Dados preenchidos pela Receita Federal".
+- **Decisão de Barbara (10/11/2026):** entra no lançamento. Ao digitar o CPF no
+  cadastro (equipe e portal dos parceiros), o DG Brasil consulta a Receita e
+  preenche o **nome completo** e a **data de nascimento**. A pessoa sempre confere
+  e pode corrigir.
+- **O que a Receita devolve:** só nome, nascimento e situação cadastral. Endereço
+  vem do CEP (gratuito); profissão, estado civil e contatos continuam à mão.
+- **Já pronto no código (10/11/2026):**
+  - CPF com dígito verificador errado **não** vai à Receita: o campo avisa
+    "CPF com dígito verificador errado. Confira o número." (não paga consulta);
+  - o mesmo CPF consultado de novo em 10 minutos não paga outra consulta;
+  - situação diferente de "Regular" (suspensa, cancelada, titular falecido)
+    aparece como aviso embaixo do campo;
+  - limite de 15 consultas por minuto por pessoa;
+  - a chave do Serpro fica só no servidor; o CPF consultado não vai para log nem
+    para o banco (só o que for salvo no cadastro).
+- **Para ligar:**
+  1. contratar a **Consulta CPF** na [Loja Serpro](https://loja.serpro.gov.br)
+     (contratação online, pós-pago, por consulta);
+  2. na Vercel, ambiente de produção:
+     - `SERPRO_CPF_CONSUMER_KEY` e `SERPRO_CPF_CONSUMER_SECRET` (as chaves do
+       contrato; opcional `SERPRO_CPF_BASE_URL`, se o Serpro indicar outro endereço);
+     - `NEXT_PUBLIC_CPF_LOOKUP=1` (sem ela, a tela não chama a Receita);
+  3. novo deploy (as variáveis `NEXT_PUBLIC_` entram no build).
+- **Testar sem contrato (DEV):** `SERPRO_CPF_TRIAL=1` e `NEXT_PUBLIC_CPF_LOOKUP=1`
+  usam a demonstração pública do Serpro, que só conhece CPFs de teste (ex.:
+  404.428.201-35, "Rone Pereira"). Conferido em 10/11/2026.
+- **Como conferir:** novo cliente PF → digitar um CPF real → nome e nascimento
+  aparecem com o aviso "Dados preenchidos pela Receita Federal"; digitar o mesmo
+  CPF com o último número trocado → aviso de dígito errado, sem consulta.
 
 ## 13. Validação de formato dos documentos — Roadmap 2.0
 
 - **Hoje:** CPF e CNPJ conferem tamanho e dígitos repetidos; RG/CNH/OAB só o
   básico. O número do documento de identidade é opcional.
-- **Por que não agora:** pedido da Barbara para a atualização final de produção.
+- **Por que não agora:** prioridade baixa (decisão de 10/11/2026): com a consulta
+  à Receita, o CPF já é conferido na fonte, e o dígito verificador do CPF já é
+  conferido antes da consulta (item 12).
 - **Na produção:** dígito verificador de CPF/CNPJ, formato de RG por estado,
   CNH (11 dígitos com verificador), OAB por seccional, CNJ com verificador em
   todos os campos — no formulário e no servidor.

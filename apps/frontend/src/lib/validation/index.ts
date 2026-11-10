@@ -9,6 +9,23 @@ import { onlyDigits } from "@/lib/formatting/masks";
 
 const allSameDigit = (d: string) => /^(\d)\1+$/.test(d);
 
+/**
+ * Dígitos verificadores do CPF (módulo 11). NÃO entra na validação do
+ * formulário (os dados fictícios não têm dígito válido): serve para não gastar
+ * uma consulta paga na Receita com um CPF digitado errado.
+ */
+export function cpfCheckDigitsOk(v: string): boolean {
+  const d = onlyDigits(v);
+  if (d.length !== 11 || allSameDigit(d)) return false;
+  const dv = (n: number) => {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += Number(d[i]) * (n + 1 - i);
+    const r = (soma * 10) % 11;
+    return r === 10 ? 0 : r;
+  };
+  return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
+}
+
 export const isCpfFormat = (v: string) => {
   const d = onlyDigits(v);
   return d.length === 11 && !allSameDigit(d);

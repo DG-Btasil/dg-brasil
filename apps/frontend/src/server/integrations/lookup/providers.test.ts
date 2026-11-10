@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { cpfLookupConfigured, lookupCep, lookupCnpj, lookupCpf, titleCase } = await import("./providers");
+const { clearCpfCache, cpfLookupConfigured, lookupCep, lookupCnpj, lookupCpf, titleCase } = await import("./providers");
+const { cpfCheckDigitsOk } = await import("@/lib/validation");
 
 function respond(map: Record<string, { status: number; body: unknown }>) {
   const fetchMock = vi.fn(async (url: string) => {
@@ -17,6 +18,7 @@ function respond(map: Record<string, { status: number; body: unknown }>) {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  clearCpfCache();
 });
 
 describe("preenchimento automático — CEP, CNPJ e CPF (Roadmap 2.0)", () => {
@@ -79,6 +81,27 @@ describe("preenchimento automático — CEP, CNPJ e CPF (Roadmap 2.0)", () => {
     expect(await lookupCpf("404.428.201-35")).toEqual({ cpf: "40442820135", fullName: "Rone Pereira", birthDate: "1970-11-14", status: "Regular" });
     // A chave/token vai no cabeçalho; nunca na URL.
     expect(String(fetchMock.mock.calls[0][0])).not.toContain("Bearer");
+  });
+
+  it("CPF: o mesmo número de novo não paga outra consulta (10 minutos), nem quando não foi encontrado", async () => {
+    vi.stubEnv("SERPRO_CPF_TRIAL", "1");
+    const fetchMock = respond({
+      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v1/cpf/40442820135": { status: 200, body: { nome: "RONE PEREIRA", situacao: { descricao: "Regular" } } },
+      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v1/cpf/52998224725": { status: 404, body: null },
+    });
+    await lookupCpf("404.428.201-35");
+    await lookupCpf("40442820135");
+    expect(await lookupCpf("529.982.247-25")).toBeNull();
+    expect(await lookupCpf("52998224725")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("CPF: dígito verificador (para não pagar consulta de número digitado errado)", () => {
+    expect(cpfCheckDigitsOk("404.428.201-35")).toBe(true);
+    expect(cpfCheckDigitsOk("529.982.247-25")).toBe(true);
+    expect(cpfCheckDigitsOk("529.982.247-24")).toBe(false);
+    expect(cpfCheckDigitsOk("111.111.111-11")).toBe(false);
+    expect(cpfCheckDigitsOk("1234567890")).toBe(false);
   });
 
   it("nome próprio: preposições ficam minúsculas; texto já misto não muda", () => {
