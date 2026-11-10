@@ -42,7 +42,7 @@ PASSOS:
 
 /**
  * O roteiro da SESSÃO VIGIA. Uma pessoa abre a sessão (atalho "DG Brasil -
- * Vigia", que roda /loop 15m /mcp__dg-brasil__vigiar) e ela processa a fila
+ * Vigia", com /loop 15m chamando a ferramenta roteiro_vigia) e ela processa a fila
  * sozinha enquanto estiver aberta. Mesmas REGRAS e PASSOS do modo assistido,
  * sem perguntar nada: tudo continua indo para Revisões, e só a aprovação de um
  * advogado produz efeito.
@@ -73,7 +73,7 @@ export function registrarRoteiro(servidor: McpServer) {
   }))
   servidor.registerPrompt('vigiar', {
     title: 'Vigiar a fila do DG Brasil (sessão vigia)',
-    description: 'Processa TODOS os trabalhos da fila sem perguntar, um de cada vez, com o agente local indicado. Use com /loop 15m /mcp__dg-brasil__vigiar.',
+    description: 'Processa TODOS os trabalhos da fila sem perguntar, um de cada vez, com o agente local indicado. No /loop, use a ferramenta roteiro_vigia, que devolve este mesmo roteiro.',
   }, () => ({
     messages: [{ role: 'user', content: { type: 'text', text: ROTEIRO_VIGIA } }],
   }))

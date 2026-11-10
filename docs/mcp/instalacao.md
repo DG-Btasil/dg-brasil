@@ -133,7 +133,7 @@ o token, que está no `executor.json`:
       "mcp__dg-brasil__consultar_teses", "mcp__dg-brasil__listar_referencias", "mcp__dg-brasil__abrir_referencia",
       "mcp__dg-brasil__informar_progresso", "mcp__dg-brasil__entregar_analise", "mcp__dg-brasil__entregar_minuta",
       "mcp__dg-brasil__propor", "mcp__dg-brasil__concluir_trabalho", "mcp__dg-brasil__informar_falha",
-      "mcp__dg-brasil__devolver_trabalho", "mcp__dg-brasil__reservar_trabalho",
+      "mcp__dg-brasil__devolver_trabalho", "mcp__dg-brasil__reservar_trabalho", "mcp__dg-brasil__roteiro_vigia",
       "Read(./trabalhos/**)", "Write(./trabalhos/**)"
     ],
     "deny": [
@@ -210,9 +210,12 @@ Para não precisar digitar o comando a cada trabalho: de manhã, abra o atalho
 Claude Code em `C:\DGBrasil\sessao` já rodando:
 
 ```powershell
-claude "/loop 15m /mcp__dg-brasil__vigiar"
+claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver."
 ```
 
+- Não use `/loop 15m /mcp__dg-brasil__vigiar`: o `/loop` não abre comandos de
+  servidor MCP ("Unknown skill"). Por isso o roteiro sai pela ferramenta
+  `roteiro_vigia`. Digitado sozinho, sem loop, o `/mcp__dg-brasil__vigiar` funciona.
 - A cada 15 minutos, o Claude confere a fila e processa **todos** os trabalhos,
   um de cada vez, sem perguntar nada. Fila vazia: responde uma linha e espera a
   próxima rodada.
