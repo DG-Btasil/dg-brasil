@@ -15,7 +15,7 @@ dg-executor --version
 ## O que ele faz
 
 - **Catálogo fechado de ferramentas** (`src/ferramentas.ts`):
-  - **fila:** `listar_trabalhos`, `reservar_trabalho`, `ver_trabalho`;
+  - **fila:** `roteiro_vigia`, `listar_trabalhos`, `reservar_trabalho`, `ver_trabalho`;
   - **caso:** `ver_caso`, `ver_processo`, `listar_documentos`, `baixar_documentos`;
   - **conhecimento:** `consultar_teses`, `listar_referencias`, `abrir_referencia`;
   - **entregas:** `informar_progresso`, `entregar_analise`, `entregar_minuta`,
@@ -26,6 +26,10 @@ dg-executor --version
   permissão, SQL ou shell.
 - **Roteiro do modo assistido:** o MCP traz o prompt `trabalhos`. No Claude Code,
   ele aparece como `/mcp__dg-brasil__trabalhos`.
+- **Sessão vigia:** o prompt `vigiar` (`/mcp__dg-brasil__vigiar`) processa a fila
+  inteira sem perguntar. O atalho "DG Brasil - Vigia" do instalador roda
+  `claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver."` em `C:\DGBrasil\sessao` (o `/loop` não abre
+  prompt de MCP, por isso a ferramenta `roteiro_vigia` devolve o mesmo roteiro).
 - **Pasta por trabalho:** `<pasta_trabalhos>\<id>\entrada` e `saida`.
   - O download confere o SHA-256 que o DG Brasil tem da versão.
   - A minuta só sai de dentro de `saida`: nada de `..`, caminho de fora ou atalho.
@@ -57,7 +61,7 @@ papel têm prioridade.
 ## Testes
 
 ```bash
-npm ci && npm test   # 13 testes
+npm ci && npm test   # 14 testes
 ```
 
 Os testes usam o cliente MCP oficial contra o servidor, com um DG Brasil de

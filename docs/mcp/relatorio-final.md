@@ -18,6 +18,15 @@ Código: 2026-10-30. Plano aprovado em 2026-10-29
 | Conta do Google Drive | Não se sabe ainda: a integração aceita **as duas** (OAuth e conta de serviço). |
 | Agendamentos atuais (Clara, Lucas, Luísa, Bruno) | **Não mexer.** |
 
+**Atualização (2026-11-09): sessão vigia.** A pedido da Barbara, para não precisar
+digitar o comando a cada trabalho: o prompt `vigiar` (`/mcp__dg-brasil__vigiar`)
+processa a fila inteira sem perguntar, e o atalho "DG Brasil - Vigia" abre a
+sessão com `/loop 15m`, que pede o roteiro pela ferramenta `roteiro_vigia` (o `/loop` não abre prompt de MCP). Continua sem chave de API e sem `claude -p`: uma pessoa
+abre a sessão interativa de manhã e fecha no fim do dia, mas entre uma coisa e
+outra ela roda sem ninguém olhando. A reserva saiu do `ask` para o `allow`. O
+gate humano não muda: tudo vai para Revisões. Como usar:
+[instalacao.md](instalacao.md), seção 6.
+
 ## O que foi feito
 
 ### Banco

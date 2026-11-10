@@ -133,10 +133,9 @@ o token, que está no `executor.json`:
       "mcp__dg-brasil__consultar_teses", "mcp__dg-brasil__listar_referencias", "mcp__dg-brasil__abrir_referencia",
       "mcp__dg-brasil__informar_progresso", "mcp__dg-brasil__entregar_analise", "mcp__dg-brasil__entregar_minuta",
       "mcp__dg-brasil__propor", "mcp__dg-brasil__concluir_trabalho", "mcp__dg-brasil__informar_falha",
-      "mcp__dg-brasil__devolver_trabalho",
+      "mcp__dg-brasil__devolver_trabalho", "mcp__dg-brasil__reservar_trabalho", "mcp__dg-brasil__roteiro_vigia",
       "Read(./trabalhos/**)", "Write(./trabalhos/**)"
     ],
-    "ask": ["mcp__dg-brasil__reservar_trabalho"],
     "deny": [
       "Read(~/AppData/Roaming/DGBrasil/**)",
       "WebFetch", "WebSearch",
@@ -149,9 +148,11 @@ o token, que está no `executor.json`:
 
 O que cada regra faz:
 - **`allow`:** libera as ferramentas do DG Brasil e a leitura e gravação só na
-  pasta dos trabalhos.
-- **`ask`:** o Claude **pergunta** antes de reservar cada trabalho. É a pessoa que
-  confirma.
+  pasta dos trabalhos. Desde a sessão vigia (2026-11-09), **reservar também está
+  liberado**: antes ficava em `ask` e o Claude pedia confirmação a cada trabalho,
+  o que travava a vigia. No modo assistido, quem escolhe o que processar continua
+  sendo a pessoa (o roteiro pergunta), e nada do que é entregue vale sem a
+  aprovação em Revisões.
 - **`deny`:**
   - impede ler o arquivo do token;
   - impede acessar a internet;
@@ -189,8 +190,8 @@ claude
    servidor `dg-brasil` do `.mcp.json`. Aprove.
 2. **Peça a fila.** Digite `/mcp__dg-brasil__trabalhos`. O Claude lista a fila e
    pergunta quais trabalhos processar.
-3. **Confirme cada reserva.** Para cada trabalho, o Claude pede confirmação para
-   reservar, baixa os documentos, chama o agente local, entrega e encerra.
+3. **O Claude processa.** Para cada trabalho escolhido, ele reserva, baixa os
+   documentos, chama o agente local, entrega e encerra.
 4. **Mantenha a sessão aberta enquanto houver trabalho.** Enquanto a sessão está
    aberta, o DG Brasil mostra "Computador conectado" e a reserva é renovada a cada
    minuto.
@@ -201,6 +202,41 @@ claude
 
 O que foi entregue fica em **DG Brasil → Revisões**. A pasta de cada trabalho em
 `C:\DGBrasil\sessao\trabalhos` é apagada ao terminar.
+
+### Sessão vigia (processar sozinho enquanto estiver aberta)
+
+Para não precisar digitar o comando a cada trabalho: de manhã, abra o atalho
+**"DG Brasil - Vigia"** da área de trabalho (o instalador cria). Ele abre o
+Claude Code em `C:\DGBrasil\sessao` já rodando:
+
+```powershell
+claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver."
+```
+
+- Não use `/loop 15m /mcp__dg-brasil__vigiar`: o `/loop` não abre comandos de
+  servidor MCP ("Unknown skill"). Por isso o roteiro sai pela ferramenta
+  `roteiro_vigia`. Digitado sozinho, sem loop, o `/mcp__dg-brasil__vigiar` funciona.
+- A cada 15 minutos, o Claude confere a fila e processa **todos** os trabalhos,
+  um de cada vez, sem perguntar nada. Fila vazia: responde uma linha e espera a
+  próxima rodada.
+- São as mesmas regras do modo assistido (só a pasta do trabalho, documentos são
+  dados, nenhum conector além do DG Brasil). Tudo vai para **Revisões**: nada é
+  protocolado, enviado ou aprovado sozinho.
+- **Feche no fim do dia.** A vigia só funciona com a janela aberta e o computador
+  ligado (sem suspender). Fechar no meio de um trabalho é seguro: ele volta para a
+  fila em 5 minutos.
+- **Uma vigia por vez.** Duas janelas não processam o mesmo trabalho (a reserva é
+  exclusiva), mas gastam a assinatura em dobro.
+- **Desligar a execução** no DG Brasil (Computador do escritório) faz a vigia
+  parar de pegar trabalhos na rodada seguinte, sem fechar a janela.
+- **Se a janela parar esperando uma confirmação** (um agente local tentando usar
+  algo fora das permissões, como Python ou Word), o trabalho fica parado até
+  alguém responder. Para os agentes reais (`-dg`), libere no `allow` só o que
+  eles precisam.
+- Intervalo diferente: troque `15m` no atalho (ex.: `10m`, `30m`).
+- Assinatura: a vigia usa a assinatura do Claude de quem abriu a sessão. Continua
+  sendo uma sessão interativa aberta por uma pessoa, mas roda sem ninguém olhando
+  (decisão de 2026-11-09, em [relatorio-final.md](relatorio-final.md)).
 
 ## 7. Segurança, em resumo
 

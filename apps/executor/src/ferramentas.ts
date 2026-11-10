@@ -7,6 +7,7 @@ import {
   ErroArquivo, arquivoDaSaida, baixar, caminhoNaSaida, enviar, lerComHash, nomeLivre, nomeSeguro,
 } from './arquivos.js'
 import type { Log } from './log.js'
+import { ROTEIRO_VIGIA } from './prompt.js'
 import { ErroTrabalho, type Trabalho, type Trabalhos } from './trabalhos.js'
 
 /**
@@ -98,6 +99,16 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
   const entrega = { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
 
   // ── fila ────────────────────────────────────────────────────────────────
+
+  // O /loop do Claude Code não abre prompts de MCP (tenta como skill e falha),
+  // então o roteiro da sessão vigia também sai por aqui. Só devolve texto fixo.
+  servidor.registerTool('roteiro_vigia', {
+    title: 'Roteiro da sessão vigia',
+    description: 'Devolve o roteiro da SESSÃO VIGIA do DG Brasil: as regras e os passos para processar a fila inteira sem perguntar. ' +
+      'Chame no começo de cada rodada da vigia e siga o roteiro à risca.',
+    inputSchema: {},
+    annotations: leitura,
+  }, seguro('roteiro_vigia', async () => texto(ROTEIRO_VIGIA)))
 
   servidor.registerTool('listar_trabalhos', {
     title: 'Listar trabalhos na fila',
