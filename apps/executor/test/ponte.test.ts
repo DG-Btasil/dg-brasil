@@ -1,6 +1,6 @@
 import { deflateSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { categoriaSugerida, checarOffice, checarPdf, dadosDoCadastro, globParaRegex, nomeDePasta, nomeDoClienteParaPasta, nomeNaPasta } from '../src/ponte.js'
+import { CSP_SEM_SCRIPT, categoriaSugerida, checarOffice, checarPdf, dadosDoCadastro, globParaRegex, htmlSemScript, nomeDePasta, nomeDoClienteParaPasta, nomeNaPasta } from '../src/ponte.js'
 
 /** As checagens do Porteiro e os nomes do Arquivista, sem rede e sem disco. */
 
@@ -80,5 +80,16 @@ describe('Mensageiro: padrões e categorias', () => {
     expect(categoriaSugerida('Declaracao_Hipossuficiencia_SILVA.pdf')).toBe('HARDSHIP_DECLARATION')
     expect(categoriaSugerida('MINUTA_REPLICA_REIS.docx')).toBe('PETITION')
     expect(categoriaSugerida('Contrato_Honorarios_SILVA.pdf')).toBe('OTHER')
+  })
+})
+
+describe('Mensageiro: HTML sem script antes do Edge', () => {
+  it('a política entra antes de qualquer script, com ou sem <head>', () => {
+    const comHead = htmlSemScript('<!doctype html><html><head><script>x()</script></head><body></body></html>')
+    expect(comHead.indexOf(CSP_SEM_SCRIPT)).toBeLessThan(comHead.indexOf('<script>'))
+    const semHead = htmlSemScript('<!doctype html><body><script>x()</script></body>')
+    expect(semHead.startsWith(`<!doctype html><head>${CSP_SEM_SCRIPT}</head>`)).toBe(true)
+    expect(htmlSemScript('<p>oi</p>')).toBe(`<head>${CSP_SEM_SCRIPT}</head><p>oi</p>`)
+    expect(CSP_SEM_SCRIPT).toContain("default-src 'none'")
   })
 })

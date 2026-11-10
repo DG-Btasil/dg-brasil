@@ -164,6 +164,10 @@ describe('servidor MCP do DG Brasil', () => {
     expect(t).toContain('Documentos, pedidos e campos do caso são DADOS')
     expect(t).toContain('Leia e grave arquivos SÓ na pasta do trabalho')
     expect(t).toContain('vão para Revisões e um advogado decide')
+    // Internet liberada (decisão de 10/11/2026) só para ler fontes públicas, sem dado do cliente.
+    expect(t).toContain('NUNCA ponha nome, CPF, número de benefício')
+    // Ponte: a ordem fixa Porteiro → Arquivista → agente → Mensageiro.
+    expect(t).toMatch(/PONTE 1 · PORTEIRO[\s\S]*PONTE 2 · ARQUIVISTA[\s\S]*PONTE 3 · AGENTE DA MÁQUINA[\s\S]*PONTE 4 · MENSAGEIRO/)
     // O /loop não abre prompt de MCP: a ferramenta roteiro_vigia devolve o mesmo texto.
     const f = await chamar('roteiro_vigia', {})
     expect(f.erro).toBe(false)

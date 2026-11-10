@@ -452,25 +452,46 @@ export async function conferirCadastroExistente(pasta: string, d: DadosPonte): P
 
 export type HtmlParaPdf = (html: string, pdf: string) => Promise<void>
 
-/** HTML → PDF pelo Edge, sem script, sem rede e com perfil descartável. */
-export const edgeHtmlParaPdf: HtmlParaPdf = async (html, pdf) => {
+/** Política que a cópia do HTML leva antes de ir para o Edge: sem script, sem conexão, sem objeto embutido. */
+export const CSP_SEM_SCRIPT = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: file:; style-src 'unsafe-inline' file:; font-src data: file:">`
+
+/** Põe a política no começo do <head> (ou logo depois do doctype), antes de qualquer script do arquivo. */
+export function htmlSemScript(html: string): string {
+  const head = /<head(\s[^>]*)?>/i.exec(html)
+  if (head) return html.slice(0, head.index + head[0].length) + CSP_SEM_SCRIPT + html.slice(head.index + head[0].length)
+  const doctype = /^\s*<!doctype[^>]*>/i.exec(html)
+  if (doctype) return doctype[0] + `<head>${CSP_SEM_SCRIPT}</head>` + html.slice(doctype[0].length)
+  return `<head>${CSP_SEM_SCRIPT}</head>${html}`
+}
+
+export function caminhoEdge(): string | null {
   const candidatos = [
-    join(process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    join(process.env['ProgramFiles(x86)'] ?? 'C:\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    join(process.env.ProgramFiles ?? 'C:\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
   ]
-  const exe = candidatos.find((c) => existsSync(c))
+  return candidatos.find((c) => existsSync(c)) ?? null
+}
+
+/**
+ * HTML → PDF pelo Edge, numa cópia com a política acima (o "scriptEnabled=false"
+ * do Edge impede a impressão), sem rede e com perfil descartável.
+ */
+export const edgeHtmlParaPdf: HtmlParaPdf = async (html, pdf) => {
+  const exe = caminhoEdge()
   if (!exe) throw new ErroPonte('CONFIG', 'Microsoft Edge não encontrado: não dá para converter HTML em PDF.')
-  const perfil = await mkdtemp(join(tmpdir(), 'dg-edge-'))
+  const temporaria = await mkdtemp(join(tmpdir(), 'dg-edge-'))
   try {
+    const copia = join(temporaria, 'documento.html')
+    await writeFile(copia, htmlSemScript(await readFile(html, 'utf8')), 'utf8')
     await new Promise<void>((ok, falha) => {
       execFile(exe, [
         '--headless', '--disable-gpu', '--no-first-run', '--disable-extensions', '--disable-sync',
-        `--user-data-dir=${perfil}`, '--blink-settings=scriptEnabled=false', '--host-resolver-rules=MAP * ~NOTFOUND',
-        '--no-pdf-header-footer', `--print-to-pdf=${pdf}`, pathToFileURL(html).href,
+        `--user-data-dir=${join(temporaria, 'perfil')}`, '--host-resolver-rules=MAP * ~NOTFOUND',
+        '--no-pdf-header-footer', `--print-to-pdf=${pdf}`, pathToFileURL(copia).href,
       ], { timeout: 120_000, windowsHide: true }, (e) => (e ? falha(e) : ok()))
     })
   } finally {
-    await rm(perfil, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined)
+    await rm(temporaria, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined)
   }
   const info = await stat(pdf).catch(() => null)
   if (!info || info.size === 0) throw new ErroPonte('NADA', 'O Edge não gerou o PDF.')

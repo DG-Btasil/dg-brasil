@@ -133,10 +133,20 @@ $deny = @(
   'mcp__claude_ai_Metricool_Social_Media_Management__*', 'mcp__claude_ai_Supermetrics_Marketing_Analytics__*',
   'mcp__claude_ai_TikTok_for_Business__*', 'mcp__djen'
 )
+# Internet (decisão de Barbara, 10/11/2026): com a ponte, os agentes conferem a
+# jurisprudência no portal oficial e o BACEN. WebFetch e WebSearch saem do
+# bloqueio (no Claude Code o bloqueio vence a liberação) e entram como liberados,
+# para a vigia não parar pedindo confirmação. A regra do roteiro continua: nunca
+# pôr dado do cliente numa busca ou num endereço.
+$Internet = @('WebFetch', 'WebSearch')
+if ($ComPonte) {
+  $deny = @($deny | Where-Object { $Internet -notcontains $_ })
+  $allow += $Internet
+}
 if (Test-Path $Settings) {
   try {
     $anterior = Get-Content -Raw -Encoding UTF8 $Settings | ConvertFrom-Json
-    $extra = @($anterior.permissions.deny) | Where-Object { $_ -and ($deny -notcontains $_) }
+    $extra = @($anterior.permissions.deny) | Where-Object { $_ -and ($deny -notcontains $_) -and -not ($ComPonte -and $Internet -contains $_) }
     if ($extra) { $deny += $extra; Ok "Mantidas $(@($extra).Count) regra(s) de bloqueio acrescentadas neste computador" }
     Copy-Item $Settings "$Settings.anterior" -Force
   } catch { Aviso "Não deu para ler o settings.json anterior; ele foi guardado como settings.json.anterior." ; Copy-Item $Settings "$Settings.anterior" -Force }

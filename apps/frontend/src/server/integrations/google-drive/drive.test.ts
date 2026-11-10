@@ -151,6 +151,18 @@ describe("sincronização (entrada)", () => {
     expect(calls.some((c) => c.fn === "drive_prepare_import")).toBe(false);
   });
 
+  it("banco ainda sem a 051 (função inexistente): importa como antes", async () => {
+    const { d, uploaded } = setupWith({ files: [file()], bytes: pdf });
+    const db = d.db;
+    d.db = async <T,>(fn: DriveDbFunction, args: unknown[]) => {
+      if (fn === "drive_match_existing") throw Object.assign(new Error("function private.drive_match_existing does not exist"), { code: "42883" });
+      return db<T>(fn, args);
+    };
+    const r = await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
+    expect(r).toEqual({ imported: 1, skipped: 0, failed: 0 });
+    expect(uploaded).toHaveLength(1);
+  });
+
   it("arquivo de controle dos agentes (DADOS DO CADASTRO.txt) fica só no Drive", async () => {
     const txt = new TextEncoder().encode("nome: X");
     const { d, calls } = setupWith({

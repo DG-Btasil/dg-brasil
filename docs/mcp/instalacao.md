@@ -212,8 +212,12 @@ rodar):
   `registro_pecas.csv`), `~/.claude/scripts`, `docs` e `skills` (leitura),
   `python` e `powershell -File`.
 
-O `deny` **não muda**: ChatJurídico, Gmail, ADVBOX, Drive (conector),
-WebFetch, WebSearch e o arquivo do token continuam bloqueados.
+A **internet** fica liberada (`WebFetch` e `WebSearch` saem do `deny` e entram
+no `allow`; decisão de Barbara, 10/11/2026): os redatores conferem a
+jurisprudência no portal oficial e os cálculos buscam o BACEN. A regra 7 do
+roteiro proíbe pôr dado do cliente numa busca. O resto do `deny` **não muda**:
+ChatJurídico, Gmail, ADVBOX, Drive (conector) e o arquivo do token continuam
+bloqueados. Sem a ponte (`DG_BRASIL_PONTE=0`), a internet continua bloqueada.
 
 Campos do `ponte.json`:
 

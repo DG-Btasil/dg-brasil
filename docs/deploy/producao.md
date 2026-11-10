@@ -319,7 +319,7 @@ acrescente:
   na pasta do cliente no `G:\`, com o Porteiro, o Arquivista e o Mensageiro.
   As variantes `-dg` **não** serão criadas.
 - **Por que não agora:** falta o piloto na máquina principal, com dados
-  fictícios ([docs/mcp/ponte-validacao.md](../mcp/ponte-validacao.md)).
+  fictícios ([docs/mcp/ponte-validacao.md](../mcp/ponte-validacao.md), Frentes A e B).
 - **Na produção:**
   1. aplicar a migration 051 no projeto de produção;
   2. rodar o instalador de novo na máquina principal (grava o `ponte.json`, as

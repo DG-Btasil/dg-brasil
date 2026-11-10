@@ -10,5 +10,5 @@
 | [maquina-principal.md](maquina-principal.md) | **O que falta testar na máquina principal do escritório:** instalação, ponta a ponta com o orquestrador e Google Drive real |
 | [pilotos/](pilotos/) | Agentes e documentos FICTÍCIOS para testar |
 | [../ponte.md](../ponte.md) | **A ponte:** os agentes reais do escritório (Clara, Lucas, redatores) trabalhando pelo DG Brasil na pasta do cliente |
-| [ponte-validacao.md](ponte-validacao.md) | Roteiro do piloto da ponte na máquina principal (relatório em docs/qa/ponte/) |
+| [ponte-validacao.md](ponte-validacao.md) | Validação da ponte em duas frentes: [fora da máquina principal](ponte-validacao-fora.md) e [na máquina principal](ponte-validacao-maquina-principal.md) |
 | [../adicionar-agente.md](../adicionar-agente.md) | Como pôr um agente do Claude Code para trabalhar no DG Brasil |

@@ -106,14 +106,31 @@ function importable(f: DriveFile): boolean {
     && !AGENT_CONTROL_FILE.test(f.name);
 }
 
+/**
+ * O cliente já tem esse conteúdo (051)? Banco ainda sem a 051 (função
+ * inexistente, 42883): segue importando como antes, para o site poder ir ao ar
+ * antes da migration.
+ */
+async function knownByContent(link: Link, f: DriveFile, name: string, sha256: string, d: SyncDeps): Promise<boolean> {
+  try {
+    const match = await d.db<{ matched: boolean } | null>("drive_match_existing", [link.id, f.id, f.md5Checksum, name, f.modifiedTime ?? null, sha256]);
+    return match?.matched === true;
+  } catch (e) {
+    if ((e as { code?: string })?.code === "42883") {
+      d.log.warn("drive.match_existing_unavailable", { folderLinkId: link.id });
+      return false;
+    }
+    throw e;
+  }
+}
+
 async function importFile(link: Link, f: DriveFile, d: SyncDeps): Promise<ImportOutcome> {
   const bytes = await d.drive.download(f.id, MAX_FILE_BYTES);
   const md5 = createHash("md5").update(bytes).digest("hex");
   if (md5 !== f.md5Checksum) throw new DriveError(409, "md5 diferente do informado pelo Drive");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const name = f.name.slice(0, 200);
-  const match = await d.db<{ matched: boolean } | null>("drive_match_existing", [link.id, f.id, f.md5Checksum, name, f.modifiedTime ?? null, sha256]);
-  if (match?.matched) return "known";
+  if (await knownByContent(link, f, name, sha256, d)) return "known";
   const prep = await d.db<{ document_id: string; document_version_id: string; storage_object_name: string }>("drive_prepare_import", [link.id, name]);
   await d.storage.uploadObject(prep.storage_object_name, bytes, f.mimeType);
   await d.db("drive_register_import", [

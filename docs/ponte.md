@@ -5,8 +5,9 @@ ponte. Pode ser seguido por uma pessoa ou pelo Claude Code em outra máquina.
 
 > **Situação (10/11/2026): IMPLEMENTADA, falta o piloto na máquina principal.**
 > O que ficou diferente do plano abaixo, depois do levantamento dos agentes
-> reais, está na [seção 8](#8-como-ficou-implementação-de-10112026). O roteiro do
-> piloto para o validador está em [mcp/ponte-validacao.md](mcp/ponte-validacao.md).
+> reais, está na [seção 8](#8-como-ficou-implementação-de-10112026). A validação
+> tem duas frentes ([mcp/ponte-validacao.md](mcp/ponte-validacao.md)): fora da
+> máquina principal e na máquina principal.
 
 ---
 
@@ -420,6 +421,9 @@ Em **DG Brasil → Agentes → Cadastrar agente**, como ADMIN:
    `Declaracao_Residencia_...`. O plano tinha `PROCURAÇÃO*.pdf`, que não bateria.
 3. **A Clara grava PDF e HTML.** O Mensageiro traz os dois; o HTML (as fichas por
    ação) vira `<nome> (versão HTML).pdf`. Markdown (`FICHA_PMP_*.md`) também vira PDF.
+   O Edge imprime uma **cópia** do HTML com uma política de segurança (CSP) que
+   bloqueia script e conexão; o `scriptEnabled=false` do plano impede o Edge de
+   imprimir (conferido em 10/11/2026).
 4. **Clientes com processo:** segunda raiz `G:\Meu Drive\01. ADVOCACIA — CLIENTES`,
    etapa `CLIENTE - ESCRITÓRIO`. O Mensageiro procura até 3 níveis de subpasta
    (a do banco ou da tese, `PEÇAS GERADAS <data>`). O Arquivista grava os autos
@@ -445,10 +449,10 @@ Em **DG Brasil → Agentes → Cadastrar agente**, como ADMIN:
 8. **Bloqueio do Porteiro não vira "entrega parcial":** a pendência que ele
    registra não troca o código `PORTEIRO_BLOQUEOU` por `PARTIAL_OUTPUT`, e nem
    `PORTEIRO_BLOQUEOU` nem `SEM_PASTA_NO_DRIVE` voltam sozinhos para a fila.
-9. **Sem pasta ligada:** o padrão é parar (`SEM_PASTA_NO_DRIVE`). Enquanto a
-   credencial do Drive não existe, nenhum cliente consegue ter pasta ligada; para
-   usar a ponte antes disso, `"pasta_pelo_nome": true` no `ponte.json` (o nome
-   da pasta vira o nome do cliente em MAIÚSCULAS, sem acento nem cedilha).
+9. **Sem pasta ligada:** o padrão é parar (`SEM_PASTA_NO_DRIVE`). A credencial do
+   Drive está sendo criada (10/11/2026); a opção `"pasta_pelo_nome": true` no
+   `ponte.json` (nome do cliente em MAIÚSCULAS, sem acento nem cedilha) fica só
+   como reserva.
 10. **Decisões do advogado no meio do trabalho** ("PODE GERAR" da segunda rodada
     da Alice, renúncia ao excedente da RPV, termo dos juros, forma de pagamento
     do Lucas): o roteiro manda o agente **não perguntar**. Vale o que estiver
@@ -462,7 +466,7 @@ Além do que o plano listou, o levantamento mostrou que os agentes precisam:
 (leitura), `JURISPRUDENCIAS_VERIFICADAS_*.md` (edição), `python` e
 `powershell -File` (inclusive o Word por COM, que sai desses scripts).
 
-> **Atenção, segurança (decisão de Barbara):** liberar `python` e `powershell`
+> **Decisão de Barbara (10/11/2026): caminho A, liberado.** Registro do risco: liberar `python` e `powershell`
 > de forma genérica quer dizer que um agente consegue rodar qualquer código. As
 > regras de bloqueio do Claude Code (ChatJurídico, internet...) valem para as
 > **ferramentas** do Claude, não para o que um script Python faz. Na prática, a
@@ -477,17 +481,20 @@ Além do que o plano listou, o levantamento mostrou que os agentes precisam:
 
 ### 8.4 Pendências
 
-- **Jurisprudência na internet** (decisão de Barbara, a mesma da seção 5.4, agora
-  com o levantamento): o Fernando, a Alice, o Atlas e o Vicente exigem
-  jurisprudência conferida no portal oficial no dia. Dentro da ponte, WebFetch e
-  WebSearch estão bloqueados. Está implementado o **caminho A**: o roteiro manda
-  usar só `JURISPRUDENCIAS_VERIFICADAS_<UF>.md` e marcar `[CONFERIR]`, e o
-  Mensageiro transforma isso em proposta para o advogado. O caminho B (domínios
-  oficiais) exige tirar `WebFetch` do `deny`, porque no Claude Code o bloqueio
-  vence a liberação.
+- **Internet: liberada** (decisão de Barbara, 10/11/2026, no lugar dos caminhos
+  da seção 5.4). Com a ponte, o instalador tira `WebFetch` e `WebSearch` do `deny`
+  e põe no `allow`; o Fernando, a Alice, o Atlas e o Vicente conferem a
+  jurisprudência no portal oficial, como os arquivos deles mandam. A regra 7 do
+  roteiro limita o uso a LER fontes públicas e proíbe pôr dado do cliente numa
+  busca, num endereço ou num formulário. O que não der para conferir sai com
+  `[CONFERIR]` e vira proposta. Risco que fica: um documento malicioso que passe
+  pelo Porteiro poderia tentar fazer o agente abrir um endereço com dados; a
+  regra 7 e o Porteiro são as proteções.
+- **Google Drive:** Barbara cria a credencial (10/11/2026). Com ela, cada
+  cliente ganha a pasta ligada e a ponte usa o nome da pasta do Drive;
+  `pasta_pelo_nome` continua `false`.
 - **Atlas e cálculos (Vitória, Júlia):** o script busca a taxa no BACEN pela
-  internet. Python não é bloqueado pela sessão, então o cálculo funciona se o
-  computador tiver internet; o cache local vai só até 09/2026.
+  internet (Python, que a sessão não bloqueia); o cache local vai só até 09/2026.
 - **Frente PMP e Fazenda Pública:** os nomes exatos dos agentes `pmp-*` e
   `fazenda-outros-entes` e a pasta da tese não estão no `ponte.json` padrão.
   Acrescentar depois de conferir os arquivos deles.
