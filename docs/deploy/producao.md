@@ -33,7 +33,7 @@ hora de contratar.
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
 | 10 | Integração judicial: mais buscas por dia e lotes do DataJud | Hobby: 1 rodada por dia, 60 s | Já vem com o Vercel Pro |
 | 11 | ~~Conferir as publicações com o APOGEU~~ | Removido em 2026-11-09: o APOGEU não será usado | — |
-| 12 | Consulta de CPF na Receita (Serpro) (**no lançamento**) | Paga por consulta; contrato do escritório | Por consulta (Loja Serpro) |
+| 12 | Consulta de CPF na Receita (Serpro) (**no lançamento, só na produção**) | Paga por consulta; contrato do escritório | ~R$ 0,66 por consulta na 1ª faixa (tabela de 2024; conferir) |
 | 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) (**depois do lançamento, prioridade baixa**) | Pedido para a atualização final | Sem custo |
 | 14 | Agentes reais pelo DG Brasil (ponte, [ponte.md](../ponte.md)) (**no lançamento, depois da Frente B**) | Ponte implementada e desligada; falta o piloto na máquina principal | Sem custo |
 
@@ -201,6 +201,8 @@ apontando para o projeto Supabase **de produção**, nunca para o DEV:
 | `GOOGLE_DRIVE_*` | Credencial do Google ([docs/mcp/google-drive.md](../mcp/google-drive.md)) |
 | `NEXT_PUBLIC_APP_HOST`, `NEXT_PUBLIC_PORTAL_HOST` | Os domínios (item 6) |
 | `NEXT_PUBLIC_DEMO_MODE` | Ausente ou `false`: na produção não há ferramentas de demonstração |
+| `DG_ENV` | `production` (só aqui). Libera as chaves pagas do Serpro (item 12) |
+| `SERPRO_CPF_CONSUMER_KEY`, `SERPRO_CPF_CONSUMER_SECRET`, `NEXT_PUBLIC_CPF_LOOKUP=1` | Consulta de CPF na Receita (item 12) |
 
 **Computador do escritório:**
 1. No site de produção, em **Configurações → Computador do escritório**, gerar um
@@ -294,35 +296,65 @@ acrescente:
 
 ## 12. Consulta de CPF na Receita (Serpro) — no lançamento
 
-- **Decisão de Barbara (10/11/2026):** entra no lançamento. Ao digitar o CPF no
-  cadastro (equipe e portal dos parceiros), o DG Brasil consulta a Receita e
-  preenche o **nome completo** e a **data de nascimento**. A pessoa sempre confere
-  e pode corrigir.
-- **O que a Receita devolve:** só nome, nascimento e situação cadastral. Endereço
-  vem do CEP (gratuito); profissão, estado civil e contatos continuam à mão.
-- **Já pronto no código (10/11/2026):**
+- **Decisão de Barbara (10/11/2026):** entra no lançamento, e **só na produção**
+  (nos testes nada é cobrado).
+- **Como funciona (Consulta CPF v3 do Serpro):** a Receita confere o **CPF junto
+  com a data de nascimento**. Quando os dois estão preenchidos no cadastro
+  (equipe e portal dos parceiros), o DG Brasil consulta e preenche o **nome
+  completo** e o **nome social**, se houver. A pessoa sempre confere e pode
+  corrigir.
+  - Só com o CPF, o campo pede: "Informe a data de nascimento para buscar o nome
+    na Receita Federal."
+  - Nascimento que não confere com o da Receita: "A data de nascimento não confere
+    com a da Receita. Confira o CPF e a data."
+  - A versão antiga (v1, só o CPF) foi desativada pelo Serpro em 02/10/2026; o
+    código usa a v3 desde 10/11/2026.
+- **O que a Receita devolve:** nome, nome social, nascimento e situação cadastral.
+  Endereço vem do CEP (gratuito); profissão, estado civil e contatos continuam à
+  mão.
+- **Quanto custa:** pós-pago, por consulta, mais barato quanto maior o volume. A
+  tabela que a Loja Serpro publicou (junho de 2024) começa em cerca de
+  **R$ 0,66 por consulta** na faixa de 1.000 a 9.999 consultas no mês e cai até
+  cerca de R$ 0,02 em volumes muito grandes. **Conferir a tabela atual** na
+  [página da Consulta CPF](https://www.loja.serpro.gov.br/consultacpf) antes de
+  contratar. São cobradas as respostas "encontrado" (200), "parcial" (206) e
+  "não encontrado" (404); erros (400, 401, 403, 500, 504) não. Exemplo: 300
+  clientes novos por mês ≈ R$ 200, pela tabela de 2024.
+- **Para não pagar à toa (já no código):**
   - CPF com dígito verificador errado **não** vai à Receita: o campo avisa
-    "CPF com dígito verificador errado. Confira o número." (não paga consulta);
-  - o mesmo CPF consultado de novo em 10 minutos não paga outra consulta;
+    "CPF com dígito verificador errado. Confira o número.";
+  - o mesmo CPF e nascimento de novo em 10 minutos não pagam outra consulta
+    (vale também para "não encontrado" e "nascimento não confere");
+  - limite de 15 consultas por minuto por pessoa;
+  - **as chaves pagas só funcionam com `DG_ENV=production`**: no DEV, mesmo que
+    alguém ponha as chaves, nenhuma consulta é feita;
   - situação diferente de "Regular" (suspensa, cancelada, titular falecido)
     aparece como aviso embaixo do campo;
-  - limite de 15 consultas por minuto por pessoa;
   - a chave do Serpro fica só no servidor; o CPF consultado não vai para log nem
     para o banco (só o que for salvo no cadastro).
 - **Para ligar:**
-  1. contratar a **Consulta CPF** na [Loja Serpro](https://loja.serpro.gov.br)
-     (contratação online, pós-pago, por consulta);
-  2. na Vercel, ambiente de produção:
-     - `SERPRO_CPF_CONSUMER_KEY` e `SERPRO_CPF_CONSUMER_SECRET` (as chaves do
-       contrato; opcional `SERPRO_CPF_BASE_URL`, se o Serpro indicar outro endereço);
+  1. contratar a **Consulta CPF** na [Loja Serpro](https://www.loja.serpro.gov.br/consultacpf)
+     (precisa do certificado digital e-CNPJ do escritório; contratação online,
+     sem taxa de instalação);
+  2. pegar a Consumer Key e a Consumer Secret na
+     [Área do Cliente](https://cliente.serpro.gov.br);
+  3. na Vercel, **só no ambiente de produção**:
+     - `DG_ENV=production`;
+     - `SERPRO_CPF_CONSUMER_KEY` e `SERPRO_CPF_CONSUMER_SECRET`;
      - `NEXT_PUBLIC_CPF_LOOKUP=1` (sem ela, a tela não chama a Receita);
-  3. novo deploy (as variáveis `NEXT_PUBLIC_` entram no build).
-- **Testar sem contrato (DEV):** `SERPRO_CPF_TRIAL=1` e `NEXT_PUBLIC_CPF_LOOKUP=1`
-  usam a demonstração pública do Serpro, que só conhece CPFs de teste (ex.:
-  404.428.201-35, "Rone Pereira"). Conferido em 10/11/2026.
-- **Como conferir:** novo cliente PF → digitar um CPF real → nome e nascimento
-  aparecem com o aviso "Dados preenchidos pela Receita Federal"; digitar o mesmo
-  CPF com o último número trocado → aviso de dígito errado, sem consulta.
+  4. novo deploy (as variáveis `NEXT_PUBLIC_` entram no build).
+- **Testar sem pagar (DEV), opcional:** a demonstração do Serpro usa dados
+  fictícios. Pôr `SERPRO_CPF_TRIAL=1`, `SERPRO_CPF_TRIAL_TOKEN` (o token da
+  página de demonstração da
+  [documentação](https://apicenter.estaleiro.serpro.gov.br/documentacao/consulta-cpf/pt/quick_start/))
+  e `NEXT_PUBLIC_CPF_LOOKUP=1`. CPFs de teste: 404.428.201-35 com 14/11/1970
+  (regular), 405.321.768-71 com 22/03/1982 (suspensa), 051.375.187-43 com
+  05/07/1965 (titular falecido). **Nunca** testar no endereço de produção: lá
+  toda chamada é cobrada.
+- **Como conferir (na produção, com um cliente real):** novo cliente PF → CPF e
+  data de nascimento → o nome aparece com o aviso "Dados preenchidos pela Receita
+  Federal"; o mesmo CPF com o último número trocado → aviso de dígito errado, sem
+  consulta.
 
 ## 13. Validação de formato dos documentos — Roadmap 2.0
 

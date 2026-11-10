@@ -191,9 +191,10 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
   const fillIfEmpty = (name: keyof Values, value: string | undefined) => {
     if (value && !String(getValues(name) ?? "").trim()) setValue(name, value, { shouldDirty: true, shouldValidate: true });
   };
-  const cpfStatus = useCpfAutofill(isNew && kind === "INDIVIDUAL" ? documentValue : undefined, (p) => {
+  const birthDateValue = useWatch({ control, name: "birthDate" });
+  // A Consulta CPF v3 confere CPF e data de nascimento juntos e devolve o nome.
+  const cpfStatus = useCpfAutofill(isNew && kind === "INDIVIDUAL" ? documentValue : undefined, birthDateValue, (p) => {
     if (p.fullName) setValue("fullName", p.fullName, { shouldDirty: true, shouldValidate: true });
-    fillIfEmpty("birthDate", p.birthDate);
   });
   const cnpjStatus = useCnpjAutofill(isNew && kind === "COMPANY" ? documentValue : undefined, (c) => {
     if (c.legalName) setValue("legalName", c.legalName, { shouldDirty: true, shouldValidate: true });

@@ -29,10 +29,12 @@ export function IndividualIdentificationFields() {
     formState: { errors },
   } = useFormContext<IndividualFormValues>();
   // Roadmap 2.0: CPF completo → nome e nascimento da Receita Federal (Serpro), quando contratado.
+  // A Consulta CPF v3 confere CPF e data de nascimento juntos e devolve o nome.
   const cpf = useWatch({ control, name: "cpf" });
-  const cpfStatus = useCpfAutofill(cpf, (p) => {
+  const birthDate = useWatch({ control, name: "birthDate" });
+  const cpfStatus = useCpfAutofill(cpf, birthDate, (p) => {
     if (p.fullName) setValue("fullName", p.fullName, { shouldValidate: true, shouldDirty: true });
-    if (p.birthDate && !getValues("birthDate")) setValue("birthDate", p.birthDate, { shouldDirty: true });
+    if (p.socialName && !getValues("socialName")) setValue("socialName", p.socialName, { shouldDirty: true });
   });
   return (
     <FormSection title="Identificação" description="Somente o essencial é obrigatório. Os dados recomendados agilizam a qualificação nas peças.">

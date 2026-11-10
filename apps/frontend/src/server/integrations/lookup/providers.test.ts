@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { clearCpfCache, cpfLookupConfigured, lookupCep, lookupCnpj, lookupCpf, titleCase } = await import("./providers");
+const { CpfBirthMismatch, clearCpfCache, cpfLookupConfigured, lookupCep, lookupCnpj, lookupCpf, titleCase } = await import("./providers");
 const { cpfCheckDigitsOk } = await import("@/lib/validation");
 
 function respond(map: Record<string, { status: number; body: unknown }>) {
@@ -65,35 +65,75 @@ describe("preenchimento automático — CEP, CNPJ e CPF (Roadmap 2.0)", () => {
     expect(c?.address).toMatchObject({ zipCode: "70040912", district: "Asa Norte", city: "Brasilia", state: "DF", number: "SN" });
   });
 
-  it("CPF: sem chaves do Serpro a consulta não está configurada; com a demonstração, nome e nascimento", async () => {
-    vi.stubEnv("SERPRO_CPF_CONSUMER_KEY", "");
-    vi.stubEnv("SERPRO_CPF_CONSUMER_SECRET", "");
-    vi.stubEnv("SERPRO_CPF_TRIAL", "");
+  it("CPF: só configurado com a demonstração (token próprio) ou com as chaves pagas EM PRODUÇÃO", async () => {
+    for (const k of ["SERPRO_CPF_CONSUMER_KEY", "SERPRO_CPF_CONSUMER_SECRET", "SERPRO_CPF_TRIAL", "SERPRO_CPF_TRIAL_TOKEN", "DG_ENV"]) vi.stubEnv(k, "");
     expect(cpfLookupConfigured()).toBe(false);
     vi.stubEnv("SERPRO_CPF_TRIAL", "1");
+    expect(cpfLookupConfigured()).toBe(false); // sem o token da demonstração
+    vi.stubEnv("SERPRO_CPF_TRIAL", "");
+    vi.stubEnv("SERPRO_CPF_CONSUMER_KEY", "chave");
+    vi.stubEnv("SERPRO_CPF_CONSUMER_SECRET", "segredo");
+    expect(cpfLookupConfigured()).toBe(false); // chaves pagas fora da produção: nada é cobrado
+    vi.stubEnv("DG_ENV", "production");
     expect(cpfLookupConfigured()).toBe(true);
-    const fetchMock = respond({
-      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v1/cpf/40442820135": {
-        status: 200,
-        body: { ni: "40442820135", nome: "RONE PEREIRA", situacao: { codigo: "0", descricao: "Regular" }, nascimento: "14111970" },
-      },
-    });
-    expect(await lookupCpf("404.428.201-35")).toEqual({ cpf: "40442820135", fullName: "Rone Pereira", birthDate: "1970-11-14", status: "Regular" });
-    // A chave/token vai no cabeçalho; nunca na URL.
-    expect(String(fetchMock.mock.calls[0][0])).not.toContain("Bearer");
   });
 
-  it("CPF: o mesmo número de novo não paga outra consulta (10 minutos), nem quando não foi encontrado", async () => {
+  it("CPF v3 (demonstração): CPF e nascimento no caminho; nome, nome social, nascimento e situação; token no cabeçalho", async () => {
     vi.stubEnv("SERPRO_CPF_TRIAL", "1");
+    vi.stubEnv("SERPRO_CPF_TRIAL_TOKEN", "token-demo");
     const fetchMock = respond({
-      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v1/cpf/40442820135": { status: 200, body: { nome: "RONE PEREIRA", situacao: { descricao: "Regular" } } },
-      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v1/cpf/52998224725": { status: 404, body: null },
+      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v3/cpf/40442820135/14111970": {
+        status: 200,
+        body: { ni: "40442820135", nome: "RONE PEREIRA", nomeSocial: "RONE", situacao: { codigo: "0", descricao: "Regular" }, nascimento: "14111970" },
+      },
     });
-    await lookupCpf("404.428.201-35");
-    await lookupCpf("40442820135");
-    expect(await lookupCpf("529.982.247-25")).toBeNull();
-    expect(await lookupCpf("52998224725")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await lookupCpf("404.428.201-35", "1970-11-14")).toEqual({
+      cpf: "40442820135", fullName: "Rone Pereira", socialName: "Rone", birthDate: "1970-11-14", status: "Regular",
+    });
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("token-demo");
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers).toMatchObject({ Authorization: "Bearer token-demo" });
+  });
+
+  it("CPF v3 em produção: token OAuth com as chaves, endereço de produção da v3", async () => {
+    vi.stubEnv("DG_ENV", "production");
+    vi.stubEnv("SERPRO_CPF_CONSUMER_KEY", "chave");
+    vi.stubEnv("SERPRO_CPF_CONSUMER_SECRET", "segredo");
+    const fetchMock = respond({
+      "https://gateway.apiserpro.serpro.gov.br/token": { status: 200, body: { access_token: "abc", expires_in: 3600 } },
+      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df/v3/cpf/40442820135/14111970": { status: 200, body: { nome: "RONE PEREIRA", situacao: { descricao: "Suspensa" } } },
+    });
+    expect((await lookupCpf("40442820135", "1970-11-14"))?.status).toBe("Suspensa");
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toEqual([
+      "https://gateway.apiserpro.serpro.gov.br/token",
+      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df/v3/cpf/40442820135/14111970",
+    ]);
+  });
+
+  it("CPF v3: nascimento divergente vira aviso próprio; o mesmo par (achado, não achado ou divergente) não paga de novo em 10 minutos", async () => {
+    vi.stubEnv("SERPRO_CPF_TRIAL", "1");
+    vi.stubEnv("SERPRO_CPF_TRIAL_TOKEN", "token-demo");
+    const base = "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v3/cpf/";
+    const fetchMock = respond({
+      [`${base}40442820135/14111970`]: { status: 200, body: { nome: "RONE PEREIRA", situacao: { descricao: "Regular" } } },
+      [`${base}40442820135/01011970`]: { status: 422, body: { erro: "DATA_NASCIMENTO_DIVERGENTE", erroDescricao: "divergente" } },
+      [`${base}52998224725/01011980`]: { status: 404, body: { erro: "CPF_INEXISTENTE" } },
+    });
+    await lookupCpf("404.428.201-35", "1970-11-14");
+    await lookupCpf("40442820135", "1970-11-14");
+    await expect(lookupCpf("40442820135", "1970-01-01")).rejects.toBeInstanceOf(CpfBirthMismatch);
+    await expect(lookupCpf("40442820135", "1970-01-01")).rejects.toBeInstanceOf(CpfBirthMismatch);
+    expect(await lookupCpf("529.982.247-25", "1980-01-01")).toBeNull();
+    expect(await lookupCpf("52998224725", "1980-01-01")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("CPF v3: sem data de nascimento válida, não consulta", async () => {
+    vi.stubEnv("SERPRO_CPF_TRIAL", "1");
+    vi.stubEnv("SERPRO_CPF_TRIAL_TOKEN", "token-demo");
+    const fetchMock = respond({});
+    expect(await lookupCpf("40442820135", "")).toBeNull();
+    expect(await lookupCpf("40442820135", "14/11/1970")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("CPF: dígito verificador (para não pagar consulta de número digitado errado)", () => {

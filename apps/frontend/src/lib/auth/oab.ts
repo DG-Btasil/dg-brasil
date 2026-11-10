@@ -6,7 +6,8 @@ import type { Role } from "@/lib/permissions";
  * - LAWYER (escritório): quem convida PRECISA informar a OAB.
  * - ADMIN, PARTNER_ADMIN e PARTNER_USER: opcional — o usuário do parceiro
  *   pode ser secretária ou outra função sem OAB (QA E-13). Quem tem OAB
- *   cadastra quantas quiser depois, em Minha conta → Minhas OABs.
+ *   cadastra quantas quiser depois, em Configurações → Sua conta → Minhas OABs
+ *   (equipe). No portal do parceiro, o único lugar de OAB é "OABs acompanhadas".
  * - ASSISTANT: não leva OAB.
  */
 export const OAB_REQUIRED_ROLES: readonly Role[] = ["LAWYER"];

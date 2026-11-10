@@ -6,7 +6,9 @@ import { cpfCheckDigitsOk, isCnpjFormat, isCpfFormat, taxIdProblem } from "@/lib
 import { lookupCepAction, lookupCnpjAction, lookupCpfAction, type LookupResult } from "@/server/integrations/lookup/actions";
 import type { AddressLookup, CompanyLookup, PersonLookup } from "@/server/integrations/lookup/providers";
 
-export type AutofillStatus = "idle" | "loading" | "found" | "found_attention" | "not_found" | "not_configured" | "unavailable" | "invalid";
+export type AutofillStatus =
+  | "idle" | "loading" | "found" | "found_attention" | "not_found" | "not_configured" | "unavailable" | "invalid"
+  | "needs_birth" | "birth_mismatch";
 
 const onlyDigits = (v: string | undefined) => (v ?? "").replace(/\D/g, "");
 
@@ -44,7 +46,7 @@ function useAutofill<T>(
         handler.current(r.data.data);
         setStatus(attention?.(r.data.data) ? "found_attention" : "found");
       } else {
-        const motivo: Record<string, AutofillStatus> = { NOT_FOUND: "not_found", NOT_CONFIGURED: "not_configured", INVALID: "invalid" };
+        const motivo: Record<string, AutofillStatus> = { NOT_FOUND: "not_found", NOT_CONFIGURED: "not_configured", INVALID: "invalid", BIRTH_MISMATCH: "birth_mismatch" };
         setStatus(motivo[r.data.reason] ?? "unavailable");
       }
     });
@@ -66,25 +68,40 @@ export function useCnpjAutofill(cnpj: string | undefined, onFound: (c: CompanyLo
 }
 
 /**
- * CPF na Receita (Serpro), paga por consulta (docs/deploy/producao.md, item 12).
- * Enquanto `NEXT_PUBLIC_CPF_LOOKUP` não for "1", o navegador nem chama o
- * servidor e nada aparece embaixo do campo (QA R2-03). CPF com dígito
- * verificador errado não vai à Receita: o campo avisa para conferir.
+ * CPF na Receita (Serpro, Consulta CPF v3), paga por consulta
+ * (docs/deploy/producao.md, item 12). A v3 confere CPF E data de nascimento
+ * juntos: a consulta só sai com os dois preenchidos, e devolve nome, nome
+ * social e situação. Enquanto `NEXT_PUBLIC_CPF_LOOKUP` não for "1", o
+ * navegador nem chama o servidor e nada aparece embaixo do campo (QA R2-03).
+ * CPF com dígito verificador errado não vai à Receita: o campo avisa.
  */
 const CPF_LOOKUP_ON = process.env.NEXT_PUBLIC_CPF_LOOKUP === "1";
 const INVALID: { ok: true; data: LookupResult<PersonLookup> } = { ok: true, data: { found: false, reason: "INVALID" } };
 /** Situação cadastral diferente de "Regular" (suspensa, cancelada, titular falecido...). */
 const irregular = (p: PersonLookup) => !!p.status && !/^regular$/i.test(p.status.trim());
+/** "1970-11-14" (campo de data) → "19701114"; outra coisa → "". */
+const birthDigits = (v: string | undefined) => (/^(19|20)\d{2}-\d{2}-\d{2}$/.test(v ?? "") ? (v as string).replace(/-/g, "") : "");
 
-export function useCpfAutofill(cpf: string | undefined, onFound: (p: PersonLookup) => void, enabled = true) {
-  return useAutofill(
-    cpf,
-    (d) => isCpfFormat(d) && !taxIdProblem(d, "cpf"),
-    (d) => (cpfCheckDigitsOk(d) ? callAction(() => lookupCpfAction({ cpf: d })) : Promise.resolve(INVALID)),
+export function useCpfAutofill(cpf: string | undefined, birthDate: string | undefined, onFound: (p: PersonLookup) => void, enabled = true) {
+  const cpfDigits = onlyDigits(cpf);
+  const cpfReady = isCpfFormat(cpfDigits) && !taxIdProblem(cpfDigits, "cpf");
+  const birth = birthDigits(birthDate);
+  // CPF (11) + nascimento AAAAMMDD (8): a consulta dispara uma vez por par.
+  const status = useAutofill(
+    cpfReady && birth ? `${cpfDigits}${birth}` : cpfDigits,
+    (d) => d.length === 19,
+    (d) => {
+      const n = d.slice(11);
+      return cpfCheckDigitsOk(d.slice(0, 11))
+        ? callAction(() => lookupCpfAction({ cpf: d.slice(0, 11), birthDate: `${n.slice(0, 4)}-${n.slice(4, 6)}-${n.slice(6, 8)}` }))
+        : Promise.resolve(INVALID);
+    },
     onFound,
     enabled && CPF_LOOKUP_ON,
     irregular,
   );
+  if (enabled && CPF_LOOKUP_ON && cpfReady && !birth) return cpfCheckDigitsOk(cpfDigits) ? "needs_birth" : "invalid";
+  return status;
 }
 
 /** Texto curto para mostrar embaixo do campo. */
@@ -98,6 +115,10 @@ export function autofillHint(status: AutofillStatus, what: "CEP" | "CNPJ" | "CPF
       return "Dados preenchidos pela Receita Federal. Atenção: o CPF não está regular na Receita. Confira com o cliente.";
     case "invalid":
       return "CPF com dígito verificador errado. Confira o número.";
+    case "needs_birth":
+      return "Informe a data de nascimento para buscar o nome na Receita Federal.";
+    case "birth_mismatch":
+      return "A data de nascimento não confere com a da Receita. Confira o CPF e a data.";
     case "not_found":
       return what === "CEP" ? "CEP não encontrado. Preencha o endereço à mão." : `${what} não encontrado na Receita. Preencha à mão.`;
     case "not_configured":

@@ -4,9 +4,10 @@ import "server-only";
  * Preenchimento automático do cadastro (Roadmap 2.0, bloco 6):
  *   - CEP  → endereço (ViaCEP; reserva: BrasilAPI). Gratuitos.
  *   - CNPJ → dados da empresa (BrasilAPI; reserva: minhareceita.org). Gratuitos.
- *   - CPF  → nome e nascimento na Receita Federal pela API Consulta CPF do
- *            Serpro (PAGA por consulta; o escritório contrata e põe as chaves).
- *            Sem chaves, a consulta diz "não configurada" e nada é preenchido.
+ *   - CPF  → com CPF e data de nascimento, nome, nome social e situação na
+ *            Receita Federal pela API Consulta CPF v3 do Serpro (PAGA por
+ *            consulta; só em produção). Sem chaves, a consulta diz "não
+ *            configurada" e nada é preenchido.
  *
  * Tudo pelo SERVIDOR: o navegador não fala com essas APIs, a chave do Serpro
  * nunca sai daqui, e o documento consultado não vai para log nem banco (só o
@@ -143,31 +144,56 @@ export async function lookupCnpj(cnpj: string): Promise<CompanyLookup | null> {
 }
 
 /* ------------------------------------------------------------------ */
-/* CPF (Serpro — Consulta CPF)                                         */
+/* CPF (Serpro — Consulta CPF v3)                                      */
 /* ------------------------------------------------------------------ */
+/*
+ * v3 (desde 29/05/2026; v1 e v2 desativadas em 02/10/2026): a Receita confere
+ * CPF E data de nascimento juntos (/cpf/{ni}/{DDMMAAAA}) e devolve nome, nome
+ * social e situação. Não existe ambiente de teste no endereço de produção:
+ * toda chamada lá é cobrada (200, 206 e 404). Por isso:
+ *   - as chaves pagas só valem com DG_ENV=production;
+ *   - fora da produção, só a demonstração do Serpro (SERPRO_CPF_TRIAL=1 e o
+ *     token de demonstração em SERPRO_CPF_TRIAL_TOKEN), que usa dados fictícios.
+ * Documentação: https://apicenter.estaleiro.serpro.gov.br/documentacao/consulta-cpf/pt/
+ */
 
 export interface PersonLookup {
   cpf: string;
   fullName?: string;
+  /** Nome social, quando a pessoa tem um registrado na Receita. */
+  socialName?: string;
   /** YYYY-MM-DD */
   birthDate?: string;
   /** Situação na Receita (ex.: "Regular") — só para avisar. */
   status?: string;
 }
 
-/** Demonstração pública do Serpro (só CPFs de teste). Útil para validar a integração sem contrato. */
-const SERPRO_TRIAL = { base: "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v1", token: "06aef429-a981-3ec5-a1f8-71d38d86481e" };
+/** A data de nascimento informada não confere com a da Receita (resposta da v3). */
+export class CpfBirthMismatch extends Error {
+  constructor() {
+    super("CPF_BIRTH_MISMATCH");
+  }
+}
+
+const SERPRO_TRIAL_BASE = "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df-trial/v3";
+const SERPRO_BASE = "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df/v3";
 const SERPRO_TOKEN_URL = "https://gateway.apiserpro.serpro.gov.br/token";
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
+const trialOn = () => process.env.SERPRO_CPF_TRIAL === "1" && !!process.env.SERPRO_CPF_TRIAL_TOKEN;
+/** Chaves pagas só em produção: nos testes (DEV) nenhuma consulta é cobrada. */
+const paidOn = () =>
+  process.env.DG_ENV === "production" && !!process.env.SERPRO_CPF_CONSUMER_KEY && !!process.env.SERPRO_CPF_CONSUMER_SECRET;
+
 export function cpfLookupConfigured(): boolean {
-  return process.env.SERPRO_CPF_TRIAL === "1" || (!!process.env.SERPRO_CPF_CONSUMER_KEY && !!process.env.SERPRO_CPF_CONSUMER_SECRET);
+  return trialOn() || paidOn();
 }
 
 async function serproToken(): Promise<{ base: string; token: string }> {
-  if (process.env.SERPRO_CPF_TRIAL === "1") return SERPRO_TRIAL;
-  const base = process.env.SERPRO_CPF_BASE_URL || "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df/v1";
+  if (trialOn()) return { base: SERPRO_TRIAL_BASE, token: process.env.SERPRO_CPF_TRIAL_TOKEN as string };
+  if (!paidOn()) throw new Error("CPF_NOT_CONFIGURED");
+  const base = process.env.SERPRO_CPF_BASE_URL || SERPRO_BASE;
   if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) return { base, token: cachedToken.value };
   const basic = Buffer.from(`${process.env.SERPRO_CPF_CONSUMER_KEY}:${process.env.SERPRO_CPF_CONSUMER_SECRET}`).toString("base64");
   const r = await getJson(SERPRO_TOKEN_URL, {
@@ -187,39 +213,68 @@ function birthFromSerpro(v: string | undefined): string | undefined {
   return `${v.slice(4, 8)}-${v.slice(2, 4)}-${v.slice(0, 2)}`;
 }
 
+/** "1970-11-14" → "14111970" (formato do caminho da v3). */
+function birthToSerpro(v: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  return m ? `${m[3]}${m[2]}${m[1]}` : null;
+}
+
 /**
  * Respostas da Receita guardadas por 10 minutos (memória desta instância do
- * servidor): o mesmo CPF digitado de novo (portal e depois o cadastro, ou o
- * formulário reaberto) não paga outra consulta. Guarda também o "não encontrado".
+ * servidor): o mesmo CPF e nascimento digitados de novo (portal e depois o
+ * cadastro, ou o formulário reaberto) não pagam outra consulta. Guarda também
+ * o "não encontrado", que também é cobrado.
  */
 const CPF_CACHE_MS = 10 * 60_000;
 const CPF_CACHE_MAX = 500;
-const cpfCache = new Map<string, { value: PersonLookup | null; expiresAt: number }>();
+const cpfCache = new Map<string, { value: PersonLookup | null | "MISMATCH"; expiresAt: number }>();
 
 export function clearCpfCache() {
   cpfCache.clear();
+  cachedToken = null;
 }
 
-export async function lookupCpf(cpf: string): Promise<PersonLookup | null> {
+export async function lookupCpf(cpf: string, birthDate: string): Promise<PersonLookup | null> {
   const d = digits(cpf);
-  if (d.length !== 11) return null;
-  const cached = cpfCache.get(d);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
-  const value = await lookupCpfAtReceita(d);
+  const nasc = birthToSerpro(birthDate);
+  if (d.length !== 11 || !nasc) return null;
+  const key = `${d}:${nasc}`;
+  const cached = cpfCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    if (cached.value === "MISMATCH") throw new CpfBirthMismatch();
+    return cached.value;
+  }
+  let value: PersonLookup | null | "MISMATCH";
+  try {
+    value = await lookupCpfAtReceita(d, nasc);
+  } catch (e) {
+    if (!(e instanceof CpfBirthMismatch)) throw e;
+    value = "MISMATCH";
+  }
   if (cpfCache.size >= CPF_CACHE_MAX) cpfCache.delete(cpfCache.keys().next().value as string);
-  cpfCache.set(d, { value, expiresAt: Date.now() + CPF_CACHE_MS });
+  cpfCache.set(key, { value, expiresAt: Date.now() + CPF_CACHE_MS });
+  if (value === "MISMATCH") throw new CpfBirthMismatch();
   return value;
 }
 
-async function lookupCpfAtReceita(d: string): Promise<PersonLookup | null> {
+async function lookupCpfAtReceita(d: string, nasc: string): Promise<PersonLookup | null> {
   const { base, token } = await serproToken();
-  const r = await getJson(`${base}/cpf/${d}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (r.status === 404) return null;
+  const r = await getJson(`${base}/cpf/${d}/${nasc}`, { headers: { Authorization: `Bearer ${token}` } });
+  const b = r.body as {
+    nome?: string; nomeSocial?: string; nascimento?: string; situacao?: { descricao?: string }; erro?: string;
+  } | null;
+  if (b?.erro === "DATA_NASCIMENTO_DIVERGENTE") throw new CpfBirthMismatch();
+  if (r.status === 404 || b?.erro === "CPF_INEXISTENTE") return null;
   if (r.status === 401 || r.status === 403) {
     cachedToken = null;
     throw new Error("CPF_AUTH_FAILED");
   }
-  const b = r.body as { nome?: string; nascimento?: string; situacao?: { descricao?: string } } | null;
-  if (r.status !== 200 || !b) throw new Error("CPF_UNAVAILABLE");
-  return { cpf: d, fullName: titleCase(str(b.nome)), birthDate: birthFromSerpro(str(b.nascimento)), status: str(b.situacao?.descricao) };
+  if ((r.status !== 200 && r.status !== 206) || !b) throw new Error(r.status === 410 ? "CPF_VERSION_GONE" : "CPF_UNAVAILABLE");
+  return {
+    cpf: d,
+    fullName: titleCase(str(b.nome)),
+    socialName: titleCase(str(b.nomeSocial)),
+    birthDate: birthFromSerpro(str(b.nascimento)),
+    status: str(b.situacao?.descricao),
+  };
 }

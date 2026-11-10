@@ -6,7 +6,7 @@ import type { ServiceContext } from "@/server/core/context";
 import { DomainError } from "@/server/core/errors";
 import { cpfCheckDigitsOk } from "@/lib/validation";
 import { SlidingWindowLimiter } from "@/server/core/rate-limit";
-import { cpfLookupConfigured, lookupCep, lookupCnpj, lookupCpf, type AddressLookup, type CompanyLookup, type PersonLookup } from "./providers";
+import { CpfBirthMismatch, cpfLookupConfigured, lookupCep, lookupCnpj, lookupCpf, type AddressLookup, type CompanyLookup, type PersonLookup } from "./providers";
 
 /**
  * Consultas do preenchimento automático (CEP, CNPJ, CPF). Qualquer sessão
@@ -21,11 +21,15 @@ function throttle(ctx: ServiceContext, kind: string, perMinute: number) {
   if (!r.allowed) throw new DomainError("RATE_LIMITED", "Muitas consultas em pouco tempo. Aguarde um minuto.");
 }
 
-export type LookupResult<T> = { found: true; data: T } | { found: false; reason: "NOT_FOUND" | "NOT_CONFIGURED" | "UNAVAILABLE" | "INVALID" };
+export type LookupResult<T> = { found: true; data: T } | { found: false; reason: "NOT_FOUND" | "NOT_CONFIGURED" | "UNAVAILABLE" | "INVALID" | "BIRTH_MISMATCH" };
 
 const cepSchema = z.object({ cep: z.string().regex(/^\d{5}-?\d{3}$/, "CEP com 8 dígitos.") });
 const cnpjSchema = z.object({ cnpj: z.string().transform((v) => v.replace(/\D/g, "")).refine((v) => v.length === 14, "CNPJ com 14 dígitos.") });
-const cpfSchema = z.object({ cpf: z.string().transform((v) => v.replace(/\D/g, "")).refine((v) => v.length === 11, "CPF com 11 dígitos.") });
+const cpfSchema = z.object({
+  cpf: z.string().transform((v) => v.replace(/\D/g, "")).refine((v) => v.length === 11, "CPF com 11 dígitos."),
+  // A Consulta CPF v3 confere CPF e nascimento juntos.
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data de nascimento."),
+});
 
 export async function lookupCepAction(input: unknown) {
   return runAction({
@@ -66,15 +70,16 @@ export async function lookupCpfAction(input: unknown) {
     name: "lookup.cpf",
     schema: cpfSchema,
     input,
-    handler: async (ctx, { cpf }): Promise<LookupResult<PersonLookup>> => {
+    handler: async (ctx, { cpf, birthDate }): Promise<LookupResult<PersonLookup>> => {
       if (!cpfLookupConfigured()) return { found: false, reason: "NOT_CONFIGURED" };
       // Dígito verificador errado: nem chega à Receita (a consulta é paga).
       if (!cpfCheckDigitsOk(cpf)) return { found: false, reason: "INVALID" };
       throttle(ctx, "cpf", 15);
       try {
-        const data = await lookupCpf(cpf);
+        const data = await lookupCpf(cpf, birthDate);
         return data ? { found: true, data } : { found: false, reason: "NOT_FOUND" };
       } catch (error) {
+        if (error instanceof CpfBirthMismatch) return { found: false, reason: "BIRTH_MISMATCH" };
         ctx.log.warn("lookup.cpf_failed", { reason: error instanceof Error ? error.message : "unknown" });
         return { found: false, reason: "UNAVAILABLE" };
       }

@@ -10,7 +10,6 @@ import { ActionErrorState } from "@/components/feedback/action-error";
 import type { MyPartnerSettingsDTO, PartnerDetailDTO } from "@/server/domain/organizations/dto";
 import { useClientSession } from "@/features/auth/session-context";
 import { AccountSecurity } from "@/features/account/components/account-security";
-import { MyOabsPanel } from "@/features/account/components/my-oabs-panel";
 import { NotificationPreferences } from "@/features/notifications/components/notification-preferences";
 import { PartnerOabsPanel } from "@/features/judicial/components/partner-oabs-panel";
 import { UsersPanel } from "./portal-users";
@@ -22,6 +21,11 @@ import { UsersPanel } from "./portal-users";
  * (getMyPartnerSettingsAction, 027), a gestão de usuários do escritório e
  * as preferências de aviso do próprio usuário (4.3.1) e a segurança da
  * própria conta — senha, MFA e sessões (4.3.2).
+ *
+ * OAB: um lugar só, "OABs acompanhadas" (as do escritório que o DG Brasil
+ * acompanha no DJEN). A OAB pessoal de cada advogado vem do convite e do
+ * primeiro acesso; a caixa "Minhas OABs" saiu do portal (pedido de 10/11/2026)
+ * porque parecia o mesmo cadastro duas vezes.
  */
 export function PortalAccount({
   office,
@@ -104,9 +108,6 @@ export function PortalAccount({
             Notificações
           </h2>
           <NotificationPreferences />
-        </section>
-        <section className="col-span-12">
-          <MyOabsPanel />
         </section>
         <section aria-labelledby="account-security-title" className="col-span-12">
           <h2 id="account-security-title" className="mb-3 text-[15px] font-semibold text-foreground">
