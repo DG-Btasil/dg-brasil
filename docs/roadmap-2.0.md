@@ -67,6 +67,6 @@ guia único** para o validador da outra máquina: [roadmap-2.0-validacao.md](roa
 
 1. Ler as decisões acima e dizer se alguma muda.
 2. No computador do escritório: copiar o agente `orquestrador` para
-   `%USERPROFILE%\.claudegents\` e cadastrá-lo no DG Brasil (ver o guia de
+   `%USERPROFILE%\.claude\agents\` e cadastrá-lo no DG Brasil (ver o guia de
    validação, Parte 4).
 3. Na produção: contratar a Consulta CPF do Serpro (`docs/deploy/producao.md`, item 12).

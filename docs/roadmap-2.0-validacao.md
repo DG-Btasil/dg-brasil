@@ -179,8 +179,14 @@ Para cada item: print em `docs/qa/roadmap-2.0/` e OK/FALHA.
 
 Só se a Barbara estiver no computador do escritório. Senão, marque "não feito".
 
+> **Substituída (2026-11-09):** faça pelo guia
+> [mcp/maquina-principal.md](mcp/maquina-principal.md), Parte 3.3. Ele usa o
+> `orquestrador-teste`, que só chama agentes fictícios. O `lucas` real grava
+> nas pastas reais do `G:\Meu Drive` e não deve ser chamado num teste. O texto
+> abaixo fica só como histórico.
+
 1. Copiar `docs/mcp/pilotos/agentes/orquestrador.md` para
-   `%USERPROFILE%\.claudegents\orquestrador.md` e conferir a tabela de agentes
+   `%USERPROFILE%\.claude\agents\orquestrador.md` e conferir a tabela de agentes
    locais dentro dele.
 2. No DG Brasil → Agentes → Novo agente: nome "Orquestrador", identificador
    `orquestrador`, agente local `orquestrador`, ativo.

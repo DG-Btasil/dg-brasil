@@ -26,9 +26,10 @@ hora de contratar.
 | 8 | Variáveis e chaves de produção | Hoje tudo aponta para o DEV | Sem custo |
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
 | 10 | Integração judicial: mais buscas por dia e lotes do DataJud | Hobby: 1 rodada por dia, 60 s | Já vem com o Vercel Pro |
-| 11 | Conferir as publicações com o APOGEU | Adiado na validação da Etapa 8 | Sem custo |
+| 11 | ~~Conferir as publicações com o APOGEU~~ | Removido em 2026-11-09: o APOGEU não será usado | — |
 | 12 | Consulta de CPF na Receita (Serpro) | Paga por consulta; contrato do escritório | Por consulta (Loja Serpro) |
 | 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) | Pedido para a atualização final | Sem custo |
+| 14 | Agentes reais pelo DG Brasil (variantes `-dg`) | Os agentes atuais gravam no `G:\Meu Drive`; os testes usam agentes fictícios | Sem custo |
 
 ---
 
@@ -262,15 +263,13 @@ verdade:
 
 ---
 
-## 11. Conferência das publicações com o APOGEU
+## 11. (Removido) Conferência das publicações com o APOGEU
 
-- **Hoje:** a Parte 7 de [docs/etapa-8-validacao.md](../etapa-8-validacao.md) não foi feita. O relatório da etapa está em [docs/qa/etapa-8/qa-etapa-8.md](../qa/etapa-8/qa-etapa-8.md).
-- **Por que não agora:** o Miguel deixou para depois da validação. Não bloqueia a Etapa 8.
-- **Na produção:** antes de confiar só no DG Brasil para as publicações:
-  1. Escolha um dia útil já "assentado" (2 ou mais dias atrás).
-  2. No DG Brasil, veja a quantidade daquele dia em Configurações → Integrações → OAB RJ `225006` → Cobertura.
-  3. No conector APOGEU DJEN, rode `resumo_publicacoes` (ou `listar_publicacoes`) da mesma OAB, no mesmo dia.
-- **Como conferir:** os dois números batem. Se não baterem, anote o dia e a quantidade de cada lado. Isso é o começo do ciclo de conferência em dupla ([docs/judicial.md](../judicial.md)).
+Removido em 2026-11-09, por decisão da Barbara: o APOGEU não será usado. O
+número fica reservado para não mudar as referências aos itens 12 e 13. A
+conferência das publicações antes de o DG Brasil virar a fonte única continua no
+ciclo de conferência em dupla ([docs/judicial.md](../judicial.md)), comparando com
+o controle atual do escritório.
 
 ---
 
@@ -312,3 +311,25 @@ acrescente:
   CNH (11 dígitos com verificador), OAB por seccional, CNJ com verificador em
   todos os campos — no formulário e no servidor.
 - **Como conferir:** tentar cadastrar documentos com dígito errado e ver a recusa.
+
+## 14. Agentes reais pelo DG Brasil (variantes `-dg`)
+
+- **Hoje:** o orquestrador e os trabalhos do DG Brasil foram testados só com os
+  agentes fictícios (`analista-teste`, `kit-cliente-teste`, `orquestrador-teste`;
+  guia em [docs/mcp/maquina-principal.md](../mcp/maquina-principal.md)). Os agentes
+  reais (`lucas`, `clara`, …) leem e gravam no `G:\Meu Drive` e usam o
+  ChatJurídico, por isso não podem ser chamados por um trabalho do DG Brasil.
+- **Por que não agora:** primeiro a ponta a ponta com os agentes de teste na
+  máquina principal.
+- **Na produção, para os agentes trabalharem pelo DG Brasil:**
+  1. Criar as variantes `lucas-dg`, `clara-dg` (e, se for o caso, `alice-dg`,
+     `murilo-dg`), com o mesmo método, entrada na pasta `entrada` e saída na
+     `saida` do trabalho, e ferramentas mínimas
+     ([docs/adicionar-agente.md](../adicionar-agente.md)). Pedir ao Claude.
+  2. Instalar em `%USERPROFILE%\.claude\agents\` da máquina principal, junto com
+     o [orquestrador.md](../mcp/pilotos/agentes/orquestrador.md) (a tabela dele já
+     aponta para as variantes `-dg`).
+  3. No DG Brasil de produção: cadastrar cada variante e o orquestrador
+     (identificador `orquestrador`, agente local `orquestrador`).
+- **Como conferir:** uma tarefa de processo "Redigir uma procuração" vai para o
+  `lucas-dg`, a minuta aparece em Revisões, e nada é gravado no `G:\Meu Drive`.

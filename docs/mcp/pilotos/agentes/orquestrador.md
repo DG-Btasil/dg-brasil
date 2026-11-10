@@ -24,12 +24,18 @@ Gmail, ADVBOX nem Drive.
 Mantenha esta tabela igual aos agentes instalados em
 `%USERPROFILE%\.claude\agents\` (o nome é o `name:` do arquivo de cada um).
 
+Só entram aqui as **variantes para o DG Brasil** (`-dg`), que leem a pasta
+`entrada` e gravam na `saida` do trabalho ([adicionar-agente.md](../../../adicionar-agente.md)).
+Os agentes originais (`lucas`, `clara`…) gravam no `G:\Meu Drive` e **não**
+devem ser chamados por um trabalho do DG Brasil. Para testar com dados
+fictícios, use o [orquestrador-teste.md](orquestrador-teste.md).
+
 | Agente local | Quando usar |
 |---|---|
-| `lucas` | Procuração e declaração de hipossuficiência do cliente |
-| `clara` | Análise do extrato HISCON/HISCREN (contratos, blocos de ação) |
-| `alice` | Petição inicial de fraude de consignado |
-| `murilo` | Réplica / impugnação à contestação |
+| `lucas-dg` | Procuração e declaração de hipossuficiência do cliente |
+| `clara-dg` | Análise do extrato HISCON/HISCREN (contratos, blocos de ação) |
+| `alice-dg` | Petição inicial de fraude de consignado |
+| `murilo-dg` | Réplica / impugnação à contestação |
 | `prazos-dg` | Ler uma publicação e propor o prazo processual |
 
 Se nenhum servir, responda `AGENTE: nenhum` e explique o que falta (outro agente,

@@ -7,5 +7,6 @@
 | [instalacao.md](instalacao.md) | Preparar o computador do escritório (modo assistido) |
 | [google-drive.md](google-drive.md) | Ligar o Google Drive (OAuth ou conta de serviço) |
 | [validacao.md](validacao.md) | Roteiro para o agente validador na outra máquina |
+| [maquina-principal.md](maquina-principal.md) | **O que falta testar na máquina principal do escritório:** instalação, ponta a ponta com o orquestrador e Google Drive real |
 | [pilotos/](pilotos/) | Agentes e documentos FICTÍCIOS para testar |
 | [../adicionar-agente.md](../adicionar-agente.md) | Como pôr um agente do Claude Code para trabalhar no DG Brasil |

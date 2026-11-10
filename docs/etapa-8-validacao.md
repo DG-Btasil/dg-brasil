@@ -184,9 +184,11 @@ Depois:
 - [ ] **No dia seguinte** (se der): em "Últimas buscas", várias rodadas agendadas a partir das 05:00, e todas as OABs ativas com a última busca do dia, sem falha.
 - [ ] Se faltar algo, registre. **Bloqueia** se `pg_net` ou os segredos não puderem ser criados.
 
-## Parte 7: Conferência com o APOGEU (um dia)
+## Parte 7: Conferência com o APOGEU (removida)
 
-Só se você tiver o conector APOGEU DJEN disponível. Se não tiver, marque "não feito".
+**Removida em 2026-11-09:** o APOGEU não será usado. Não faça esta parte; a
+conferência das publicações fica no ciclo de conferência em dupla
+([judicial.md](judicial.md)). O texto abaixo fica só como histórico.
 
 - [ ] Escolha um dia útil já "assentado" (2 ou mais dias atrás).
   - No DG Brasil: Cobertura da OAB RJ → quantidade daquele dia.

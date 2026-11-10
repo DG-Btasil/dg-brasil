@@ -49,7 +49,7 @@ por minuto). A Barbara escolheu manter a OAB (2026-11-04).
 **Por que não o APOGEU:**
 - Ele faz o mesmo a partir das mesmas fontes, mas é pago, limitado a 30 OABs e está na conta do escritório.
 - Os parceiros cadastram as próprias OABs, e as publicações deles passariam por essa conta.
-- Ele continua útil como **segunda fonte** no ciclo de conferência em dupla (abaixo).
+- Decisão de 2026-11-09: o APOGEU **não será usado**, nem como segunda fonte.
 
 ## Quando roda
 
@@ -130,7 +130,7 @@ ciclo completo, de um mês com pelo menos uma publicação por semana em cada OA
 
 1. **Toda manhã, captura:** compare o que o DG Brasil capturou com uma fonte independente.
    - Em Cobertura, veja o número de publicações por dia de cada OAB.
-   - Compare com o APOGEU (`resumo_publicacoes` ou `listar_publicacoes` no mesmo dia) ou com o ADVBOX.
+   - Compare com o controle atual do escritório (por exemplo, o ADVBOX) no mesmo dia.
    - Diferença: anote o dia, a OAB e o número do processo, e descubra o motivo antes de seguir. Os motivos possíveis são publicação atrasada, OAB pausada ou falha da rodada.
 2. **Cada prazo criado pelo DG Brasil:** confira a data com o controle atual do escritório. Data diferente: anote e corrija.
 3. **No fim do ciclo:** se tudo bateu item a item, o DG Brasil vira a fonte única de publicações e prazos. **Se não bateu, adie** (não explique a diferença) e repita o ciclo.
