@@ -6,8 +6,11 @@ fora **de propósito**:
 - automações que o plano gratuito não comporta;
 - configurações que só fazem sentido com o sistema no ar e com dados reais.
 
-Esta lista junta tudo isso, com o que fazer e onde mexer. **Nada daqui é para
-fazer agora.**
+Esta lista junta tudo isso, com o que fazer e onde mexer.
+
+> **Lançamento do beta (MVP), 10/11/2026:** para lançar, valem os itens 1, 3 a 9
+> e 10. Os itens 2, 12, 13 e 14 ficam para a versão final e estão também em
+> [pos-mvp.md](pos-mvp.md), com o que mais muda depois do beta.
 
 Os preços foram conferidos nas páginas oficiais em 2026-10-29. Confira de novo na
 hora de contratar.
@@ -17,7 +20,7 @@ hora de contratar.
 | # | O quê | Por que não agora | Custo |
 |---|---|---|---|
 | 1 | Vercel Pro | O plano gratuito (Hobby) é só para uso pessoal, não comercial | US$ 20 por mês por pessoa que publica |
-| 2 | Google Drive a cada 15 minutos | O Hobby só aceita agendamento uma vez por dia | Já vem com o Vercel Pro |
+| 2 | Google Drive a cada 15 minutos (**pós-MVP**) | O Hobby só aceita agendamento uma vez por dia | Já vem com o Vercel Pro |
 | 3 | Supabase de produção, no plano Pro | O gratuito pausa sem uso e não tem backup | A partir de US$ 25 por mês |
 | 4 | Segurança do login | Recursos do Supabase Pro | Já vem com o Supabase Pro |
 | 5 | E-mail de suporte e envio de e-mails | O envio que recebe e manda é pago | Plano pago do Zoho Mail |
@@ -27,9 +30,9 @@ hora de contratar.
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
 | 10 | Integração judicial: mais buscas por dia e lotes do DataJud | Hobby: 1 rodada por dia, 60 s | Já vem com o Vercel Pro |
 | 11 | ~~Conferir as publicações com o APOGEU~~ | Removido em 2026-11-09: o APOGEU não será usado | — |
-| 12 | Consulta de CPF na Receita (Serpro) | Paga por consulta; contrato do escritório | Por consulta (Loja Serpro) |
-| 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) | Pedido para a atualização final | Sem custo |
-| 14 | Agentes reais pelo DG Brasil (ponte, [ponte.md](../ponte.md)) | Ponte implementada (migration 051, conector 1.1.0); falta o piloto na máquina principal | Sem custo |
+| 12 | Consulta de CPF na Receita (Serpro) (**pós-MVP**) | Paga por consulta; contrato do escritório | Por consulta (Loja Serpro) |
+| 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) (**pós-MVP**) | Pedido para a atualização final | Sem custo |
+| 14 | Agentes reais pelo DG Brasil (ponte, [ponte.md](../ponte.md)) (**pós-MVP**) | Ponte implementada e desligada no beta; falta o piloto na máquina principal | Sem custo |
 
 ---
 

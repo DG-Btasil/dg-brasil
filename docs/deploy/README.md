@@ -6,7 +6,8 @@ planos e o que precisa estar configurado.
 | Arquivo | Para quê |
 |---|---|
 | [producao.md](producao.md) | **O que mudar quando o DG Brasil entrar em produção.** Planos pagos, automações que o plano gratuito não comporta, e-mail, domínios, chaves e conferências antes do primeiro dado real. Ficou de fora de propósito na fase de teste. |
+| [pos-mvp.md](pos-mvp.md) | **O que muda do beta (MVP, lançado em 10/11/2026) para a versão final:** o que está pronto e desligado (agentes pela ponte, Google Drive, Serpro), o que falta construir e as decisões pendentes. |
 | [deploy-de-teste.md](deploy-de-teste.md) | Passo a passo do deploy de teste de 2026-10-29: Claude Code, Google Drive e o agendamento diário. Diz quem faz cada passo e quais são os riscos. |
 
-**Regra:** tudo o que for deixado para a produção entra em
-[producao.md](producao.md), com o que fazer e onde mexer.
+**Regra:** o que é preciso para lançar entra em [producao.md](producao.md); o que
+fica para depois do beta entra em [pos-mvp.md](pos-mvp.md).
