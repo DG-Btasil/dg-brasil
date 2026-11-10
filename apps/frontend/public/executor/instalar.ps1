@@ -9,7 +9,9 @@
 #   3. pede o TOKEN gerado no DG Brasil (DG Brasil → Computador do escritório)
 #      e grava em %APPDATA%\DGBrasil\executor.json (só esta conta do Windows lê);
 #   4. prepara a pasta de sessão C:\DGBrasil\sessao com as permissões seguras;
-#   5. roda o diagnóstico.
+#   5. cria o atalho "DG Brasil - Vigia" na área de trabalho (sessão que
+#      processa a fila sozinha a cada 15 minutos enquanto estiver aberta);
+#   6. roda o diagnóstico.
 # Nada aqui mexe em outras pastas, nos agendamentos atuais nem no Claude Code
 # fora da pasta de sessão. Pode rodar de novo para atualizar.
 
@@ -76,10 +78,9 @@ $permissoes = @'
       "mcp__dg-brasil__consultar_teses", "mcp__dg-brasil__listar_referencias", "mcp__dg-brasil__abrir_referencia",
       "mcp__dg-brasil__informar_progresso", "mcp__dg-brasil__entregar_analise", "mcp__dg-brasil__entregar_minuta",
       "mcp__dg-brasil__propor", "mcp__dg-brasil__concluir_trabalho", "mcp__dg-brasil__informar_falha",
-      "mcp__dg-brasil__devolver_trabalho",
+      "mcp__dg-brasil__devolver_trabalho", "mcp__dg-brasil__reservar_trabalho",
       "Read(./trabalhos/**)", "Write(./trabalhos/**)"
     ],
-    "ask": ["mcp__dg-brasil__reservar_trabalho"],
     "deny": [
       "Read(~/AppData/Roaming/DGBrasil/**)",
       "WebFetch", "WebSearch",
@@ -92,6 +93,21 @@ $permissoes = @'
 Gravar (Join-Path $Sessao '.claude\settings.json') $permissoes
 Ok $Sessao
 
+Passo 'Atalho da sessão vigia na área de trabalho'
+# A sessão vigia processa a fila sozinha a cada 15 minutos enquanto estiver
+# aberta (uma pessoa abre de manhã e fecha no fim do dia). Tudo continua indo
+# para Revisões: só a aprovação de um advogado produz efeito.
+try {
+  $desktop = [Environment]::GetFolderPath('Desktop')
+  $atalho = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $desktop 'DG Brasil - Vigia.lnk'))
+  $atalho.TargetPath = (Get-Command powershell.exe).Source
+  $atalho.Arguments = "-NoExit -Command `"Set-Location '$Sessao'; claude '/loop 15m /mcp__dg-brasil__vigiar'`""
+  $atalho.WorkingDirectory = $Sessao
+  $atalho.Description = 'Abre o Claude Code processando a fila do DG Brasil a cada 15 minutos'
+  $atalho.Save()
+  Ok (Join-Path $desktop 'DG Brasil - Vigia.lnk')
+} catch { Aviso 'Não foi possível criar o atalho. Abra manualmente: cd C:\DGBrasil\sessao; claude "/loop 15m /mcp__dg-brasil__vigiar"' }
+
 Passo 'Diagnóstico'
 & node $Exe doctor
 
@@ -99,4 +115,5 @@ Write-Host "`nPronto. Para processar os trabalhos:" -ForegroundColor Green
 Write-Host "  1. Abra o terminal em $Sessao  (cd $Sessao)"
 Write-Host '  2. Rode: claude'
 Write-Host '  3. Digite: /mcp__dg-brasil__trabalhos'
+Write-Host 'Ou, para processar sozinho a cada 15 minutos: abra o atalho "DG Brasil - Vigia" na área de trabalho.'
 Write-Host 'No DG Brasil, a aba Conexões mostra este computador como conectado.'

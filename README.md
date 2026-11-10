@@ -80,7 +80,7 @@ computador e registro do MCP: [docs/mcp/instalacao.md](docs/mcp/instalacao.md).
 ```bash
 cd apps/executor
 npm ci && npm run build
-npm test                 # 13 testes: MCP de verdade contra um DG Brasil de mentira
+npm test                 # 14 testes: MCP de verdade contra um DG Brasil de mentira
 node dist/index.js doctor
 ```
 

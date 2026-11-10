@@ -26,6 +26,9 @@ dg-executor --version
   permissão, SQL ou shell.
 - **Roteiro do modo assistido:** o MCP traz o prompt `trabalhos`. No Claude Code,
   ele aparece como `/mcp__dg-brasil__trabalhos`.
+- **Sessão vigia:** o prompt `vigiar` (`/mcp__dg-brasil__vigiar`) processa a fila
+  inteira sem perguntar. O atalho "DG Brasil - Vigia" do instalador roda
+  `claude "/loop 15m /mcp__dg-brasil__vigiar"` em `C:\DGBrasil\sessao`.
 - **Pasta por trabalho:** `<pasta_trabalhos>\<id>\entrada` e `saida`.
   - O download confere o SHA-256 que o DG Brasil tem da versão.
   - A minuta só sai de dentro de `saida`: nada de `..`, caminho de fora ou atalho.
@@ -57,7 +60,7 @@ papel têm prioridade.
 ## Testes
 
 ```bash
-npm ci && npm test   # 13 testes
+npm ci && npm test   # 14 testes
 ```
 
 Os testes usam o cliente MCP oficial contra o servidor, com um DG Brasil de
