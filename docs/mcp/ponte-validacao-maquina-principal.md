@@ -29,6 +29,30 @@ arquivos dos agentes; nenhuma senha nem token no chat.
 
 ---
 
+## Com a Barbara no escritório (jeito mais rápido)
+
+Se a Barbara estiver no computador do escritório, ela faz tudo de lá, vendo a vigia:
+
+1. **Site (no navegador, como ADMIN):** DG Brasil → Computador do escritório →
+   **Ligar a execução** (o interruptor estava desligado desde 10/11, 00:05). Depois
+   a A1 abaixo (agentes, cliente fictício e os três casos).
+2. **Claude Code do escritório:** colar o prompt da Parte B trocando
+   `,'-PastaPeloNome'` por `,'-PastaPeloNome','-Visivel'`. Com `-Visivel`, a janela
+   "DG Brasil - Vigia" abre **normal**, não minimizada.
+3. **Olhar a janela da vigia nos primeiros 3 minutos.** Se ela perguntar algo:
+   - "confiar nesta pasta?" (trust): **sim**;
+   - "aprovar o servidor MCP dg-brasil?": **sim** (o instalador já o pré-aprova;
+     se perguntar mesmo assim, anotar);
+   - pedido de login/conector do claude.ai: **não**;
+   - qualquer outra coisa: print e anotar.
+   O script registra "Conector do DG Brasil subiu dentro da vigia" quando der certo.
+4. **Disparar os trabalhos (A2)** pelo site e acompanhar a vigia trabalhar.
+
+Correções de 10/11/2026, depois da primeira tentativa (vigia abriu e não conectou):
+regras do `G:` no formato do Claude Code no Windows (`//g/...`, gravação por
+`Edit`); servidor `dg-brasil` pré-aprovado (`enabledMcpjsonServers`); o script
+roda `claude mcp list` antes de abrir a vigia e confere se o conector subiu.
+
 ## A1 · Preparar o site (Barbara + Claude, de fora)
 
 1. **Agentes** (Agentes, como ADMIN): o da Clara com "Agente no Claude Code" =

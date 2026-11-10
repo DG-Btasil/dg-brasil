@@ -99,7 +99,7 @@ $allow = @(
   'mcp__dg-brasil__informar_progresso', 'mcp__dg-brasil__entregar_analise', 'mcp__dg-brasil__entregar_minuta',
   'mcp__dg-brasil__propor', 'mcp__dg-brasil__concluir_trabalho', 'mcp__dg-brasil__informar_falha',
   'mcp__dg-brasil__devolver_trabalho', 'mcp__dg-brasil__reservar_trabalho', 'mcp__dg-brasil__roteiro_vigia',
-  'Read(./trabalhos/**)', 'Write(./trabalhos/**)'
+  'Read(./trabalhos/**)', 'Edit(./trabalhos/**)'
 )
 # Ponte com os agentes da máquina (docs/ponte.md). Os agentes do escritório
 # trabalham na pasta do cliente no G:, na pasta de trabalho deles e com os
@@ -116,19 +116,21 @@ if ($ComPonte) {
     'mcp__dg-brasil__ver_ponte', 'mcp__dg-brasil__verificar_arquivos',
     'mcp__dg-brasil__copiar_para_pasta_do_cliente', 'mcp__dg-brasil__trazer_da_pasta_do_cliente',
     # pastas dos clientes (as raízes do ponte.json)
-    "Read(G:/Meu Drive/$Novos/**)", "Write(G:/Meu Drive/$Novos/**)", "Edit(G:/Meu Drive/$Novos/**)",
-    "Read(G:/Meu Drive/$ComProcesso/**)", "Write(G:/Meu Drive/$ComProcesso/**)", "Edit(G:/Meu Drive/$ComProcesso/**)",
+    # Caminho absoluto no Windows: "//g/..." (letra minúscula, sem dois-pontos). Gravar
+    # é a regra Edit (Write(...) não vale para nada). code.claude.com/docs/en/permissions
+    "Read(//g/Meu Drive/$Novos/**)", "Edit(//g/Meu Drive/$Novos/**)",
+    "Read(//g/Meu Drive/$ComProcesso/**)", "Edit(//g/Meu Drive/$ComProcesso/**)",
     # modelos e bases que os redatores leem (só leitura)
-    "Read(G:/Meu Drive/Modelos - Peti$cMin$($aMin)o Inicial Fraude Consignado INSS/**)",
-    "Read(G:/Meu Drive/05. FORMA$Cced$($Atil)O E PROJETOS/LIVES SECRETAS/**)",
-    'Read(G:/Meu Drive/**/FLUXOGRAMA AGENTES/**)',
-    "Read(G:/Meu Drive/02. ADVOCACIA $Trav MODELOS E PETI$Cced$($Otil)ES/**)",
+    "Read(//g/Meu Drive/Modelos - Peti$cMin$($aMin)o Inicial Fraude Consignado INSS/**)",
+    "Read(//g/Meu Drive/05. FORMA$Cced$($Atil)O E PROJETOS/LIVES SECRETAS/**)",
+    'Read(//g/Meu Drive/**/FLUXOGRAMA AGENTES/**)',
+    "Read(//g/Meu Drive/02. ADVOCACIA $Trav MODELOS E PETI$Cced$($Otil)ES/**)",
     # jurisprudência já conferida (os redatores acrescentam)
-    'Read(G:/Meu Drive/**/JURISPRUDENCIAS_VERIFICADAS_*.md)', 'Edit(G:/Meu Drive/**/JURISPRUDENCIAS_VERIFICADAS_*.md)',
+    'Read(//g/Meu Drive/**/JURISPRUDENCIAS_VERIFICADAS_*.md)', 'Edit(//g/Meu Drive/**/JURISPRUDENCIAS_VERIFICADAS_*.md)',
     # arquivos e scripts dos agentes neste computador
     'Read(~/.claude/agents/**)', 'Read(~/.claude/scripts/**)', 'Read(~/.claude/docs/**)', 'Read(~/.claude/skills/**)',
     # pasta de trabalho dos agentes e registro_pecas.csv (trava contra peça repetida)
-    'Read(~/agentes-juridicos/**)', 'Write(~/agentes-juridicos/**)', 'Edit(~/agentes-juridicos/**)',
+    'Read(~/agentes-juridicos/**)', 'Edit(~/agentes-juridicos/**)',
     # o que os agentes rodam: Python e os .ps1 do escritório (o Word por COM sai daqui)
     'Bash(python *)', 'Bash(py *)', 'Bash(powershell -NoProfile -ExecutionPolicy Bypass -File *)', 'Bash(powershell -File *)',
     'PowerShell(python *)', 'PowerShell(py *)', 'PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File *)',
@@ -165,6 +167,9 @@ if (Test-Path $Settings) {
 }
 $permissoes = [ordered]@{
   disableClaudeAiConnectors = $true
+  # O servidor dg-brasil do .mcp.json desta pasta já vem aprovado: sem isso, a vigia
+  # (aberta minimizada) fica parada no "aprovar servidor MCP?" e nunca conecta.
+  enabledMcpjsonServers = @('dg-brasil')
   permissions = [ordered]@{ allow = $allow; deny = @($deny) }
 } | ConvertTo-Json -Depth 6
 Gravar $Settings $permissoes

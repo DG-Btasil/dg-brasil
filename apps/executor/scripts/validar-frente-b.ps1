@@ -29,6 +29,8 @@ param(
   [switch]$Simular,
   # Sem pasta do Drive ligada no site: usa o nome do cliente durante a validação e volta ao normal no fim.
   [switch]$PastaPeloNome,
+  # Abre a vigia em janela normal (não minimizada), para quem está no computador ver o que ela pede.
+  [switch]$Visivel,
   [switch]$SemPush
 )
 
@@ -173,8 +175,17 @@ $Trabalhos = if ($cfgE -and $cfgE.pasta_trabalhos) { $cfgE.pasta_trabalhos } els
 function Vigias { @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -match 'strict-mcp-config' -and $_.CommandLine -match 'roteiro_vigia' }) }
 function TrabalhosAtivos { @(Get-ChildItem -LiteralPath $Trabalhos -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^[0-9a-f-]{36}$' }) }
 $abertos = @()
+if (-not $Simular -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+  # Sem abrir conversa: o servidor dg-brasil está conectado, esperando aprovação ou falhando?
+  $job = Start-Job -ScriptBlock { param($d) Set-Location $d; & claude mcp list 2>&1 | Out-String } -ArgumentList $Sessao
+  if (Wait-Job $job -Timeout 90) { $mcpList = Receive-Job $job } else { $mcpList = '(claude mcp list nao respondeu em 90 s)'; Stop-Job $job }
+  Remove-Job $job -Force -ErrorAction SilentlyContinue
+  Gravar 'claude-mcp-list.txt' (SemSegredo $mcpList)
+  Check 'PB-MCP' ($mcpList -match 'dg-brasil' -and $mcpList -match 'Connected|Conectado|✔|✓') "claude mcp list: $((($mcpList -split "`n") | Where-Object { $_ -match 'dg-brasil' }) -join ' ')"
+  Log "claude mcp list: $((($mcpList -split "`n") | Where-Object { $_ -match 'dg-brasil' }) -join ' ')"
+}
 if (-not $Simular) {
-  $antigas = Vigias
+  $antigas = @(Vigias)
   if ($antigas.Count) {
     $espera = 0
     while ((TrabalhosAtivos).Count -and $espera -lt 20) { Log 'Vigia antiga com trabalho em andamento: esperando 1 min...'; Start-Sleep 60; $espera++ }
@@ -187,11 +198,20 @@ if (-not $Simular) {
   }
   $atalho = Join-Path ([Environment]::GetFolderPath('Desktop')) 'DG Brasil - Vigia.lnk'
   if (Test-Path -LiteralPath $atalho) {
-    Start-Process -FilePath $atalho -WindowStyle Minimized
+    Start-Process -FilePath $atalho -WindowStyle $(if ($Visivel) { 'Normal' } else { 'Minimized' })
     Start-Sleep 20
-    $abertos = Vigias
+    $abertos = @(Vigias)
     Check 'PB-VIGIA' ($abertos.Count -ge 1) "vigia aberta pelo atalho: $($abertos.Count) processo(s)"
-    Log "Vigia aberta (minimizada). Processos: $(@($abertos | ForEach-Object { $_.ProcessId }) -join ', ')"
+    Log "Vigia aberta ($(if ($Visivel) { 'visivel' } else { 'minimizada' })). Processos: $(@($abertos | ForEach-Object { $_.ProcessId }) -join ', ')"
+    # O conector do DG Brasil sobe DENTRO da vigia (node dg-executor.mjs mcp). Se não
+    # subir em 3 minutos, a janela está parada numa tela esperando resposta.
+    $mcp = @()
+    for ($i = 0; $i -lt 9 -and -not $mcp.Count; $i++) {
+      Start-Sleep 20
+      $mcp = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -match 'dg-executor\.mjs' -and $_.CommandLine -match 'mcp' })
+    }
+    Check 'PB-CONECTOR' ($mcp.Count -ge 1) $(if ($mcp.Count) { "conector do DG Brasil rodando dentro da vigia (processo $($mcp[0].ProcessId))" } else { 'o conector do DG Brasil NAO subiu em 3 min: a janela da vigia deve estar parada numa tela pedindo resposta' })
+    Log $(if ($mcp.Count) { 'Conector do DG Brasil subiu dentro da vigia.' } else { 'ATENCAO: o conector do DG Brasil nao subiu em 3 min. Olhe a janela da vigia: ela deve estar pedindo uma resposta.' })
   } else {
     Check 'PB-VIGIA' $false "atalho nao encontrado: $atalho"
     Log "FALHA: atalho da vigia nao encontrado em $atalho"
@@ -243,7 +263,7 @@ while ((Get-Date) -lt $limite) {
       if ($pastaEstado[$chave] -ne $sig) { Log "Pasta de teste: $chave ($($f.Length) bytes, $($f.LastWriteTime.ToString('HH:mm:ss')))"; $pastaEstado[$chave] = $sig; $ultimoMovimento = Get-Date }
     }
   }
-  if (-not $Simular -and $abertos.Count -and -not (Vigias).Count) { Log 'ATENCAO: a janela da vigia foi fechada antes do fim.'; break }
+  if (-not $Simular -and @($abertos).Count -and -not @(Vigias).Count) { Log 'ATENCAO: a janela da vigia foi fechada antes do fim.'; break }
   if ($Simular -and $rodadas -ge 4) { break }
   $ocioso = ((Get-Date) - $ultimoMovimento).TotalMinutes
   if ($vistos.Count -gt 0 -and (TrabalhosAtivos).Count -eq 0 -and $ocioso -ge $OciosoMinutos) { Log "Nenhum movimento ha $OciosoMinutos min depois dos trabalhos: encerrando a observacao."; break }
@@ -255,7 +275,7 @@ foreach ($v in (Vigias)) {
   # Só os processos da vigia (nunca o processo pai).
   Stop-Process -Id $v.ProcessId -Force -ErrorAction SilentlyContinue
 }
-if ($abertos.Count) { Log 'Vigia aberta por este script foi fechada.' }
+if (@($abertos).Count) { Log 'Vigia aberta por este script foi fechada.' }
 if ($PastaPeloNome -and $pelonomeAntes -ne $null) {
   $pj = Get-Content -Raw -Encoding UTF8 $CfgPonte | ConvertFrom-Json
   $pj | Add-Member -NotePropertyName pasta_pelo_nome -NotePropertyValue $pelonomeAntes -Force
