@@ -39,6 +39,86 @@ outras máquinas.
 
 ---
 
+## Passo a passo da Barbara
+
+O Claude Code do repositório faz o resto e avisa quando chegar cada passo
+abaixo. Quando terminar um passo, diga a ele: "feito".
+
+**Começo (5 min)**
+1. No PowerShell da máquina do escritório, abra a pasta do `dg-brasil` e rode
+   `git pull`. Se o repositório ainda não estiver nesta máquina, clone num
+   caminho sem acento, por exemplo `C:\DGBrasil\dg-brasil`.
+2. Abra o Claude Code nessa pasta e cole o pedido para ele seguir este guia.
+3. Em claude.ai → Configurações → Privacidade, confira que o uso das conversas
+   para treinamento está **desligado**.
+4. Quando o navegador do Playwright abrir, entre no DG Brasil com a sua conta
+   ADMIN e o MFA. Depois disso, é ele que navega.
+
+**Conectar o computador (15 min)**
+5. **Gere o token.** No navegador: DG Brasil → Computador do escritório →
+   **Autorizar computador** → nome "Computador principal" → **Gerar token**.
+   Copie o token. **Não cole no chat.**
+6. **Rode o instalador.** Abra um **PowerShell novo** e cole:
+   `irm https://app.dgbrasil.adv.br/executor/instalar.ps1 | iex`. Quando pedir,
+   cole o token.
+7. **Abra a sessão do DG Brasil**, em mais um PowerShell, e deixe esta janela
+   aberta até o fim:
+
+   ```powershell
+   cd C:\DGBrasil\sessao
+   claude
+   ```
+
+   Aprove o servidor `dg-brasil`. Depois, digite `/mcp` e passe ao Claude do
+   repositório a lista de conectores que aparece (pode ser um print).
+
+**Processar os trabalhos (cada vez que o Claude pedir, umas 6 vezes)**
+8. **O básico.** Na janela da sessão, digite `/mcp__dg-brasil__trabalhos`.
+   Aprove a reserva quando ele perguntar e deixe terminar. Na mesma sessão,
+   peça também: "entregue `C:\Windows\win.ini` como minuta". Tem que ser recusado.
+9. **Testes especiais, quando o Claude pedir:**
+   - **Computador desligado:** feche a sessão antes de ele criar a primeira
+     análise, para o teste do "nenhum computador conectado".
+   - **Interromper:** reserve o trabalho e espere sem concluir. Ele clica em
+     Interromper no site.
+   - **Queda:** reserve o trabalho e **feche a janela do terminal**. Espere 6
+     minutos e abra a sessão de novo.
+   - **Revogação:** depois de ele revogar o computador, gere outro token (passo 5)
+     e rode o instalador de novo (passo 6).
+   - **Permissões:** na sessão, peça "leia o arquivo
+     `%APPDATA%\DGBrasil\executor.json`" e depois "procure um e-mail no Gmail".
+     Os dois têm que ser recusados. Passe as mensagens ao Claude.
+
+**Google Drive (1h, só você tem acesso às contas)**
+10. **Identifique a conta e a pasta.** Abra o Drive do escritório. Veja se o
+    endereço é `@gmail.com` ou do domínio do escritório. Copie o identificador
+    da pasta dos clientes: o trecho depois de `/folders/` no endereço.
+11. **Crie a credencial.** No Google Cloud, siga
+    [google-drive.md](google-drive.md), seção 3A (Gmail) ou 3B (Workspace). O
+    Claude pode te guiar tela por tela.
+12. **Ponha na Vercel.** Em Settings → Environment Variables → Production,
+    cole as variáveis `GOOGLE_DRIVE_*`. Depois, em Deployments → último →
+    **Redeploy**.
+13. **Crie a pasta de teste.** Dentro da pasta dos clientes, no Drive, crie
+    `DG TESTE - JOSE DA SILVA FICTICIO` e ponha dentro o
+    `identidade-ficticia.pdf`.
+14. **Rode a rotina do Drive.** Quando o Claude pedir, rode no PowerShell, com o
+    `CRON_SECRET` copiado da Vercel:
+
+    ```powershell
+    curl.exe -H "Authorization: Bearer <CRON_SECRET>" https://app.dgbrasil.adv.br/api/cron/drive-sync
+    ```
+
+    Repita quando ele pedir.
+15. **Teste da pasta pública.** Quando ele pedir, compartilhe a pasta de teste com
+    "qualquer pessoa com o link". Depois desfaça o compartilhamento.
+16. **Limpe.** No fim, apague a pasta de teste no Drive.
+
+**Final**
+17. Leia o relatório em `docs/qa/maquina-principal/` e autorize o commit e o push.
+
+---
+
 ## Parte 0: Preparar (10 min)
 
 No PowerShell da conta do Windows que vai usar o Claude Code:
