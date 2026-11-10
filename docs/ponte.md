@@ -3,6 +3,11 @@
 **Ideia de Barbara, 10/11/2026.** Este documento é a instrução para implementar a
 ponte. Pode ser seguido por uma pessoa ou pelo Claude Code em outra máquina.
 
+> **Situação (10/11/2026): IMPLEMENTADA, falta o piloto na máquina principal.**
+> O que ficou diferente do plano abaixo, depois do levantamento dos agentes
+> reais, está na [seção 8](#8-como-ficou-implementação-de-10112026). O roteiro do
+> piloto para o validador está em [mcp/ponte-validacao.md](mcp/ponte-validacao.md).
+
 ---
 
 ## 1. A ideia
@@ -169,9 +174,9 @@ Quais agentes entram na ponte:
 
   | Agente | O que trazer |
   |---|---|
-  | Clara | `ROTEIRO_CONSIGNADO_*.html`, `TETO_NORMATIVO_*.html` |
-  | Lucas | `PROCURAÇÃO*.pdf`, `DECLARAÇÃO*.pdf`, `CONTRATO*.pdf` |
-  | Redatores | `MINUTA_*.docx` e o `.xlsx` do cálculo, quando houver |
+  | Clara | `ROTEIRO_CONSIGNADO_*.pdf` e `.html`, `TETO_NORMATIVO_*.pdf` e `.html` |
+  | Lucas | `Procuracao_*.pdf`, `Declaracao_Hipossuficiencia_*.pdf`, `Contrato_Honorarios_*.pdf`, `Declaracao_Residencia_*.pdf` |
+  | Redatores | `MINUTA_*.docx` (e `.pdf`, da Teresa), `Memoria_Calculo_*.xlsx`, `MEMORIA_CALCULO_*.xlsx`, `FICHA_*.md`, na subpasta do banco ou da tese |
 
 - **HTML vira PDF** antes de entregar, porque o DG Brasil não aceita HTML. Um
   HTML aberto no navegador poderia rodar script. A ferramenta converte com o
@@ -227,8 +232,8 @@ Os caminhos do `G:\` são da máquina, não do site. Ficam num arquivo novo,
 {
   "raiz_permitida": "G:\\Meu Drive\\000. PASTA CLIENTES NOVOS",
   "agentes": {
-    "clara-hiscon":     { "pasta": "3. PROCURAÇÃO ASSINADA", "trazer": ["ROTEIRO_CONSIGNADO_*.html", "TETO_NORMATIVO_*.html"] },
-    "lucas-procuracao": { "pasta": "7. KIT DO CLIENTE",      "trazer": ["PROCURAÇÃO*.pdf", "DECLARAÇÃO*.pdf", "CONTRATO*.pdf"] }
+    "clara-hiscon":     { "pasta": ["7. KIT DO CLIENTE", "3. PROCURAÇÃO ASSINADA"], "trazer": ["ROTEIRO_CONSIGNADO_*.pdf", "ROTEIRO_CONSIGNADO_*.html", "TETO_NORMATIVO_*.pdf", "TETO_NORMATIVO_*.html"] },
+    "lucas-procuracao": { "pasta": ["7. KIT DO CLIENTE"], "trazer": ["Procuracao_*.pdf", "Declaracao_Hipossuficiencia_*.pdf", "Contrato_Honorarios_*.pdf", "Declaracao_Residencia_*.pdf"] }
   }
 }
 ```
@@ -388,3 +393,114 @@ Em **DG Brasil → Agentes → Cadastrar agente**, como ADMIN:
   [deploy/producao.md](deploy/producao.md)).
 - **Uma vigia por vez** no computador principal.
 - **Nada é protocolado, enviado ou aprovado sozinho:** tudo passa por Revisões.
+
+## 8. Como ficou (implementação de 10/11/2026)
+
+### 8.1 O que foi feito
+
+| Parte | Onde |
+|---|---|
+| Banco: dados da ponte (pasta do Drive e cadastro do cliente do trabalho), códigos `PORTEIRO_BLOQUEOU` e `SEM_PASTA_NO_DRIVE`, Drive sem duplicata | `supabase/migrations/20261110000051_ponte_agentes.sql`, testes em `supabase/tests/verificar.mjs` [051] |
+| API: `GET /api/executor/v1/jobs/<id>/bridge` | `apps/frontend/src/server/executor/handler.ts` |
+| Sincronização do Drive: arquivo com o mesmo SHA-256 de um documento do cliente fica "conhecido"; `DADOS DO CADASTRO.txt` não é importado | `apps/frontend/src/server/integrations/google-drive/sync.ts` |
+| Conector 1.1.0: `ver_ponte`, `verificar_arquivos`, `copiar_para_pasta_do_cliente`, `trazer_da_pasta_do_cliente`; roteiro da sessão com a ordem fixa; `doctor` mostra a ponte | `apps/executor/src/ponte.ts`, `ferramentas-ponte.ts`, `prompt.ts`, `doctor.ts` |
+| Agentes da ponte | `docs/mcp/pilotos/agentes/porteiro-dg.md`, `arquivista-dg.md`, `mensageiro-dg.md` (publicados em `/executor/agentes/` pelo `npm run bundle`) |
+| Instalador: `ponte.json` padrão, permissões, os três agentes | `apps/frontend/public/executor/instalar.ps1` |
+| Orquestrador com os nomes reais | `docs/mcp/pilotos/agentes/orquestrador.md` |
+
+### 8.2 O que mudou em relação ao plano
+
+1. **A Clara trabalha em `7. KIT DO CLIENTE`** (o plano dizia `3. PROCURAÇÃO
+   ASSINADA`). O `ponte.json` aceita várias etapas por agente: a pasta do cliente
+   é procurada em `7. KIT DO CLIENTE` e depois em `3. PROCURAÇÃO ASSINADA`; se não
+   existir em nenhuma, é criada na primeira. Se ela estiver em OUTRA etapa
+   (ex.: `1. SEM CONTRATO ASSINADO`), a ponte para: não move pasta.
+2. **Nomes reais do Lucas:** `Procuracao_<SOBRENOME>.pdf`,
+   `Declaracao_Hipossuficiencia_...`, `Contrato_Honorarios_...`,
+   `Declaracao_Residencia_...`. O plano tinha `PROCURAÇÃO*.pdf`, que não bateria.
+3. **A Clara grava PDF e HTML.** O Mensageiro traz os dois; o HTML (as fichas por
+   ação) vira `<nome> (versão HTML).pdf`. Markdown (`FICHA_PMP_*.md`) também vira PDF.
+4. **Clientes com processo:** segunda raiz `G:\Meu Drive\01. ADVOCACIA — CLIENTES`,
+   etapa `CLIENTE - ESCRITÓRIO`. O Mensageiro procura até 3 níveis de subpasta
+   (a do banco ou da tese, `PEÇAS GERADAS <data>`). O Arquivista grava os autos
+   como `AUTOS_<título>.pdf` na subpasta do banco que ele escolher; para os
+   redatores a ponte **não** cria a pasta do cliente nem grava o
+   `DADOS DO CADASTRO.txt`.
+5. **Os dados do cliente vêm por uma rota própria** (`/bridge`), não no contexto
+   do trabalho: assim o acesso fica registrado como acesso a dado pessoal, uma
+   vez por trabalho.
+6. **`DADOS DO CADASTRO.txt`** sai no formato da Luísa, com `conversa_id` vazio
+   (a Clara então grava o roteiro e pula a anotação, regra dela), `atendente: DG
+   Brasil` e duas linhas a mais: `origem` e `dg_cliente_id`. Se a pasta já tem um
+   cadastro de **outro** cliente (outro `dg_cliente_id` ou outro nome), nada é
+   copiado.
+7. **Porteiro, duas camadas que só podem endurecer:** a cópia exige o script
+   liberado **e** a leitura (`saida\porteiro.json`) liberada para todos os
+   arquivos, com o mesmo SHA-256 conferido. O script olha também dentro dos fluxos
+   comprimidos do PDF e decodifica nomes em hexadecimal (`/J#61vaScript`).
+   `/OpenAction` que só abre numa página (comum no HISCON) não é suspeito; em
+   dicionário, é. PDF criptografado sai suspeito. **Como liberar um arquivo
+   suspeito que a equipe conferiu:** abrir, "Imprimir → Salvar como PDF" e enviar
+   de novo no DG Brasil (sai sem script nem criptografia).
+8. **Bloqueio do Porteiro não vira "entrega parcial":** a pendência que ele
+   registra não troca o código `PORTEIRO_BLOQUEOU` por `PARTIAL_OUTPUT`, e nem
+   `PORTEIRO_BLOQUEOU` nem `SEM_PASTA_NO_DRIVE` voltam sozinhos para a fila.
+9. **Sem pasta ligada:** o padrão é parar (`SEM_PASTA_NO_DRIVE`). Enquanto a
+   credencial do Drive não existe, nenhum cliente consegue ter pasta ligada; para
+   usar a ponte antes disso, `"pasta_pelo_nome": true` no `ponte.json` (o nome
+   da pasta vira o nome do cliente em MAIÚSCULAS, sem acento nem cedilha).
+10. **Decisões do advogado no meio do trabalho** ("PODE GERAR" da segunda rodada
+    da Alice, renúncia ao excedente da RPV, termo dos juros, forma de pagamento
+    do Lucas): o roteiro manda o agente **não perguntar**. Vale o que estiver
+    escrito no pedido; o resto vira proposta para o advogado.
+
+### 8.3 Permissões da sessão (instalador)
+
+Além do que o plano listou, o levantamento mostrou que os agentes precisam:
+`~/agentes-juridicos/**` (pasta de trabalho, rascunhos e `registro_pecas.csv`),
+`~/.claude/scripts`, `docs` e `skills` (leitura), as pastas de modelos no `G:`
+(leitura), `JURISPRUDENCIAS_VERIFICADAS_*.md` (edição), `python` e
+`powershell -File` (inclusive o Word por COM, que sai desses scripts).
+
+> **Atenção, segurança (decisão de Barbara):** liberar `python` e `powershell`
+> de forma genérica quer dizer que um agente consegue rodar qualquer código. As
+> regras de bloqueio do Claude Code (ChatJurídico, internet...) valem para as
+> **ferramentas** do Claude, não para o que um script Python faz. Na prática, a
+> garantia "nada sai do computador" passa a depender do Porteiro e do agente não
+> ser enganado. Caminhos possíveis:
+>
+> | Caminho | Como fica |
+> |---|---|
+> | A (o que está no instalador) | `python *` e `powershell -File *` liberados. Os agentes funcionam como hoje; o Porteiro é a proteção contra documento malicioso. |
+> | B | Liberar só os scripts do escritório (`python *\.claude\scripts\*`, `contar_paginas.ps1`). Mais seguro, mas a Clara e a Alice escrevem e rodam scripts próprios: vão parar pedindo confirmação até ajustar os arquivos delas. |
+> | C | A + regra no Firewall do Windows bloqueando a saída do `python.exe`, com exceção só para o BACEN. Dá trabalho de manter e o cálculo do Atlas depende do BACEN. |
+
+### 8.4 Pendências
+
+- **Jurisprudência na internet** (decisão de Barbara, a mesma da seção 5.4, agora
+  com o levantamento): o Fernando, a Alice, o Atlas e o Vicente exigem
+  jurisprudência conferida no portal oficial no dia. Dentro da ponte, WebFetch e
+  WebSearch estão bloqueados. Está implementado o **caminho A**: o roteiro manda
+  usar só `JURISPRUDENCIAS_VERIFICADAS_<UF>.md` e marcar `[CONFERIR]`, e o
+  Mensageiro transforma isso em proposta para o advogado. O caminho B (domínios
+  oficiais) exige tirar `WebFetch` do `deny`, porque no Claude Code o bloqueio
+  vence a liberação.
+- **Atlas e cálculos (Vitória, Júlia):** o script busca a taxa no BACEN pela
+  internet. Python não é bloqueado pela sessão, então o cálculo funciona se o
+  computador tiver internet; o cache local vai só até 09/2026.
+- **Frente PMP e Fazenda Pública:** os nomes exatos dos agentes `pmp-*` e
+  `fazenda-outros-entes` e a pasta da tese não estão no `ponte.json` padrão.
+  Acrescentar depois de conferir os arquivos deles.
+- **Defeitos e faltas nos agentes do escritório (repositório Agents_for_DG_Brasil,
+  fora do DG Brasil):** `verificar_redacao.py` não aceita `--nemo` (a checagem da
+  Tese Nemo da Alice sempre dá erro, já hoje); faltam no disco
+  `PROMPT_1000_IDENTIFICADOR`, o modelo da Caixa e as duas listas de bancos em
+  `.xlsx` (as `.md` existem); o Tomás e o Henrique citam pastas que não existem
+  (`DOCUMENTOS PARA JUNTAR NOS PROCESSOS REAJUSTE`, que se chama `DOCUMENTOS PARA
+  REAJUSTE 6,2`, e `MODELO CONTRATO`).
+- **Lucas:** sem a forma de pagamento no pedido, saem só a procuração e a
+  declaração. Kit já completo na pasta: ele não gera de novo, e o Mensageiro
+  responde "nada a entregar".
+- **Não entram na ponte:** Luísa, Bruno, Carlos, Helena, Sofia e Otávio
+  (ChatJurídico, ADVBOX, e-mail). O Otávio serve de modelo de como passar o
+  trabalho a um redator.

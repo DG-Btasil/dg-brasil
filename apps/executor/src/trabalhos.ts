@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { DgApi, ErroApi, type Contexto } from './api.js'
 import { apagarPasta, criarPastas, type PastasTrabalho } from './arquivos.js'
 import type { Log } from './log.js'
+import type { ChecagemArquivo, DadosPonte, PastaDoCliente } from './ponte.js'
 
 /**
  * Os trabalhos que ESTA sessão do Claude Code reservou. O token de reserva
@@ -25,6 +26,20 @@ export interface Trabalho {
   baixados: number
   entregas: number
   timer: NodeJS.Timeout
+  /** Documentos baixados para entrada: nome do arquivo → categoria e título no DG Brasil. */
+  documentos: Map<string, { categoria: string; titulo: string; versao_id: string }>
+  /** Ponte (docs/ponte.md): definido por ver_ponte quando o agente passa pela ponte. */
+  ponte: EstadoPonte | null
+}
+
+export interface EstadoPonte {
+  agente: string
+  pasta: PastaDoCliente
+  dados: DadosPonte
+  /** Resultado das checagens por script (verificar_arquivos), por nome de arquivo em entrada. */
+  checagens: Map<string, ChecagemArquivo> | null
+  /** Instante em que o agente da máquina começou (depois da cópia): o Mensageiro só traz o que veio depois. */
+  inicioAgente: number | null
 }
 
 export class ErroTrabalho extends Error {}
@@ -67,7 +82,7 @@ export class Trabalhos {
     const pastas = await criarPastas(this.pastaTrabalhos, id)
     const t: Trabalho = {
       id, reserva: r.lease_token, contexto: r.context, pastas, inicio: Date.now(),
-      interrompido: false, perdido: false, baixados: 0, entregas: 0,
+      interrompido: false, perdido: false, baixados: 0, entregas: 0, documentos: new Map(), ponte: null,
       timer: setInterval(() => void this.renovar(id), this.intervaloMs),
     }
     t.timer.unref?.()

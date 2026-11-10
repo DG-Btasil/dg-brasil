@@ -13,7 +13,7 @@ export const EXECUTOR_FUNCTIONS = [
   "executor_get_case", "executor_get_process", "executor_list_documents", "executor_open_document",
   "executor_list_theses", "executor_list_references", "executor_submit_analysis", "executor_create_proposal",
   "executor_prepare_output", "executor_finalize_output", "executor_record_config", "executor_complete",
-  "executor_fail", "executor_release",
+  "executor_fail", "executor_release", "executor_bridge_data",
 ] as const;
 export type ExecutorFunction = (typeof EXECUTOR_FUNCTIONS)[number];
 

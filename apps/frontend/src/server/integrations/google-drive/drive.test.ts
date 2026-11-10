@@ -139,6 +139,30 @@ describe("sincronização (entrada)", () => {
     expect(err).not.toContain("HISCON");
   });
 
+  it("ponte: arquivo com o mesmo conteúdo de um documento do cliente fica conhecido, sem importar de novo", async () => {
+    const { d, calls, uploaded } = setupWith({ files: [file()], bytes: pdf });
+    const db = d.db;
+    d.db = async <T,>(fn: DriveDbFunction, args: unknown[]) => (fn === "drive_match_existing" ? (calls.push({ fn, args }), { matched: true }) as T : db<T>(fn, args));
+    const r = await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
+    expect(r).toEqual({ imported: 0, skipped: 1, failed: 0 });
+    expect(uploaded).toEqual([]);
+    const m = calls.find((c) => c.fn === "drive_match_existing")!;
+    expect(m.args[5]).toBe(createHash("sha256").update(pdf).digest("hex"));
+    expect(calls.some((c) => c.fn === "drive_prepare_import")).toBe(false);
+  });
+
+  it("arquivo de controle dos agentes (DADOS DO CADASTRO.txt) fica só no Drive", async () => {
+    const txt = new TextEncoder().encode("nome: X");
+    const { d, calls } = setupWith({
+      files: [file({ id: "cadastro_00001", name: "DADOS DO CADASTRO.txt", mimeType: "text/plain", md5Checksum: md5(txt), size: txt.length }),
+        file({ id: "cadastro_00002", name: "DADOS DO CADASTRO (2).txt", mimeType: "text/plain", md5Checksum: md5(txt), size: txt.length })],
+      bytes: txt,
+    });
+    const r = await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
+    expect(r).toEqual({ imported: 0, skipped: 2, failed: 0 });
+    expect(calls.some((c) => c.fn === "drive_prepare_import")).toBe(false);
+  });
+
   function setupWith(o: Parameters<typeof deps>[0]) {
     return deps(o);
   }

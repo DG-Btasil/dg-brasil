@@ -29,7 +29,7 @@ hora de contratar.
 | 11 | ~~Conferir as publicações com o APOGEU~~ | Removido em 2026-11-09: o APOGEU não será usado | — |
 | 12 | Consulta de CPF na Receita (Serpro) | Paga por consulta; contrato do escritório | Por consulta (Loja Serpro) |
 | 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) | Pedido para a atualização final | Sem custo |
-| 14 | Agentes reais pelo DG Brasil (variantes `-dg`) | Os agentes atuais gravam no `G:\Meu Drive`; os testes usam agentes fictícios | Sem custo |
+| 14 | Agentes reais pelo DG Brasil (ponte, [ponte.md](../ponte.md)) | Ponte implementada (migration 051, conector 1.1.0); falta o piloto na máquina principal | Sem custo |
 
 ---
 
@@ -312,24 +312,22 @@ acrescente:
   todos os campos — no formulário e no servidor.
 - **Como conferir:** tentar cadastrar documentos com dígito errado e ver a recusa.
 
-## 14. Agentes reais pelo DG Brasil (variantes `-dg`)
+## 14. Agentes reais pelo DG Brasil (ponte)
 
-- **Hoje:** o orquestrador e os trabalhos do DG Brasil foram testados só com os
-  agentes fictícios (`analista-teste`, `kit-cliente-teste`, `orquestrador-teste`;
-  guia em [docs/mcp/maquina-principal.md](../mcp/maquina-principal.md)). Os agentes
-  reais (`lucas`, `clara`, …) leem e gravam no `G:\Meu Drive` e usam o
-  ChatJurídico, por isso não podem ser chamados por um trabalho do DG Brasil.
-- **Por que não agora:** primeiro a ponta a ponta com os agentes de teste na
-  máquina principal.
-- **Na produção, para os agentes trabalharem pelo DG Brasil:**
-  1. Criar as variantes `lucas-dg`, `clara-dg` (e, se for o caso, `alice-dg`,
-     `murilo-dg`), com o mesmo método, entrada na pasta `entrada` e saída na
-     `saida` do trabalho, e ferramentas mínimas
-     ([docs/adicionar-agente.md](../adicionar-agente.md)). Pedir ao Claude.
-  2. Instalar em `%USERPROFILE%\.claude\agents\` da máquina principal, junto com
-     o [orquestrador.md](../mcp/pilotos/agentes/orquestrador.md) (a tabela dele já
-     aponta para as variantes `-dg`).
-  3. No DG Brasil de produção: cadastrar cada variante e o orquestrador
-     (identificador `orquestrador`, agente local `orquestrador`).
-- **Como conferir:** uma tarefa de processo "Redigir uma procuração" vai para o
-  `lucas-dg`, a minuta aparece em Revisões, e nada é gravado no `G:\Meu Drive`.
+- **Hoje:** a ponte está implementada ([docs/ponte.md](../ponte.md)): os agentes
+  reais (`clara-hiscon`, `lucas-procuracao`, redatores) trabalham pelo DG Brasil
+  na pasta do cliente no `G:\`, com o Porteiro, o Arquivista e o Mensageiro.
+  As variantes `-dg` **não** serão criadas.
+- **Por que não agora:** falta o piloto na máquina principal, com dados
+  fictícios ([docs/mcp/ponte-validacao.md](../mcp/ponte-validacao.md)).
+- **Na produção:**
+  1. aplicar a migration 051 no projeto de produção;
+  2. rodar o instalador de novo na máquina principal (grava o `ponte.json`, as
+     permissões e os três agentes da ponte);
+  3. cadastrar no DG Brasil cada agente da máquina pelo `name:` real e ligar a
+     Clara ao modelo "Análise Bancária";
+  4. ligar a pasta do Drive de cada cliente (Cliente → Documentos → Pasta no
+     Google Drive). Sem pasta ligada, a ponte para com `SEM_PASTA_NO_DRIVE`,
+     a menos que o `ponte.json` tenha `"pasta_pelo_nome": true`.
+- **Como conferir:** o piloto do guia passa inteiro, a vigia não para pedindo
+  confirmação e nada aparece no ChatJurídico.

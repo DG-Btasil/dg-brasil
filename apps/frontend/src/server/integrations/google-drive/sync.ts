@@ -10,7 +10,11 @@ import { DriveError, type DriveClient, type DriveFile } from "./client";
  *  - Entrada: arquivo novo na pasta ligada (e subpastas, até 2 níveis) vira
  *    documento INTERNO do cliente. Pula: o que já foi importado (ID + md5), o
  *    que o próprio DG Brasil exportou, arquivo nativo do Google (Docs/Sheets,
- *    sem md5), tipo que o Storage não aceita e arquivo grande demais.
+ *    sem md5), tipo que o Storage não aceita, arquivo grande demais e os
+ *    arquivos de controle dos agentes do escritório (DADOS DO CADASTRO.txt).
+ *  - Ponte (051): arquivo com o MESMO conteúdo (SHA-256) de uma versão que o
+ *    cliente já tem (o HISCON que a ponte copiou, o roteiro que já foi
+ *    entregue em Revisões) fica registrado como conhecido, sem importar de novo.
  *  - Saída: versões aprovadas na fila vão para a pasta do cliente como
  *    arquivo NOVO. Pasta compartilhada com "qualquer pessoa com o link": não
  *    envia (o arquivo ficaria público).
@@ -27,11 +31,14 @@ export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export type DriveDbFunction =
   | "drive_links_to_sync" | "drive_known_files" | "drive_prepare_import" | "drive_register_import"
-  | "drive_mark_synced" | "drive_claim_exports" | "drive_mark_export";
+  | "drive_mark_synced" | "drive_claim_exports" | "drive_mark_export" | "drive_match_existing";
 export const DRIVE_DB_FUNCTIONS: readonly DriveDbFunction[] = [
   "drive_links_to_sync", "drive_known_files", "drive_prepare_import", "drive_register_import",
-  "drive_mark_synced", "drive_claim_exports", "drive_mark_export",
+  "drive_mark_synced", "drive_claim_exports", "drive_mark_export", "drive_match_existing",
 ];
+
+/** Arquivos de controle dos agentes do escritório: ficam só no Drive. */
+const AGENT_CONTROL_FILE = /^DADOS DO CADASTRO( \(\d+\))?\.txt$/i;
 
 export interface SyncDeps {
   drive: DriveClient;
@@ -51,6 +58,8 @@ export interface LinkSyncResult {
   skipped: number;
   failed: number;
 }
+
+type ImportOutcome = "imported" | "known";
 
 interface Link {
   id: string;
@@ -76,8 +85,8 @@ export async function syncLink(link: Link, d: SyncDeps, maxImports = 30): Promis
       }
       if (result.imported >= maxImports || outOfTime(d)) break;
       try {
-        await importFile(link, f, d);
-        result.imported++;
+        if ((await importFile(link, f, d)) === "imported") result.imported++;
+        else result.skipped++;
       } catch (e) {
         result.failed++;
         d.log.warn("drive.import_failed", { folderLinkId: link.id, status: e instanceof DriveError ? e.status : 0 });
@@ -93,21 +102,25 @@ export async function syncLink(link: Link, d: SyncDeps, maxImports = 30): Promis
 }
 
 function importable(f: DriveFile): boolean {
-  return !!f.md5Checksum && /^[0-9a-f]{32}$/.test(f.md5Checksum) && IMPORT_MIME.has(f.mimeType) && (f.size ?? 0) > 0 && (f.size ?? 0) <= MAX_FILE_BYTES;
+  return !!f.md5Checksum && /^[0-9a-f]{32}$/.test(f.md5Checksum) && IMPORT_MIME.has(f.mimeType) && (f.size ?? 0) > 0 && (f.size ?? 0) <= MAX_FILE_BYTES
+    && !AGENT_CONTROL_FILE.test(f.name);
 }
 
-async function importFile(link: Link, f: DriveFile, d: SyncDeps) {
+async function importFile(link: Link, f: DriveFile, d: SyncDeps): Promise<ImportOutcome> {
   const bytes = await d.drive.download(f.id, MAX_FILE_BYTES);
   const md5 = createHash("md5").update(bytes).digest("hex");
   if (md5 !== f.md5Checksum) throw new DriveError(409, "md5 diferente do informado pelo Drive");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const name = f.name.slice(0, 200);
+  const match = await d.db<{ matched: boolean } | null>("drive_match_existing", [link.id, f.id, f.md5Checksum, name, f.modifiedTime ?? null, sha256]);
+  if (match?.matched) return "known";
   const prep = await d.db<{ document_id: string; document_version_id: string; storage_object_name: string }>("drive_prepare_import", [link.id, name]);
   await d.storage.uploadObject(prep.storage_object_name, bytes, f.mimeType);
   await d.db("drive_register_import", [
     link.id, f.id, f.md5Checksum, name, f.modifiedTime ?? null, prep.document_id, prep.document_version_id,
     prep.storage_object_name, f.mimeType, bytes.byteLength, sha256,
   ]);
+  return "imported";
 }
 
 export interface ExportResult {

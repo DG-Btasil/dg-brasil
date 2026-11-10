@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -36,6 +36,9 @@ class FakeDg {
   proposals: unknown[] = []
   corruptDownload = false
   enabled = true
+  docBody: Buffer = HISCON
+  docTitle = 'HISCON'
+  bridge: unknown = { cliente: { id: 'cli-1', nome: 'José da Silva Fictício', profissao: 'aposentado', estado_civil: 'casado(a)', email: null }, pasta_drive: { id: 'pastaFicticia_0001', nome: 'JOSE DA SILVA FICTICIO' } }
 
   add(kind: Job['kind'] = 'EXECUTE'): Job {
     const j: Job = { id: randomUUID(), status: 'QUEUED', cancel: false, kind, calls: [] }
@@ -48,7 +51,7 @@ class FakeDg {
       const send = (status: number, body: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)) }
       const raw = await read(req)
       const u = new URL(req.url!, this.url)
-      if (u.pathname.startsWith('/files/')) { res.writeHead(200); res.end(this.corruptDownload ? Buffer.from('trocado') : HISCON); return }
+      if (u.pathname.startsWith('/files/')) { res.writeHead(200); res.end(this.corruptDownload ? Buffer.from('trocado') : this.docBody); return }
       if (u.pathname.startsWith('/upload/') && req.method === 'PUT') { this.uploads.set(u.pathname.slice(8), raw); res.writeHead(200); res.end('{}'); return }
       if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { error: { code: 'UNAUTHENTICATED', message: 'token' } })
       const p = u.pathname.replace('/api/executor/v1/', '').split('/')
@@ -80,8 +83,9 @@ class FakeDg {
         case 'heartbeat': return send(200, { ok: true, status: 'RUNNING', cancel_requested: job.cancel })
         case 'config': return send(200, { recorded: true })
         case 'case': return send(200, { id: 'c1', cliente: 'José Fictício' })
-        case 'documents': return send(200, { documents: [{ document_id: 'd1', title: 'HISCON', category: 'BENEFIT_STATEMENT', version_id: v1, version_number: 1, filename: 'hiscon.pdf', mime_type: 'application/pdf', size: HISCON.length, checksum_sha256: sha(HISCON) }] })
-        case `documents/${v1}/download`: return send(200, { url: `${this.url}/files/${v1}`, filename: '..\\..\\hiscon.pdf', size: HISCON.length, checksum_sha256: sha(HISCON), title: 'HISCON', category: 'BENEFIT_STATEMENT', version_number: 1 })
+        case 'documents': return send(200, { documents: [{ document_id: 'd1', title: this.docTitle, category: 'BENEFIT_STATEMENT', version_id: v1, version_number: 1, filename: 'hiscon.pdf', mime_type: 'application/pdf', size: this.docBody.length, checksum_sha256: sha(this.docBody) }] })
+        case `documents/${v1}/download`: return send(200, { url: `${this.url}/files/${v1}`, filename: '..\\..\\hiscon.pdf', size: this.docBody.length, checksum_sha256: sha(this.docBody), title: this.docTitle, category: 'BENEFIT_STATEMENT', version_number: 1 })
+        case 'bridge': return send(200, this.bridge)
         case 'analysis': this.analyses.push(body.result); return send(200, { result_id: 'r1', review_id: 'rv1', created: this.analyses.length === 1 })
         case 'proposals': this.proposals.push(body); return send(200, { proposal_id: 'p1', created: true })
         case 'outputs': { const vid = randomUUID(); return send(200, { document_id: randomUUID(), document_version_id: vid, storage_object_name: `clients/x/${vid}`, upload_url: `${this.url}/upload/${vid}` }) }
@@ -103,6 +107,7 @@ const dg = new FakeDg()
 let pasta: string
 let trabalhos: Trabalhos
 let client: Client
+let antivirus: 'limpo' | 'ameaca' | 'indisponivel' = 'limpo'
 
 beforeAll(() => dg.start())
 afterAll(() => new Promise<void>((r) => dg.server.close(() => r())))
@@ -110,8 +115,15 @@ afterAll(() => new Promise<void>((r) => dg.server.close(() => r())))
 beforeEach(async () => {
   pasta = await mkdtemp(join(tmpdir(), 'dg-executor-'))
   dg.enabled = true; dg.corruptDownload = false; dg.analyses = []; dg.proposals = []; dg.finalized = []
+  dg.docBody = HISCON; dg.docTitle = 'HISCON'
+  dg.bridge = { cliente: { id: 'cli-1', nome: 'José da Silva Fictício', profissao: 'aposentado', estado_civil: 'casado(a)', email: null }, pasta_drive: { id: 'pastaFicticia_0001', nome: 'JOSE DA SILVA FICTICIO' } }
+  antivirus = 'limpo'
   trabalhos = new Trabalhos(new DgApi(dg.url, TOKEN, 'dg-executor/test'), pasta, logMudo, 40)
-  const servidor = criarServidor(trabalhos, 'dg-executor/test', logMudo)
+  const servidor = criarServidor(trabalhos, 'dg-executor/test', logMudo, undefined, {
+    arquivo: join(pasta, 'ponte.json'),
+    antivirus: async () => antivirus,
+    htmlParaPdf: async (_html, pdf) => { await writeFile(pdf, '%PDF-1.4 convertido do HTML') },
+  })
   const [ct, st] = InMemoryTransport.createLinkedPair()
   await servidor.connect(st)
   client = new Client({ name: 'teste', version: '1' })
@@ -134,7 +146,8 @@ describe('servidor MCP do DG Brasil', () => {
     const nomes = tools.map((t) => t.name).sort()
     expect(nomes).toEqual(['abrir_referencia', 'baixar_documentos', 'concluir_trabalho', 'consultar_teses', 'devolver_trabalho',
       'entregar_analise', 'entregar_minuta', 'informar_falha', 'informar_progresso', 'listar_documentos', 'listar_referencias',
-      'listar_trabalhos', 'propor', 'reservar_trabalho', 'roteiro_vigia', 'ver_caso', 'ver_processo', 'ver_trabalho'])
+      'listar_trabalhos', 'propor', 'reservar_trabalho', 'roteiro_vigia', 'trazer_da_pasta_do_cliente', 'ver_caso', 'ver_ponte', 'ver_processo',
+      'ver_trabalho', 'verificar_arquivos', 'copiar_para_pasta_do_cliente'].sort())
     const { prompts } = await client.listPrompts()
     expect(prompts.map((p) => p.name)).toEqual(['trabalhos', 'vigiar'])
   })
@@ -282,6 +295,205 @@ describe('servidor MCP do DG Brasil', () => {
     expect(await readdir(pasta)).toEqual([])
   })
 })
+
+describe('ponte com os agentes da máquina', () => {
+  let drive: string
+  let kit: string
+  const ponte = (over: Record<string, unknown> = {}) => writeFile(join(pasta, 'ponte.json'), JSON.stringify({
+    raiz_permitida: drive,
+    agentes: { 'kit-cliente-teste': { pasta: ['7. KIT DO CLIENTE', '3. PROCURAÇÃO ASSINADA'], trazer: ['ROTEIRO_CONSIGNADO_*.html', 'ROTEIRO_CONSIGNADO_*.pdf', 'Procuracao_*.pdf'] } },
+    ...over,
+  }))
+  const liberarTudo = (j: { id: string }, resultado = 'liberado') =>
+    writeFile(join(pasta, j.id, 'saida', 'porteiro.json'), JSON.stringify({ arquivos: [{ arquivo: 'hiscon.pdf', resultado, motivo: 'lido' }] }))
+  const ate = async (etapa: string) => {
+    const j = dg.add()
+    await chamar('reservar_trabalho', { trabalho_id: j.id })
+    await chamar('baixar_documentos', { trabalho_id: j.id })
+    const etapas: Record<string, () => Promise<unknown>> = {
+      ver: () => chamar('ver_ponte', { trabalho_id: j.id }),
+      verificar: () => chamar('verificar_arquivos', { trabalho_id: j.id }),
+      ler: () => liberarTudo(j),
+      copiar: () => chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id }),
+    }
+    for (const [nome, fn] of Object.entries(etapas)) {
+      const r = await fn() as { erro?: boolean; texto?: string } | undefined
+      if (r?.erro) throw new Error(`${nome}: ${r.texto}`)
+      if (nome === etapa) break
+    }
+    return j
+  }
+
+  beforeEach(async () => {
+    drive = join(pasta, 'G', '000. PASTA CLIENTES NOVOS')
+    kit = join(drive, '7. KIT DO CLIENTE')
+    await mkdir(kit, { recursive: true })
+    await mkdir(join(drive, '3. PROCURAÇÃO ASSINADA'), { recursive: true })
+    await ponte()
+  })
+
+  it('sem ponte.json, ou agente fora dele: o trabalho segue o fluxo de sempre', async () => {
+    await rm(join(pasta, 'ponte.json'))
+    const j = dg.add()
+    await chamar('reservar_trabalho', { trabalho_id: j.id })
+    expect((await chamar('ver_ponte', { trabalho_id: j.id })).texto).toContain('NÃO passa pela ponte')
+    await writeFile(join(pasta, 'ponte.json'), JSON.stringify({ raiz_permitida: drive, agentes: { 'clara-hiscon': { pasta: '7. KIT DO CLIENTE', trazer: ['x*'] } } }))
+    expect((await chamar('ver_ponte', { trabalho_id: j.id })).texto).toContain('NÃO passa pela ponte')
+    expect((await chamar('verificar_arquivos', { trabalho_id: j.id })).texto).toContain('ver_ponte')
+  })
+
+  it('ponta a ponta: Porteiro, Arquivista (nomes da Luísa + DADOS DO CADASTRO), agente, Mensageiro (só o novo; HTML vira PDF)', async () => {
+    const j = await ate('ver')
+    const v = await chamar('verificar_arquivos', { trabalho_id: j.id })
+    expect(v.texto).toContain('hiscon.pdf (PDF): LIBERADO')
+    // Sem a leitura do Porteiro, nada é copiado.
+    const sem = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    expect(sem.erro).toBe(true)
+    expect(sem.texto).toContain('porteiro.json')
+    await liberarTudo(j)
+    const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    expect(c.erro, c.texto).toBe(false)
+    const cliente = join(kit, 'JOSE DA SILVA FICTICIO')
+    expect((await readdir(cliente)).sort()).toEqual(['DADOS DO CADASTRO.txt', 'HISCON.pdf'])
+    expect(await readFile(join(cliente, 'HISCON.pdf'))).toEqual(HISCON)
+    const cadastro = await readFile(join(cliente, 'DADOS DO CADASTRO.txt'), 'utf8')
+    expect(cadastro).toMatch(/^nome: José da Silva Fictício\r\nconversa_id: \r\n/)
+    expect(cadastro).toContain('dg_cliente_id: cli-1')
+
+    // O agente da máquina trabalha na pasta; um roteiro antigo já estava lá.
+    const antigo = join(cliente, 'ROTEIRO_CONSIGNADO_ANTIGO.pdf')
+    await writeFile(antigo, '%PDF-1.4 antigo')
+    await utimes(antigo, new Date(Date.now() - 3_600_000), new Date(Date.now() - 3_600_000))
+    await writeFile(join(cliente, 'ROTEIRO_CONSIGNADO_JOSE_2026-11-10.pdf'), '%PDF-1.4 roteiro')
+    await writeFile(join(cliente, 'ROTEIRO_CONSIGNADO_JOSE_2026-11-10.html'), '<html>fichas</html>')
+    await writeFile(join(cliente, 'rascunho.txt'), 'não trazer')
+    const t = await chamar('trazer_da_pasta_do_cliente', { trabalho_id: j.id })
+    expect(t.erro, t.texto).toBe(false)
+    const saida = (await readdir(join(pasta, j.id, 'saida'))).sort()
+    expect(saida).toEqual(['ROTEIRO_CONSIGNADO_JOSE_2026-11-10 (versão HTML).pdf', 'ROTEIRO_CONSIGNADO_JOSE_2026-11-10.pdf', 'porteiro-script.json', 'porteiro.json'])
+    expect(t.texto).toContain('ROTEIRO_CONSIGNADO_ANTIGO.pdf (já existia antes deste trabalho)')
+    const m = await chamar('entregar_minuta', { trabalho_id: j.id, arquivo: 'ROTEIRO_CONSIGNADO_JOSE_2026-11-10.pdf', titulo: 'Roteiro de ações (Clara)', categoria: 'OTHER' })
+    expect(m.erro, m.texto).toBe(false)
+  })
+
+  it('Porteiro por script: PDF com JavaScript (mesmo disfarçado em hexadecimal) para tudo; nada vai para o Drive', async () => {
+    dg.docBody = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Action /S /J#61vaScript /J#53 (app.alert(1)) >> endobj')
+    const j = await ate('ver')
+    const v = await chamar('verificar_arquivos', { trabalho_id: j.id })
+    expect(v.texto).toContain('SUSPEITO')
+    expect(v.texto).toContain('PORTEIRO_BLOQUEOU')
+    await liberarTudo(j) // nem a leitura "liberando" passa por cima do script
+    const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    expect(c.erro).toBe(true)
+    expect(c.texto).toContain('PORTEIRO_BLOQUEOU')
+    expect(existsSync(join(kit, 'JOSE DA SILVA FICTICIO'))).toBe(false)
+  })
+
+  it('Porteiro por leitura: o que a leitura não libera não é copiado; antivírus com ameaça recusa', async () => {
+    const j = await ate('verificar')
+    await liberarTudo(j, 'suspeito')
+    expect((await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })).erro).toBe(true)
+    antivirus = 'ameaca'
+    const k = await ate('ver')
+    expect((await chamar('verificar_arquivos', { trabalho_id: k.id })).texto).toContain('RECUSADO')
+  })
+
+  it('arquivo trocado depois da conferência: não copia', async () => {
+    const j = await ate('ler')
+    await writeFile(join(pasta, j.id, 'entrada', 'hiscon.pdf'), '%PDF-1.4 trocado depois')
+    const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    expect(c.erro).toBe(true)
+    expect(c.texto).toContain('mudou depois da conferência')
+  })
+
+  it('nunca sobrescreve: HISCON diferente vira "HISCON (2).pdf"; o mesmo conteúdo não é copiado de novo', async () => {
+    const cliente = join(kit, 'JOSE DA SILVA FICTICIO')
+    await mkdir(cliente)
+    await writeFile(join(cliente, 'HISCON.pdf'), '%PDF-1.4 extrato anterior')
+    const j = await ate('copiar')
+    expect(await readFile(join(cliente, 'HISCON.pdf'), 'utf8')).toBe('%PDF-1.4 extrato anterior')
+    expect(await readFile(join(cliente, 'HISCON (2).pdf'))).toEqual(HISCON)
+    const de_novo = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    expect(de_novo.texto).toContain('já estava na pasta')
+    expect((await readdir(cliente)).filter((n) => n.startsWith('HISCON'))).toHaveLength(2)
+  })
+
+  it('pasta do cliente achada na segunda etapa (3. PROCURAÇÃO ASSINADA); nome e subpasta escolhidos pelo Arquivista', async () => {
+    const cliente = join(drive, '3. PROCURAÇÃO ASSINADA', 'JOSE DA SILVA FICTICIO')
+    await mkdir(cliente)
+    const j = await ate('ler')
+    const ruim = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id, arquivos: [{ arquivo: 'hiscon.pdf', nome: '..\\HISCON.pdf' }] })
+    expect(ruim.erro).toBe(true)
+    const outraExt = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id, arquivos: [{ arquivo: 'hiscon.pdf', nome: 'HISCON.exe' }] })
+    expect(outraExt.erro).toBe(true)
+    const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id, arquivos: [{ arquivo: 'hiscon.pdf', nome: 'HISCON NB 2.pdf', subpasta: 'BANCO PINE' }] })
+    expect(c.erro, c.texto).toBe(false)
+    expect(existsSync(join(cliente, 'BANCO PINE', 'HISCON NB 2.pdf'))).toBe(true)
+    expect(existsSync(join(kit, 'JOSE DA SILVA FICTICIO'))).toBe(false)
+  })
+
+  it('DADOS DO CADASTRO.txt de outro cliente na pasta: recusa (homônimo)', async () => {
+    const cliente = join(kit, 'JOSE DA SILVA FICTICIO')
+    await mkdir(cliente)
+    await writeFile(join(cliente, 'DADOS DO CADASTRO.txt'), 'nome: José da Silva Fictício\r\ndg_cliente_id: outro-cliente\r\n')
+    const j = await ate('ler')
+    const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    expect(c.erro).toBe(true)
+    expect(c.texto).toContain('OUTRO cliente')
+    expect(await readdir(cliente)).toEqual(['DADOS DO CADASTRO.txt'])
+  })
+
+  it('travas de caminho: nome com "..", etapa fora da raiz, pasta em outra etapa, atalho', async () => {
+    dg.bridge = { cliente: { id: 'cli-1', nome: 'X' }, pasta_drive: { id: 'p', nome: '..\\..\\Windows' } }
+    const j = dg.add()
+    await chamar('reservar_trabalho', { trabalho_id: j.id })
+    expect((await chamar('ver_ponte', { trabalho_id: j.id })).texto).toContain('não é um nome de pasta válido')
+
+    dg.bridge = { cliente: { id: 'cli-1', nome: 'X' }, pasta_drive: { id: 'p', nome: 'JOSE DA SILVA FICTICIO' } }
+    await mkdir(join(pasta, 'fora'))
+    await ponte({ agentes: { 'kit-cliente-teste': { pasta: join(pasta, 'fora'), trazer: ['x*'] } } })
+    expect((await chamar('ver_ponte', { trabalho_id: j.id })).texto).toContain('fora das raízes permitidas')
+    await ponte({ agentes: { 'kit-cliente-teste': { pasta: '..\\..', trazer: ['x*'] } } })
+    expect((await chamar('ver_ponte', { trabalho_id: j.id })).erro).toBe(true)
+
+    await ponte({ agentes: { 'kit-cliente-teste': { pasta: '7. KIT DO CLIENTE', trazer: ['x*'] } } })
+    await mkdir(join(drive, '1. SEM CONTRATO ASSINADO', 'JOSE DA SILVA FICTICIO'), { recursive: true })
+    const outra = await chamar('ver_ponte', { trabalho_id: j.id })
+    expect(outra.erro).toBe(true)
+    expect(outra.texto).toContain('1. SEM CONTRATO ASSINADO')
+    await rm(join(drive, '1. SEM CONTRATO ASSINADO'), { recursive: true })
+
+    try {
+      await symlink(join(pasta, 'fora'), join(kit, 'JOSE DA SILVA FICTICIO'), 'junction')
+      const r = await chamar('ver_ponte', { trabalho_id: j.id })
+      expect(r.erro).toBe(true)
+      expect(r.texto).toContain('atalho')
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EPERM') throw e
+    }
+  })
+
+  it('cliente sem pasta ligada no DG Brasil: SEM_PASTA_NO_DRIVE; com "pasta_pelo_nome", usa o nome em maiúsculas sem acento', async () => {
+    dg.bridge = { cliente: { id: 'cli-1', nome: 'Conceição  Araújo' }, pasta_drive: null }
+    const j = dg.add()
+    await chamar('reservar_trabalho', { trabalho_id: j.id })
+    const r = await chamar('ver_ponte', { trabalho_id: j.id })
+    expect(r.erro).toBe(true)
+    expect(r.texto).toContain('SEM_PASTA_NO_DRIVE')
+    await ponte({ pasta_pelo_nome: true })
+    expect((await chamar('ver_ponte', { trabalho_id: j.id })).texto).toContain(join(kit, 'CONCEICAO ARAUJO'))
+  })
+
+  it('Mensageiro sem cópia antes: recusa; agente que não gerou nada: explica o que fazer', async () => {
+    const j = await ate('ler')
+    expect((await chamar('trazer_da_pasta_do_cliente', { trabalho_id: j.id })).texto).toContain('Arquivista')
+    await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    const r = await chamar('trazer_da_pasta_do_cliente', { trabalho_id: j.id })
+    expect(r.erro).toBe(true)
+    expect(r.texto).toContain('AGENT_ERROR')
+  })
+})
+
 
 describe('configuração', () => {
   it('exige https (http só em localhost) e token no formato', async () => {

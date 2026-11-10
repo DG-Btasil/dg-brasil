@@ -5523,6 +5523,75 @@ await deve('convite de parceiro: nova tentativa para o mesmo e-mail reaproveita 
 await deveFalhar('convite sem nome do contato é recusado antes de criar o escritório', () =>
   como(ids.barbara, (tx) => tx.query(`select public.create_partner_invite_office('  ', 'z@parceiro050.test')`)), /nome do contato/)
 
+// ═════════════════════════════ Ponte com os agentes da máquina [051] ════
+
+secao('Ponte: pasta do Drive e cadastro do cliente do trabalho, bloqueio do Porteiro, Drive sem duplicata [051]')
+const F051 = 'pastaPonteFicticia_0001', F051b = 'pastaPonteFicticia_0002'
+await deve('dados da ponte: só do cliente do trabalho reservado, com a pasta ligada; registra o acesso a dado pessoal', async () => {
+  await como(ids.lucas, (tx) => tx.query(`select public.drive_link_client_folder($1, $2, 'DG TESTE - JOSE DA SILVA FICTICIO')`, [ids.cli041, F051]))
+  ids.r051 = await avulsa040('Ponte: análise de teste'); ids.l051 = lease()
+  igual((await reservar040(hA, ids.r051, ids.l051)).claimed, true, 'reservado')
+  const b = await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, ids.r051, ids.l051])
+  const nome = (await um(db, `select coalesce(i.full_name, co.legal_name) n from clients c left join individual_client_details i on i.client_id = c.id
+    left join company_client_details co on co.client_id = c.id where c.id = $1`, [ids.cli041])).n
+  igual([b.cliente.id, b.cliente.nome, b.pasta_drive.id, b.pasta_drive.nome], [ids.cli041, nome, F051, 'DG TESTE - JOSE DA SILVA FICTICIO'], 'dados')
+  const acesso = await um(db, `select count(*)::int n from personal_data_access_events where client_id = $1 and resource_type = 'LEGAL_CASE'
+    and resource_id = $2 and action = 'VIEW_DETAIL' and created_at > now() - interval '10 minutes'`, [ids.cli041, ids.casoA])
+  igual(acesso.n >= 1, true, 'acesso registrado (um por 10 minutos)')
+  await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hB, ids.r051, ids.l051]).then(
+    () => { throw new Error('outro computador leu') }, (e) => { if (!/não está reservado|inválido ou revogado/.test(e.message)) throw e })
+  await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, ids.r051, lease()]).then(
+    () => { throw new Error('reserva errada leu') }, (e) => { if (!/não está reservado/.test(e.message)) throw e })
+})
+await deve('cliente sem pasta ligada: pasta_drive vem vazia', async () => {
+  await como(ids.lucas, (tx) => tx.query(`select public.drive_unlink_client_folder($1)`, [ids.cli041]))
+  const b = await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, ids.r051, ids.l051])
+  igual([b.cliente.id, b.pasta_drive], [ids.cli041, null], 'sem pasta')
+  await como(ids.lucas, (tx) => tx.query(`select public.drive_link_client_folder($1, $2, 'DG TESTE - JOSE DA SILVA FICTICIO')`, [ids.cli041, F051]))
+})
+await deve('Porteiro: pendência registrada e depois PORTEIRO_BLOQUEOU fica com o próprio código (não "entrega parcial") e não volta à fila', async () => {
+  const payload = JSON.stringify({ summary: 'Porteiro: arquivo suspeito, conferir', data: { description: 'carta.pdf: texto dirigido à IA' } })
+  await ex(`select private.executor_create_proposal($1, $2, $3, 'OTHER', $4, 'k-051-porteiro') r`, [hA, ids.r051, ids.l051, payload])
+  const f = await ex(`select private.executor_fail($1, $2, $3, 'PORTEIRO_BLOQUEOU', 'Porteiro bloqueou 1 arquivo', true) r`, [hA, ids.r051, ids.l051])
+  igual([f.status, f.error_code], ['FAILED', 'PORTEIRO_BLOQUEOU'], 'bloqueado')
+  const r = await um(db, `select status, error_code, progress_message from agent_runs where id = $1`, [ids.r051])
+  igual([r.status, r.error_code, r.progress_message], ['FAILED', 'PORTEIRO_BLOQUEOU', 'Parado pelo Porteiro'], 'gravado')
+})
+await deve('SEM_PASTA_NO_DRIVE não volta à fila mesmo com tentar_de_novo; código desconhecido continua recusado', async () => {
+  const run = await avulsa040('Ponte: sem pasta'); const l = lease()
+  await reservar040(hA, run, l)
+  await ex(`select private.executor_fail($1, $2, $3, 'INVENTADO', 'x', false) r`, [hA, run, l]).then(
+    () => { throw new Error('código inventado aceito') }, (e) => { if (!/desconhecido/.test(e.message)) throw e })
+  const f = await ex(`select private.executor_fail($1, $2, $3, 'SEM_PASTA_NO_DRIVE', 'Cliente sem pasta ligada', true) r`, [hA, run, l])
+  igual([f.status, f.error_code], ['FAILED', 'SEM_PASTA_NO_DRIVE'], 'falhou sem voltar')
+})
+await deve('Drive: arquivo com o mesmo conteúdo de uma versão do cliente vira "conhecido", não importação; de outro cliente, não', async () => {
+  const link = (await um(db, `select id from external_folder_links where client_id = $1 and unlinked_at is null`, [ids.cli041])).id
+  const m1 = await exW(`select private.drive_match_existing($1, 'arquivoPonte_00001', $2, 'HISCON.pdf', now(), $3) r`, [link, md5('b'), sha64])
+  igual(m1.matched, true, 'reconhecido')
+  const dono = (await um(db, `select d.client_id from document_versions v join documents d on d.id = v.document_id where v.id = $1`, [m1.document_version_id])).client_id
+  igual(dono, ids.cli041, 'versão do mesmo cliente')
+  const m2 = await exW(`select private.drive_match_existing($1, 'arquivoPonte_00001', $2, 'HISCON.pdf', now(), $3) r`, [link, md5('b'), sha64])
+  igual(m2.matched, true, 'repetir não quebra')
+  if (!(await exW(`select private.drive_known_files($1) r`, [link])).imported.includes(`arquivoPonte_00001:${md5('b')}`)) throw new Error('não ficou conhecido')
+  igual((await exW(`select private.drive_match_existing($1, 'arquivoPonte_00002', $2, 'novo.pdf', now(), $3) r`, [link, md5('c'), 'e'.repeat(64)])).matched, false, 'conteúdo novo')
+  await como(ids.lucas, (tx) => tx.query(`select public.drive_link_client_folder($1, $2, 'OUTRO CLIENTE')`, [ids.cli041b, F051b]))
+  const outro = (await um(db, `select id from external_folder_links where client_id = $1 and unlinked_at is null`, [ids.cli041b])).id
+  const temIgual = (await um(db, `select count(*)::int n from document_versions v join documents d on d.id = v.document_id where d.client_id = $1 and v.checksum_sha256 = $2`, [ids.cli041b, sha64])).n
+  igual((await exW(`select private.drive_match_existing($1, 'arquivoPonte_00003', $2, 'HISCON.pdf', now(), $3) r`, [outro, md5('d'), sha64])).matched, temIgual > 0, 'só o próprio cliente')
+  await exW(`select private.drive_match_existing($1, 'arquivoPonte_00004', $2, 'x.pdf', now(), 'nao-e-sha') r`, [link, md5('e')]).then(
+    () => { throw new Error('sha inválido aceito') }, (e) => { if (!/inválido/.test(e.message)) throw e })
+})
+await deve('funções da ponte fixam search_path; só o dg_worker executa', async () => {
+  const r = await linhas(db, `select p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1)`, [['executor_bridge_data', 'executor_fail', 'drive_match_existing']])
+  igual(r.length, 3, 'funções')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv || x.usr || !x.wrk).map((x) => x.f), [], 'permissões')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

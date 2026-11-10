@@ -4,6 +4,8 @@
  * nas rotas de um trabalho. Quem decide acesso é o servidor e o banco.
  */
 
+import type { DadosPonte } from './ponte.js'
+
 export class ErroApi extends Error {
   constructor(readonly status: number, readonly codigo: string, message: string) {
     super(message)
@@ -103,6 +105,8 @@ export class DgApi {
     return this.pedir<{ ok: boolean; status: string | null; cancel_requested: boolean }>('POST', `jobs/${id}/heartbeat`,
       { reserva, corpo: progresso ? { progress: progresso } : {}, tentativas: 2 })
   }
+  /** Ponte (051): pasta do Drive ligada ao cliente do trabalho e os dados do cadastro. */
+  ponte(id: string, reserva: string) { return this.pedir<DadosPonte>('GET', `jobs/${id}/bridge`, { reserva }) }
   caso(id: string, reserva: string) { return this.pedir<Record<string, unknown> | null>('GET', `jobs/${id}/case`, { reserva }) }
   processo(id: string, reserva: string, processoId: string) { return this.pedir<Record<string, unknown>>('GET', `jobs/${id}/processes/${processoId}`, { reserva }) }
   documentos(id: string, reserva: string) { return this.pedir<{ documents: DocumentoDoCaso[] }>('GET', `jobs/${id}/documents`, { reserva }) }

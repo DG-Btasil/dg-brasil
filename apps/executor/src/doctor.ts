@@ -1,9 +1,12 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { DgApi, ErroApi } from './api.js'
 import { caminhoConfig, ErroConfig, lerConfig, VERSAO } from './config.js'
+import { caminhoPonte, ErroPonte, lerPonte } from './ponte.js'
 
 /**
  * dg-executor doctor: confere, sem mexer em nada do DG Brasil, se este
@@ -45,6 +48,40 @@ export async function diagnostico(escrever: (l: string) => void = (l) => console
     ok(`Pasta de trabalhos: ${cfg.pastaTrabalhos}`)
   } catch {
     falha(`Sem permissão de escrita em ${cfg.pastaTrabalhos}`)
+  }
+
+  // Ponte com os agentes da máquina (docs/ponte.md).
+  try {
+    const ponte = await lerPonte()
+    if (!ponte) {
+      escrever(`  AVISO Ponte: sem ${caminhoPonte()} (nenhum agente passa pela ponte; fluxo entrada/saida)`)
+    } else {
+      const raizes = ponte.raizes.filter((r) => existsSync(r))
+      if (raizes.length === ponte.raizes.length) ok(`Ponte: ${Object.keys(ponte.agentes).length} agente(s), raiz encontrada (${ponte.raizes.join('; ')})`)
+      else falha(`Ponte: raiz não encontrada: ${ponte.raizes.filter((r) => !existsSync(r)).join('; ')} (o Google Drive para computador está aberto?)`)
+      for (const [agente, a] of Object.entries(ponte.agentes)) {
+        const pastas = (Array.isArray(a.pasta) ? a.pasta : [a.pasta]).map((p) => (isAbsolute(p) ? p : join(ponte.raizes[0], p)))
+        const faltam = pastas.filter((p) => !existsSync(p))
+        if (faltam.length) falha(`Ponte: ${agente} → pasta não encontrada: ${faltam.join('; ')}`)
+        else ok(`Ponte: ${agente} → ${pastas.join(' | ')}`)
+        if (!existsSync(join(homedir(), '.claude', 'agents', `${agente}.md`))) escrever(`  AVISO Ponte: ${agente}.md não está em ${join(homedir(), '.claude', 'agents')}`)
+      }
+      for (const a of ['porteiro-dg', 'arquivista-dg', 'mensageiro-dg']) {
+        if (existsSync(join(homedir(), '.claude', 'agents', `${a}.md`))) ok(`Ponte: agente ${a} instalado`)
+        else falha(`Ponte: falta o agente ${a} em ${join(homedir(), '.claude', 'agents')} (copie de docs/mcp/pilotos/agentes/)`)
+      }
+      if (process.platform === 'win32') {
+        const defender = join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Windows Defender', 'MpCmdRun.exe')
+        if (!ponte.antivirus) escrever('  AVISO Ponte: antivírus DESLIGADO no ponte.json')
+        else if (existsSync(defender)) ok('Ponte: antivírus do Windows encontrado')
+        else escrever('  AVISO Ponte: antivírus do Windows não encontrado: todo arquivo vai sair "suspeito"')
+        const edge = ['ProgramFiles(x86)', 'ProgramFiles'].map((v) => join(process.env[v] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe')).find((c) => existsSync(c))
+        if (edge) ok('Ponte: Microsoft Edge encontrado (HTML e Markdown viram PDF)')
+        else escrever('  AVISO Ponte: Microsoft Edge não encontrado: HTML e Markdown não viram PDF')
+      }
+    }
+  } catch (e) {
+    falha(e instanceof ErroPonte ? e.message : 'Ponte: ponte.json ilegível')
   }
 
   try {

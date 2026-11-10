@@ -28,6 +28,9 @@ export const RUN_ERROR_LABEL: Record<string, string> = {
   DOCUMENT_UNREADABLE: "Um documento do caso não pôde ser lido.",
   AGENT_NOT_FOUND: "O agente indicado não existe no Claude Code do escritório.",
   INTERRUPTED: "A sessão do Claude Code foi encerrada antes do fim.",
+  // ponte com os agentes da máquina (051)
+  PORTEIRO_BLOQUEOU: "O Porteiro parou o trabalho: um documento parece inseguro. Confira a pendência em Revisões.",
+  SEM_PASTA_NO_DRIVE: "O cliente não tem pasta do Google Drive ligada. Ligue em Cliente → Documentos → Pasta no Google Drive.",
   // comuns
   CANCELLED: "Interrompida a pedido.",
   CANCELLED_BY_USER: "Interrompida a pedido.",

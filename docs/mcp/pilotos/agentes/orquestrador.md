@@ -24,19 +24,37 @@ Gmail, ADVBOX nem Drive.
 Mantenha esta tabela igual aos agentes instalados em
 `%USERPROFILE%\.claude\agents\` (o nome é o `name:` do arquivo de cada um).
 
-Só entram aqui as **variantes para o DG Brasil** (`-dg`), que leem a pasta
-`entrada` e gravam na `saida` do trabalho ([adicionar-agente.md](../../../adicionar-agente.md)).
-Os agentes originais (`lucas`, `clara`…) gravam no `G:\Meu Drive` e **não**
-devem ser chamados por um trabalho do DG Brasil. Para testar com dados
-fictícios, use o [orquestrador-teste.md](orquestrador-teste.md).
+São os **agentes reais** do escritório. Eles trabalham pelo DG Brasil pela
+**ponte** ([ponte.md](../../../ponte.md)): a sessão leva os documentos para a
+pasta do cliente no Drive, o agente trabalha lá como sempre, e o resultado volta
+para Revisões. Para testar com dados fictícios, use o
+[orquestrador-teste.md](orquestrador-teste.md).
 
 | Agente local | Quando usar |
 |---|---|
-| `lucas-dg` | Procuração e declaração de hipossuficiência do cliente |
-| `clara-dg` | Análise do extrato HISCON/HISCREN (contratos, blocos de ação) |
-| `alice-dg` | Petição inicial de fraude de consignado |
-| `murilo-dg` | Réplica / impugnação à contestação |
+| `clara-hiscon` | Análise do extrato HISCON/HISCREN e roteiro de ações por bloco |
+| `lucas-procuracao` | Procuração, declaração de hipossuficiência e contrato (a forma de pagamento precisa vir no pedido) |
+| `alice-inicial` | Petição inicial de fraude de consignado (precisa do roteiro da Clara na pasta) |
+| `atlas-revisional` | Petição inicial revisional (depende do cálculo com a taxa do BACEN) |
+| `vicente-agregados` | Petição inicial de agregados |
+| `murilo-replica` | Réplica / impugnação à contestação (precisa dos autos) |
+| `pedro-provas` | Especificação de provas |
+| `laura-emenda` | Emenda à inicial |
+| `gabriel-embargos` | Embargos de declaração |
+| `rafael-recurso` | Recurso inominado / apelação |
+| `paulo-agravo` | Agravo |
+| `beatriz-cumprimento` | Cumprimento de sentença (minuta e memória de cálculo) |
+| `teresa-audiencia` | Roteiro de audiência (AIJ) |
 | `prazos-dg` | Ler uma publicação e propor o prazo processual |
+
+**Não** use `luisa-documentos`, `bruno-contrato`, `helena-funil`,
+`sofia-posvenda` nem `otavio-administrador`: o trabalho deles é falar com o
+cliente ou mexer no ChatJurídico e na ADVBOX, que ficam bloqueados nesta sessão.
+
+Decisão que só o advogado toma ("PODE GERAR" da segunda rodada da Alice,
+renúncia ao excedente da RPV, forma de pagamento do contrato) vale só se estiver
+escrita na tarefa. Repita-a nas INSTRUÇÕES; se não estiver, diga em
+OBSERVAÇÕES PARA A EQUIPE.
 
 Se nenhum servir, responda `AGENTE: nenhum` e explique o que falta (outro agente,
 um documento, uma decisão da equipe).
@@ -48,8 +66,8 @@ Responda **só** neste formato, para a sessão principal chamar o agente certo:
 ```
 AGENTE: <nome do agente local>
 INSTRUÇÕES:
-<o que o agente deve produzir, com quais documentos da pasta entrada,
- e o que entregar na pasta saida (minuta .docx, análise .json, proposta)>
+<o que o agente deve produzir, com quais documentos, para qual banco ou
+ tese (a subpasta do cliente), e as decisões do advogado que vieram na tarefa>
 OBSERVAÇÕES PARA A EQUIPE:
 <riscos, dúvidas ou o que conferir na revisão>
 ```

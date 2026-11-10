@@ -169,6 +169,8 @@ export const heartbeatSchema = z.object({ progress: z.string().trim().min(1).max
 export const EXECUTOR_ERROR_CODES = [
   "MISSING_INPUT", "DOCUMENT_CHECKSUM_MISMATCH", "DOCUMENT_UNREADABLE", "INVALID_OUTPUT", "TOOL_ERROR",
   "AGENT_NOT_FOUND", "AGENT_ERROR", "CONFIGURATION_ERROR", "INTERRUPTED", "INTERNAL_ERROR",
+  // Ponte com os agentes da máquina (051)
+  "PORTEIRO_BLOQUEOU", "SEM_PASTA_NO_DRIVE",
 ] as const;
 
 export const failSchema = z.object({

@@ -9,9 +9,11 @@
 #   3. pede o TOKEN gerado no DG Brasil (DG Brasil → Computador do escritório)
 #      e grava em %APPDATA%\DGBrasil\executor.json (só esta conta do Windows lê);
 #   4. prepara a pasta de sessão C:\DGBrasil\sessao com as permissões seguras;
-#   5. cria o atalho "DG Brasil - Vigia" na área de trabalho (sessão que
+#   5. ponte com os agentes da máquina (docs/ponte.md): ponte.json, permissões
+#      das pastas dos clientes e os agentes Porteiro, Arquivista e Mensageiro;
+#   6. cria o atalho "DG Brasil - Vigia" na área de trabalho (sessão que
 #      processa a fila sozinha a cada 15 minutos enquanto estiver aberta);
-#   6. roda o diagnóstico.
+#   7. roda o diagnóstico.
 # Nada aqui mexe em outras pastas, nos agendamentos atuais nem no Claude Code
 # fora da pasta de sessão. Pode rodar de novo para atualizar.
 
@@ -87,6 +89,40 @@ $allow = @(
   'mcp__dg-brasil__devolver_trabalho', 'mcp__dg-brasil__reservar_trabalho', 'mcp__dg-brasil__roteiro_vigia',
   'Read(./trabalhos/**)', 'Write(./trabalhos/**)'
 )
+# Ponte com os agentes da máquina (docs/ponte.md). Os agentes do escritório
+# trabalham na pasta do cliente no G:, na pasta de trabalho deles e com os
+# scripts deles. Para pular (só o fluxo entrada/saida): $env:DG_BRASIL_PONTE = '0'.
+$ComPonte = $env:DG_BRASIL_PONTE -ne '0'
+$Ponte = Join-Path $CfgDir 'ponte.json'
+# Nomes com acento montados por código: o script chega por "irm | iex" e o
+# PowerShell 5.1 pode ler o texto numa codificação que estraga os acentos.
+$Trav = [char]0x2014; $Cced = [char]0x00C7; $Atil = [char]0x00C3; $Otil = [char]0x00D5; $Oagudo = [char]0x00D3; $cMin = [char]0x00E7; $aMin = [char]0x00E3
+$Novos = '000. PASTA CLIENTES NOVOS'
+$ComProcesso = "01. ADVOCACIA $Trav CLIENTES"
+if ($ComPonte) {
+  $allow += @(
+    'mcp__dg-brasil__ver_ponte', 'mcp__dg-brasil__verificar_arquivos',
+    'mcp__dg-brasil__copiar_para_pasta_do_cliente', 'mcp__dg-brasil__trazer_da_pasta_do_cliente',
+    # pastas dos clientes (as raízes do ponte.json)
+    "Read(G:/Meu Drive/$Novos/**)", "Write(G:/Meu Drive/$Novos/**)", "Edit(G:/Meu Drive/$Novos/**)",
+    "Read(G:/Meu Drive/$ComProcesso/**)", "Write(G:/Meu Drive/$ComProcesso/**)", "Edit(G:/Meu Drive/$ComProcesso/**)",
+    # modelos e bases que os redatores leem (só leitura)
+    "Read(G:/Meu Drive/Modelos - Peti$cMin$($aMin)o Inicial Fraude Consignado INSS/**)",
+    "Read(G:/Meu Drive/05. FORMA$Cced$($Atil)O E PROJETOS/LIVES SECRETAS/**)",
+    'Read(G:/Meu Drive/**/FLUXOGRAMA AGENTES/**)',
+    "Read(G:/Meu Drive/02. ADVOCACIA $Trav MODELOS E PETI$Cced$($Otil)ES/**)",
+    # jurisprudência já conferida (os redatores acrescentam)
+    'Read(G:/Meu Drive/**/JURISPRUDENCIAS_VERIFICADAS_*.md)', 'Edit(G:/Meu Drive/**/JURISPRUDENCIAS_VERIFICADAS_*.md)',
+    # arquivos e scripts dos agentes neste computador
+    'Read(~/.claude/agents/**)', 'Read(~/.claude/scripts/**)', 'Read(~/.claude/docs/**)', 'Read(~/.claude/skills/**)',
+    # pasta de trabalho dos agentes e registro_pecas.csv (trava contra peça repetida)
+    'Read(~/agentes-juridicos/**)', 'Write(~/agentes-juridicos/**)', 'Edit(~/agentes-juridicos/**)',
+    # o que os agentes rodam: Python e os .ps1 do escritório (o Word por COM sai daqui)
+    'Bash(python *)', 'Bash(py *)', 'Bash(powershell -NoProfile -ExecutionPolicy Bypass -File *)', 'Bash(powershell -File *)',
+    'PowerShell(python *)', 'PowerShell(py *)', 'PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File *)',
+    'PowerShell(Get-ChildItem *)', 'PowerShell(Test-Path *)', 'PowerShell(Copy-Item *)', 'PowerShell(Get-Item *)', 'PowerShell(New-Item *)'
+  )
+}
 $deny = @(
   'Read(~/AppData/Roaming/DGBrasil/**)',
   'WebFetch', 'WebSearch',
@@ -111,6 +147,43 @@ $permissoes = [ordered]@{
 } | ConvertTo-Json -Depth 6
 Gravar $Settings $permissoes
 Ok $Sessao
+
+if ($ComPonte) {
+  Passo 'Ponte com os agentes da máquina'
+  if (Test-Path $Ponte) {
+    Ok "Mantido o $Ponte que já existe (não é sobrescrito)"
+  } else {
+    # Quem entra na ponte e onde cada um trabalha (docs/ponte.md, item 3.3).
+    # Os padrões de "trazer" são os nomes reais que cada agente grava.
+    $redator = "G:\Meu Drive\$ComProcesso\CLIENTE - ESCRIT$($Oagudo)RIO"
+    $minuta = @('MINUTA_*.docx', 'MINUTA_*.pdf', 'Memoria_Calculo_*.xlsx', 'MEMORIA_CALCULO_*.xlsx', 'FICHA_*.md')
+    $agentes = [ordered]@{
+      'clara-hiscon'     = [ordered]@{ pasta = @('7. KIT DO CLIENTE', "3. PROCURA$Cced$($Atil)O ASSINADA"); trazer = @('ROTEIRO_CONSIGNADO_*.pdf', 'ROTEIRO_CONSIGNADO_*.html', 'TETO_NORMATIVO_*.pdf', 'TETO_NORMATIVO_*.html') }
+      'lucas-procuracao' = [ordered]@{ pasta = @('7. KIT DO CLIENTE'); trazer = @('Procuracao_*.pdf', 'Declaracao_Hipossuficiencia_*.pdf', 'Contrato_Honorarios_*.pdf', 'Declaracao_Residencia_*.pdf') }
+    }
+    foreach ($r in @('alice-inicial', 'atlas-revisional', 'vicente-agregados', 'murilo-replica', 'pedro-provas', 'laura-emenda',
+                     'gabriel-embargos', 'rafael-recurso', 'paulo-agravo', 'beatriz-cumprimento', 'teresa-audiencia')) {
+      $agentes[$r] = [ordered]@{ pasta = @($redator); trazer = $minuta; dados_do_cadastro = $false; criar_pasta = $false }
+    }
+    $conteudo = [ordered]@{
+      raizes_permitidas = @("G:\Meu Drive\$Novos", "G:\Meu Drive\$ComProcesso")
+      pasta_pelo_nome = $false
+      antivirus = $true
+      agentes = $agentes
+    } | ConvertTo-Json -Depth 8
+    Gravar $Ponte $conteudo
+    Ok "$Ponte (Clara, Lucas e os redatores; confira os nomes com os agentes deste computador)"
+  }
+  # Os três agentes da ponte (Porteiro, Arquivista, Mensageiro): atualizados a cada instalação.
+  New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '.claude\agents') | Out-Null
+  $faltam = @('porteiro-dg', 'arquivista-dg', 'mensageiro-dg')
+  foreach ($a in $faltam) {
+    try {
+      Invoke-WebRequest -UseBasicParsing -Uri "$Base/executor/agentes/$a.md" -OutFile (Join-Path $env:USERPROFILE ".claude\agents\$a.md")
+      Ok "Agente $a instalado em $env:USERPROFILE\.claude\agents"
+    } catch { Aviso "Não deu para baixar o agente $a. Copie de docs/mcp/pilotos/agentes/$a.md para $env:USERPROFILE\.claude\agents." }
+  }
+}
 
 Passo 'Atalhos na área de trabalho'
 # "DG Brasil - Sessão": modo assistido (a pessoa digita /mcp__dg-brasil__trabalhos).

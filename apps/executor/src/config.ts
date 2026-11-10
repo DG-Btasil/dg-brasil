@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-export const VERSAO = '1.0.0'
+export const VERSAO = '1.1.0'
 
 /**
  * Configuração do executor. Ordem: variáveis de ambiente, depois o arquivo

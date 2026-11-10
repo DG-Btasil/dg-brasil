@@ -192,8 +192,44 @@ fictícios:
 copy C:\DGBrasil\dg-brasil\docs\mcp\pilotos\agentes\*.md $env:USERPROFILE\.claude\agents\
 ```
 
-Como preparar os agentes reais (Clara, Lucas):
-[docs/adicionar-agente.md](../adicionar-agente.md).
+Os agentes reais (Clara, Lucas, redatores) **não** são copiados nem
+reescritos: entram pela **ponte** ([docs/ponte.md](../ponte.md)).
+
+### 5.1 A ponte (agentes reais)
+
+O instalador cuida de tudo (para pular: `$env:DG_BRASIL_PONTE = '0'` antes de
+rodar):
+
+- grava `%APPDATA%\DGBrasil\ponte.json`, **só se ainda não existir**, com a Clara,
+  o Lucas e os redatores, as pastas de cada um e os nomes dos arquivos que eles
+  geram. É esse arquivo que diz quem passa pela ponte; agente fora dele segue o
+  fluxo `entrada`/`saida`;
+- baixa os três agentes da ponte (`porteiro-dg`, `arquivista-dg`,
+  `mensageiro-dg`) para `%USERPROFILE%\.claudegents\`;
+- acrescenta ao `allow` da sessão: as quatro ferramentas da ponte, as pastas dos
+  clientes (`000. PASTA CLIENTES NOVOS` e `01. ADVOCACIA — CLIENTES`), as pastas
+  de modelos (só leitura), `~/agentes-juridicos/**` (pasta de trabalho e
+  `registro_pecas.csv`), `~/.claude/scripts`, `docs` e `skills` (leitura),
+  `python` e `powershell -File`.
+
+O `deny` **não muda**: ChatJurídico, Gmail, ADVBOX, Drive (conector),
+WebFetch, WebSearch e o arquivo do token continuam bloqueados.
+
+Campos do `ponte.json`:
+
+| Campo | O que é |
+|---|---|
+| `raizes_permitidas` | As árvores do Drive onde a ponte pode ler e gravar. Fora delas, as ferramentas recusam. |
+| `pasta_pelo_nome` | `false` (padrão): sem pasta do Drive ligada ao cliente no DG Brasil, a ponte para com `SEM_PASTA_NO_DRIVE`. `true`: usa o nome do cliente em MAIÚSCULAS, sem acento. |
+| `antivirus` | `true` (padrão): o Porteiro passa o antivírus do Windows em cada arquivo. |
+| `agentes.<nome>.pasta` | A etapa (ou etapas, em ordem) onde ficam as pastas dos clientes desse agente. |
+| `agentes.<nome>.trazer` | Os nomes dos arquivos que o Mensageiro traz (`*` vale qualquer coisa; maiúsculas e acentos não importam). |
+| `agentes.<nome>.dados_do_cadastro` | Gravar o `DADOS DO CADASTRO.txt` quando faltar (padrão `true`; os redatores não usam). |
+| `agentes.<nome>.criar_pasta` | Criar a pasta do cliente quando ela não existe em nenhuma etapa (padrão `true`; para os redatores, `false`). |
+| `agentes.<nome>.profundidade` | Até quantas subpastas o Mensageiro procura (padrão 3: subpasta do banco, `PEÇAS GERADAS`). |
+
+Depois de mexer no arquivo, rode `node C:\DGBrasil\executor\dg-executor.mjs doctor`:
+ele lista cada agente da ponte e avisa o que falta.
 
 ## 6. Usar
 
@@ -249,8 +285,8 @@ claude --strict-mcp-config --mcp-config .mcp.json "/loop 15m Use a ferramenta ro
   parar de pegar trabalhos na rodada seguinte, sem fechar a janela.
 - **Se a janela parar esperando uma confirmação** (um agente local tentando usar
   algo fora das permissões, como Python ou Word), o trabalho fica parado até
-  alguém responder. Para os agentes reais (`-dg`), libere no `allow` só o que
-  eles precisam.
+  alguém responder. A mensagem diz o que falta: acrescente a regra no `allow`
+  (o instalador já libera o que os agentes reais usam hoje, seção 5.1).
 - Intervalo diferente: troque `15m` no atalho (ex.: `10m`, `30m`).
 - Assinatura: a vigia usa a assinatura do Claude de quem abriu a sessão. Continua
   sendo uma sessão interativa aberta por uma pessoa, mas roda sem ninguém olhando

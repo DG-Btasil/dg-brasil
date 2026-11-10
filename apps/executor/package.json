@@ -1,6 +1,6 @@
 {
   "name": "@dgbrasil/executor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Ponte entre o Claude Code do computador do escritório e o DG Brasil (servidor MCP local).",
   "type": "module",
@@ -13,7 +13,7 @@
     "test": "vitest run",
     "mcp": "node dist/index.js mcp",
     "doctor": "node dist/index.js doctor",
-    "bundle": "npx --yes esbuild@0.25.10 src/index.ts --bundle --platform=node --format=esm --target=node22 --minify --legal-comments=none --outfile=../frontend/public/executor/dg-executor.mjs \"--banner:js=import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\""
+    "bundle": "npx --yes esbuild@0.25.10 src/index.ts --bundle --platform=node --format=esm --target=node22 --minify --legal-comments=none --outfile=../frontend/public/executor/dg-executor.mjs \"--banner:js=import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\" && node scripts/copiar-agentes.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

@@ -154,6 +154,18 @@ describe("API do computador do escritório", () => {
     const { job } = setup({ executor_fail: { status: "QUEUED" } });
     expect((await job("POST", "fail", { error_code: "QUALQUER", message: "x" })).status).toBe(422);
     expect((await job("POST", "fail", { error_code: "DOCUMENT_UNREADABLE", message: "PDF ilegível", retryable: true })).status).toBe(200);
+    expect((await job("POST", "fail", { error_code: "PORTEIRO_BLOQUEOU", message: "Arquivo suspeito" })).status).toBe(200);
+    expect((await job("POST", "fail", { error_code: "SEM_PASTA_NO_DRIVE", message: "Sem pasta" })).status).toBe(200);
+  });
+
+  it("ponte: dados da pasta do Drive só com a reserva, pela porta do banco que confere o trabalho", async () => {
+    const dados = { cliente: { id: JOB, nome: "JOSE DA SILVA FICTICIO" }, pasta_drive: { id: "pastaFicticia_0001", nome: "JOSE DA SILVA FICTICIO" } };
+    const { job, send, calls } = setup({ executor_bridge_data: dados });
+    expect((await send("GET", `jobs/${JOB}/bridge`)).status).toBe(401);
+    const r = await job("GET", "bridge");
+    expect(r.body).toEqual(dados);
+    const c = calls.find((x) => x.fn === "executor_bridge_data")!;
+    expect(c.args).toEqual([sha256Hex(TOKEN), JOB, sha256Hex(LEASE)]);
   });
 
   it("erro do banco: permissão vira 403 com a mensagem; erro desconhecido vira 500 genérico", async () => {

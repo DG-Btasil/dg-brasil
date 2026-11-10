@@ -30,16 +30,23 @@ coisas:
 
   Os dados vêm do DG Brasil, e a entrega volta para ele.
 
-Os agentes atuais (Clara, Lucas) foram escritos para as pastas `G:\Meu Drive\...`
-e para o ChatJurídico. Para usá-los pelo DG Brasil, o caminho mais seguro é uma
-**variante** de cada um (ex.: `clara-dg`), com:
+Os agentes atuais do escritório (Clara, Lucas, Alice, Murilo...) foram escritos
+para as pastas `G:\Meu Drive\...`. Eles **não são reescritos nem copiados**:
+entram pela **ponte** ([ponte.md](ponte.md)). Para pôr um agente da máquina na
+ponte:
 
-- o mesmo método de trabalho;
-- a entrada e a saída nas pastas do trabalho;
-- a lista de ferramentas mais curta possível (`tools: Read, Write, Glob` e, se
-  precisar de script, `Bash`).
+1. acrescente o agente no `%APPDATA%\DGBrasil\ponte.json` do computador
+   principal, com a pasta da etapa onde ficam as pastas dos clientes e os nomes
+   dos arquivos que ele gera (`trazer`);
+2. confira se tudo o que ele roda está liberado no `settings.json` da sessão
+   (scripts, pasta de trabalho, modelos): o instalador já libera o que os
+   agentes de hoje usam;
+3. rode `node C:\DGBrasil\executor\dg-executor.mjs doctor`: ele mostra o agente
+   na ponte e avisa se a pasta não existe.
 
-Os agendamentos atuais continuam como estão.
+Agente que **não** está no `ponte.json` segue o fluxo antigo (pastas `entrada` e
+`saida` do trabalho): é o caso dos agentes de teste. Não crie mais variantes
+`-dg`. Os agendamentos atuais continuam como estão.
 
 Exemplos fictícios prontos para testar: [mcp/pilotos/agentes/](mcp/pilotos/agentes/).
 
@@ -50,7 +57,7 @@ Como ADMIN, em **DG Brasil → Agentes → Cadastrar agente**:
 | Campo | O que pôr |
 |---|---|
 | Nome | Como a equipe reconhece (ex.: "Clara · Análise do HISCON") |
-| Agente no Claude Code | O `name:` do arquivo `.md` (ex.: `clara-dg`) |
+| Agente no Claude Code | O `name:` real do arquivo `.md` (ex.: `clara-hiscon`, `lucas-procuracao`) |
 | Orientações do DG Brasil | O que entregar e como. Vão junto com cada trabalho. Já vem um modelo. |
 | Teses e referências | O que o agente pode consultar pelo DG Brasil durante o trabalho |
 | Situação | Ativo, para receber trabalhos |

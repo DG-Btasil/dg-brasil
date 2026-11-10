@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { ErroApi, type Contexto } from './api.js'
@@ -7,6 +7,8 @@ import {
   ErroArquivo, arquivoDaSaida, baixar, caminhoNaSaida, enviar, lerComHash, nomeLivre, nomeSeguro,
 } from './arquivos.js'
 import type { Log } from './log.js'
+import { registrarFerramentasPonte, type OpcoesPonte } from './ferramentas-ponte.js'
+import { ErroPonte } from './ponte.js'
 import { ROTEIRO_VIGIA } from './prompt.js'
 import { ErroTrabalho, type Trabalho, type Trabalhos } from './trabalhos.js'
 
@@ -72,6 +74,7 @@ export interface OpcoesFerramentas {
   log: Log
   versaoCliente: string
   fetchFn?: typeof fetch
+  ponte?: OpcoesPonte
 }
 
 export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) {
@@ -84,7 +87,7 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
     try {
       return await fn(a)
     } catch (e) {
-      if (e instanceof ErroTrabalho || e instanceof ErroArquivo) return erro(e.message)
+      if (e instanceof ErroTrabalho || e instanceof ErroArquivo || e instanceof ErroPonte) return erro(e.message)
       if (e instanceof ErroApi) {
         if (e.codigo === 'INTERRUPTED') return erro('Um advogado pediu para INTERROMPER este trabalho. Chame concluir_trabalho para encerrar.')
         if (e.codigo === 'NETWORK') return erro(e.message)
@@ -220,6 +223,7 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
         throw e
       }
       t.baixados++
+      t.documentos.set(basename(destino), { categoria: d.category, titulo: d.title, versao_id: d.version_id })
       linhas.push(`- ${d.title} (${d.category}, v${d.version_number}) → ${destino}${link.checksum_sha256 ? ' · conferido' : ' · sem checksum registrado'}`)
     }
     return texto(`${alvo.length} documento(s) em ${t.pastas.entrada}:\n${linhas.join('\n')}`)
@@ -395,7 +399,7 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
     inputSchema: {
       trabalho_id: idTrabalho,
       codigo: z.enum(['MISSING_INPUT', 'DOCUMENT_CHECKSUM_MISMATCH', 'DOCUMENT_UNREADABLE', 'INVALID_OUTPUT', 'TOOL_ERROR',
-        'AGENT_NOT_FOUND', 'AGENT_ERROR', 'CONFIGURATION_ERROR', 'INTERNAL_ERROR']),
+        'AGENT_NOT_FOUND', 'AGENT_ERROR', 'CONFIGURATION_ERROR', 'INTERNAL_ERROR', 'PORTEIRO_BLOQUEOU', 'SEM_PASTA_NO_DRIVE']),
       mensagem: z.string().trim().min(1).max(1000).describe('Motivo curto, sem dados pessoais do cliente.'),
       tentar_de_novo: z.boolean().default(false),
     },
@@ -416,6 +420,9 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
     const r = await trabalhos.encerrar(trabalho_id, (t) => api.devolver(t.id, t.reserva))
     return texto(r.status === 'QUEUED' ? 'Trabalho devolvido à fila. A pasta local foi apagada.' : `Situação: ${r.status}. A pasta local foi apagada.`)
   }))
+
+  // ── ponte com os agentes da máquina (docs/ponte.md) ─────────────────────
+  registrarFerramentasPonte(servidor, trabalhos, seguro, o.ponte)
 }
 
 function descreverTrabalho(t: Trabalho): string {
@@ -437,6 +444,7 @@ function descreverTrabalho(t: Trabalho): string {
     }
     partes.push(`Para entregar: entregar_analise com este formato (ou um .json em saida):\n${json(MODELO_ANALISE)}`)
   }
+  partes.push('Depois de baixar_documentos, chame ver_ponte: ela diz se este agente trabalha na pasta do cliente no Drive (ponte).')
   partes.push('Minutas: entregar_minuta. Mudanças no sistema: propor. Ao terminar: concluir_trabalho. Problema: informar_falha.')
   return partes.join('\n\n')
 }

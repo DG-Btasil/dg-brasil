@@ -155,6 +155,9 @@ async function route_(req: ExecutorRequest, tokenHash: string, deps: ExecutorDep
     }
     case "GET case":
       return ok(await job("executor_get_case"));
+    // Ponte (051): pasta do Drive ligada ao cliente do trabalho e os dados do cadastro.
+    case "GET bridge":
+      return ok(await job("executor_bridge_data"));
     case "GET processes/:id": {
       const p = await job("executor_get_process", action[1]);
       if (!p) throw new HttpError(404, "NOT_FOUND", "Processo não pertence ao caso deste trabalho.");
