@@ -268,8 +268,13 @@ Para não precisar digitar o comando a cada trabalho: de manhã, abra o atalho
 Claude Code em `C:\DGBrasil\sessao` já rodando:
 
 ```powershell
-claude --strict-mcp-config --mcp-config .mcp.json "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver."
+claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver." --strict-mcp-config --mcp-config .mcp.json
 ```
+
+- O texto do `/loop` vem **antes** das opções. O `--mcp-config` aceita vários
+  arquivos: escrito depois dele, o texto vira "outro arquivo de configuração",
+  o Claude Code responde "MCP config file not found" e fecha na hora. Foi o que
+  impediu a vigia de conectar na Frente B de 10/11/2026.
 
 - Não use `/loop 15m /mcp__dg-brasil__vigiar`: o `/loop` não abre comandos de
   servidor MCP ("Unknown skill"). Por isso o roteiro sai pela ferramenta

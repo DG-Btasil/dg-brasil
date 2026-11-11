@@ -225,7 +225,10 @@ try {
   $shell = New-Object -ComObject WScript.Shell
   foreach ($a in @(
       @{ nome = 'DG Brasil - Sessão'; cmd = $Isolado; desc = 'Abre o Claude Code para processar a fila do DG Brasil (modo assistido)' },
-      @{ nome = 'DG Brasil - Vigia'; cmd = "$Isolado '$Loop'"; desc = 'Abre o Claude Code processando a fila do DG Brasil a cada 15 minutos' })) {
+      # O prompt vem ANTES das opções: --mcp-config aceita vários arquivos e, depois
+      # dele, o texto do /loop era lido como outro arquivo de configuração ("MCP
+      # config file not found") e o Claude Code saía na hora (Frente B, 10/11/2026).
+      @{ nome = 'DG Brasil - Vigia'; cmd = "claude '$Loop' --strict-mcp-config --mcp-config .mcp.json"; desc = 'Abre o Claude Code processando a fila do DG Brasil a cada 15 minutos' })) {
     $atalho = $shell.CreateShortcut((Join-Path $desktop "$($a.nome).lnk"))
     $atalho.TargetPath = (Get-Command powershell.exe).Source
     $atalho.Arguments = "-NoExit -Command `"Set-Location '$Sessao'; $($a.cmd)`""
