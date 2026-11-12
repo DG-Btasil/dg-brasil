@@ -6,8 +6,8 @@ import { z } from 'zod'
 import { nomeLivre } from './arquivos.js'
 import {
   type Antivirus, type ChecagemArquivo, type HtmlParaPdf, ErroPonte, LeituraPorteiro, caminhoPonte, checarArquivo,
-  conferirCadastroExistente, dadosDoCadastro, defender, dentro, edgeHtmlParaPdf, lerPonte, mesmoConteudoNaPasta,
-  nomeDePasta, nomeDoClienteParaPasta, nomeLivreDaPasta, nomeNaPasta, resolverPasta, trazer,
+  conferirCadastroExistente, dadosDoCadastro, dadosDoEscritorio, defender, dentro, edgeHtmlParaPdf, lerEscritorio, lerPonte,
+  mesmoConteudoNaPasta, nomeDePasta, nomeDoClienteParaPasta, nomeLivreDaPasta, nomeNaPasta, resolverPasta, trazer,
 } from './ponte.js'
 import { createHash } from 'node:crypto'
 import type { Trabalho, Trabalhos } from './trabalhos.js'
@@ -26,6 +26,8 @@ const erro = (t: string): Resposta => ({ content: [{ type: 'text', text: t }], i
 export interface OpcoesPonte {
   /** Caminho do ponte.json (padrão: %APPDATA%\DGBrasil\ponte.json). */
   arquivo?: string
+  /** Caminho do escritorio.json (padrão: C:\DGBrasil\agentes\escritorio.json). */
+  escritorio?: string
   antivirus?: Antivirus
   htmlParaPdf?: HtmlParaPdf
   agora?: () => number
@@ -71,7 +73,16 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     const dados = await api.ponte(t.id, t.reserva)
     let nome: string | null = null
     let origem: 'DG_BRASIL' | 'NOME_DO_CLIENTE' = 'DG_BRASIL'
-    if (dados.pasta_drive?.nome) nome = dados.pasta_drive.nome
+    const peloCliente = c.conf.nome_da_pasta === 'cliente'
+    if (peloCliente) {
+      // Agentes clonados: a pasta leva SEMPRE o nome do cliente no cadastro (MAIÚSCULAS, sem acento).
+      nome = dados.cliente?.nome ? nomeDoClienteParaPasta(dados.cliente.nome) : null
+      origem = 'NOME_DO_CLIENTE'
+      if (!nome) {
+        return erro('O cliente deste trabalho não tem nome no cadastro do DG Brasil (ou o nome não serve como nome de pasta). ' +
+          'Chame informar_falha com codigo MISSING_INPUT e a mensagem "Cliente sem nome válido no cadastro".')
+      }
+    } else if (dados.pasta_drive?.nome) nome = dados.pasta_drive.nome
     else if (c.cfg.pastaPeloNome && dados.cliente?.nome) { nome = nomeDoClienteParaPasta(dados.cliente.nome); origem = 'NOME_DO_CLIENTE' }
     if (!nome) {
       return erro('O cliente deste trabalho não tem pasta do Google Drive ligada no DG Brasil. A ponte não roda sem ela. ' +
@@ -90,14 +101,15 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     return texto([
       `Este trabalho PASSA PELA PONTE. Agente da máquina: ${c.agente}.`,
       `Pasta do cliente: ${pasta.pasta}${pasta.existe ? '' : '  (ainda não existe: o Arquivista cria)'}`,
-      origem === 'NOME_DO_CLIENTE' ? 'Atenção: sem pasta ligada no DG Brasil, o nome da pasta saiu do nome do cliente (ponte.json "pasta_pelo_nome").' : '',
+      peloCliente ? 'A pasta leva o nome do cliente no cadastro do DG Brasil.'
+        : origem === 'NOME_DO_CLIENTE' ? 'Atenção: sem pasta ligada no DG Brasil, o nome da pasta saiu do nome do cliente (ponte.json "pasta_pelo_nome").' : '',
       '',
       'Ordem FIXA, sem pular nenhum passo:',
       '  1. PORTEIRO (subagente porteiro-dg): verificar_arquivos e a leitura de cada arquivo; grava saida\\porteiro.json.',
       '     Algo não liberado: propor (OTHER) dizendo qual arquivo e por quê, e informar_falha PORTEIRO_BLOQUEOU. O trabalho para aí.',
       '  2. ARQUIVISTA (subagente arquivista-dg): copiar_para_pasta_do_cliente.',
-      `  3. AGENTE DA MÁQUINA (${c.agente}): trabalha nesta pasta do cliente, do jeito de sempre.`,
-      '  4. MENSAGEIRO (subagente mensageiro-dg): trazer_da_pasta_do_cliente e as entregas.',
+      `  3. AGENTE DA MÁQUINA (${c.agente}): trabalha nesta pasta do cliente e grava a ficha de revisão (FICHA_REVISAO_*.md).`,
+      '  4. MENSAGEIRO (subagente mensageiro-dg): trazer_da_pasta_do_cliente, as entregas e as pendências da ficha.',
     ].filter((l) => l !== '').join('\n'))
   }))
 
@@ -134,7 +146,8 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
   servidor.registerTool('copiar_para_pasta_do_cliente', {
     title: 'Arquivista: copiar para a pasta do cliente',
     description: 'Copia os documentos de entrada para a pasta do cliente no Drive, com os nomes que os agentes esperam (HISCON.pdf, ' +
-      'IDENTIDADE.pdf, COMPROVANTE DE RESIDÊNCIA.pdf, CONTRACHEQUE.pdf, AUTOS_...pdf) e grava o DADOS DO CADASTRO.txt se faltar. ' +
+      'IDENTIDADE.pdf, COMPROVANTE DE RESIDÊNCIA.pdf, CONTRACHEQUE.pdf, AUTOS_...pdf) e grava o DADOS DO CADASTRO.txt (cadastro do ' +
+      'cliente) e o DADOS DO ESCRITORIO.txt (quem assina). ' +
       'Só copia o que o script E o Porteiro (saida\\porteiro.json) liberaram. Nunca sobrescreve (vira " (2)"), nunca apaga, nunca move.',
     inputSchema: {
       trabalho_id: idTrabalho,
@@ -197,7 +210,8 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     // 3. A pasta do cliente (cria só ela, dentro da etapa) e o cadastro que já estiver lá.
     const pasta = p.pasta
     if (!pasta.existe) {
-      await mkdir(pasta.pasta)
+      // Alguém pode ter criado a pasta depois do ver_ponte: as conferências abaixo valem do mesmo jeito.
+      await mkdir(pasta.pasta).catch((e: NodeJS.ErrnoException) => { if (e?.code !== 'EEXIST') throw e })
       pasta.existe = true
     }
     const pastaReal = await realpath(pasta.pasta)
@@ -226,9 +240,14 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
       const gravado = basename(destino)
       linhas.push(`- ${pl.subpasta ? `${pl.subpasta}\\` : ''}${gravado}${gravado === pl.nome ? '' : `  (já havia ${pl.nome}: os agentes usam o de número maior)`}`)
     }
-    if (c.conf.dados_do_cadastro && cadastro === 'ausente') {
-      await writeFile(join(pastaReal, 'DADOS DO CADASTRO.txt'), dadosDoCadastro(p.dados, t.id), { encoding: 'utf8', flag: 'wx' })
-      linhas.push('- DADOS DO CADASTRO.txt (gerado do cadastro do DG Brasil, sem conversa do ChatJurídico)')
+    if (c.conf.dados_do_cadastro) {
+      // Arquivos GERADOS (não são documento do cliente): são regravados a cada trabalho, com o cadastro de agora.
+      // O que a equipe completou à mão no DADOS DO CADASTRO.txt e o DG Brasil não tem continua lá.
+      await writeFile(join(pastaReal, 'DADOS DO CADASTRO.txt'), dadosDoCadastro(p.dados, t.id, cadastro.campos), 'utf8')
+      linhas.push(`- DADOS DO CADASTRO.txt (${cadastro.situacao === 'ausente' ? 'gerado' : 'atualizado'} com o cadastro do DG Brasil)`)
+      const local = await lerEscritorio(o.escritorio)
+      await writeFile(join(pastaReal, 'DADOS DO ESCRITORIO.txt'), dadosDoEscritorio(local, p.dados), 'utf8')
+      linhas.push(`- DADOS DO ESCRITORIO.txt (quem assina${local ? '' : '; sem o escritorio.json deste computador, só o que o DG Brasil tem'})`)
     }
     p.inicioAgente = agora() - 2000
     return texto(`Copiado para ${pastaReal}:\n${linhas.join('\n')}\n\nAgora chame o agente da máquina ${p.agente} para trabalhar NESSA pasta.`)
@@ -261,6 +280,10 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
       ...r.trazidos.map((x) => `- ${x.arquivo} ← ${x.origem}${x.convertido ? ' (convertido em PDF)' : ''} · categoria sugerida ${x.categoria}${x.titulo ? ` · título "${x.titulo}"` : ''}`),
       ...(r.ignorados.length ? ['', 'Ignorados:', ...r.ignorados.map((i) => `- ${i}`)] : []),
       '', 'Entregue cada um com entregar_minuta (arquivo, título claro, categoria).',
+      ...(r.pendencias.length ? [
+        '', `A ficha de revisão do agente traz ${r.pendencias.length} item(ns) para o advogado. Registre CADA um com propor (OTHER), sem juntar e sem mudar o sentido:`,
+        ...r.pendencias.map((x) => `- ${x.tipo}: ${x.texto}`),
+      ] : []),
     ].join('\n'))
   }))
 }

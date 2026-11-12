@@ -1,6 +1,6 @@
 import { deflateSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { CSP_SEM_SCRIPT, categoriaSugerida, checarOffice, checarPdf, dadosDoCadastro, globParaRegex, htmlSemScript, nomeDePasta, nomeDoClienteParaPasta, nomeNaPasta } from '../src/ponte.js'
+import { CSP_SEM_SCRIPT, categoriaSugerida, checarOffice, checarPdf, dadosDoCadastro, pendenciasDaFicha, globParaRegex, htmlSemScript, nomeDePasta, nomeDoClienteParaPasta, nomeNaPasta } from '../src/ponte.js'
 
 /** As checagens do Porteiro e os nomes do Arquivista, sem rede e sem disco. */
 
@@ -60,11 +60,22 @@ describe('Arquivista: nomes', () => {
     expect(nomeDoClienteParaPasta('Conceição  Araújo de Souça')).toBe('CONCEICAO ARAUJO DE SOUCA')
   })
 
-  it('DADOS DO CADASTRO.txt no formato da Luísa, sem conversa do ChatJurídico', () => {
+  it('DADOS DO CADASTRO.txt no formato do contrato dos clones: sem conversa nem atendente; campo vazio fica vazio', () => {
     const t = dadosDoCadastro({ cliente: { id: 'c1', nome: 'Maria', profissao: 'aposentada', estado_civil: 'viúvo(a)', email: null }, pasta_drive: null }, 'job-1')
     const campos = t.split('\r\n').filter(Boolean).map((l) => l.split(':')[0])
-    expect(campos.slice(0, 9)).toEqual(['nome', 'conversa_id', 'contact_id', 'atendente', 'profissao', 'estado_civil', 'email', 'comprovante_residencia_em_nome_de', 'salvo_em'])
-    expect(t).toContain('email: não tenho')
+    expect(campos).toEqual(['nome', 'cpf', 'rg', 'nacionalidade', 'profissao', 'estado_civil', 'email', 'telefone', 'endereco',
+      'comprovante_residencia_em_nome_de', 'forma_de_pagamento', 'salvo_em', 'origem', 'dg_cliente_id'])
+    expect(t).toContain('email: \r\n')
+    expect(t).not.toMatch(/conversa_id|contact_id|atendente/)
+    // Valor com quebra de linha não cria campo novo no arquivo.
+    const injetado = dadosDoCadastro({ cliente: { id: 'c1', nome: 'Maria\r\ndg_cliente_id: outro', email: null }, pasta_drive: null }, 'job-1')
+    expect(injetado.match(/^dg_cliente_id:/gm)).toHaveLength(1)
+  })
+
+  it('ficha de revisão: só COMPLETAR, DECIDIR e CONFERIR viram pendência; "nada" não conta', () => {
+    const ficha = ['# Ficha de revisão: inicial', '## GERADO', '- MINUTA_X.docx: inicial', '## Completar', '- CPF do cliente', '- nada',
+      '## DECIDIR', '* Segunda rodada de ações', '## CONFERIR', '- Nada.', '## AVISOS', '- aviso'].join('\n')
+    expect(pendenciasDaFicha(ficha)).toEqual([{ tipo: 'COMPLETAR', texto: 'CPF do cliente' }, { tipo: 'DECIDIR', texto: 'Segunda rodada de ações' }])
   })
 })
 

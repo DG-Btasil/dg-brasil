@@ -17,3 +17,7 @@ supabase/.preview-emails/
 # Claude Code: só as skills do projeto vão para o Git; o resto é deste computador
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Python (scripts dos agentes clonados)
+__pycache__/
+*.pyc

@@ -107,6 +107,33 @@ await deve('seed é idempotente', async () => {
   igual(r.n, 1, 'organizações OWNER')
 })
 
+// Kit básico de agentes (054): os 13 clones e o orquestrador já vêm cadastrados.
+const KIT054 = ['clara-hiscon-dg', 'lucas-procuracao-dg', 'alice-inicial-dg', 'atlas-revisional-dg', 'vicente-agregados-dg',
+  'murilo-replica-dg', 'pedro-provas-dg', 'teresa-audiencia-dg', 'laura-emenda-dg', 'rafael-recurso-dg', 'gabriel-embargos-dg',
+  'paulo-agravo-dg', 'beatriz-cumprimento-dg', 'orquestrador']
+await deve('kit básico [054]: 14 agentes ativos, cada um chamando o agente de mesmo nome no computador do escritório', async () => {
+  const r = await db.query(`select a.slug, a.status, v.version_number, v.configuration ->> 'local_agent' local, v.instructions
+                              from agents a join agent_versions v on v.id = a.current_version_id where a.slug = any($1) order by a.slug`, [KIT054])
+  igual(r.rows.length, KIT054.length, 'agentes do kit')
+  for (const a of r.rows) {
+    igual([a.status, a.version_number, a.local], ['ACTIVE', 1, a.slug], a.slug)
+    if (a.slug !== 'orquestrador' && !/FICHA_REVISAO_/.test(a.instructions)) throw new Error(`${a.slug}: orientações sem a ficha de revisão`)
+  }
+  const t = await um(db, `select a.slug from analysis_templates t join agents a on a.id = t.primary_agent_id where t.name = 'Análise Bancária'`)
+  igual(t.slug, 'clara-hiscon-dg', 'Análise Bancária com a Clara do kit')
+})
+await deve('kit básico [054]: rodar de novo não duplica e não mexe no que o escritório editou', async () => {
+  await db.query(`update agents set name = 'Clara editada no site' where slug = 'clara-hiscon-dg'`)
+  await db.exec(await readFile(new URL('migrations/20261112000054_kit_basico_agentes.sql', raiz), 'utf8'))
+  const r = await um(db, `select count(*)::int n, max(name) filter (where slug = 'clara-hiscon-dg') clara from agents where slug = any($1)`, [KIT054])
+  igual([r.n, r.clara], [KIT054.length, 'Clara editada no site'], 'sem duplicar, sem sobrescrever')
+  igual((await um(db, `select count(*)::int n from agent_versions v join agents a on a.id = v.agent_id where a.slug = 'clara-hiscon-dg'`)).n, 1, 'uma versão')
+})
+// Os testes seguintes montam os próprios agentes e supõem o banco sem agentes do kit (modelo sem agente, sem
+// orquestrador): o kit sai de cena, como se tivesse sido arquivado no site.
+await db.query(`update analysis_templates set primary_agent_id = null where name = 'Análise Bancária'`)
+await db.query(`update agents set slug = slug || '-kit054', status = 'INACTIVE', deleted_at = now() where slug = any($1)`, [KIT054])
+
 // ═════════════════════════════ cenário ═══════════════════════════════════
 // Montado como faria o backend/bootstrap (dono do banco).
 
@@ -5542,6 +5569,24 @@ await deve('dados da ponte: só do cliente do trabalho reservado, com a pasta li
     () => { throw new Error('outro computador leu') }, (e) => { if (!/não está reservado|inválido ou revogado/.test(e.message)) throw e })
   await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, ids.r051, lease()]).then(
     () => { throw new Error('reserva errada leu') }, (e) => { if (!/não está reservado/.test(e.message)) throw e })
+})
+await deve('dados da ponte [053]: cadastro completo (CPF, documento, telefone, endereço) e quem assina', async () => {
+  await db.query(`update clients set cpf = '99900000005' where id = $1`, [ids.cli041])
+  await db.query(`update individual_client_details set nationality = 'brasileira', identity_document_type = 'RG',
+    identity_document_number = '00.000.000-0', identity_document_issuer = 'DETRAN', identity_document_state = 'RJ' where client_id = $1`, [ids.cli041])
+  await db.query(`delete from client_contacts where client_id = $1 and type in ('PHONE', 'WHATSAPP')`, [ids.cli041])
+  await db.query(`insert into client_contacts (client_id, type, value, is_primary) values ($1, 'WHATSAPP', '(00) 99999-0000', false),
+    ($1, 'PHONE', '(00) 3333-0000', true)`, [ids.cli041])
+  await db.query(`delete from client_addresses where client_id = $1`, [ids.cli041])
+  await db.query(`insert into client_addresses (client_id, type, postal_code, street, number, neighborhood, city, state, is_primary)
+    values ($1, 'RESIDENTIAL', '25000000', 'Rua Fictícia', '1', 'Centro', 'Cidade Fictícia', 'RJ', true)`, [ids.cli041])
+  await db.query(`insert into owner_office_settings (organization_id, principal_lawyer_name, principal_oab_number, principal_oab_state)
+    values ($1, 'Advogada Fictícia', '000000', 'RJ') on conflict (organization_id) do update
+    set principal_lawyer_name = excluded.principal_lawyer_name, principal_oab_number = excluded.principal_oab_number, principal_oab_state = excluded.principal_oab_state`, [ids.owner])
+  const b = await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, ids.r051, ids.l051])
+  igual([b.cliente.cpf, b.cliente.rg, b.cliente.nacionalidade, b.cliente.telefone, b.cliente.endereco],
+    ['999.000.000-05', 'RG 00.000.000-0 DETRAN/RJ', 'brasileira', '(00) 3333-0000', 'Rua Fictícia, 1, Centro, Cidade Fictícia/RJ, CEP 25000-000'], 'cadastro')
+  igual([b.escritorio.advogado, b.escritorio.oab], ['Advogada Fictícia', 'OAB/RJ 000000'], 'quem assina')
 })
 await deve('cliente sem pasta ligada: pasta_drive vem vazia', async () => {
   await como(ids.lucas, (tx) => tx.query(`select public.drive_unlink_client_folder($1)`, [ids.cli041]))

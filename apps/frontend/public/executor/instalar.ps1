@@ -137,6 +137,12 @@ if ($ComPonte) {
     # é a regra Edit (Write(...) não vale para nada). code.claude.com/docs/en/permissions
     "Read(//g/Meu Drive/$Novos/**)", "Edit(//g/Meu Drive/$Novos/**)",
     "Read(//g/Meu Drive/$ComProcesso/**)", "Edit(//g/Meu Drive/$ComProcesso/**)",
+    # agentes clonados do DG Brasil (docs/agentes/clonagem): pasta dos clientes, base de
+    # conhecimento, scripts e pasta de trabalho. Quem instala os clones e os põe no
+    # ponte.json é o apps/executor/scripts/instalar-agentes-bancario.ps1.
+    'Read(//g/Meu Drive/DG BRASIL/**)', 'Edit(//g/Meu Drive/DG BRASIL/**)',
+    'Read(//c/DGBrasil/agentes/**)', 'Edit(//c/DGBrasil/agentes/trabalho/**)',
+    'Read(//g/Meu Drive/BASE DE CONHECIMENTO CLAUDE/**)',
     # modelos e bases que os redatores leem (só leitura)
     "Read(//g/Meu Drive/Modelos - Peti$cMin$($aMin)o Inicial Fraude Consignado INSS/**)",
     "Read(//g/Meu Drive/05. FORMA$Cced$($Atil)O E PROJETOS/LIVES SECRETAS/**)",
@@ -183,7 +189,7 @@ if ($ComPonte) {
 # $env:DG_BRASIL_AGENTES_EXTRA = 'nome1,nome2' e rode o instalador de novo.
 $Redatores = @('alice-inicial', 'atlas-revisional', 'vicente-agregados', 'murilo-replica', 'pedro-provas', 'laura-emenda',
                'gabriel-embargos', 'rafael-recurso', 'paulo-agravo', 'beatriz-cumprimento', 'teresa-audiencia')
-$ManterAgentes = @('porteiro-dg', 'arquivista-dg', 'mensageiro-dg', 'analista-teste', 'kit-cliente-teste', 'orquestrador-teste')
+$ManterAgentes = @('porteiro-dg', 'arquivista-dg', 'mensageiro-dg', 'orquestrador', 'analista-teste', 'kit-cliente-teste', 'orquestrador-teste')
 if ($ComPonte) {
   $daPonte = @('clara-hiscon', 'lucas-procuracao') + $Redatores
   if (Test-Path $Ponte) {

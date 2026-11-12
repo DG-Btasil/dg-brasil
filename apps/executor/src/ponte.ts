@@ -10,10 +10,12 @@ import { z } from 'zod'
 import { LIMITE_MINUTA } from './arquivos.js'
 
 /**
- * A PONTE (docs/ponte.md): os agentes que já trabalham no computador do
- * escritório (Clara, Lucas...) fazem o trabalho do DG Brasil na pasta do
- * cliente no Drive (G:\), do jeito de sempre. O conector faz por CÓDIGO tudo o
- * que não pode depender de uma IA:
+ * A PONTE (docs/ponte.md): os agentes do computador do escritório fazem o
+ * trabalho do DG Brasil na pasta do cliente no Drive (G:\). Desde 11/11/2026 os
+ * agentes são os CLONES do DG Brasil (agentes/bancario, sufixo -dg), na pasta
+ * G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO CLIENTE>
+ * (docs/agentes/clonagem). O conector faz por CÓDIGO tudo o que não pode
+ * depender de uma IA:
  *
  *   verificar_arquivos            checagens por script (tipo real, PDF ativo, macro, antivírus)
  *   copiar_para_pasta_do_cliente  entrada → pasta do cliente, com os nomes que os agentes esperam
@@ -52,6 +54,12 @@ const AgentePonte = z.object({
   dados_do_cadastro: z.boolean().default(true),
   /** Criar a pasta do cliente quando ela não existir em nenhuma etapa (padrão: sim). */
   criar_pasta: z.boolean().default(true),
+  /**
+   * De onde sai o nome da pasta do cliente. "drive": a pasta do Google Drive
+   * ligada ao cliente no DG Brasil (os agentes do escritório). "cliente": o nome
+   * do cliente no cadastro, sempre (os agentes clonados, em DG BRASIL\CLIENTE BANCÁRIO).
+   */
+  nome_da_pasta: z.enum(['drive', 'cliente']).default('drive'),
 }).strict()
 
 const ArquivoPonte = z.object({
@@ -402,24 +410,52 @@ export async function mesmoConteudoNaPasta(pasta: string, nome: string, sha256: 
 }
 
 export interface DadosPonte {
-  cliente: null | { id: string; tipo?: string; nome: string | null; profissao?: string | null; estado_civil?: string | null; email?: string | null }
+  cliente: null | {
+    id: string; tipo?: string; nome: string | null; profissao?: string | null; estado_civil?: string | null; email?: string | null
+    /** Desde a migration 053. */
+    cpf?: string | null; rg?: string | null; nacionalidade?: string | null; telefone?: string | null; endereco?: string | null
+  }
   pasta_drive: null | { id: string; nome: string | null }
+  /** Quem assina, pelo cadastro do escritório no DG Brasil (migration 053). */
+  escritorio?: null | {
+    nome?: string | null; advogado?: string | null; oab?: string | null
+    endereco?: string | null; cidade?: string | null; email?: string | null; telefone?: string | null
+  }
 }
 
 const agora = () => new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '')
 
-/** DADOS DO CADASTRO.txt no formato da Luísa (FLUXO_COMERCIAL.md). Sem conversa: a Clara pula a anotação. */
-export function dadosDoCadastro(d: DadosPonte, trabalhoId: string): string {
+const umaLinha = (v: unknown) => String(v ?? '').replace(/[\r\n\t]+/g, ' ').trim()
+
+/** Campos do DADOS DO CADASTRO.txt, na ordem do contrato dos clones (docs/agentes/clonagem/contrato-dos-clones.md). */
+export const CAMPOS_DO_CADASTRO = [
+  'nome', 'cpf', 'rg', 'nacionalidade', 'profissao', 'estado_civil', 'email', 'telefone', 'endereco',
+  'comprovante_residencia_em_nome_de', 'forma_de_pagamento',
+] as const
+
+/** Lê um arquivo "campo: valor" (um por linha). */
+export function lerCampos(texto: string): Record<string, string> {
+  const campos: Record<string, string> = {}
+  for (const linha of texto.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    const m = /^([a-z_]+):[ \t]*(.*)$/i.exec(linha)
+    if (m) campos[m[1].toLowerCase()] = m[2].trim()
+  }
+  return campos
+}
+
+/**
+ * DADOS DO CADASTRO.txt: o que os agentes leem do cadastro do cliente. Campo sem
+ * valor no DG Brasil fica vazio, a não ser que o arquivo que já está na pasta
+ * tenha um valor (a equipe pode ter completado à mão: não se perde).
+ */
+export function dadosDoCadastro(d: DadosPonte, trabalhoId: string, anterior: Record<string, string> = {}): string {
   const c = d.cliente
+  const doSite: Record<string, unknown> = {
+    nome: c?.nome, cpf: c?.cpf, rg: c?.rg, nacionalidade: c?.nacionalidade, profissao: c?.profissao,
+    estado_civil: c?.estado_civil, email: c?.email, telefone: c?.telefone, endereco: c?.endereco,
+  }
   return [
-    `nome: ${c?.nome ?? ''}`,
-    'conversa_id: ',
-    'contact_id: ',
-    'atendente: DG Brasil',
-    `profissao: ${c?.profissao ?? ''}`,
-    `estado_civil: ${c?.estado_civil ?? ''}`,
-    `email: ${c?.email ?? 'não tenho'}`,
-    'comprovante_residencia_em_nome_de: não informado no DG Brasil (conferir no comprovante)',
+    ...CAMPOS_DO_CADASTRO.map((k) => `${k}: ${umaLinha(doSite[k]) || umaLinha(anterior[k])}`),
     `salvo_em: ${agora()}`,
     `origem: DG Brasil, trabalho ${trabalhoId}`,
     `dg_cliente_id: ${c?.id ?? ''}`,
@@ -427,15 +463,64 @@ export function dadosDoCadastro(d: DadosPonte, trabalhoId: string): string {
   ].join('\r\n')
 }
 
+// ── quem assina (DADOS DO ESCRITORIO.txt) ───────────────────────────────────
+
+/** Dados do escritório neste computador, fora do repositório (C:\DGBrasil\agentes\escritorio.json). */
+export function caminhoEscritorio(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.DG_ESCRITORIO_JSON) return env.DG_ESCRITORIO_JSON
+  return process.platform === 'win32' ? 'C:\\DGBrasil\\agentes\\escritorio.json' : join(homedir(), '.config', 'dg-brasil', 'escritorio.json')
+}
+
+const EscritorioLocal = z.object({
+  escritorio: z.string().optional(),
+  advogado: z.string().optional(),
+  oabs: z.array(z.object({ uf: z.string(), numero: z.string() }).passthrough()).optional(),
+  endereco_profissional: z.string().optional(),
+  cidade_do_fecho: z.string().optional(),
+  email: z.string().optional(),
+  telefones: z.array(z.string()).optional(),
+}).passthrough()
+
+export type Escritorio = z.infer<typeof EscritorioLocal>
+
+export async function lerEscritorio(arquivo = caminhoEscritorio()): Promise<Escritorio | null> {
+  try {
+    return EscritorioLocal.parse(JSON.parse((await readFile(arquivo, 'utf8')).replace(/^\uFEFF/, '')))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * DADOS DO ESCRITORIO.txt: quem assina. O arquivo deste computador manda (é o
+ * mais completo); o que faltar nele vem do cadastro do escritório no DG Brasil.
+ * Campo vazio: o agente escreve [COMPLETAR] na peça.
+ */
+export function dadosDoEscritorio(local: Escritorio | null, d: DadosPonte): string {
+  const oabs = (local?.oabs ?? []).map((o) => `OAB/${umaLinha(o.uf).toUpperCase()} ${umaLinha(o.numero)}`).join('; ')
+  return [
+    `escritorio: ${umaLinha(local?.escritorio) || umaLinha(d.escritorio?.nome)}`,
+    `advogado: ${umaLinha(local?.advogado) || umaLinha(d.escritorio?.advogado)}`,
+    `oab: ${oabs || umaLinha(d.escritorio?.oab)}`,
+    `endereco_profissional: ${umaLinha(local?.endereco_profissional) || umaLinha(d.escritorio?.endereco)}`,
+    `cidade_do_fecho: ${umaLinha(local?.cidade_do_fecho) || umaLinha(d.escritorio?.cidade)}`,
+    `email: ${umaLinha(local?.email) || umaLinha(d.escritorio?.email)}`,
+    `telefone: ${(local?.telefones ?? []).map(umaLinha).filter(Boolean).join('; ') || umaLinha(d.escritorio?.telefone)}`,
+    `salvo_em: ${agora()}`,
+    '',
+  ].join('\r\n')
+}
+
 /** Lê o DADOS DO CADASTRO.txt que já está na pasta e confere se é deste cliente. */
-export async function conferirCadastroExistente(pasta: string, d: DadosPonte): Promise<'ausente' | 'confere'> {
+export async function conferirCadastroExistente(pasta: string, d: DadosPonte): Promise<{ situacao: 'ausente' | 'confere'; campos: Record<string, string> }> {
   let texto: string
   try {
     texto = await readFile(join(pasta, 'DADOS DO CADASTRO.txt'), 'utf8')
   } catch {
-    return 'ausente'
+    return { situacao: 'ausente', campos: {} }
   }
-  const campo = (k: string) => texto.match(new RegExp(`^${k}:[ \\t]*(.*)$`, 'mi'))?.[1]?.trim() ?? ''
+  const campos = lerCampos(texto)
+  const campo = (k: string) => campos[k] ?? ''
   const id = campo('dg_cliente_id')
   if (id && d.cliente?.id && id !== d.cliente.id) {
     throw new ErroPonte('CONFLITO', 'A pasta do cliente já tem um DADOS DO CADASTRO.txt de OUTRO cliente do DG Brasil. Nada foi copiado: confira a pasta (homônimo?).')
@@ -445,7 +530,7 @@ export async function conferirCadastroExistente(pasta: string, d: DadosPonte): P
   if (nome && esperado && nome !== esperado) {
     throw new ErroPonte('CONFLITO', 'O DADOS DO CADASTRO.txt da pasta tem outro nome de cliente. Nada foi copiado: confira a pasta (homônimo?).')
   }
-  return 'confere'
+  return { situacao: 'confere', campos }
 }
 
 // ── Mensageiro: trazer o que o agente gerou ────────────────────────────────
@@ -506,6 +591,32 @@ export function categoriaSugerida(nome: string): string {
   return 'OTHER'
 }
 
+/** FICHA_REVISAO_*.md (contrato dos clones, seção 6): o que o agente deixou para o advogado. */
+export const E_FICHA_DE_REVISAO = /^ficha_revisao_.*\.md$/i
+
+export interface PendenciaDaFicha { tipo: 'COMPLETAR' | 'DECIDIR' | 'CONFERIR'; texto: string }
+
+/** Itens das seções COMPLETAR, DECIDIR e CONFERIR da ficha ("- nada" não conta). */
+export function pendenciasDaFicha(texto: string): PendenciaDaFicha[] {
+  const itens: PendenciaDaFicha[] = []
+  let secao: PendenciaDaFicha['tipo'] | null = null
+  for (const bruta of texto.split(/\r?\n/)) {
+    const linha = bruta.trim()
+    const titulo = /^#{1,6}\s*(.+?)\s*$/.exec(linha)
+    if (titulo) {
+      const t = semAcento(titulo[1]).toUpperCase()
+      secao = t === 'COMPLETAR' || t === 'DECIDIR' || t === 'CONFERIR' ? t : null
+      continue
+    }
+    const item = /^[-*]\s+(.+)$/.exec(linha)
+    if (!secao || !item) continue
+    const conteudo = item[1].trim()
+    if (/^nada\.?$/i.test(conteudo)) continue
+    itens.push({ tipo: secao, texto: conteudo.slice(0, 1500) })
+  }
+  return itens.slice(0, 40)
+}
+
 export interface Trazido {
   origem: string
   arquivo: string
@@ -538,10 +649,11 @@ async function* arquivosAte(pasta: string, profundidade: number, prefixo = ''): 
 export async function trazer(
   pasta: string, padroes: z.infer<typeof Trazer>[], desde: number, saida: string, htmlParaPdf: HtmlParaPdf,
   nomeLivre: (pasta: string, nome: string) => Promise<string>, profundidade = 3,
-): Promise<{ trazidos: Trazido[]; ignorados: string[] }> {
+): Promise<{ trazidos: Trazido[]; ignorados: string[]; pendencias: PendenciaDaFicha[] }> {
   const regras = padroes.map((p) => (typeof p === 'string' ? { padrao: p } : p)).map((p) => ({ ...p, re: globParaRegex(p.padrao) }))
   const trazidos: Trazido[] = []
   const ignorados: string[] = []
+  const pendencias: PendenciaDaFicha[] = []
   const temporaria = await mkdtemp(join(tmpdir(), 'dg-ponte-'))
   try {
     for await (const item of arquivosAte(pasta, profundidade)) {
@@ -561,7 +673,9 @@ export async function trazer(
         trazidos.push({ ...base, arquivo: basename(destino), convertido: true })
       } else if (ext === '.md') {
         const html = join(temporaria, `${trazidos.length}.html`)
-        await writeFile(html, textoParaHtml(corpo, await readFile(item.caminho, 'utf8')), 'utf8')
+        const md = await readFile(item.caminho, 'utf8')
+        if (E_FICHA_DE_REVISAO.test(item.nome)) pendencias.push(...pendenciasDaFicha(md))
+        await writeFile(html, textoParaHtml(corpo, md), 'utf8')
         const destino = await nomeLivre(saida, `${corpo}.pdf`)
         await htmlParaPdf(html, destino)
         trazidos.push({ ...base, arquivo: basename(destino), convertido: true })
@@ -574,5 +688,5 @@ export async function trazer(
   } finally {
     await rm(temporaria, { recursive: true, force: true }).catch(() => undefined)
   }
-  return { trazidos, ignorados }
+  return { trazidos, ignorados, pendencias }
 }

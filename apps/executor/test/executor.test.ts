@@ -132,6 +132,7 @@ beforeEach(async () => {
   trabalhos = new Trabalhos(new DgApi(dg.url, TOKEN, 'dg-executor/test'), pasta, logMudo, 40)
   const servidor = criarServidor(trabalhos, 'dg-executor/test', logMudo, undefined, {
     arquivo: join(pasta, 'ponte.json'),
+    escritorio: join(pasta, 'escritorio.json'),
     antivirus: async () => antivirus,
     htmlParaPdf: async (_html, pdf) => { await writeFile(pdf, '%PDF-1.4 convertido do HTML') },
   })
@@ -388,11 +389,14 @@ describe('ponte com os agentes da máquina', () => {
     const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
     expect(c.erro, c.texto).toBe(false)
     const cliente = join(kit, 'JOSE DA SILVA FICTICIO')
-    expect((await readdir(cliente)).sort()).toEqual(['DADOS DO CADASTRO.txt', 'HISCON.pdf'])
+    expect((await readdir(cliente)).sort()).toEqual(['DADOS DO CADASTRO.txt', 'DADOS DO ESCRITORIO.txt', 'HISCON.pdf'])
     expect(await readFile(join(cliente, 'HISCON.pdf'))).toEqual(HISCON)
     const cadastro = await readFile(join(cliente, 'DADOS DO CADASTRO.txt'), 'utf8')
-    expect(cadastro).toMatch(/^nome: José da Silva Fictício\r\nconversa_id: \r\n/)
+    expect(cadastro).toMatch(/^nome: José da Silva Fictício\r\ncpf: \r\n/)
+    expect(cadastro).not.toContain('conversa_id')
     expect(cadastro).toContain('dg_cliente_id: cli-1')
+    // Sem o escritorio.json deste computador e sem o cadastro do escritório: campos vazios (o agente escreve [COMPLETAR]).
+    expect(await readFile(join(cliente, 'DADOS DO ESCRITORIO.txt'), 'utf8')).toMatch(/^escritorio: \r\nadvogado: \r\noab: \r\n/)
 
     // O agente da máquina trabalha na pasta; um roteiro antigo já estava lá.
     const antigo = join(cliente, 'ROTEIRO_CONSIGNADO_ANTIGO.pdf')
@@ -408,6 +412,77 @@ describe('ponte com os agentes da máquina', () => {
     expect(t.texto).toContain('ROTEIRO_CONSIGNADO_ANTIGO.pdf (já existia antes deste trabalho)')
     const m = await chamar('entregar_minuta', { trabalho_id: j.id, arquivo: 'ROTEIRO_CONSIGNADO_JOSE_2026-11-10.pdf', titulo: 'Roteiro de ações (Clara)', categoria: 'OTHER' })
     expect(m.erro, m.texto).toBe(false)
+  })
+
+  it('agentes clonados: pasta pelo NOME DO CLIENTE, cadastro completo, quem assina e a ficha de revisão', async () => {
+    const raizDg = join(pasta, 'G', 'DG BRASIL')
+    const bancario = join(raizDg, 'CLIENTE BANCÁRIO')
+    await mkdir(bancario, { recursive: true })
+    await ponte({
+      raizes_permitidas: [raizDg],
+      agentes: { 'kit-cliente-teste': { pasta: [bancario], nome_da_pasta: 'cliente', trazer: ['MINUTA_*.docx', 'FICHA_REVISAO_*.md'] } },
+    })
+    // O cliente tem OUTRA pasta ligada no Drive (a do escritório): o clone não usa.
+    dg.bridge = {
+      cliente: { id: 'cli-1', nome: 'José da Silva Fictício', profissao: 'aposentado', estado_civil: 'casado(a)', email: null,
+        cpf: '999.000.000-05', rg: 'RG 00.000.000-0 DETRAN/RJ', nacionalidade: 'brasileira', telefone: '(00) 00000-0000', endereco: 'Rua Fictícia, 1, Centro, Cidade Fictícia/RJ, CEP 00000-000' },
+      pasta_drive: { id: 'pastaFicticia_0001', nome: 'PASTA DO ESCRITORIO' },
+      escritorio: { nome: 'Escritório do Cadastro', advogado: 'Advogado do Cadastro', oab: 'OAB/RJ 111.111' },
+    }
+    await writeFile(join(pasta, 'escritorio.json'), JSON.stringify({
+      escritorio: 'Escritório Fictício Advocacia', advogado: 'Fulana de Tal Fictícia',
+      oabs: [{ uf: 'rj', numero: '000.000' }, { uf: 'SP', numero: '111.111' }], cidade_do_fecho: 'Cidade Fictícia', telefones: ['(00) 0000-0000'],
+    }))
+    const j = await ate('ver')
+    const cliente = join(bancario, 'JOSE DA SILVA FICTICIO')
+    expect(existsSync(cliente)).toBe(false)
+    // A equipe completou a forma de pagamento à mão num trabalho anterior: não se perde.
+    await mkdir(cliente)
+    await writeFile(join(cliente, 'DADOS DO CADASTRO.txt'), 'nome: José da Silva Fictício\r\nforma_de_pagamento: 5x no boleto\r\ntelefone: antigo\r\ndg_cliente_id: cli-1\r\n')
+    await chamar('verificar_arquivos', { trabalho_id: j.id })
+    await liberarTudo(j)
+    const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    expect(c.erro, c.texto).toBe(false)
+    expect(existsSync(join(raizDg, 'CLIENTE BANCÁRIO', 'PASTA DO ESCRITORIO'))).toBe(false)
+    const cadastro = await readFile(join(cliente, 'DADOS DO CADASTRO.txt'), 'utf8')
+    expect(cadastro).toContain('cpf: 999.000.000-05\r\n')
+    expect(cadastro).toContain('endereco: Rua Fictícia, 1, Centro, Cidade Fictícia/RJ, CEP 00000-000\r\n')
+    expect(cadastro).toContain('telefone: (00) 00000-0000\r\n') // o DG Brasil tem: vale o do DG Brasil
+    expect(cadastro).toContain('forma_de_pagamento: 5x no boleto\r\n') // o DG Brasil não tem: fica o que estava
+    const escritorio = await readFile(join(cliente, 'DADOS DO ESCRITORIO.txt'), 'utf8')
+    expect(escritorio).toContain('advogado: Fulana de Tal Fictícia\r\n') // o arquivo deste computador manda
+    expect(escritorio).toContain('oab: OAB/RJ 000.000; OAB/SP 111.111\r\n')
+
+    // O clone grava a minuta e a ficha de revisão na raiz da pasta do cliente.
+    await writeFile(join(cliente, 'MINUTA_REPLICA_SILVA_BANCO-FICTICIO.docx'), 'PK minuta')
+    await writeFile(join(cliente, 'FICHA_REVISAO_REPLICA_SILVA_BANCO-FICTICIO.md'), [
+      '# Ficha de revisão: réplica', 'Cliente: JOSE DA SILVA FICTICIO', '',
+      '## GERADO', '- MINUTA_REPLICA_SILVA_BANCO-FICTICIO.docx: réplica', '',
+      '## COMPLETAR', '- Data da intimação (lacuna no item 1 da peça)', '',
+      '## DECIDIR', '- Pedir ou não a perícia grafotécnica', '',
+      '## CONFERIR', '- nada', '', '## PRAZO', '- não se aplica', '', '## AVISOS', '- Um aviso que não vira pendência', '',
+    ].join('\r\n'))
+    const t = await chamar('trazer_da_pasta_do_cliente', { trabalho_id: j.id })
+    expect(t.erro, t.texto).toBe(false)
+    expect((await readdir(join(pasta, j.id, 'saida'))).sort()).toEqual([
+      'FICHA_REVISAO_REPLICA_SILVA_BANCO-FICTICIO.pdf', 'MINUTA_REPLICA_SILVA_BANCO-FICTICIO.docx', 'porteiro-script.json', 'porteiro.json'])
+    expect(t.texto).toContain('2 item(ns) para o advogado')
+    expect(t.texto).toContain('- COMPLETAR: Data da intimação (lacuna no item 1 da peça)')
+    expect(t.texto).toContain('- DECIDIR: Pedir ou não a perícia grafotécnica')
+    expect(t.texto).not.toContain('Um aviso que não vira pendência')
+  })
+
+  it('agentes clonados: cliente sem nome válido no cadastro não ganha pasta', async () => {
+    const raizDg = join(pasta, 'G', 'DG BRASIL')
+    await mkdir(join(raizDg, 'CLIENTE BANCÁRIO'), { recursive: true })
+    await ponte({ raizes_permitidas: [raizDg], agentes: { 'kit-cliente-teste': { pasta: [join(raizDg, 'CLIENTE BANCÁRIO')], nome_da_pasta: 'cliente', trazer: ['MINUTA_*.docx'] } } })
+    dg.bridge = { cliente: { id: 'cli-1', nome: '..', profissao: null, estado_civil: null, email: null }, pasta_drive: { id: 'x', nome: 'PASTA DO ESCRITORIO' } }
+    const j = dg.add()
+    await chamar('reservar_trabalho', { trabalho_id: j.id })
+    await chamar('baixar_documentos', { trabalho_id: j.id })
+    const v = await chamar('ver_ponte', { trabalho_id: j.id })
+    expect(v.erro).toBe(true)
+    expect(v.texto).toContain('Cliente sem nome válido no cadastro')
   })
 
   it('Porteiro por script: PDF com JavaScript (mesmo disfarçado em hexadecimal) para tudo; nada vai para o Drive', async () => {
