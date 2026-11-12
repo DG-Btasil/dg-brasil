@@ -72,6 +72,15 @@ describe('Arquivista: nomes', () => {
     expect(injetado.match(/^dg_cliente_id:/gm)).toHaveLength(1)
   })
 
+  it('DADOS DO CADASTRO.txt: a forma de pagamento vem do cadastro do DG Brasil; sem ela, fica a que já estava no arquivo', () => {
+    const cliente = { id: 'c1', nome: 'Maria', email: null }
+    const anterior = { forma_de_pagamento: '5x no boleto' }
+    const forma = (t: string) => /^forma_de_pagamento: (.*)\r$/m.exec(t)?.[1]
+    expect(forma(dadosDoCadastro({ cliente: { ...cliente, forma_de_pagamento: 'a_vista' }, pasta_drive: null }, 'job-1', anterior))).toBe('a_vista')
+    expect(forma(dadosDoCadastro({ cliente: { ...cliente, forma_de_pagamento: null }, pasta_drive: null }, 'job-1', anterior))).toBe('5x no boleto')
+    expect(forma(dadosDoCadastro({ cliente, pasta_drive: null }, 'job-1'))).toBe('')
+  })
+
   it('ficha de revisão: só COMPLETAR, DECIDIR e CONFERIR viram pendência; "nada" não conta', () => {
     const ficha = ['# Ficha de revisão: inicial', '## GERADO', '- MINUTA_X.docx: inicial', '## Completar', '- CPF do cliente', '- nada',
       '## DECIDIR', '* Segunda rodada de ações', '## CONFERIR', '- Nada.', '## AVISOS', '- aviso'].join('\n')

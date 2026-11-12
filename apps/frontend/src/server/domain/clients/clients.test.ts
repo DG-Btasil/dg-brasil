@@ -55,7 +55,7 @@ describe("mapeamento banco → domínio", () => {
   it("ficha interna monta o Client do front com dados internos", () => {
     const c = internalClientFromRows(
       detailRow(),
-      { notes: "nota", legal_summary: null, inactivation_reason: null, inactivation_note: null, inactivated_at: null, inactivated_by: null },
+      { notes: "nota", legal_summary: null, contract_payment_method: "BOLETO_INSTALLMENTS", inactivation_reason: null, inactivation_note: null, inactivated_at: null, inactivated_by: null },
       OWNER,
     );
     expect(c).toMatchObject({
@@ -65,6 +65,7 @@ describe("mapeamento banco → domínio", () => {
       fullName: "Maria Teste",
       cpf: "99900011122",
       notes: "nota",
+      contractPaymentMethod: "BOLETO_INSTALLMENTS",
       contact: { email: "maria@dgbrasil.test", phone: "11999990000", secondaryPhone: "1133334444" },
       address: { zipCode: "01001000", district: "Centro" },
       identityDocument: { type: "RG", number: "123", state: "SP" },
@@ -73,7 +74,7 @@ describe("mapeamento banco → domínio", () => {
 
   it("ficha do parceiro não tem NENHUM campo interno", () => {
     const p = partnerClientFromRow(detailRow(), PARTNER_A);
-    for (const field of ["notes", "legalSummary", "inactivation", "responsibleUserId", "officeId", "representatives", "partners", "identityDocument"]) {
+    for (const field of ["notes", "legalSummary", "contractPaymentMethod", "inactivation", "responsibleUserId", "officeId", "representatives", "partners", "identityDocument"]) {
       expect(p).not.toHaveProperty(field);
     }
     expect(p.originOfficeId).toBeUndefined(); // origem é do proprietário, não do parceiro
@@ -112,11 +113,12 @@ describe("payload de gravação (PATCH)", () => {
       profession: "Aposentada",
       originOfficeId: OWNER,
       acquisitionChannel: "GOOGLE_ADS",
+      contractPaymentMethod: "PIX_UPFRONT",
       contact: { email: "M@X.com" },
       address: { zipCode: "01001-000", street: "Rua A", number: "1", district: "Centro", city: "São Paulo", state: "sp" },
     });
     const p = createPayload(input);
-    expect(p).toMatchObject({ kind: "INDIVIDUAL", document: "99900011122", full_name: "Maria", origin_organization_id: OWNER, acquisition_channel: "GOOGLE_ADS", contact: { email: "m@x.com" } });
+    expect(p).toMatchObject({ kind: "INDIVIDUAL", document: "99900011122", full_name: "Maria", origin_organization_id: OWNER, acquisition_channel: "GOOGLE_ADS", contract_payment_method: "PIX_UPFRONT", contact: { email: "m@x.com" } });
     expect(p).not.toHaveProperty("responsible_user_id");
     expect(p).not.toHaveProperty("stable_union");
     expect(p.address).toMatchObject({ postal_code: "01001000", neighborhood: "Centro", state: "SP" });
@@ -125,8 +127,17 @@ describe("payload de gravação (PATCH)", () => {
     const { patch } = updateClientSchema.parse({ id: OWNER, patch: { profession: "Aposentada", address: null } });
     expect(updatePayload(patch)).toEqual({ profession: "Aposentada", address: null });
   });
+  it("forma de pagamento do contrato: valor grava, null limpa, ausente não mexe; fora da lista é recusada", () => {
+    const payload = (patch: Record<string, unknown>) => updatePayload(updateClientSchema.parse({ id: OWNER, patch }).patch);
+    expect(payload({ contractPaymentMethod: "END_OF_CASE" })).toEqual({ contract_payment_method: "END_OF_CASE" });
+    expect(payload({ contractPaymentMethod: null })).toEqual({ contract_payment_method: null });
+    expect(payload({ profession: "Aposentada" })).not.toHaveProperty("contract_payment_method");
+    for (const bad of ["", "a_vista", "BPC_LOAS"]) {
+      expect(updateClientSchema.safeParse({ id: OWNER, patch: { contractPaymentMethod: bad } }).success).toBe(false);
+    }
+  });
   it("parceiro: payload só com contato e endereço", () => {
-    const input = updateClientBasicsSchema.parse({ id: OWNER, contact: { phone: "1199" }, fullName: "ignorado" } as unknown);
+    const input = updateClientBasicsSchema.parse({ id: OWNER, contact: { phone: "1199" }, fullName: "ignorado", contractPaymentMethod: "PIX_UPFRONT" } as unknown);
     expect(Object.keys(basicsPayload(input)).sort()).toEqual(["contact"]);
   });
   it("edição vazia é recusada", () => {

@@ -31,8 +31,14 @@ coisas:
   Os dados vêm do DG Brasil, e a entrega volta para ele.
 
 Os agentes atuais do escritório (Clara, Lucas, Alice, Murilo...) foram escritos
-para as pastas `G:\Meu Drive\...`. Eles **não são reescritos nem copiados**:
-entram pela **ponte** ([ponte.md](ponte.md)). Para pôr um agente da máquina na
+para a esteira do escritório (pastas `G:\Meu Drive\...`, ChatJurídico, ADVBOX).
+Desde 11/11/2026 o DG Brasil usa **clones** deles, com o sufixo `-dg`
+(`agentes/bancario/<nome>-dg.md`, pasta que fica só no computador do escritório,
+fora do GitHub), com as regras de
+[agentes/clonagem/contrato-dos-clones.md](agentes/clonagem/contrato-dos-clones.md).
+Os originais não são alterados. Os clones também entram pela **ponte**
+([ponte.md](ponte.md)); quem os instala e os põe no `ponte.json` é o
+`apps/executor/scripts/instalar-agentes-bancario.ps1`. Para pôr outro agente na
 ponte:
 
 1. acrescente o agente no `%APPDATA%\DGBrasil\ponte.json` do computador
@@ -45,14 +51,20 @@ ponte:
    na ponte e avisa se a pasta não existe.
 
 Agente que **não** está no `ponte.json` segue o fluxo antigo (pastas `entrada` e
-`saida` do trabalho): é o caso dos agentes de teste. Não crie mais variantes
-`-dg`. Os agendamentos atuais continuam como estão.
+`saida` do trabalho): é o caso dos agentes de teste. Agente novo do DG Brasil
+segue o contrato dos clones e leva o sufixo `-dg`. Os agendamentos do escritório
+continuam como estão.
 
 Exemplos fictícios prontos para testar: [mcp/pilotos/agentes/](mcp/pilotos/agentes/).
 
 ## 2. O registro no DG Brasil
 
-Como ADMIN, em **DG Brasil → Agentes → Cadastrar agente**:
+Os agentes do **kit básico** (os 13 clones da esteira bancária e o
+orquestrador) já vêm cadastrados pela migration 054, ativos. O arquivo de cada
+um fica no computador do escritório (pasta local `agentes/bancario/`, fora do
+GitHub) e é instalado a partir dela ([mcp/instalacao.md](mcp/instalacao.md),
+seção 5.0): o site guarda só o registro. Para outro agente, como ADMIN, em
+**DG Brasil → Agentes → Cadastrar agente**:
 
 | Campo | O que pôr |
 |---|---|

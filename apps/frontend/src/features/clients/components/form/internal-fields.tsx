@@ -2,13 +2,14 @@
 
 import { useFormContext, useWatch } from "react-hook-form";
 import { Field, FormSection, Input, Select, Textarea } from "@/components/ui/form";
-import { ACQUISITION_CHANNEL_OPTIONS } from "@/lib/constants/legal";
+import { ACQUISITION_CHANNEL_OPTIONS, CONTRACT_PAYMENT_METHOD_OPTIONS } from "@/lib/constants/legal";
 import { useOriginOptions } from "@/features/directory/directory-context";
 
 interface InternalValues {
   originOfficeId: string;
   acquisitionChannel: string;
   acquisitionDetail: string;
+  contractPaymentMethod: string;
   legalSummary: string;
   notes: string;
 }
@@ -47,11 +48,22 @@ export function OriginFields() {
   );
 }
 
-/** Observações internas (comum a PF e PJ). */
-export function InternalFields() {
-  const { register } = useFormContext<InternalValues>();
+/**
+ * Observações internas (comum a PF e PJ). A forma de pagamento do contrato de
+ * honorários só entra no cadastro de pessoa física (`withContractPayment`).
+ */
+export function InternalFields({ withContractPayment = false }: { withContractPayment?: boolean }) {
+  const {
+    register,
+    formState: { errors },
+  } = useFormContext<InternalValues>();
   return (
     <FormSection title="Informações adicionais" description="Uso interno do escritório. Não aparecem para o cliente.">
+      {withContractPayment && (
+        <Field label="Forma de pagamento do contrato" requirement="optional" error={errors.contractPaymentMethod?.message} hint="Usada pelo agente que gera o contrato de honorários.">
+          {(p) => <Select placeholder="Não definida" options={CONTRACT_PAYMENT_METHOD_OPTIONS} {...p} {...register("contractPaymentMethod")} />}
+        </Field>
+      )}
       <Field label="Resumo jurídico" requirement="optional" hint="Síntese curta do relacionamento com o cliente." className="col-span-2">
         {(p) => <Textarea rows={3} {...p} {...register("legalSummary")} />}
       </Field>

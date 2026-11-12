@@ -192,10 +192,44 @@ fictícios:
 copy C:\DGBrasil\dg-brasil\docs\mcp\pilotos\agentes\*.md $env:USERPROFILE\.claude\agents\
 ```
 
-Os agentes reais (Clara, Lucas, redatores) **não** são copiados nem
-reescritos: entram pela **ponte** ([docs/ponte.md](../ponte.md)).
+Os agentes do escritório (Clara, Lucas, redatores) **não são alterados**. Desde
+11/11/2026, o DG Brasil usa **clones** deles, com o sufixo `-dg`
+([docs/agentes/clonagem](../agentes/clonagem/README.md)), que também entram pela
+**ponte** ([docs/ponte.md](../ponte.md)).
 
-### 5.1 A ponte (agentes reais)
+### 5.0 Os agentes do kit (clones do DG Brasil)
+
+**Os arquivos dos clones não estão no repositório do GitHub**, que é público:
+eles trazem o método do escritório (teses, modelos, regras de redação). Por
+enquanto existem só no computador do escritório, na pasta `agentes/` da cópia
+local do projeto (o `.gitignore` impede o envio por engano). Levar os agentes
+para dentro do DG Brasil, com um botão "Setup" na tela de autorizar o
+computador, é o primeiro item do pós-MVP: [deploy/pos-mvp.md](../deploy/pos-mvp.md),
+item 6.
+
+No computador do escritório, com a pasta `agentes/` na cópia local do projeto:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\Projetos\dg-brasil\apps\executor\scripts\instalar-agentes-bancario.ps1
+```
+
+Para ver o que ele faria sem gravar nada, acrescente `-Simular`. Ele:
+- copia os 13 clones (`agentes/bancario/*-dg.md`) e os agentes da ponte para
+  `%USERPROFILE%\.claude\agents\`. Não toca em nenhum outro arquivo dessa pasta;
+- copia os scripts dos clones (`agentes/scripts/`) para `C:\DGBrasil\agentes\scripts\`
+  e cria a pasta de trabalho `C:\DGBrasil\agentes\trabalho\`;
+- cria, no Drive, `DG BRASIL\CLIENTE BANCÁRIO` (a pasta dos clientes) e
+  `DG BRASIL\BASE DE CONHECIMENTO`;
+- cria `C:\DGBrasil\agentes\escritorio.json` (quem assina) a partir de um
+  exemplo fictício, se ainda não existir. **Preencha com os dados reais**;
+- acrescenta os clones ao `ponte.json` e libera as pastas deles na sessão do DG
+  Brasil, guardando o arquivo anterior com o final `.anterior`.
+
+No site, os clones já aparecem em **DG Brasil → Agentes** (migration 054, o
+"kit básico"). Depois de instalar, feche e abra de novo a janela "DG Brasil -
+Vigia".
+
+### 5.1 A ponte
 
 O instalador cuida de tudo (para pular: `$env:DG_BRASIL_PONTE = '0'` antes de
 rodar):
@@ -230,7 +264,8 @@ Campos do `ponte.json`:
 | `agentes.<nome>.trazer` | Os nomes dos arquivos que o Mensageiro traz (`*` vale qualquer coisa; maiúsculas e acentos não importam). |
 | `agentes.<nome>.dados_do_cadastro` | Gravar o `DADOS DO CADASTRO.txt` quando faltar (padrão `true`; os redatores não usam). |
 | `agentes.<nome>.criar_pasta` | Criar a pasta do cliente quando ela não existe em nenhuma etapa (padrão `true`; para os redatores, `false`). |
-| `agentes.<nome>.profundidade` | Até quantas subpastas o Mensageiro procura (padrão 3: subpasta do banco, `PEÇAS GERADAS`). |
+| `agentes.<nome>.profundidade` | Até quantas subpastas o Mensageiro procura (padrão 3: subpasta do banco, `PEÇAS GERADAS`; nos clones, 1). |
+| `agentes.<nome>.nome_da_pasta` | `drive` (padrão): a pasta do Drive ligada ao cliente no DG Brasil. `cliente`: sempre o nome do cliente no cadastro (os clones, em `DG BRASIL\CLIENTE BANCÁRIO`). |
 
 Depois de mexer no arquivo, rode `node C:\DGBrasil\executor\dg-executor.mjs doctor`:
 ele lista cada agente da ponte e avisa o que falta.

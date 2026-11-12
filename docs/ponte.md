@@ -9,6 +9,19 @@ ponte. Pode ser seguido por uma pessoa ou pelo Claude Code em outra máquina.
 > tem duas frentes ([mcp/ponte-validacao.md](mcp/ponte-validacao.md)): fora da
 > máquina principal e na máquina principal.
 
+> **Mudança de 11/11/2026: os agentes passam a ser clones do DG Brasil.**
+> Depois da Frente B, ficou decidido que o DG Brasil não chama mais os agentes
+> reais do escritório dentro da esteira dele. Os agentes da esteira bancária
+> foram **clonados** (nomes com o sufixo `-dg`; os arquivos ficam só no
+> computador do escritório, fora do GitHub) e trabalham
+> numa pasta só do DG Brasil: `G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO
+> CLIENTE>`. Porteiro, Arquivista, Mensageiro, a ordem fixa e as travas deste
+> documento continuam valendo. O que mudou (pasta pelo nome do cliente, cadastro
+> completo, quem assina, ficha de revisão) está em
+> [agentes/clonagem/](agentes/clonagem/README.md). Onde este documento disser
+> "agente da máquina (Clara, Lucas...)", leia "o clone (`clara-hiscon-dg`,
+> `lucas-procuracao-dg`...)".
+
 ---
 
 ## 1. A ideia

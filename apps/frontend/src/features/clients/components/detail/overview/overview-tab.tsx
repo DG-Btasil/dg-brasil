@@ -1,5 +1,6 @@
 "use client";
 
+import { CONTRACT_PAYMENT_METHOD_LABEL } from "@/lib/constants/legal";
 import type { Client } from "@/types";
 import { RepresentativesBlock, PartnersBlock } from "./company-tables";
 import { AddressBlock, Block, ContactBlock, IdentificationBlock, ResponsibleBlock } from "./overview-blocks";
@@ -22,6 +23,13 @@ export function OverviewTab({ client }: { client: Client }) {
       </div>
       <div className="space-y-5">
         <ResponsibleBlock client={client} />
+        {client.kind === "INDIVIDUAL" && (
+          <Block title="Forma de pagamento do contrato" clientId={client.id}>
+            <p className="text-[13px] leading-relaxed text-foreground">
+              {client.contractPaymentMethod ? CONTRACT_PAYMENT_METHOD_LABEL[client.contractPaymentMethod] : <span className="text-muted">Nenhuma forma de pagamento definida.</span>}
+            </p>
+          </Block>
+        )}
         <Block title="Resumo jurídico" clientId={client.id}>
           <p className="whitespace-pre-line text-[13px] leading-relaxed text-foreground">
             {client.legalSummary ?? <span className="text-muted">Nenhum resumo registrado.</span>}

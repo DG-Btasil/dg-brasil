@@ -414,6 +414,8 @@ export interface DadosPonte {
     id: string; tipo?: string; nome: string | null; profissao?: string | null; estado_civil?: string | null; email?: string | null
     /** Desde a migration 053. */
     cpf?: string | null; rg?: string | null; nacionalidade?: string | null; telefone?: string | null; endereco?: string | null
+    /** Desde a migration 055: a_vista, 5x_boleto, 5x_cartao ou final_do_processo (o código que o gerador do contrato entende). */
+    forma_de_pagamento?: string | null
   }
   pasta_drive: null | { id: string; nome: string | null }
   /** Quem assina, pelo cadastro do escritório no DG Brasil (migration 053). */
@@ -453,6 +455,7 @@ export function dadosDoCadastro(d: DadosPonte, trabalhoId: string, anterior: Rec
   const doSite: Record<string, unknown> = {
     nome: c?.nome, cpf: c?.cpf, rg: c?.rg, nacionalidade: c?.nacionalidade, profissao: c?.profissao,
     estado_civil: c?.estado_civil, email: c?.email, telefone: c?.telefone, endereco: c?.endereco,
+    forma_de_pagamento: c?.forma_de_pagamento,
   }
   return [
     ...CAMPOS_DO_CADASTRO.map((k) => `${k}: ${umaLinha(doSite[k]) || umaLinha(anterior[k])}`),

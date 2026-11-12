@@ -76,14 +76,17 @@ function pf(overrides: Partial<ReturnType<typeof emptyIndividualValues>> = {}) {
 
 describe("cadastro de cliente — formulário → createClientAction", () => {
   it("PF completa passa no schema do servidor; vazios com formato viram ausentes", () => {
-    const parsed = createClientSchema.safeParse(individualCreateInput(pf({ acquisitionChannel: "REFERRAL", acquisitionDetail: "Dona Maria" })));
+    const parsed = createClientSchema.safeParse(individualCreateInput(pf({ acquisitionChannel: "REFERRAL", acquisitionDetail: "Dona Maria", contractPaymentMethod: "BOLETO_INSTALLMENTS" })));
     expect(parsed.success).toBe(true);
     if (!parsed.success || parsed.data.kind !== "INDIVIDUAL") return;
     expect(parsed.data.cpf).toBe("99900000191");
     expect(parsed.data.birthDate).toBeUndefined();
     expect(parsed.data.originOfficeId).toBe(ORG);
     expect([parsed.data.acquisitionChannel, parsed.data.acquisitionDetail]).toEqual(["REFERRAL", "Dona Maria"]);
+    expect(parsed.data.contractPaymentMethod).toBe("BOLETO_INSTALLMENTS");
     expect(parsed.data).not.toHaveProperty("responsibleUserId");
+    // Forma de pagamento ainda não combinada: vazio na tela vira ausente.
+    expect(individualCreateInput(pf()).contractPaymentMethod).toBeUndefined();
   });
 
   it("obrigatórios do cadastro (Roadmap 2.0): nacionalidade, estado civil, profissão, e-mail, CEP e endereço completo", () => {
@@ -169,22 +172,23 @@ describe("PF — três estados no PATCH: ausente / valor / null", () => {
   const parse = (patch: Record<string, unknown>) => updateClientSchema.parse({ id: ID, patch }).patch;
 
   it("schema do servidor: aceita null e valor; recusa string vazia", () => {
-    expect(parse({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null })).toEqual({
+    expect(parse({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null, contractPaymentMethod: null })).toEqual({
       birthDate: null,
       gender: null,
       maritalStatus: null,
       identityDocument: null,
+      contractPaymentMethod: null,
     });
-    expect(parse({ birthDate: "1990-01-02", gender: "FEMALE" })).toEqual({ birthDate: "1990-01-02", gender: "FEMALE" });
-    for (const bad of [{ birthDate: "" }, { gender: "" }, { maritalStatus: "" }, { identityDocument: { type: "RG", number: "" } }]) {
+    expect(parse({ birthDate: "1990-01-02", gender: "FEMALE", contractPaymentMethod: "PIX_UPFRONT" })).toEqual({ birthDate: "1990-01-02", gender: "FEMALE", contractPaymentMethod: "PIX_UPFRONT" });
+    for (const bad of [{ birthDate: "" }, { gender: "" }, { maritalStatus: "" }, { identityDocument: { type: "RG", number: "" } }, { contractPaymentMethod: "" }, { contractPaymentMethod: "a_vista" }]) {
       expect(updateClientSchema.safeParse({ id: ID, patch: bad }).success).toBe(false);
     }
   });
 
   it("payload do banco: null → coluna null; ausente ou undefined → chave fora (não mexe); nunca \"\"", () => {
-    const cleared = updatePayload(parse({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null }));
-    expect(cleared).toEqual({ birth_date: null, gender: null, marital_status: null, identity_document: null });
-    const untouched = updatePayload({ profession: "Pedreiro", birthDate: undefined, gender: undefined, maritalStatus: undefined, identityDocument: undefined });
+    const cleared = updatePayload(parse({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null, contractPaymentMethod: null }));
+    expect(cleared).toEqual({ birth_date: null, gender: null, marital_status: null, identity_document: null, contract_payment_method: null });
+    const untouched = updatePayload({ profession: "Pedreiro", birthDate: undefined, gender: undefined, maritalStatus: undefined, identityDocument: undefined, contractPaymentMethod: undefined });
     expect(untouched).toEqual({ profession: "Pedreiro" });
     expect(JSON.stringify(cleared)).not.toContain('""');
   });
@@ -192,11 +196,11 @@ describe("PF — três estados no PATCH: ausente / valor / null", () => {
   it("formulário de edição: vazio na tela vira null; preenchido vira valor", () => {
     const original = { id: "c1", kind: "INDIVIDUAL", cpf: "99900000191" } as unknown as Client;
     const empty = individualPatch(pf({ maritalStatus: "" }), original);
-    expect(empty).toMatchObject({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null });
+    expect(empty).toMatchObject({ birthDate: null, gender: null, maritalStatus: null, identityDocument: null, contractPaymentMethod: null });
     const parsed = parse(empty);
-    expect([parsed.birthDate, parsed.gender, parsed.maritalStatus, parsed.identityDocument]).toEqual([null, null, null, null]);
-    const full = individualPatch(pf({ birthDate: "1975-06-07", gender: "MALE", maritalStatus: "SINGLE", idType: "RG", idNumber: "123", idIssuer: "SSP", idState: "sp" }), original);
-    expect(parse(full)).toMatchObject({ birthDate: "1975-06-07", gender: "MALE", maritalStatus: "SINGLE", identityDocument: { type: "RG", number: "123", issuer: "SSP", state: "SP" } });
+    expect([parsed.birthDate, parsed.gender, parsed.maritalStatus, parsed.identityDocument, parsed.contractPaymentMethod]).toEqual([null, null, null, null, null]);
+    const full = individualPatch(pf({ birthDate: "1975-06-07", gender: "MALE", maritalStatus: "SINGLE", idType: "RG", idNumber: "123", idIssuer: "SSP", idState: "sp", contractPaymentMethod: "END_OF_CASE" }), original);
+    expect(parse(full)).toMatchObject({ birthDate: "1975-06-07", gender: "MALE", maritalStatus: "SINGLE", identityDocument: { type: "RG", number: "123", issuer: "SSP", state: "SP" }, contractPaymentMethod: "END_OF_CASE" });
   });
 
   it("documento de identidade é opcional: sem número, nada é exigido (Roadmap 2.0)", () => {

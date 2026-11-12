@@ -21,3 +21,10 @@ supabase/.preview-emails/
 # Python (scripts dos agentes clonados)
 __pycache__/
 *.pyc
+
+# Agentes clonados do DG Brasil: trazem o método do escritório e este repositório é público.
+# Ficam só no computador do escritório até o "Setup" do site (docs/deploy/pos-mvp.md, item 6).
+/agentes/
+/docs/agentes/clonagem/*
+!/docs/agentes/clonagem/README.md
+!/docs/agentes/clonagem/contrato-dos-clones.md

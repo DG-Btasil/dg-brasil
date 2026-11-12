@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACQUISITION_CHANNELS } from "@/lib/constants/legal";
+import { ACQUISITION_CHANNELS, CONTRACT_PAYMENT_METHODS } from "@/lib/constants/legal";
 import { CLIENT_INACTIVATION_REASONS } from "@/types/client";
 import { pageInputSchema, sortSchema } from "@/server/core/pagination";
 import {
@@ -92,6 +92,8 @@ const individualFields = {
   maritalStatus: z.enum(["SINGLE", "MARRIED", "DIVORCED", "WIDOWED", "SEPARATED"]).optional(),
   profession: zOptionalText(120),
   identityDocument: identitySchema.optional(),
+  /** Dado interno (como notes e legalSummary), mas só o cadastro de PF o oferece. */
+  contractPaymentMethod: z.enum(CONTRACT_PAYMENT_METHODS).optional(),
 };
 
 /** No cadastro novo, a qualificação completa é obrigatória (Roadmap 2.0). */
@@ -156,8 +158,9 @@ export type CreateClientInput = z.infer<typeof createClientSchema>;
  * Edição interna (PATCH). CPF/CNPJ só ADMIN (o banco confere).
  *
  * Campos PF com formato (data de nascimento, gênero, estado civil, documento
- * de identidade) têm TRÊS estados: ausente = não mexe; valor válido = grava;
- * `null` = apaga (NULL no banco). String vazia não é aceita em nenhum deles.
+ * de identidade, forma de pagamento do contrato) têm TRÊS estados: ausente =
+ * não mexe; valor válido = grava; `null` = apaga (NULL no banco). String vazia
+ * não é aceita em nenhum deles.
  */
 export const updateClientSchema = z.object({
   id: zUuid(),
@@ -169,6 +172,7 @@ export const updateClientSchema = z.object({
       gender: individualFields.gender.unwrap().nullable(),
       maritalStatus: individualFields.maritalStatus.unwrap().nullable(),
       identityDocument: identitySchema.nullable(),
+      contractPaymentMethod: individualFields.contractPaymentMethod.unwrap().nullable(),
       ...companyFields,
       originOfficeId: zUuid(),
       acquisitionChannel: z.enum(ACQUISITION_CHANNELS).nullable(),

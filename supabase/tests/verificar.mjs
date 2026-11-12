@@ -5588,6 +5588,16 @@ await deve('dados da ponte [053]: cadastro completo (CPF, documento, telefone, e
     ['999.000.000-05', 'RG 00.000.000-0 DETRAN/RJ', 'brasileira', '(00) 3333-0000', 'Rua Fictícia, 1, Centro, Cidade Fictícia/RJ, CEP 25000-000'], 'cadastro')
   igual([b.escritorio.advogado, b.escritorio.oab], ['Advogada Fictícia', 'OAB/RJ 000000'], 'quem assina')
 })
+await deve('dados da ponte [055]: forma de pagamento do contrato no código que o gerador entende; sem escolha, vem vazia', async () => {
+  const forma = async () => (await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, ids.r051, ids.l051])).cliente.forma_de_pagamento
+  igual(await forma(), null, 'ainda não combinada')
+  for (const [escolha, codigo] of [['PIX_UPFRONT', 'a_vista'], ['BOLETO_INSTALLMENTS', '5x_boleto'], ['CARD_INSTALLMENTS', '5x_cartao'], ['END_OF_CASE', 'final_do_processo']]) {
+    await salvar(ids.lucas, ids.cli041, { contract_payment_method: escolha })
+    igual(await forma(), codigo, escolha)
+  }
+  await salvar(ids.lucas, ids.cli041, { contract_payment_method: null })
+  igual(await forma(), null, 'escolha apagada')
+})
 await deve('cliente sem pasta ligada: pasta_drive vem vazia', async () => {
   await como(ids.lucas, (tx) => tx.query(`select public.drive_unlink_client_folder($1)`, [ids.cli041]))
   const b = await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, ids.r051, ids.l051])
@@ -5733,6 +5743,47 @@ await deve('funções da 052 fixam search_path; tela para authenticated, consult
   }
   igual(r.filter((x) => JSON.stringify([x.usr, x.wrk]) !== JSON.stringify(esperado[x.f])).map((x) => x.f), [], 'quem executa')
 })
+
+// ═════════════════════════════ Forma de pagamento do contrato [055] ══════
+
+secao('Cadastro do cliente: forma de pagamento do contrato de honorários, dado interno [055]')
+const forma055 = async (tx, cliente) => (await um(tx, `select contract_payment_method f from client_internal_details where client_id = $1`, [cliente]))?.f
+await deve('equipe interna grava a forma de pagamento no cadastro (criação e edição) e lê nos dados internos', async () => {
+  ids.cli055 = await salvar(ids.ana, null, {
+    kind: 'INDIVIDUAL', document: '999.055.000-01', origin_organization_id: ids.owner, full_name: 'Cliente 055',
+    contract_payment_method: 'END_OF_CASE',
+  })
+  igual(await como(ids.lucas, (tx) => forma055(tx, ids.cli055)), 'END_OF_CASE', 'criação')
+  await salvar(ids.lucas, ids.cli055, { contract_payment_method: 'CARD_INSTALLMENTS' })
+  igual(await como(ids.ana, (tx) => forma055(tx, ids.cli055)), 'CARD_INSTALLMENTS', 'edição')
+})
+await deve('PATCH: chave ausente não mexe na forma de pagamento; vazio ou null apaga (ainda não combinado)', async () => {
+  await salvar(ids.ana, ids.cli055, { notes: 'combinou o cartão por telefone' })
+  igual(await forma055(db, ids.cli055), 'CARD_INSTALLMENTS', 'chave ausente')
+  await salvar(ids.ana, ids.cli055, { contract_payment_method: '' })
+  igual(await forma055(db, ids.cli055), null, 'vazio')
+  await salvar(ids.ana, ids.cli055, { contract_payment_method: 'PIX_UPFRONT' })
+  await salvar(ids.ana, ids.cli055, { contract_payment_method: null })
+  igual(await forma055(db, ids.cli055), null, 'null')
+  igual((await um(db, `select notes from client_internal_details where client_id = $1`, [ids.cli055])).notes, 'combinou o cartão por telefone', 'observações intactas')
+})
+await deveFalhar('forma de pagamento fora da lista é recusada (o código do gerador não é valor do banco)', () =>
+  salvar(ids.ana, ids.cli055, { contract_payment_method: 'a_vista' }), /contract_payment_method_check/)
+await deve('parceiro não vê a forma de pagamento: nem nos dados internos, nem no cadastro que ele lê', async () => {
+  await salvar(ids.lucas, ids.joao, { contract_payment_method: 'BOLETO_INSTALLMENTS' })
+  await como(ids.almeidaAdm, async (tx) => {
+    igual((await linhas(tx, `select 1 from client_internal_details where client_id = $1`, [ids.joao])).length, 0, 'dados internos')
+    for (const t of ['clients', 'individual_client_details', 'client_directory']) {
+      const chave = t === 'individual_client_details' ? 'client_id' : 'id'
+      const cols = Object.keys((await um(tx, `select * from ${t} where ${chave} = $1`, [ids.joao])) ?? {})
+      if (cols.length === 0) throw new Error(`${t}: parceiro deveria ler o cadastro básico`)
+      if (cols.includes('contract_payment_method')) throw new Error(`${t} expõe a forma de pagamento`)
+    }
+  })
+  igual(await forma055(db, ids.joao), 'BOLETO_INSTALLMENTS', 'gravada para a equipe interna')
+})
+await deveFalhar('parceiro não grava a forma de pagamento', () =>
+  salvar(ids.almeidaAdm, ids.joao, { contract_payment_method: 'PIX_UPFRONT' }), /só altera contato e endereço/)
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
 

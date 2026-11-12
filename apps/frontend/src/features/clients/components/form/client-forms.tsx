@@ -74,7 +74,7 @@ export function IndividualForm({ defaultValues, submitLabel, onSubmit, onCancel 
           <IndividualContactFields />
           <AddressFields />
           <OriginFields />
-          <InternalFields />
+          <InternalFields withContractPayment />
           <StickyFooter submitLabel={submitLabel} submitting={methods.formState.isSubmitting} onCancel={onCancel} />
         </FormFrame>
       </form>

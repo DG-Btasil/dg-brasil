@@ -35,7 +35,7 @@ hora de contratar.
 | 11 | ~~Conferir as publicações com o APOGEU~~ | Removido em 2026-11-09: o APOGEU não será usado | — |
 | 12 | Consulta de CPF na Receita (Serpro) (**no lançamento, só na produção**) | Paga por consulta; contrato do escritório | ~R$ 0,66 por consulta na 1ª faixa (tabela de 2024; conferir) |
 | 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) (**depois do lançamento, prioridade baixa**) | Pedido para a atualização final | Sem custo |
-| 14 | Agentes reais pelo DG Brasil (ponte, [ponte.md](../ponte.md)) (**no lançamento, depois da Frente B**) | Ponte implementada e desligada; falta o piloto na máquina principal | Sem custo |
+| 14 | Agentes do DG Brasil pela ponte ([ponte.md](../ponte.md)): os clones `-dg` da esteira bancária ([agentes/clonagem](../agentes/clonagem/README.md)) (**no lançamento**) | Ponte validada no DEV (Frente B); clones prontos, falta validar | Sem custo |
 
 ---
 
@@ -370,20 +370,29 @@ acrescente:
 
 ## 14. Agentes reais pelo DG Brasil (ponte)
 
-- **Hoje:** a ponte está implementada ([docs/ponte.md](../ponte.md)): os agentes
-  reais (`clara-hiscon`, `lucas-procuracao`, redatores) trabalham pelo DG Brasil
-  na pasta do cliente no `G:\`, com o Porteiro, o Arquivista e o Mensageiro.
-  As variantes `-dg` **não** serão criadas.
-- **Por que não agora:** falta o piloto na máquina principal, com dados
-  fictícios ([docs/mcp/ponte-validacao.md](../mcp/ponte-validacao.md), Frentes A e B).
+- **Mudança de 11/11/2026:** a ponte foi validada no DEV com os agentes reais
+  (Frente B), mas o DG Brasil passa a usar **clones** deles, com o sufixo `-dg`,
+  numa pasta só dele: `G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO
+  CLIENTE>` ([docs/agentes/clonagem](../agentes/clonagem/README.md)). Os
+  agentes do escritório não são alterados e continuam fora do DG Brasil.
+- **Por que não agora:** falta validar os clones com dados fictícios, um agente
+  por vez, começando pela Clara.
 - **Na produção:**
-  1. aplicar a migration 051 no projeto de produção;
-  2. rodar o instalador de novo na máquina principal (grava o `ponte.json`, as
-     permissões e os três agentes da ponte);
-  3. cadastrar no DG Brasil cada agente da máquina pelo `name:` real e ligar a
-     Clara ao modelo "Análise Bancária";
-  4. ligar a pasta do Drive de cada cliente (Cliente → Documentos → Pasta no
-     Google Drive). Sem pasta ligada, a ponte para com `SEM_PASTA_NO_DRIVE`,
-     a menos que o `ponte.json` tenha `"pasta_pelo_nome": true`.
-- **Como conferir:** o piloto do guia passa inteiro, a vigia não para pedindo
-  confirmação e nada aparece no ChatJurídico.
+  1. aplicar as migrations 051, 053 (cadastro completo e quem assina), 054
+     (kit básico: os clones já cadastrados no site) e 055 (forma de pagamento
+     do contrato no cadastro do cliente) no projeto de produção, **antes** de
+     publicar o site;
+  2. rodar o instalador do conector de novo na máquina principal (versão 1.3.0);
+  3. rodar o instalador dos clones a partir da pasta local `agentes/`
+     ([instalacao.md](../mcp/instalacao.md), seção 5.0) e preencher o
+     `C:\DGBrasil\agentes\escritorio.json` (quem assina);
+  4. em DG Brasil → Agentes, conferir que a "Análise Bancária" usa a Clara do kit.
+  Os clones não precisam de pasta do Drive ligada ao cliente: a pasta leva o
+  nome do cliente no cadastro.
+- **Como conferir:** cada clone entrega em Revisões os arquivos e a ficha de
+  revisão; os itens a completar e a decidir viram pendências; a vigia não para
+  pedindo confirmação; nada aparece no ChatJurídico.
+- **Distribuição dos clones:** no lançamento, os arquivos ficam só no
+  computador do escritório, fora do GitHub (o repositório é público). Levá-los
+  para dentro do DG Brasil, com um botão "Setup", é a prioridade do
+  [pós-MVP](pos-mvp.md), item 6.

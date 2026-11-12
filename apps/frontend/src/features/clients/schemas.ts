@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACQUISITION_CHANNELS, GENDERS } from "@/lib/constants/legal";
+import { ACQUISITION_CHANNELS, CONTRACT_PAYMENT_METHODS, GENDERS } from "@/lib/constants/legal";
 import { isCepFormat, isCnpjFormat, isCpfFormat, msg, zCepOptional, zCnpj, zCpf, zEmail, zPhone, zPhoneOptional, zRequired } from "@/lib/validation";
 import type { Address, CompanyClient, IndividualClient } from "@/types";
 
@@ -61,6 +61,7 @@ export const individualSchema = z.object({
   originOfficeId: zRequired("Selecione o escritório de origem."),
   acquisitionChannel: channel(),
   acquisitionDetail: text().max(300, "Até 300 caracteres."),
+  contractPaymentMethod: z.enum(["", ...CONTRACT_PAYMENT_METHODS]),
   legalSummary: text(),
   notes: text(),
 });
@@ -160,7 +161,7 @@ export function emptyIndividualValues(originOfficeId = ""): IndividualFormValues
     fullName: "", socialName: "", cpf: "", idType: "", idNumber: "", idIssuer: "", idState: "", birthDate: "",
     nationality: "Brasileira", birthplace: "", gender: "", maritalStatus: "", profession: "",
     email: "", phone: "", secondaryPhone: "", address: EMPTY_ADDRESS, originOfficeId, acquisitionChannel: "", acquisitionDetail: "",
-    legalSummary: "", notes: "",
+    contractPaymentMethod: "", legalSummary: "", notes: "",
   };
 }
 
@@ -187,6 +188,7 @@ export function individualToValues(c: IndividualClient): IndividualFormValues {
     originOfficeId: c.originOfficeId ?? "",
     acquisitionChannel: c.acquisitionChannel ?? "",
     acquisitionDetail: c.acquisitionDetail ?? "",
+    contractPaymentMethod: c.contractPaymentMethod ?? "",
     legalSummary: c.legalSummary ?? "",
     notes: c.notes ?? "",
   };

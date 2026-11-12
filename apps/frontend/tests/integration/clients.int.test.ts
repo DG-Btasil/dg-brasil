@@ -127,7 +127,7 @@ describe("clientes — Portal do Parceiro (A × B)", () => {
     const json = JSON.stringify(detail);
     expect(json).not.toContain("não pode vazar");
     // Roadmap 2.0: cliente não tem mais responsável; o canal de aquisição é dado interno.
-    for (const field of ["notes", "legalSummary", "inactivation", "acquisitionChannel", "acquisitionDetail", "representatives", "partners"]) {
+    for (const field of ["notes", "legalSummary", "contractPaymentMethod", "inactivation", "acquisitionChannel", "acquisitionDetail", "representatives", "partners"]) {
       expect(detail.client).not.toHaveProperty(field);
     }
     // Parceiro B não abre o cliente de A.

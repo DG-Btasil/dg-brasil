@@ -6,7 +6,7 @@ import type {
   DocumentVerification,
   DocumentVisibility,
 } from "@/lib/constants/status";
-import type { AcquisitionChannel, Gender, IdDocumentType, MaritalStatus } from "@/lib/constants/legal";
+import type { AcquisitionChannel, ContractPaymentMethod, Gender, IdDocumentType, MaritalStatus } from "@/lib/constants/legal";
 import type { Address, Contact, ID, ISODate, ISODateTime, OfficeScoped, Timestamps } from "./common";
 
 interface ClientBase extends OfficeScoped, Timestamps {
@@ -22,6 +22,8 @@ interface ClientBase extends OfficeScoped, Timestamps {
   notes?: string;
   /** Resumo jurídico curto do relacionamento com o cliente. */
   legalSummary?: string;
+  /** Forma de pagamento do contrato de honorários (dado interno). Ausente = ainda não combinada. Ver CONTRACT_PAYMENT_METHODS. */
+  contractPaymentMethod?: ContractPaymentMethod;
   /** Preenchido quando o cliente é inativado (status INACTIVE). Mantido no histórico. */
   inactivation?: ClientInactivation;
   /**

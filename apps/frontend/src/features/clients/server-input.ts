@@ -74,6 +74,7 @@ export function individualCreateInput(v: IndividualFormValues): Json {
     originOfficeId: v.originOfficeId,
     acquisitionChannel: filled(v.acquisitionChannel),
     acquisitionDetail: v.acquisitionDetail,
+    contractPaymentMethod: filled(v.contractPaymentMethod),
     contact: { email: v.email, phone: v.phone, secondaryPhone: v.secondaryPhone },
     address: addressToServer(v.address),
     notes: v.notes,
@@ -156,8 +157,9 @@ export function documentChanged(next: string, original: Client): boolean {
 /**
  * O formulário de edição mostra TODOS os campos: o que estiver vazio na tela
  * é apagado. Campos com formato (data de nascimento, gênero, estado civil,
- * documento de identidade) vão como `null` quando vazios — nunca "" —; textos
- * e contatos vazios vão vazios e o servidor apaga.
+ * documento de identidade, forma de pagamento do contrato) vão como `null`
+ * quando vazios — nunca "" —; textos e contatos vazios vão vazios e o servidor
+ * apaga.
  */
 export function individualPatch(v: IndividualFormValues, original: Client): Json {
   const patch: Json = {
@@ -180,6 +182,7 @@ export function individualPatch(v: IndividualFormValues, original: Client): Json
   patch.gender = filled(v.gender) ?? null;
   patch.maritalStatus = filled(v.maritalStatus) ?? null;
   patch.identityDocument = identityDocument(v) ?? null;
+  patch.contractPaymentMethod = filled(v.contractPaymentMethod) ?? null;
   const optional: Json = {
     document: documentChange(v.cpf, original),
   };

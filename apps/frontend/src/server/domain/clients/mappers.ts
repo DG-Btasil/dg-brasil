@@ -1,5 +1,5 @@
 import { CLIENT_STATUS_FROM_DB, type DbClientStatus } from "@/repositories/api/db-mappings";
-import { isAcquisitionChannel, type AcquisitionChannel } from "@/lib/constants/legal";
+import { isAcquisitionChannel, type AcquisitionChannel, type ContractPaymentMethod } from "@/lib/constants/legal";
 import type { Address, Client, ClientInactivationReason, Contact, ID } from "@/types";
 import type { CreateClientInput, ReplaceCompanyPeopleInput, UpdateClientInput, UpdateClientBasicsInput } from "./schemas";
 import type { ClientListItem, ClientPartnerDTO, ClientRelationshipDTO } from "./dto";
@@ -102,6 +102,7 @@ interface ShareholderRow {
 export interface ClientInternalRow {
   notes: string | null;
   legal_summary: string | null;
+  contract_payment_method: ContractPaymentMethod | null;
   inactivation_reason: ClientInactivationReason | null;
   inactivation_note: string | null;
   inactivated_at: string | null;
@@ -177,6 +178,7 @@ export function internalClientFromRows(row: ClientDetailRow, internalRow: Client
     address: addressFromRows(row.client_addresses),
     notes: opt(internalRow?.notes),
     legalSummary: opt(internalRow?.legal_summary),
+    contractPaymentMethod: opt(internalRow?.contract_payment_method),
     inactivation:
       internalRow?.inactivated_at && internalRow.inactivated_by
         ? {
@@ -312,6 +314,7 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   acquisitionDetail: "acquisition_detail",
   notes: "notes",
   legalSummary: "legal_summary",
+  contractPaymentMethod: "contract_payment_method",
   document: "document",
 };
 
@@ -320,7 +323,7 @@ const FIELD_TO_COLUMN: Record<string, string> = {
  * para o banco); `null` = apaga; valor = grava. Nos demais campos de texto,
  * vazio (que o Zod transforma em undefined) continua significando "apagar".
  */
-const EXPLICIT_NULL_FIELDS = new Set(["birthDate", "gender", "maritalStatus", "identityDocument"]);
+const EXPLICIT_NULL_FIELDS = new Set(["birthDate", "gender", "maritalStatus", "identityDocument", "contractPaymentMethod"]);
 
 function copyFields(source: Record<string, unknown>, out: Json) {
   for (const [field, column] of Object.entries(FIELD_TO_COLUMN)) {

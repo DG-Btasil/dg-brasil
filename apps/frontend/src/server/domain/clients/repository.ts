@@ -102,7 +102,7 @@ export async function getInternalDetails(db: SupabaseClient, id: string): Promis
   return unwrap(
     await db
       .from("client_internal_details")
-      .select("notes, legal_summary, inactivation_reason, inactivation_note, inactivated_at, inactivated_by")
+      .select("notes, legal_summary, contract_payment_method, inactivation_reason, inactivation_note, inactivated_at, inactivated_by")
       .eq("client_id", id)
       .maybeSingle(),
   ) as ClientInternalRow | null;

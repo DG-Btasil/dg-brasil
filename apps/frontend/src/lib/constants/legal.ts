@@ -82,6 +82,22 @@ export const ACQUISITION_CHANNEL_LABEL: Record<AcquisitionChannel, string> = {
 export const ACQUISITION_CHANNEL_OPTIONS = ACQUISITION_CHANNELS.map((c) => ({ value: c, label: ACQUISITION_CHANNEL_LABEL[c] }));
 export const isAcquisitionChannel = (v: string): v is AcquisitionChannel => (ACQUISITION_CHANNELS as readonly string[]).includes(v);
 
+/**
+ * Forma de pagamento do custo operacional inicial do contrato de honorários,
+ * escolhida pelo cliente. Dado interno do cadastro; ausente = ainda não
+ * combinado. Os valores em reais ficam na configuração do escritório. A mesma
+ * lista está no banco (migration 055), que a entrega ao agente do contrato.
+ */
+export const CONTRACT_PAYMENT_METHODS = ["PIX_UPFRONT", "BOLETO_INSTALLMENTS", "CARD_INSTALLMENTS", "END_OF_CASE"] as const;
+export type ContractPaymentMethod = (typeof CONTRACT_PAYMENT_METHODS)[number];
+export const CONTRACT_PAYMENT_METHOD_LABEL: Record<ContractPaymentMethod, string> = {
+  PIX_UPFRONT: "À vista no Pix",
+  BOLETO_INSTALLMENTS: "Parcelado no boleto",
+  CARD_INSTALLMENTS: "Parcelado no cartão",
+  END_OF_CASE: "Ao final da ação",
+};
+export const CONTRACT_PAYMENT_METHOD_OPTIONS = CONTRACT_PAYMENT_METHODS.map((m) => ({ value: m, label: CONTRACT_PAYMENT_METHOD_LABEL[m] }));
+
 export const ID_DOCUMENT_TYPES = ["RG", "CNH", "PASSPORT", "RNM", "OTHER"] as const;
 export type IdDocumentType = (typeof ID_DOCUMENT_TYPES)[number];
 export const ID_DOCUMENT_TYPE_LABEL: Record<IdDocumentType, string> = {
