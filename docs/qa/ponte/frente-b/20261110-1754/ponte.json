@@ -1,0 +1,187 @@
+{
+    "raizes_permitidas":  [
+                              "G:\\Meu Drive\\000. PASTA CLIENTES NOVOS",
+                              "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES"
+                          ],
+    "antivirus":  true,
+    "agentes":  {
+                    "clara-hiscon":  {
+                                         "pasta":  [
+                                                       "7. KIT DO CLIENTE",
+                                                       "3. PROCURAÇÃO ASSINADA"
+                                                   ],
+                                         "trazer":  [
+                                                        "ROTEIRO_CONSIGNADO_*.pdf",
+                                                        "ROTEIRO_CONSIGNADO_*.html",
+                                                        "TETO_NORMATIVO_*.pdf",
+                                                        "TETO_NORMATIVO_*.html"
+                                                    ]
+                                     },
+                    "lucas-procuracao":  {
+                                             "pasta":  [
+                                                           "7. KIT DO CLIENTE"
+                                                       ],
+                                             "trazer":  [
+                                                            "Procuracao_*.pdf",
+                                                            "Declaracao_Hipossuficiencia_*.pdf",
+                                                            "Contrato_Honorarios_*.pdf",
+                                                            "Declaracao_Residencia_*.pdf"
+                                                        ]
+                                         },
+                    "alice-inicial":  {
+                                          "pasta":  [
+                                                        "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                    ],
+                                          "trazer":  [
+                                                         "MINUTA_*.docx",
+                                                         "MINUTA_*.pdf",
+                                                         "Memoria_Calculo_*.xlsx",
+                                                         "MEMORIA_CALCULO_*.xlsx",
+                                                         "FICHA_*.md"
+                                                     ],
+                                          "dados_do_cadastro":  false,
+                                          "criar_pasta":  false
+                                      },
+                    "atlas-revisional":  {
+                                             "pasta":  [
+                                                           "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                       ],
+                                             "trazer":  [
+                                                            "MINUTA_*.docx",
+                                                            "MINUTA_*.pdf",
+                                                            "Memoria_Calculo_*.xlsx",
+                                                            "MEMORIA_CALCULO_*.xlsx",
+                                                            "FICHA_*.md"
+                                                        ],
+                                             "dados_do_cadastro":  false,
+                                             "criar_pasta":  false
+                                         },
+                    "vicente-agregados":  {
+                                              "pasta":  [
+                                                            "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                        ],
+                                              "trazer":  [
+                                                             "MINUTA_*.docx",
+                                                             "MINUTA_*.pdf",
+                                                             "Memoria_Calculo_*.xlsx",
+                                                             "MEMORIA_CALCULO_*.xlsx",
+                                                             "FICHA_*.md"
+                                                         ],
+                                              "dados_do_cadastro":  false,
+                                              "criar_pasta":  false
+                                          },
+                    "murilo-replica":  {
+                                           "pasta":  [
+                                                         "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                     ],
+                                           "trazer":  [
+                                                          "MINUTA_*.docx",
+                                                          "MINUTA_*.pdf",
+                                                          "Memoria_Calculo_*.xlsx",
+                                                          "MEMORIA_CALCULO_*.xlsx",
+                                                          "FICHA_*.md"
+                                                      ],
+                                           "dados_do_cadastro":  false,
+                                           "criar_pasta":  false
+                                       },
+                    "pedro-provas":  {
+                                         "pasta":  [
+                                                       "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                   ],
+                                         "trazer":  [
+                                                        "MINUTA_*.docx",
+                                                        "MINUTA_*.pdf",
+                                                        "Memoria_Calculo_*.xlsx",
+                                                        "MEMORIA_CALCULO_*.xlsx",
+                                                        "FICHA_*.md"
+                                                    ],
+                                         "dados_do_cadastro":  false,
+                                         "criar_pasta":  false
+                                     },
+                    "laura-emenda":  {
+                                         "pasta":  [
+                                                       "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                   ],
+                                         "trazer":  [
+                                                        "MINUTA_*.docx",
+                                                        "MINUTA_*.pdf",
+                                                        "Memoria_Calculo_*.xlsx",
+                                                        "MEMORIA_CALCULO_*.xlsx",
+                                                        "FICHA_*.md"
+                                                    ],
+                                         "dados_do_cadastro":  false,
+                                         "criar_pasta":  false
+                                     },
+                    "gabriel-embargos":  {
+                                             "pasta":  [
+                                                           "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                       ],
+                                             "trazer":  [
+                                                            "MINUTA_*.docx",
+                                                            "MINUTA_*.pdf",
+                                                            "Memoria_Calculo_*.xlsx",
+                                                            "MEMORIA_CALCULO_*.xlsx",
+                                                            "FICHA_*.md"
+                                                        ],
+                                             "dados_do_cadastro":  false,
+                                             "criar_pasta":  false
+                                         },
+                    "rafael-recurso":  {
+                                           "pasta":  [
+                                                         "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                     ],
+                                           "trazer":  [
+                                                          "MINUTA_*.docx",
+                                                          "MINUTA_*.pdf",
+                                                          "Memoria_Calculo_*.xlsx",
+                                                          "MEMORIA_CALCULO_*.xlsx",
+                                                          "FICHA_*.md"
+                                                      ],
+                                           "dados_do_cadastro":  false,
+                                           "criar_pasta":  false
+                                       },
+                    "paulo-agravo":  {
+                                         "pasta":  [
+                                                       "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                   ],
+                                         "trazer":  [
+                                                        "MINUTA_*.docx",
+                                                        "MINUTA_*.pdf",
+                                                        "Memoria_Calculo_*.xlsx",
+                                                        "MEMORIA_CALCULO_*.xlsx",
+                                                        "FICHA_*.md"
+                                                    ],
+                                         "dados_do_cadastro":  false,
+                                         "criar_pasta":  false
+                                     },
+                    "beatriz-cumprimento":  {
+                                                "pasta":  [
+                                                              "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                          ],
+                                                "trazer":  [
+                                                               "MINUTA_*.docx",
+                                                               "MINUTA_*.pdf",
+                                                               "Memoria_Calculo_*.xlsx",
+                                                               "MEMORIA_CALCULO_*.xlsx",
+                                                               "FICHA_*.md"
+                                                           ],
+                                                "dados_do_cadastro":  false,
+                                                "criar_pasta":  false
+                                            },
+                    "teresa-audiencia":  {
+                                             "pasta":  [
+                                                           "G:\\Meu Drive\\01. ADVOCACIA — CLIENTES\\CLIENTE - ESCRITÓRIO"
+                                                       ],
+                                             "trazer":  [
+                                                            "MINUTA_*.docx",
+                                                            "MINUTA_*.pdf",
+                                                            "Memoria_Calculo_*.xlsx",
+                                                            "MEMORIA_CALCULO_*.xlsx",
+                                                            "FICHA_*.md"
+                                                        ],
+                                             "dados_do_cadastro":  false,
+                                             "criar_pasta":  false
+                                         }
+                },
+    "pasta_pelo_nome":  false
+}

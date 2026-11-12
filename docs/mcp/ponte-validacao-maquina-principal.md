@@ -63,8 +63,11 @@ roda `claude mcp list` antes de abrir a vigia e confere se o conector subiu.
    - caso 1: `hiscon-ficticio.pdf` (Extrato de benefício), `identidade-ficticia.pdf`
      (Documento de identificação), `comprovante-residencia-ficticio.pdf`
      (Comprovante de residência);
-   - caso 2: `hiscon-ficticio.pdf` + `carta-maliciosa-ficticia.pdf` (Outro);
-   - caso 3: `hiscon-ficticio.pdf` + `pdf-com-javascript-ficticio.pdf` (Outro).
+   - caso 2: os três do caso 1 + `carta-maliciosa-ficticia.pdf` (Outro);
+   - caso 3: os três do caso 1 + `pdf-com-javascript-ficticio.pdf` (Outro).
+
+   A Análise Bancária só é enviada com identidade e comprovante no caso; sem eles,
+   fica esperando os documentos e o Porteiro não chega a ser testado.
 3. **Pasta do Drive:** o script cria, vazia, a pasta
    `000. PASTA CLIENTES NOVOS\7. KIT DO CLIENTE\DG TESTE - JOSE DA SILVA FICTICIO`
    no começo da Parte B. Depois que ela aparecer no Drive (1 a 2 minutos), ligar ao
