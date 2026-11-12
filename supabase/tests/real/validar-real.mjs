@@ -169,7 +169,9 @@ await deve('um OWNER (Bárbara Cardoso Advocacia), categorias e áreas', async (
 // ═════════════════════════════ Auth real ═════════════════════════════════
 
 secao('6. Auth real: usuários fictícios, trigger e vínculos')
-const senha = () => randomBytes(18).toString('base64url')
+// O Auth do DEV exige minúscula, maiúscula e número: o sufixo garante os três
+// (só base64url às vezes sai sem algum deles e a rodada para no cenário).
+const senha = () => `${randomBytes(18).toString('base64url')}aA1`
 const papeis = ['ADMIN', 'LAWYER', 'ASSISTANT', 'PARTNER_ADMIN_A', 'PARTNER_USER_A', 'PARTNER_ADMIN_B', 'PARTNER_USER_B', 'LAWYER_2']
 const U = {}
 for (const p of papeis) {

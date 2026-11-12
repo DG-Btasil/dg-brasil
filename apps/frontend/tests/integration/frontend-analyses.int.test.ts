@@ -19,6 +19,7 @@ let caseId = "";
 let agentId = "";
 let templateWithAgent = "";
 let templateWithoutAgent = "";
+let seededTemplate = "";
 
 async function partnerACase(): Promise<string> {
   const db = (await ctxFor("PARTNER_ADMIN_A")).db;
@@ -60,10 +61,20 @@ beforeAll(async () => {
     .single();
   if (tpl.error) throw new Error(`template: ${tpl.error.message}`);
   templateWithAgent = tpl.data.id;
-  const seeded = await svc.from("analysis_templates").select("id, primary_agent_id").eq("legal_area_id", world.bankingAreaId).eq("name", "Análise Bancária").single();
+  // O cenário "sem agente" usa um template próprio da rodada: o do seed pode
+  // ganhar agente no DEV (configuração legítima do escritório) sem quebrar o teste.
+  const noAgent = await svc
+    .from("analysis_templates")
+    .insert({ legal_area_id: world.bankingAreaId, name: `Template 029 sem agente ${world.run}` })
+    .select("id")
+    .single();
+  if (noAgent.error) throw new Error(`template sem agente: ${noAgent.error.message}`);
+  templateWithoutAgent = noAgent.data.id;
+  // O checklist de documentos continua sendo conferido no template do seed,
+  // que é quem tem os requisitos cadastrados (com ou sem agente).
+  const seeded = await svc.from("analysis_templates").select("id").eq("legal_area_id", world.bankingAreaId).eq("name", "Análise Bancária").single();
   if (seeded.error || !seeded.data) throw new Error("template Análise Bancária não encontrado");
-  if (seeded.data.primary_agent_id) throw new Error("o template do seed ganhou agente: o cenário 'sem agente' precisa de outro template");
-  templateWithoutAgent = seeded.data.id;
+  seededTemplate = seeded.data.id;
   caseId = await partnerACase();
 });
 
@@ -72,7 +83,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await svc.from("analysis_templates").update({ active: false }).eq("id", templateWithAgent);
+  await svc.from("analysis_templates").update({ active: false }).in("id", [templateWithAgent, templateWithoutAgent]);
   await svc.from("agents").update({ status: "INACTIVE" }).eq("id", agentId);
 });
 
@@ -132,9 +143,10 @@ describe("assistente (getAnalysisSetup)", () => {
   it("templates ativos da área do caso, com agente e checklist do tipo de cliente", async () => {
     const setup = await analyses.getAnalysisSetup(await ctxFor("LAWYER"), caseId);
     const withAgent = setup.templates.find((t) => t.id === templateWithAgent);
-    const seeded = setup.templates.find((t) => t.id === templateWithoutAgent);
+    const withoutAgent = setup.templates.find((t) => t.id === templateWithoutAgent);
+    const seeded = setup.templates.find((t) => t.id === seededTemplate);
     expect(withAgent?.hasAgent).toBe(true);
-    expect(seeded?.hasAgent).toBe(false);
+    expect(withoutAgent?.hasAgent).toBe(false);
     expect(seeded?.requirements.filter((r) => r.required).map((r) => r.category)).toEqual(["IDENTIFICATION", "ADDRESS_PROOF", "BENEFIT_STATEMENT"]);
     expect(seeded?.requirements.every((r) => r.satisfied === false)).toBe(true);
     await expectDomainError(analyses.getAnalysisSetup(await ctxFor("ASSISTANT"), caseId), "FORBIDDEN");
