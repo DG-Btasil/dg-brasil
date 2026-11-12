@@ -64,6 +64,12 @@ Não são do DG Brasil e já acontecem hoje:
   (`agent_runs.lease_token_hash`): baixo risco; fechar numa migration futura.
 - **Telas do perfil LAWYER** do computador do escritório: conferência pendente
   desde a refatoração MCP.
+- **"Verificar agora" da Vigia** (052, [instalacao.md](../mcp/instalacao.md),
+  seção 6): a opção de acordar também com trabalho novo (`esperar_fila`) fica
+  desligada no lançamento. Decidir depois de medir o gasto da assinatura.
+- **Isolamento da sessão:** na FASE 0 do "Verificar agora", o servidor
+  `claude-in-chrome` apareceu numa sessão aberta com `--strict-mcp-config`.
+  Conferir se ele também carrega na Vigia e, se carregar, bloquear no `deny`.
 
 ---
 

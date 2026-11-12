@@ -297,6 +297,106 @@ claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga ex
   alguém responder. A mensagem diz o que falta: acrescente a regra no `allow`
   (o instalador já libera o que os agentes reais usam hoje, seção 5.1).
 - Intervalo diferente: troque `15m` no atalho (ex.: `10m`, `30m`).
+- **"Verificar agora"**: com a Vigia aberta, um advogado não precisa esperar os 15
+  minutos (próxima seção).
+
+#### "Verificar agora" (a Vigia roda na hora)
+
+Em **DG Brasil → Computador do escritório** (e na análise que está na fila,
+dentro do caso), o botão **Verificar agora** faz a Vigia rodar o roteiro em
+segundos. Só ADMIN e advogado (LAWYER) veem o botão; o banco também confere.
+
+**Como funciona.**
+1. No fim de **toda** rodada (passo 4 do `roteiro_vigia`, "ESPERA"), a Vigia roda
+   `node C:/DGBrasil/executor/dg-executor.mjs esperar --situacao`. O comando
+   responde na hora e diz se já há uma espera rodando.
+2. Se não houver, ela deixa `node C:/DGBrasil/executor/dg-executor.mjs esperar`
+   **em segundo plano** e encerra a rodada. Esse comando não usa o Claude: só
+   pergunta ao DG Brasil, a cada 15 a 30 s, se alguém pediu a verificação.
+3. O clique grava um pedido (um por escritório; clicar de novo não cria outro). A
+   primeira Vigia que perguntar fica com ele: o banco marca "atendido" de forma
+   atômica, e duas Vigias nunca pegam o mesmo pedido.
+4. O `esperar` imprime `VERIFICAR_AGORA` e termina. O Claude Code acorda a
+   sessão, que roda o roteiro inteiro e, no fim, deixa uma espera nova.
+5. O `/loop 15m` continua: é o padrão e a rede de segurança.
+
+**O que a tela mostra.** "Pedido enviado às HH:MM", depois "Atendido às HH:MM"
+(o ADMIN vê também qual computador atendeu). Sem resposta em 2 minutos:
+"**A Vigia não respondeu (janela fechada?)**". O pedido vale por 10 minutos: se a
+Vigia abrir nesse tempo, ela atende. Depois disso ele vence e não acorda mais
+ninguém.
+
+**Se a Vigia não responder:**
+1. Confira se a janela "DG Brasil - Vigia" está aberta e o computador ligado (sem
+   suspender). Fechada, abra o atalho: a primeira rodada já processa a fila.
+2. A janela está aberta, mas parada pedindo confirmação? Responda. Se o pedido for
+   para rodar o `esperar`, rode o instalador de novo: ele grava a permissão.
+3. Na janela, a última linha da Vigia diz `ESPERA_PARADA`? A espera parou por um
+   erro que não passa sozinho, e a linha diz o motivo (por exemplo, o token do
+   computador foi revogado). Resolva o motivo: a rodada seguinte tenta de novo
+   sozinha (acesso: na hora; outros erros: depois de 1 hora). Enquanto isso, a Vigia
+   segue de 15 em 15 minutos.
+4. A execução está **desligada** no DG Brasil? O botão fica desabilitado. Ligue
+   o interruptor primeiro.
+
+**Regras que evitam rodadas a mais** (cada término do `esperar` acorda o Claude e
+gasta assinatura):
+- **Uma espera por vez.** A trava `C:\DGBrasil\sessao\esperar.lock` guarda o PID e
+  é renovada a cada 20 s. A rodada pergunta antes (`--situacao`, em primeiro plano)
+  e só inicia uma espera se não houver outra. Trava de processo morto ou sem
+  renovar há 2 minutos não conta.
+- **Queda de rede, erro 5xx ou 429:** o `esperar` não termina. Tenta de novo em
+  30 s, 60 s, 120 s, até 5 minutos, em silêncio.
+- **Execução desligada:** continua esperando em silêncio (uma pergunta por minuto)
+  até religar.
+- **Erro definitivo** (token revogado ou inválido, DG Brasil sem a rota): imprime
+  `ESPERA_PARADA: <motivo>` **uma vez** e termina. A marca
+  `C:\DGBrasil\sessao\esperar.parado` impede que a rodada seguinte inicie outra
+  espera que pararia igual.
+- **Janela fechada:** o `esperar` percebe que o Claude Code sumiu e termina em
+  silêncio. Não fica processo sobrando.
+- **Pedido durante uma rodada:** o `listar_trabalhos` do início da rodada já dá o
+  pedido pendente como atendido. Pedido que chega depois disso fica no DG Brasil,
+  e a espera nova pega na primeira pergunta: uma rodada a mais, nunca duas.
+
+**Permissão.** O instalador acrescenta ao `allow` só estas duas linhas exatas
+(Bash e PowerShell), nada de `Bash(node *)`:
+
+```
+Bash(node C:/DGBrasil/executor/dg-executor.mjs esperar --situacao)
+Bash(node C:/DGBrasil/executor/dg-executor.mjs esperar)
+```
+
+O Claude Code compara o comando inteiro. Por isso o roteiro manda escrever com
+barras normais, sem aspas e sem nada antes ou depois.
+
+**Opcional: acordar também com trabalho novo.** Com
+`$env:DG_BRASIL_ESPERAR_FILA = '1'` antes do instalador (ou `"esperar_fila": true`
+no `%APPDATA%\DGBrasil\executor.json`), o `esperar` também termina com
+`TRABALHO_NOVO` quando entra trabalho na fila. Ele espera 1 minuto para juntar
+os pedidos que chegam juntos. Trabalho que volta para nova tentativa não conta.
+Com isso, os 15 minutos viram só a garantia.
+- **Custo:** uma rodada por leva de trabalhos novos. Os trabalhos teriam rodado
+  de qualquer jeito na rodada seguinte, então o gasto a mais é pequeno.
+- **Cuidado:** vários pedidos espaçados no mesmo quarto de hora viram várias
+  rodadas, em vez de uma.
+- **Padrão:** desligado.
+
+**Custo, medido na FASE 0 (11/11/2026)** neste computador. Cada pedido ao modelo
+relê cerca de 95 mil tokens de contexto, quase todos do cache: a lista de agentes
+e skills do usuário é grande.
+
+| Situação | Pedidos ao modelo |
+|---|---|
+| `esperar` parado esperando | Nenhum (só HTTP para o DG Brasil, cerca de 3 por minuto) |
+| Rodada de 15 min com uma espera já rodando | 1 a mais (o `--situacao`) |
+| Rodada logo depois de um "Verificar agora" | 2 a mais (`--situacao` e a espera nova) |
+| Cada clique em "Verificar agora" | Uma rodada (fila vazia: cerca de 5 pedidos) |
+| Alternativa descartada: `/loop 1m` | 60 rodadas por hora, mesmo sem ninguém pedir |
+
+A FASE 0 provou o ponto que sustenta o desenho. A sessão parada, igual à Vigia,
+acorda sozinha quando o comando em segundo plano termina: 3,4 s sem `/loop` e
+3,6 s com o `/loop 15m` ativo.
 - Assinatura: a vigia usa a assinatura do Claude de quem abriu a sessão. Continua
   sendo uma sessão interativa aberta por uma pessoa, mas roda sem ninguém olhando
   (decisão de 2026-11-09, em [relatorio-final.md](relatorio-final.md)).
