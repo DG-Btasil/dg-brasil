@@ -407,6 +407,39 @@ acorda sozinha quando o comando em segundo plano termina: 3,4 s sem `/loop` e
 3,6 s com o `/loop 15m` ativo. O teste foi feito antes da troca para 30 min, e o
 intervalo não muda o despertar.
 
+**Teste de ponta a ponta (11/11/2026, computador principal, site
+`app.dgbrasil.adv.br` com a 052 no DEV).** O instalador foi rodado de novo, e a
+Vigia foi aberta pelo atalho. O clique em "Verificar agora" foi feito pelo
+Playwright, como Administrador.
+
+| Momento | Hora | Depois do clique |
+|---|---|---|
+| Clique | 23:04:33,7 | — |
+| `esperar` pega o pedido e termina (tela: "Atendido às 23:04 pelo Computador principal") | 23:04:55,4 | 21,7 s |
+| A Vigia é acordada e lê `VERIFICAR_AGORA` | 23:05:03,6 | 29,9 s |
+| Fila conferida (`listar_trabalhos`) | 23:05:16,9 | 43 s |
+| Espera nova em segundo plano; rodada encerrada | 23:05:23 | 50 s |
+
+A maior parte da espera é o intervalo entre consultas do `esperar` (15 a 30 s).
+Do término dele ao Claude agir, foram 8 s.
+
+Também se viu:
+- **Volta do loop:** a das 23:10 encontrou `ESPERA_ATIVA` e não abriu outra.
+- **Execução desligada:** um script de validação desligou a execução às 23:00.
+  O botão ficou bloqueado, com o aviso, e o `esperar` continuou vivo, sem acordar
+  a Vigia.
+- **Permissões:** nenhuma janela de confirmação durante o teste.
+
+Nesta Vigia, cada pedido ao modelo levou de 69 a 90 mil tokens de contexto. A
+lista tinha 20 agentes, em vez de 73. Na sessão aberta, o contexto é maior que no
+`claude -p` da medição, porque entram as instruções do `/loop` e o texto do
+roteiro, que volta a cada rodada.
+
+| Rodada (fila vazia) | Pedidos ao modelo |
+|---|---|
+| Rodada do clique | 6 |
+| Volta do loop com a espera ativa | 4 |
+
 #### Economia de assinatura: só os agentes da ponte na lista
 
 A sessão manda ao modelo, em **todo** pedido, a descrição de todos os agentes de
