@@ -26,7 +26,7 @@ async function comandoEsperar(args: string[]): Promise<number> {
     cfg = await lerConfig()
   } catch (e) {
     const motivo = e instanceof ErroConfig ? e.message : 'não foi possível ler a configuração.'
-    console.log(`${LINHA.parada}: ${motivo} Rode o instalador de novo. Não inicie a espera; a Vigia segue de 15 em 15 minutos.`)
+    console.log(`${LINHA.parada}: ${motivo} Rode o instalador de novo. Não inicie a espera; a Vigia segue no horário normal do /loop.`)
     return 2
   }
   const api = new DgApi(cfg.url, cfg.token, cfg.versaoCliente, fetch, 15_000)

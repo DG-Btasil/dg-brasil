@@ -31,7 +31,7 @@ dg-executor --version
   ele aparece como `/mcp__dg-brasil__trabalhos`.
 - **Sessão vigia:** o prompt `vigiar` (`/mcp__dg-brasil__vigiar`) processa a fila
   inteira sem perguntar. O atalho "DG Brasil - Vigia" do instalador roda
-  `claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver."` em `C:\DGBrasil\sessao` (o `/loop` não abre
+  `claude "/loop 30m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver."` em `C:\DGBrasil\sessao` (o `/loop` não abre
   prompt de MCP, por isso a ferramenta `roteiro_vigia` devolve o mesmo roteiro).
 - **Verificar agora** (`src/esperar.ts`): no fim de cada rodada, o passo 4 do
   roteiro da Vigia deixa `esperar` em segundo plano. Ele pergunta ao DG Brasil

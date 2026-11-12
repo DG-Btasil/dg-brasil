@@ -69,11 +69,11 @@ QUANDO A ESPERA TERMINAR (o Claude Code avisa que o comando em segundo plano ter
 
 /**
  * O roteiro da SESSÃO VIGIA. Uma pessoa abre a sessão (atalho "DG Brasil -
- * Vigia", com /loop 15m chamando a ferramenta roteiro_vigia) e ela processa a fila
+ * Vigia", com /loop 30m chamando a ferramenta roteiro_vigia) e ela processa a fila
  * sozinha enquanto estiver aberta. Mesmas REGRAS e PASSOS do modo assistido,
  * sem perguntar nada: tudo continua indo para Revisões, e só a aprovação de um
  * advogado produz efeito. O passo 4 (ESPERA) deixa o "esperar" em segundo plano
- * para o botão "Verificar agora" acordar a sessão antes dos 15 minutos.
+ * para o botão "Verificar agora" acordar a sessão antes dos 30 minutos.
  */
 export const ROTEIRO_VIGIA = `${ROTEIRO
   .replace(

@@ -74,7 +74,7 @@ function OfficePanel({ o }: { o: OfficeStatusDTO }) {
             { label: "Em andamento", value: formatNumber(o.running) },
           ]}
         />
-        {/* Sessão Vigia aberta: roda na hora em vez de esperar os 15 minutos (052). */}
+        {/* Sessão Vigia aberta: roda na hora em vez de esperar os 30 minutos (052). */}
         <VerifyNowButton executionEnabled={o.executionEnabled} />
         {!o.online && o.queued > 0 && (
           <Callout tone="info">

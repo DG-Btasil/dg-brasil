@@ -12,7 +12,7 @@
 #   5. ponte com os agentes da máquina (docs/ponte.md): ponte.json, permissões
 #      das pastas dos clientes e os agentes Porteiro, Arquivista e Mensageiro;
 #   6. cria o atalho "DG Brasil - Vigia" na área de trabalho (sessão que
-#      processa a fila sozinha a cada 15 minutos enquanto estiver aberta, e na
+#      processa a fila sozinha a cada 30 minutos enquanto estiver aberta, e na
 #      hora quando alguém clica em "Verificar agora" no DG Brasil);
 #   7. roda o diagnóstico.
 # Nada aqui mexe em outras pastas, nos agendamentos atuais nem no Claude Code
@@ -73,7 +73,7 @@ if (-not $token) {
 $token = $token.Trim()
 if (-not $token.StartsWith('dgx_')) { Falha 'O token começa com "dgx_". Gere de novo no DG Brasil e cole o texto inteiro.' }
 # "Verificar agora": com $env:DG_BRASIL_ESPERAR_FILA = '1', a Vigia também acorda
-# sozinha quando entra trabalho novo na fila (padrão: só o botão e os 15 min).
+# sozinha quando entra trabalho novo na fila (padrão: só o botão e os 30 min).
 # Sem a variável, vale o que já estava neste computador.
 $esperarFila = $false
 if ($env:DG_BRASIL_ESPERAR_FILA) { $esperarFila = $env:DG_BRASIL_ESPERAR_FILA -eq '1' }
@@ -231,13 +231,13 @@ if ($ComPonte) {
 
 Passo 'Atalhos na área de trabalho'
 # "DG Brasil - Sessão": modo assistido (a pessoa digita /mcp__dg-brasil__trabalhos).
-# "DG Brasil - Vigia": processa a fila sozinha a cada 15 minutos enquanto estiver
+# "DG Brasil - Vigia": processa a fila sozinha a cada 30 minutos enquanto estiver
 # aberta (uma pessoa abre de manhã e fecha no fim do dia), e na hora quando
 # alguém clica em "Verificar agora" no DG Brasil. Tudo continua indo para
 # Revisões: só a aprovação de um advogado produz efeito.
 # Os dois abrem com --strict-mcp-config: só o servidor dg-brasil carrega.
 $Isolado = 'claude --strict-mcp-config --mcp-config .mcp.json'
-$Loop = '/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver.'
+$Loop = '/loop 30m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver.'
 try {
   $desktop = [Environment]::GetFolderPath('Desktop')
   $shell = New-Object -ComObject WScript.Shell
@@ -246,7 +246,7 @@ try {
       # O prompt vem ANTES das opções: --mcp-config aceita vários arquivos e, depois
       # dele, o texto do /loop era lido como outro arquivo de configuração ("MCP
       # config file not found") e o Claude Code saía na hora (Frente B, 10/11/2026).
-      @{ nome = 'DG Brasil - Vigia'; cmd = "claude '$Loop' --strict-mcp-config --mcp-config .mcp.json"; desc = 'Abre o Claude Code processando a fila do DG Brasil a cada 15 minutos' })) {
+      @{ nome = 'DG Brasil - Vigia'; cmd = "claude '$Loop' --strict-mcp-config --mcp-config .mcp.json"; desc = 'Abre o Claude Code processando a fila do DG Brasil a cada 30 minutos' })) {
     $atalho = $shell.CreateShortcut((Join-Path $desktop "$($a.nome).lnk"))
     $atalho.TargetPath = (Get-Command powershell.exe).Source
     $atalho.Arguments = "-NoExit -Command `"Set-Location '$Sessao'; $($a.cmd)`""
@@ -262,7 +262,7 @@ Passo 'Diagnóstico'
 
 Write-Host "`nPronto. Para processar os trabalhos:" -ForegroundColor Green
 Write-Host '  - Modo assistido: abra o atalho "DG Brasil - Sessão" e digite /mcp__dg-brasil__trabalhos'
-Write-Host '  - Sozinho, a cada 15 minutos: abra o atalho "DG Brasil - Vigia" (feche no fim do dia)'
+Write-Host '  - Sozinho, a cada 30 minutos: abra o atalho "DG Brasil - Vigia" (feche no fim do dia)'
 Write-Host '    Com a Vigia aberta, "Verificar agora" no DG Brasil (Computador do escritório) faz ela rodar na hora.'
 Write-Host 'Abra sempre pelos atalhos: eles carregam só o DG Brasil, sem os conectores do claude.ai.'
 Write-Host 'Nunca autorize um conector (link de login) pedido nessa janela.' -ForegroundColor Yellow

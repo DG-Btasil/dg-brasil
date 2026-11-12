@@ -19,7 +19,7 @@ const TONE_CLASS: Record<WakeTone, string> = {
 
 /**
  * "Verificar agora" (052). Pede à sessão Vigia do computador do escritório que
- * processe a fila na hora, sem esperar os 15 minutos. Só ADMIN e LAWYER veem o
+ * processe a fila na hora, sem esperar os 30 minutos. Só ADMIN e LAWYER veem o
  * botão (o banco também confere). Depois do clique, a tela pergunta a cada
  * poucos segundos se a Vigia atendeu.
  */
@@ -88,7 +88,7 @@ export function VerifyNowButton({ executionEnabled, className }: { executionEnab
         ) : (
           <p className="text-[12.5px] text-muted">
             {executionEnabled
-              ? "A Vigia processa a fila a cada 15 minutos. Para não esperar, peça a verificação agora."
+              ? "A Vigia processa a fila a cada 30 minutos. Para não esperar, peça a verificação agora."
               : "A execução está desligada: ligue para poder pedir a verificação."}
           </p>
         )}

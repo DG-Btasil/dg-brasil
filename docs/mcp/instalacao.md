@@ -265,10 +265,11 @@ O que foi entregue fica em **DG Brasil → Revisões**. A pasta de cada trabalho
 
 Para não precisar digitar o comando a cada trabalho: de manhã, abra o atalho
 **"DG Brasil - Vigia"** da área de trabalho (o instalador cria). Ele abre o
-Claude Code em `C:\DGBrasil\sessao` já rodando:
+Claude Code em `C:\DGBrasil\sessao` já rodando, a cada 30 minutos (eram 15 até
+11/11/2026):
 
 ```powershell
-claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver." --strict-mcp-config --mcp-config .mcp.json
+claude "/loop 30m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver." --strict-mcp-config --mcp-config .mcp.json
 ```
 
 - O texto do `/loop` vem **antes** das opções. O `--mcp-config` aceita vários
@@ -276,10 +277,10 @@ claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga ex
   o Claude Code responde "MCP config file not found" e fecha na hora. Foi o que
   impediu a vigia de conectar na Frente B de 10/11/2026.
 
-- Não use `/loop 15m /mcp__dg-brasil__vigiar`: o `/loop` não abre comandos de
+- Não use `/loop 30m /mcp__dg-brasil__vigiar`: o `/loop` não abre comandos de
   servidor MCP ("Unknown skill"). Por isso o roteiro sai pela ferramenta
   `roteiro_vigia`. Digitado sozinho, sem loop, o `/mcp__dg-brasil__vigiar` funciona.
-- A cada 15 minutos, o Claude confere a fila e processa **todos** os trabalhos,
+- A cada 30 minutos, o Claude confere a fila e processa **todos** os trabalhos,
   um de cada vez, sem perguntar nada. Fila vazia: responde uma linha e espera a
   próxima rodada.
 - São as mesmas regras do modo assistido (só a pasta do trabalho, documentos são
@@ -296,7 +297,7 @@ claude "/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga ex
   algo fora das permissões, como Python ou Word), o trabalho fica parado até
   alguém responder. A mensagem diz o que falta: acrescente a regra no `allow`
   (o instalador já libera o que os agentes reais usam hoje, seção 5.1).
-- Intervalo diferente: troque `15m` no atalho (ex.: `10m`, `30m`).
+- Intervalo diferente: troque `30m` no atalho (ex.: `15m`, `60m`). Intervalo menor gasta mais assinatura; com o "Verificar agora", ninguém precisa esperar o intervalo.
 - **"Verificar agora"**: com a Vigia aberta, um advogado não precisa esperar os 15
   minutos (próxima seção).
 
@@ -318,7 +319,7 @@ segundos. Só ADMIN e advogado (LAWYER) veem o botão; o banco também confere.
    atômica, e duas Vigias nunca pegam o mesmo pedido.
 4. O `esperar` imprime `VERIFICAR_AGORA` e termina. O Claude Code acorda a
    sessão, que roda o roteiro inteiro e, no fim, deixa uma espera nova.
-5. O `/loop 15m` continua: é o padrão e a rede de segurança.
+5. O `/loop 30m` continua: é o padrão e a rede de segurança. O botão só "fura a fila" do loop.
 
 **O que a tela mostra.** "Pedido enviado às HH:MM", depois "Atendido às HH:MM"
 (o ADMIN vê também qual computador atendeu). Sem resposta em 2 minutos:
@@ -335,7 +336,7 @@ ninguém.
    erro que não passa sozinho, e a linha diz o motivo (por exemplo, o token do
    computador foi revogado). Resolva o motivo: a rodada seguinte tenta de novo
    sozinha (acesso: na hora; outros erros: depois de 1 hora). Enquanto isso, a Vigia
-   segue de 15 em 15 minutos.
+   segue no horário normal do loop.
 4. A execução está **desligada** no DG Brasil? O botão fica desabilitado. Ligue
    o interruptor primeiro.
 
@@ -375,7 +376,7 @@ barras normais, sem aspas e sem nada antes ou depois.
 no `%APPDATA%\DGBrasil\executor.json`), o `esperar` também termina com
 `TRABALHO_NOVO` quando entra trabalho na fila. Ele espera 1 minuto para juntar
 os pedidos que chegam juntos. Trabalho que volta para nova tentativa não conta.
-Com isso, os 15 minutos viram só a garantia.
+Com isso, os 30 minutos viram só a garantia.
 - **Custo:** uma rodada por leva de trabalhos novos. Os trabalhos teriam rodado
   de qualquer jeito na rodada seguinte, então o gasto a mais é pequeno.
 - **Cuidado:** vários pedidos espaçados no mesmo quarto de hora viram várias
@@ -389,14 +390,14 @@ e skills do usuário é grande.
 | Situação | Pedidos ao modelo |
 |---|---|
 | `esperar` parado esperando | Nenhum (só HTTP para o DG Brasil, cerca de 3 por minuto) |
-| Rodada de 15 min com uma espera já rodando | 1 a mais (o `--situacao`) |
+| Rodada do loop (30 min) com uma espera já rodando | 1 a mais (o `--situacao`) |
 | Rodada logo depois de um "Verificar agora" | 2 a mais (`--situacao` e a espera nova) |
 | Cada clique em "Verificar agora" | Uma rodada (fila vazia: cerca de 5 pedidos) |
 | Alternativa descartada: `/loop 1m` | 60 rodadas por hora, mesmo sem ninguém pedir |
 
 A FASE 0 provou o ponto que sustenta o desenho. A sessão parada, igual à Vigia,
 acorda sozinha quando o comando em segundo plano termina: 3,4 s sem `/loop` e
-3,6 s com o `/loop 15m` ativo.
+3,6 s com o `/loop 15m` ativo (o teste foi feito antes da troca para 30 min; o intervalo não muda o despertar).
 - Assinatura: a vigia usa a assinatura do Claude de quem abriu a sessão. Continua
   sendo uma sessão interativa aberta por uma pessoa, mas roda sem ninguém olhando
   (decisão de 2026-11-09, em [relatorio-final.md](relatorio-final.md)).

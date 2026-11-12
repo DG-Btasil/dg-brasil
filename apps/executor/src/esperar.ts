@@ -5,7 +5,7 @@ import { ErroApi } from './api.js'
 /**
  * "dg-executor esperar": o botão "Verificar agora" da sessão Vigia (052).
  *
- * A Vigia roda o roteiro a cada 15 minutos pelo /loop do Claude Code. No fim de
+ * A Vigia roda o roteiro a cada 30 minutos pelo /loop do Claude Code. No fim de
  * cada rodada ela deixa este comando em SEGUNDO PLANO. Ele fica parado,
  * consultando o DG Brasil a cada 15 a 30 s (sem o Claude, sem gastar a
  * assinatura). Quando um advogado clica em "Verificar agora", a consulta
@@ -223,7 +223,7 @@ export async function situacao(o: OpcoesEsperar): Promise<string> {
   if (parada) {
     // O problema pode ter sido resolvido (computador autorizado de novo, conector atualizado).
     if (!(await paradaResolvida(parada, d))) {
-      return emitir(d, `${LINHA.parada}: ${parada.motivo} Não inicie a espera; a Vigia segue de 15 em 15 minutos.`)
+      return emitir(d, `${LINHA.parada}: ${parada.motivo} Não inicie a espera; a Vigia segue no horário normal do /loop.`)
     }
     await rm(arquivoParada(d.pasta), { force: true })
   }
@@ -275,7 +275,7 @@ async function laco(d: Dependencias): Promise<number> {
       const definitivo = erroDefinitivo(e)
       if (definitivo) {
         await marcarParada(d.pasta, definitivo, d)
-        emitir(d, `${LINHA.parada}: ${definitivo.motivo} A espera parou; a Vigia segue de 15 em 15 minutos. Não inicie outra espera.`)
+        emitir(d, `${LINHA.parada}: ${definitivo.motivo} A espera parou; a Vigia segue no horário normal do /loop. Não inicie outra espera.`)
         return 2
       }
       falhasSeguidas++
