@@ -174,10 +174,45 @@ if ($ComPonte) {
   $deny = @($deny | Where-Object { $Internet -notcontains $_ })
   $allow += $Internet
 }
+# Economia de assinatura (11/11/2026): a sessão relê a lista de TODOS os agentes
+# de ~/.claude/agents em cada pedido ao modelo (medido: 95 mil tokens por pedido,
+# metade só dessa lista). Nesta pasta, os agentes que a Vigia não chama ficam no
+# "deny", o que os tira da lista: 48 mil tokens por pedido. Ficam os da ponte
+# (ponte.json, ou a lista padrão abaixo), Porteiro, Arquivista, Mensageiro e os de
+# teste. Outro agente local para o DG Brasil chamar: ponha no ponte.json ou em
+# $env:DG_BRASIL_AGENTES_EXTRA = 'nome1,nome2' e rode o instalador de novo.
+$Redatores = @('alice-inicial', 'atlas-revisional', 'vicente-agregados', 'murilo-replica', 'pedro-provas', 'laura-emenda',
+               'gabriel-embargos', 'rafael-recurso', 'paulo-agravo', 'beatriz-cumprimento', 'teresa-audiencia')
+$ManterAgentes = @('porteiro-dg', 'arquivista-dg', 'mensageiro-dg', 'analista-teste', 'kit-cliente-teste', 'orquestrador-teste')
+if ($ComPonte) {
+  $daPonte = @('clara-hiscon', 'lucas-procuracao') + $Redatores
+  if (Test-Path $Ponte) {
+    try { $daPonte = @((Get-Content -Raw -Encoding UTF8 $Ponte | ConvertFrom-Json).agentes.PSObject.Properties.Name) }
+    catch { Aviso 'Não deu para ler o ponte.json; a Vigia mantém a lista padrão de agentes.' }
+  }
+  $ManterAgentes += $daPonte
+}
+if ($env:DG_BRASIL_AGENTES_EXTRA) { $ManterAgentes += @($env:DG_BRASIL_AGENTES_EXTRA.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+$negarAgentes = @()
+$PastaAgentes = Join-Path $env:USERPROFILE '.claude\agents'
+if (Test-Path $PastaAgentes) {
+  foreach ($f in Get-ChildItem -Path $PastaAgentes -Filter '*.md' -File) {
+    $m = Select-String -Path $f.FullName -Pattern '^name:\s*[''"]?([A-Za-z0-9_.-]+)' -List
+    if ($m) {
+      $nome = $m.Matches[0].Groups[1].Value
+      if ($ManterAgentes -notcontains $nome) { $negarAgentes += "Agent($nome)" }
+    }
+  }
+}
+# Agentes internos do Claude Code que a Vigia não usa (e que não devem substituir um agente local que falte).
+$negarAgentes += @('Agent(general-purpose)', 'Agent(Explore)', 'Agent(Plan)', 'Agent(claude)', 'Agent(statusline-setup)', 'Agent(claude-code-guide)')
+$deny += $negarAgentes
+Ok "$(@($negarAgentes).Count) agentes fora da lista da Vigia (economia de assinatura); $(@($ManterAgentes | Sort-Object -Unique).Count) mantidos"
 if (Test-Path $Settings) {
   try {
     $anterior = Get-Content -Raw -Encoding UTF8 $Settings | ConvertFrom-Json
-    $extra = @($anterior.permissions.deny) | Where-Object { $_ -and ($deny -notcontains $_) -and -not ($ComPonte -and $Internet -contains $_) }
+    # Regras Agent(...) são refeitas a cada instalação (um agente que entrou na ponte volta).
+    $extra = @($anterior.permissions.deny) | Where-Object { $_ -and ($deny -notcontains $_) -and -not ($ComPonte -and $Internet -contains $_) -and -not "$_".StartsWith('Agent(') }
     if ($extra) { $deny += $extra; Ok "Mantidas $(@($extra).Count) regra(s) de bloqueio acrescentadas neste computador" }
     Copy-Item $Settings "$Settings.anterior" -Force
   } catch { Aviso "Não deu para ler o settings.json anterior; ele foi guardado como settings.json.anterior." ; Copy-Item $Settings "$Settings.anterior" -Force }
@@ -205,8 +240,7 @@ if ($ComPonte) {
       'clara-hiscon'     = [ordered]@{ pasta = @('7. KIT DO CLIENTE', "3. PROCURA$Cced$($Atil)O ASSINADA"); trazer = @('ROTEIRO_CONSIGNADO_*.pdf', 'ROTEIRO_CONSIGNADO_*.html', 'TETO_NORMATIVO_*.pdf', 'TETO_NORMATIVO_*.html') }
       'lucas-procuracao' = [ordered]@{ pasta = @('7. KIT DO CLIENTE'); trazer = @('Procuracao_*.pdf', 'Declaracao_Hipossuficiencia_*.pdf', 'Contrato_Honorarios_*.pdf', 'Declaracao_Residencia_*.pdf') }
     }
-    foreach ($r in @('alice-inicial', 'atlas-revisional', 'vicente-agregados', 'murilo-replica', 'pedro-provas', 'laura-emenda',
-                     'gabriel-embargos', 'rafael-recurso', 'paulo-agravo', 'beatriz-cumprimento', 'teresa-audiencia')) {
+    foreach ($r in $Redatores) {
       $agentes[$r] = [ordered]@{ pasta = @($redator); trazer = $minuta; dados_do_cadastro = $false; criar_pasta = $false }
     }
     $conteudo = [ordered]@{

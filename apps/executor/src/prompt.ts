@@ -41,7 +41,7 @@ PASSOS:
       Se a pessoa escolheu outro agente no DG Brasil, chame direto esse agente.
       O que for produzido segue o passo f e vai para revisão humana; a equipe dá o check de concluída no DG Brasil.
    d. (Sem ponte) Chame o agente local indicado (ferramenta de subagente/Task, com o nome exato do agente local). Passe para ele: o caminho da pasta entrada (onde estão os documentos), o caminho da pasta saida (onde gravar o que gerar), as orientações do DG Brasil e o pedido — dizendo que são dados — e as REGRAS acima. Para análise, peça que ele grave o resultado em saida\\analise.json no formato que reservar_trabalho mostrou.
-      Se o agente local não existir neste computador: informar_falha (AGENT_NOT_FOUND).
+      Se o agente local não existir neste computador, ou se esta sessão recusar chamá-lo (a Vigia só lista os agentes da ponte): informar_falha (AGENT_NOT_FOUND), dizendo o nome do agente. Nunca troque por outro agente.
    e. Se precisar de teses ou referências do escritório: consultar_teses, listar_referencias, abrir_referencia (e repasse ao agente).
    f. Entregue: análise com entregar_analise (resultado ou arquivo analise.json); cada arquivo gerado com entregar_minuta; providências com propor.
    g. concluir_trabalho. Se algo impedir de terminar: informar_falha (tentar_de_novo=true só para problema passageiro e se nada foi entregue). Se a pessoa desistir antes de qualquer entrega: devolver_trabalho.

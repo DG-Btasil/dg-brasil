@@ -297,9 +297,16 @@ claude "/loop 30m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga ex
   algo fora das permissões, como Python ou Word), o trabalho fica parado até
   alguém responder. A mensagem diz o que falta: acrescente a regra no `allow`
   (o instalador já libera o que os agentes reais usam hoje, seção 5.1).
-- Intervalo diferente: troque `30m` no atalho (ex.: `15m`, `60m`). Intervalo menor gasta mais assinatura; com o "Verificar agora", ninguém precisa esperar o intervalo.
-- **"Verificar agora"**: com a Vigia aberta, um advogado não precisa esperar os 15
+- Intervalo diferente: troque `30m` no atalho (ex.: `15m`, `60m`). Intervalo
+  menor gasta mais assinatura. Com o "Verificar agora", ninguém precisa esperar o
+  intervalo.
+- **"Verificar agora"**: com a Vigia aberta, um advogado não precisa esperar os 30
   minutos (próxima seção).
+- **Só os agentes da ponte na lista** (economia; seção "Economia de assinatura",
+  abaixo).
+- Assinatura: a vigia usa a assinatura do Claude de quem abriu a sessão. Continua
+  sendo uma sessão interativa aberta por uma pessoa, mas roda sem ninguém olhando
+  (decisão de 2026-11-09, em [relatorio-final.md](relatorio-final.md)).
 
 #### "Verificar agora" (a Vigia roda na hora)
 
@@ -383,9 +390,9 @@ Com isso, os 30 minutos viram só a garantia.
   rodadas, em vez de uma.
 - **Padrão:** desligado.
 
-**Custo, medido na FASE 0 (11/11/2026)** neste computador. Cada pedido ao modelo
-relê cerca de 95 mil tokens de contexto, quase todos do cache: a lista de agentes
-e skills do usuário é grande.
+**Custo, medido em 11/11/2026** neste computador. Cada pedido ao modelo relê
+todo o contexto da sessão, quase todo do cache. Esse contexto era de 95 mil tokens
+e passou a 48 mil com a economia da seção seguinte.
 
 | Situação | Pedidos ao modelo |
 |---|---|
@@ -397,10 +404,38 @@ e skills do usuário é grande.
 
 A FASE 0 provou o ponto que sustenta o desenho. A sessão parada, igual à Vigia,
 acorda sozinha quando o comando em segundo plano termina: 3,4 s sem `/loop` e
-3,6 s com o `/loop 15m` ativo (o teste foi feito antes da troca para 30 min; o intervalo não muda o despertar).
-- Assinatura: a vigia usa a assinatura do Claude de quem abriu a sessão. Continua
-  sendo uma sessão interativa aberta por uma pessoa, mas roda sem ninguém olhando
-  (decisão de 2026-11-09, em [relatorio-final.md](relatorio-final.md)).
+3,6 s com o `/loop 15m` ativo. O teste foi feito antes da troca para 30 min, e o
+intervalo não muda o despertar.
+
+#### Economia de assinatura: só os agentes da ponte na lista
+
+A sessão manda ao modelo, em **todo** pedido, a descrição de todos os agentes de
+`%USERPROFILE%\.claude\agents`. Neste computador, são 67 arquivos, e só essa lista
+passa de 40 mil tokens. A Vigia chama poucos deles. O instalador põe no `deny` da
+pasta da sessão (`Agent(<nome>)`) todos os outros, e o Claude Code os tira da lista.
+Eles continuam funcionando normalmente em qualquer outra pasta.
+
+| Contexto de cada pedido (medido com `claude -p` na cópia da pasta da sessão) | Tokens |
+|---|---|
+| Antes | 95.252 |
+| Com os 47 agentes que a Vigia não usa no `deny` | 48.959 |
+| E também os agentes internos `general-purpose`, `Explore`, `Plan`, `claude`, `statusline-setup` e `claude-code-guide` | **48.447** (−49%) |
+
+- **Ficam na lista:**
+  - os agentes do `ponte.json` (Clara, Lucas e os redatores);
+  - `porteiro-dg`, `arquivista-dg` e `mensageiro-dg`;
+  - os três de teste.
+- **Agente novo para o DG Brasil chamar:** ponha no `ponte.json` ou em
+  `$env:DG_BRASIL_AGENTES_EXTRA = 'nome1,nome2'` e rode o instalador de novo. Se
+  um trabalho apontar para um agente fora da lista, a Vigia registra
+  `AGENT_NOT_FOUND` com o nome dele. Ela nunca troca por outro agente.
+- **As regras `Agent(...)` são refeitas a cada instalação.** As outras regras de
+  bloqueio que alguém acrescentou à mão continuam.
+- **Testado e descartado:**
+  - **Esconder skills:** com `skillOverrides: "off"`, o contexto **subiu** para
+    55 mil tokens; com `Skill(...)` no `deny`, não mudou nada.
+  - **Desligar as skills sincronizadas do claude.ai:** a Clara usa uma delas, a
+    `roteiro-peticao-consignado`.
 
 ## 7. Segurança, em resumo
 
