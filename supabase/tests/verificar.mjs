@@ -5592,6 +5592,103 @@ await deve('funções da ponte fixam search_path; só o dg_worker executa', asyn
   igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv || x.usr || !x.wrk).map((x) => x.f), [], 'permissões')
 })
 
+// ═════════════════════════════ Verificar agora [052] ═════════════════════
+
+secao('Verificar agora: pedido do escritório, atendido por uma Vigia só [052]')
+const wake = (uid) => como(uid, async (tx) => (await um(tx, `select public.dg_request_executor_wake() r`)).r)
+const wakeStatus = (uid) => como(uid, async (tx) => (await um(tx, `select public.get_executor_wake_status() r`)).r)
+const poll = (hash) => ex(`select private.executor_wake_poll($1) r`, [hash])
+await como(ids.barbara, (tx) => tx.query(`select public.set_ai_execution_enabled(true)`))
+await db.query(`delete from executor_wake_requests`)
+await deve('advogado pede; clicar de novo devolve o mesmo pedido (um pendente por vez)', async () => {
+  const a = await wake(ids.lucas)
+  igual([a.created, a.can_request, a.last.status, a.last.requested_by_name], [true, true, 'PENDING', 'Lucas'], 'pedido')
+  const b = await wake(ids.barbara)
+  igual([b.created, b.last.id], [false, a.last.id], 'mesmo pedido')
+  igual((await um(db, `select count(*)::int n from executor_wake_requests`)).n, 1, 'uma linha')
+  ids.w052 = a.last.id
+})
+await deve('assistente e parceiro não pedem; assistente vê a situação sem poder pedir', async () => {
+  for (const u of [ids.ana, ids.almeidaAdm]) {
+    await wake(u).then(() => { throw new Error('pedido aceito') }, (e) => { if (!/administrador ou um advogado/.test(e.message)) throw e })
+  }
+  igual((await wakeStatus(ids.ana)).can_request, false, 'ASSISTANT sem botão')
+  await wakeStatus(ids.almeidaAdm).then(() => { throw new Error('parceiro leu') }, (e) => { if (!/equipe interna/.test(e.message)) throw e })
+})
+await deve('a primeira Vigia que consulta fica com o pedido; a segunda consulta não acorda ninguém', async () => {
+  const p = await poll(hA)
+  igual(Object.keys(p).sort(), ['execution_enabled', 'newest_job_at', 'wake'], 'só o necessário, sem dado de cliente')
+  igual([p.wake, p.execution_enabled], [true, true], 'acordou')
+  igual((await poll(hA)).wake, false, 'mesmo pedido não acorda duas vezes')
+  const s = await wakeStatus(ids.lucas)
+  igual([s.last.id, s.last.status, s.last.attended_by_name, !!s.last.attended_at], [ids.w052, 'ATTENDED', null, true], 'LAWYER sem o nome do computador')
+  igual((await wakeStatus(ids.barbara)).last.attended_by_name, 'Computador A', 'ADMIN vê qual computador atendeu')
+})
+await deve('outro pedido depois de atendido é um pedido novo', async () => {
+  const a = await wake(ids.lucas)
+  igual([a.created, a.last.status], [true, 'PENDING'], 'novo')
+  igual((await poll(hA)).wake, true, 'atendido')
+})
+await deve('um pendente por escritório também no banco (índice único)', async () => {
+  await db.query(`insert into executor_wake_requests (organization_id, requested_by) values ($1, $2)`, [ids.owner, ids.lucas])
+  await db.query(`insert into executor_wake_requests (organization_id, requested_by) values ($1, $2)`, [ids.owner, ids.lucas]).then(
+    () => { throw new Error('dois pendentes') }, (e) => { if (!/duplicate|unique/.test(e.message)) throw e })
+})
+await deve('pedido com mais de 10 minutos vence: não acorda ninguém e libera um pedido novo', async () => {
+  await db.query(`delete from executor_wake_requests where status <> 'PENDING'`)
+  await db.query(`update executor_wake_requests set requested_at = now() - interval '11 minutes' where status = 'PENDING'`)
+  igual((await wakeStatus(ids.lucas)).last.status, 'EXPIRED', 'aparece como vencido')
+  igual((await poll(hA)).wake, false, 'vencido não acorda')
+  igual((await um(db, `select count(*)::int n from executor_wake_requests where status = 'EXPIRED' and expired_at is not null`)).n, 1, 'gravado como vencido')
+  igual((await wake(ids.lucas)).created, true, 'pedido novo')
+  await poll(hA)
+})
+await deve('execução desligada: o botão recusa e a Vigia não é acordada (o pedido não é consumido)', async () => {
+  await db.query(`insert into executor_wake_requests (organization_id, requested_by) values ($1, $2)`, [ids.owner, ids.lucas])
+  await como(ids.barbara, (tx) => tx.query(`select public.set_ai_execution_enabled(false)`))
+  try {
+    await wake(ids.lucas).then(() => { throw new Error('pedido aceito desligado') }, (e) => { if (!/desligada/.test(e.message)) throw e })
+    const p = await poll(hA)
+    igual([p.wake, p.execution_enabled], [false, false], 'desligado')
+    igual((await um(db, `select count(*)::int n from executor_wake_requests where status = 'PENDING'`)).n, 1, 'pendente intacto')
+  } finally {
+    await como(ids.barbara, (tx) => tx.query(`select public.set_ai_execution_enabled(true)`))
+  }
+  igual((await poll(hA)).wake, true, 'religado: atendido')
+})
+await deve('computador revogado ou token errado não consulta', async () => {
+  for (const h of [hB, h040('errado-052')]) {
+    await poll(h).then(() => { throw new Error('consultou') }, (e) => { if (!/inválido ou revogado/.test(e.message)) throw e })
+  }
+})
+await deve('fila: a consulta devolve só a hora do trabalho mais novo da fila', async () => {
+  const r = await um(db, `select max(created_at) m from agent_runs where status = 'QUEUED' and cancel_requested_at is null`)
+  const p = await poll(hA)
+  igual(p.newest_job_at === null ? null : new Date(p.newest_job_at).getTime(), r.m === null ? null : new Date(r.m).getTime(), 'hora')
+})
+await deve('tabela fechada: usuário logado não lê nem grava direto, só pelas funções', async () => {
+  await como(ids.barbara, (tx) => tx.query(`select * from executor_wake_requests`)).then(
+    () => { throw new Error('leu a tabela') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  await como(ids.lucas, (tx) => tx.query(`insert into executor_wake_requests (organization_id, requested_by) values ($1, $2)`, [ids.owner, ids.lucas])).then(
+    () => { throw new Error('gravou na tabela') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+})
+await deve('funções da 052 fixam search_path; tela para authenticated, consulta só para dg_worker', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.proname = any ($1)`,
+  [['executor_wake_expire', 'get_executor_wake_status', 'dg_request_executor_wake', 'executor_wake_poll']])
+  igual(r.length, 6, 'funções')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv).map((x) => x.f), [], 'search_path / anon / service_role')
+  const esperado = {
+    'private.executor_wake_expire': [false, false], 'private.executor_wake_poll': [false, true],
+    'private.get_executor_wake_status': [true, false], 'private.dg_request_executor_wake': [true, false],
+    'public.get_executor_wake_status': [true, false], 'public.dg_request_executor_wake': [true, false],
+  }
+  igual(r.filter((x) => JSON.stringify([x.usr, x.wrk]) !== JSON.stringify(esperado[x.f])).map((x) => x.f), [], 'quem executa')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(
