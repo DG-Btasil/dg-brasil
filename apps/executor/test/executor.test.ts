@@ -38,6 +38,10 @@ class FakeDg {
   enabled = true
   docBody: Buffer = HISCON
   docTitle = 'HISCON'
+  /** "Verificar agora" (052): pedido pendente e quantas consultas chegaram. */
+  wakePendente = false
+  wakeConsultas = 0
+  semWake = false
   bridge: unknown = { cliente: { id: 'cli-1', nome: 'José da Silva Fictício', profissao: 'aposentado', estado_civil: 'casado(a)', email: null }, pasta_drive: { id: 'pastaFicticia_0001', nome: 'JOSE DA SILVA FICTICIO' } }
 
   add(kind: Job['kind'] = 'EXECUTE'): Job {
@@ -56,6 +60,13 @@ class FakeDg {
       if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { error: { code: 'UNAUTHENTICATED', message: 'token' } })
       const p = u.pathname.replace('/api/executor/v1/', '').split('/')
       const body = raw.length ? JSON.parse(raw.toString()) : {}
+      if (p[0] === 'wake' && req.method === 'POST') {
+        this.wakeConsultas++
+        if (this.semWake) return send(404, { error: { code: 'NOT_FOUND', message: 'Rota inexistente.' } })
+        const wake = this.wakePendente && this.enabled
+        if (wake) this.wakePendente = false
+        return send(200, { wake, execution_enabled: this.enabled, newest_job_at: null })
+      }
       if (p[0] === 'me') return send(200, { executor_id: 'e1', name: 'Computador de teste', capabilities: [], execution_enabled: this.enabled })
       if (p[0] === 'jobs' && p.length === 1) {
         return send(200, { jobs: [...this.jobs.values()].filter((j) => j.status === 'QUEUED').map((j) => ({
@@ -172,6 +183,25 @@ describe('servidor MCP do DG Brasil', () => {
     const f = await chamar('roteiro_vigia', {})
     expect(f.erro).toBe(false)
     expect(f.texto).toBe(t)
+  })
+
+  it('listar_trabalhos dá como atendido o "Verificar agora" pendente (a rodada já está acontecendo)', async () => {
+    dg.wakePendente = true
+    const antes = dg.wakeConsultas
+    expect((await chamar('listar_trabalhos')).erro).toBe(false)
+    expect(dg.wakeConsultas).toBe(antes + 1)
+    expect(dg.wakePendente).toBe(false)
+  })
+
+  it('listar_trabalhos funciona mesmo se o DG Brasil não tiver a rota do "Verificar agora"', async () => {
+    dg.semWake = true
+    try {
+      const j = dg.add()
+      const r = await chamar('listar_trabalhos')
+      expect([r.erro, r.texto.includes(j.id)]).toEqual([false, true])
+    } finally {
+      dg.semWake = false
+    }
   })
 
   it('lista a fila e reserva: pastas criadas, agente local e pedido marcado como DADO', async () => {

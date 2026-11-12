@@ -121,7 +121,9 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
     inputSchema: {},
     annotations: leitura,
   }, seguro('listar_trabalhos', async () => {
-    const [eu, { jobs }] = await Promise.all([api.eu(), api.trabalhos(30)])
+    // Uma rodada está acontecendo: um "Verificar agora" pendente já está sendo
+    // atendido (a tela mostra "atendido às HH:MM"; a Vigia não roda de novo por ele).
+    const [eu, { jobs }] = await Promise.all([api.eu(), api.trabalhos(30), api.verificar().catch(() => undefined)])
     const aviso = eu.execution_enabled ? '' : '\nATENÇÃO: a execução pelo escritório está DESLIGADA no DG Brasil — nenhum trabalho pode ser reservado agora.\n'
     if (!jobs.length) return texto(`Nenhum trabalho na fila.${aviso}`)
     const linhas = jobs.map((j) => {

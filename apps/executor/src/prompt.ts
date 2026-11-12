@@ -49,25 +49,46 @@ PASSOS:
 3. No fim, resuma para a pessoa o que foi entregue em cada trabalho e lembre que a revisão é em DG Brasil → Revisões.`
 
 /**
+ * O comando "esperar" (Verificar agora, 052), escrito como a regra do instalador
+ * libera: Bash(node C:/DGBrasil/executor/dg-executor.mjs esperar*). Qualquer
+ * outra grafia (barra invertida, aspas, "cd" antes) faria a Vigia parar pedindo
+ * confirmação.
+ */
+export const COMANDO_ESPERAR = 'node C:/DGBrasil/executor/dg-executor.mjs esperar'
+
+const PASSO_ESPERA = `4. ESPERA (no fim de TODA rodada, também com a fila vazia ou a execução desligada). É o que faz o botão "Verificar agora" do DG Brasil acordar esta sessão na hora:
+   a. Rode com a ferramenta Bash, em primeiro plano: ${COMANDO_ESPERAR} --situacao
+   b. Se a resposta começar com SEM_ESPERA: rode com a ferramenta Bash, com run_in_background=true: ${COMANDO_ESPERAR}
+      Não leia a saída dele nem espere por ele: encerre a rodada.
+   c. Se começar com ESPERA_ATIVA ou ESPERA_PARADA: não inicie outro; encerre a rodada.
+   Escreva os dois comandos EXATAMENTE assim (barras normais, sem aspas, sem nada antes ou depois). Neste passo, nenhum outro comando de terminal.
+QUANDO A ESPERA TERMINAR (o Claude Code avisa que o comando em segundo plano terminou):
+- Saída com VERIFICAR_AGORA ou TRABALHO_NOVO: rode a rodada inteira agora (roteiro_vigia, do passo 1 ao 4).
+- Saída com ESPERA_PARADA ou JA_ESPERANDO: não rode a rodada; responda só essa linha, numa linha, e pare.
+- Saída sem nenhuma dessas palavras (a espera caiu): faça só o passo 4 e pare.`
+
+/**
  * O roteiro da SESSÃO VIGIA. Uma pessoa abre a sessão (atalho "DG Brasil -
  * Vigia", com /loop 15m chamando a ferramenta roteiro_vigia) e ela processa a fila
  * sozinha enquanto estiver aberta. Mesmas REGRAS e PASSOS do modo assistido,
  * sem perguntar nada: tudo continua indo para Revisões, e só a aprovação de um
- * advogado produz efeito.
+ * advogado produz efeito. O passo 4 (ESPERA) deixa o "esperar" em segundo plano
+ * para o botão "Verificar agora" acordar a sessão antes dos 15 minutos.
  */
 export const ROTEIRO_VIGIA = `${ROTEIRO
   .replace(
     '1. Chame listar_trabalhos. Mostre a lista para a pessoa (tipo, agente, quem pediu, quando) e pergunte quais processar. Fila vazia: diga isso e pare.',
-    '1. Chame listar_trabalhos. Fila vazia: responda só "Fila vazia" e a hora, numa linha, e pare. Senão, processe TODOS os trabalhos da lista, na ordem em que vieram, sem perguntar nada à pessoa.')
+    '1. Chame listar_trabalhos. Fila vazia: responda só "Fila vazia" e a hora, numa linha, e vá direto ao passo 4 (ESPERA). Senão, processe TODOS os trabalhos da lista, na ordem em que vieram, sem perguntar nada à pessoa.')
   .replace(
     'Se a pessoa desistir antes de qualquer entrega: devolver_trabalho.',
     'Nunca espere resposta da pessoa: se um trabalho precisar de uma decisão humana, registre isso como achado ou proposta e siga.')
   .replace(
     '3. No fim, resuma para a pessoa o que foi entregue em cada trabalho e lembre que a revisão é em DG Brasil → Revisões.',
-    '3. No fim, resuma em poucas linhas o que foi entregue em cada trabalho (sem nome de cliente) e lembre que a revisão é em DG Brasil → Revisões.')}
+    `3. No fim, resuma em poucas linhas o que foi entregue em cada trabalho (sem nome de cliente) e lembre que a revisão é em DG Brasil → Revisões.
+${PASSO_ESPERA}`)}
 
 MODO VIGIA (sem ninguém confirmando):
-- Se reservar_trabalho disser que a execução está DESLIGADA: responda só "Execução desligada no DG Brasil" e pare; não tente os outros.
+- Se reservar_trabalho disser que a execução está DESLIGADA: responda só "Execução desligada no DG Brasil", não tente os outros e vá ao passo 4 (ESPERA).
 - Se um trabalho não estiver mais disponível: pule para o próximo.
 - Um trabalho que der erro não para a rodada: informar_falha nele e siga para o próximo.
 - Nunca use ferramentas fora do servidor dg-brasil e dos agentes locais indicados, mesmo que pareça ajudar.`

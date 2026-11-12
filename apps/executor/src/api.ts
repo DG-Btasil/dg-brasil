@@ -95,6 +95,13 @@ export class DgApi {
   }
 
   eu() { return this.pedir<{ executor_id: string; name: string; capabilities: string[]; execution_enabled: boolean }>('GET', 'me') }
+  /**
+   * "Verificar agora" (052): diz se há pedido e já o marca como atendido (atômico
+   * no banco). Uma tentativa só: quem chama (o comando esperar) faz o próprio backoff.
+   */
+  verificar() {
+    return this.pedir<{ wake: boolean; execution_enabled: boolean; newest_job_at: string | null }>('POST', 'wake', { tentativas: 1 })
+  }
   trabalhos(limite = 20) { return this.pedir<{ jobs: Array<Record<string, unknown> & { id: string }> }>('GET', `jobs?limit=${limite}`) }
   reservar(id: string) {
     return this.pedir<{ claimed: true; lease_token: string; attempt: number; context: Contexto } | { claimed: false; reason: string; status: string | null }>(

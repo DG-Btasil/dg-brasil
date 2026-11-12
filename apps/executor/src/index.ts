@@ -1,16 +1,42 @@
 #!/usr/bin/env node
+import { dirname } from 'node:path'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { DgApi } from './api.js'
 import { ErroConfig, lerConfig, VERSAO } from './config.js'
 import { diagnostico } from './doctor.js'
+import { esperar, LINHA, processosDaSessao, situacao } from './esperar.js'
 import { criarLog } from './log.js'
 import { criarServidor } from './servidor.js'
 import { Trabalhos } from './trabalhos.js'
 
 /**
- * dg-executor mcp     servidor MCP stdio (o Claude Code inicia este processo)
- * dg-executor doctor  confere se o computador está pronto
+ * dg-executor mcp                  servidor MCP stdio (o Claude Code inicia este processo)
+ * dg-executor doctor               confere se o computador está pronto
+ * dg-executor esperar              (Vigia, em segundo plano) termina quando pedirem "Verificar agora"
+ * dg-executor esperar --situacao   (Vigia, no fim da rodada) diz se é para iniciar a espera
+ * dg-executor esperar --fila       também termina quando entra trabalho novo na fila
  */
+
+/** A pasta da sessão (C:\DGBrasil\sessao): a de cima da pasta dos trabalhos. */
+const pastaDaSessao = (pastaTrabalhos: string) => dirname(pastaTrabalhos)
+
+async function comandoEsperar(args: string[]): Promise<number> {
+  let cfg
+  try {
+    cfg = await lerConfig()
+  } catch (e) {
+    const motivo = e instanceof ErroConfig ? e.message : 'não foi possível ler a configuração.'
+    console.log(`${LINHA.parada}: ${motivo} Rode o instalador de novo. Não inicie a espera; a Vigia segue de 15 em 15 minutos.`)
+    return 2
+  }
+  const api = new DgApi(cfg.url, cfg.token, cfg.versaoCliente, fetch, 15_000)
+  const pasta = pastaDaSessao(cfg.pastaTrabalhos)
+  if (args.includes('--situacao')) {
+    await situacao({ api, pasta })
+    return 0
+  }
+  return esperar({ api, pasta, fila: args.includes('--fila') || cfg.esperarFila, vigiar: processosDaSessao() })
+}
 
 async function mcp() {
   const log = criarLog()
@@ -59,11 +85,13 @@ async function mcp() {
 const comando = process.argv[2]
 if (comando === 'mcp') {
   await mcp()
+} else if (comando === 'esperar') {
+  process.exit(await comandoEsperar(process.argv.slice(3)))
 } else if (comando === 'doctor') {
   process.exit((await diagnostico()) ? 0 : 1)
 } else if (comando === '--version' || comando === '-v') {
   console.log(VERSAO)
 } else if (comando !== undefined || process.argv[1]?.endsWith('index.js')) {
-  console.log('Uso: dg-executor mcp | doctor | --version')
+  console.log('Uso: dg-executor mcp | doctor | esperar [--situacao | --fila] | --version')
   process.exit(comando ? 1 : 0)
 }

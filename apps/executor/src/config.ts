@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-export const VERSAO = '1.1.0'
+export const VERSAO = '1.2.0'
 
 /**
  * Configuração do executor. Ordem: variáveis de ambiente, depois o arquivo
@@ -20,6 +20,8 @@ export interface Config {
   token: string
   /** Pasta das pastas de trabalho (uma por trabalho, apagada ao terminar). */
   pastaTrabalhos: string
+  /** "esperar" também termina quando entra trabalho novo na fila (padrão: não). */
+  esperarFila: boolean
   versaoCliente: string
   arquivoConfig: string
 }
@@ -28,6 +30,7 @@ const Arquivo = z.object({
   url: z.string().optional(),
   token: z.string().optional(),
   pasta_trabalhos: z.string().optional(),
+  esperar_fila: z.boolean().optional(),
 }).strict()
 
 export function caminhoConfig(env: NodeJS.ProcessEnv = process.env): string {
@@ -73,6 +76,7 @@ export async function lerConfig(env: NodeJS.ProcessEnv = process.env): Promise<C
     url,
     token,
     pastaTrabalhos: env.DG_EXECUTOR_WORKDIR ?? doArquivo.pasta_trabalhos ?? pastaTrabalhosPadrao(env),
+    esperarFila: env.DG_EXECUTOR_ESPERAR_FILA !== undefined ? env.DG_EXECUTOR_ESPERAR_FILA === '1' : doArquivo.esperar_fila === true,
     versaoCliente: `dg-executor/${VERSAO}`,
     arquivoConfig,
   }
