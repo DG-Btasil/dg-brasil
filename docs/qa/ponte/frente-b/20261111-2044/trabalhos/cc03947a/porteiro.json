@@ -1,0 +1,7 @@
+{
+  "arquivos": [
+    { "arquivo": "comprovante-residencia-ficticio.pdf", "resultado": "liberado", "motivo": "Conta de luz usada como comprovante de residencia, 1 pagina, com titular e endereco; sem texto estranho. Documento marcado como ficticio de teste." },
+    { "arquivo": "hiscon-ficticio.pdf", "resultado": "liberado", "motivo": "Historico de emprestimo consignado do INSS (HISCON), 1 pagina, com emprestimos e cartao RMC; sem texto estranho. Documento marcado como ficticio de teste." },
+    { "arquivo": "identidade-ficticia.pdf", "resultado": "liberado", "motivo": "Carteira de identidade, 1 pagina, com dados de identificacao; sem texto estranho. Documento marcado como ficticio de teste." }
+  ]
+}

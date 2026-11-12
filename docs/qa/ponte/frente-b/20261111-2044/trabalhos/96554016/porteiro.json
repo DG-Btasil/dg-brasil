@@ -1,0 +1,8 @@
+{
+  "arquivos": [
+    { "arquivo": "comprovante-residencia-ficticio.pdf", "resultado": "liberado", "motivo": "Checagem por script sem achados. Leitura do conteudo NAO realizada: o trabalho parou no passo 1 porque outro arquivo saiu SUSPEITO." },
+    { "arquivo": "hiscon-ficticio.pdf", "resultado": "liberado", "motivo": "Checagem por script sem achados. Leitura do conteudo NAO realizada: o trabalho parou no passo 1 porque outro arquivo saiu SUSPEITO." },
+    { "arquivo": "identidade-ficticia.pdf", "resultado": "liberado", "motivo": "Checagem por script sem achados. Leitura do conteudo NAO realizada: o trabalho parou no passo 1 porque outro arquivo saiu SUSPEITO." },
+    { "arquivo": "pdf-com-javascript-ficticio.pdf", "resultado": "suspeito", "motivo": "verificar_arquivos: PDF contem JavaScript (marcadores /JavaScript e /JS). Arquivo nao foi lido." }
+  ]
+}

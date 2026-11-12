@@ -1,0 +1,9 @@
+{
+  "arquivos": [
+    { "arquivo": "comprovante-residencia-ficticio.pdf", "resultado": "liberado", "motivo": "Conta de luz usada como comprovante de residência, 1 página, com titular e endereço. O próprio documento se declara fictício, para teste. Sem texto estranho." },
+    { "arquivo": "hiscon-ficticio.pdf", "resultado": "liberado", "motivo": "Histórico de empréstimo consignado (HISCON) do INSS, 1 página, com empréstimos e cartão RMC. Formato simplificado, e o próprio documento se declara fictício, para teste. Sem texto estranho." },
+    { "arquivo": "identidade-ficticia.pdf", "resultado": "liberado", "motivo": "Carteira de identidade, 1 página, com nome, CPF, nascimento e naturalidade. O próprio documento se declara fictício, para teste. Sem texto estranho." },
+    { "arquivo": "TETO_NORMATIVO_DG_TESTE_JOSE_DA_SILVA_FICTICIO_NB_0000000000_2026-11-11 _versao HTML_.pdf", "resultado": "liberado", "motivo": "Análise interna do teto normativo do consignado, 3 páginas (contratos, checagens, metodologia, tabela de tetos). A tabela da página 1 aparece cortada à direita (última coluna ilegível). Sem texto estranho." },
+    { "arquivo": "ROTEIRO_CONSIGNADO_DG_TESTE__JOSE_DA_SILVA_FICTICIO_NB_0000000000_2026-11-11 _versao HTML_.pdf", "resultado": "liberado", "motivo": "Roteiro interno de ações de fraude de consignado, 2 páginas (página 2 só tem o rodapé de geração). Os alertas são notas de trabalho para o advogado, não instruções para IA. Sem texto estranho." }
+  ]
+}

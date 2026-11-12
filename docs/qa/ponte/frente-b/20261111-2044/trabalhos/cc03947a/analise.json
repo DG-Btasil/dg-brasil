@@ -1,0 +1,58 @@
+{
+  "summary": "DOCUMENTO DE TESTE: o HISCON da pasta se declara fictício (\"DOCUMENTO FICTÍCIO PARA TESTE (NÃO É REAL)\"); o roteiro serve só para validar a ponte, não para petição. Viabilidade: sim, 3 ações no total. Por bloco: Caixa 0, E 0, A 1 (A-1, Banco Beta), B 0, C 1 (C-1, Banco Gama), D 1 (D-1, cartão RMC do Banco Delta). G e H não se aplicam (espécie 41, aposentadoria por idade, não BPC, titular adulto); F e C ampliado não apuráveis (extrato sem valor liberado). Extrato de 01/10/2026, 1 página, legível; margem utilizada R$ 980,00 de R$ 1.000,00 (98%). Teto normativo (análise separada): 4 empréstimos nos últimos 10 anos, todos com veredito \"dados atípicos\" (sem taxa, CET e valores no extrato); RMC fora de escopo; nenhuma violação apurável (R$ 0,00). Nada foi aprovado, enviado ou protocolado.",
+  "recommendation": "Documento de teste: não usar em petição. Em caso real, pedir o HISCON completo oficial (Meu INSS) e as faturas do RMC para confirmar o refinanciamento de 10/2023 (D-1, urgente pela janela de 3 anos) e resolver as ambiguidades de A-1 (migração x portabilidade) e C-1 (substituição no mesmo banco) antes de peticionar.",
+  "findings": [
+    {
+      "title": "Bloco D · cartões RMC e RCC ativos (D-1, Banco Delta)",
+      "detail": "Cartão RMC ativo do Banco Delta (averbação 2019), limite R$ 1.400,00. \"Utilizado no Mês\" de 10/2023 igual ao limite; 11/2023 e 12/2023 com R$ 900 em cada mês. Marcado \"Porta 2 (a confirmar)\": tese de refinanciamento de RMC em 10/2023. URGENTE: a janela de 3 anos começa a fechar em 10/2026 (na data da análise, 11/11/2026, já está fechando); confirmar na fatura. Verificação inconclusiva: o extrato não mostra saldo devedor, IOF nem a competência 09/2023. Observação do cliente sobre o cartão não informada.",
+      "relevance": "HIGH",
+      "document_version_ids": ["5303f81c-3631-4a04-a471-ec0122a30753"]
+    },
+    {
+      "title": "Bloco A · contratos migrados (A-1, Banco Beta)",
+      "detail": "Contrato do Banco Beta averbado em 15/03/2023, ativo, origem \"Migração de contrato (portab.)\": ambíguo entre migração e portabilidade; o contrato de origem não aparece no extrato. Confirmar antes de peticionar; se for portabilidade, sai do Bloco A.",
+      "relevance": "MEDIUM",
+      "document_version_ids": ["5303f81c-3631-4a04-a471-ec0122a30753"]
+    },
+    {
+      "title": "Bloco C · excluídos/encerrados de 2023 a 2025 (C-1, Banco Gama)",
+      "detail": "Contrato excluído do Banco Gama com inclusão em 02/05/2024, com par do mesmo banco incluído 4 dias depois (06/05/2024) e números sequenciais: possível substituição no mesmo banco. Data e motivo da exclusão não aparecem no extrato, o que impede fechar a cadeia por data.",
+      "relevance": "MEDIUM",
+      "document_version_ids": ["5303f81c-3631-4a04-a471-ec0122a30753"]
+    },
+    {
+      "title": "Documento de teste e conferência de titular",
+      "detail": "O HISCON se declara fictício (\"DOCUMENTO FICTÍCIO PARA TESTE (NÃO É REAL)\"); roteiro gerado só para validação. Titular: cadastro com prefixo \"DG Teste -\" x nome no HISCON sem o prefixo; tratado como o mesmo titular, a conferir.",
+      "relevance": "HIGH",
+      "document_version_ids": ["5303f81c-3631-4a04-a471-ec0122a30753"]
+    },
+    {
+      "title": "Teto normativo: nenhuma violação apurável",
+      "detail": "4 empréstimos na janela de 10 anos (Banco Alfa 01/2021, Banco Beta 03/2023, Banco Gama 05/2024 excluído e 05/2024 ativo), todos com veredito \"dados atípicos\" por falta de taxa, CET e valor emprestado/liberado no extrato; cartão RMC fora de escopo. Pago a maior, repetição e economia nas vincendas: R$ 0,00. Checagens ADI 7.759/STF, Tema 1.378/STJ e resoluções CNPS posteriores à 1.368/2025 vêm de fontes secundárias e estão marcadas [CONFERIR].",
+      "relevance": "LOW",
+      "document_version_ids": ["5303f81c-3631-4a04-a471-ec0122a30753"]
+    }
+  ],
+  "missing_information": [
+    "HISCON completo oficial do Meu INSS: valor emprestado e liberado, taxa de juros, CET, IOF, competências de início e fim, datas e motivos de exclusão, base de cálculo, valor reservado e saldo devedor do cartão (necessário para fechar Blocos C ampliado, F, portabilidade, margem e teto normativo).",
+    "Faturas do cartão RMC do Banco Delta de 09/2023 a 01/2024, para confirmar o refinanciamento de 10/2023.",
+    "Contrato de origem da operação A-1 (Banco Beta), para decidir entre migração e portabilidade.",
+    "Data e motivo da exclusão do contrato C-1 (Banco Gama).",
+    "Relato do cliente sobre o cartão RMC (não há conversa).",
+    "Contracheque/base de cálculo do benefício, para medir os percentuais do art. 6º da Lei 10.820/2003.",
+    "Data de nascimento do titular (não visível no HISCON)."
+  ],
+  "recommendations": [
+    "Documento de teste: não usar o roteiro em petição; nada deve seguir para kit ou petição.",
+    "Conferir o titular: diferença apenas no prefixo de teste \"DG Teste -\" entre o cadastro e o HISCON.",
+    "D-1 urgente: confirmar na fatura o refinanciamento de RMC de 10/2023; se confirmado, peticionar antes do fim da janela de 3 anos.",
+    "A-1: confirmar se é migração ou portabilidade antes de peticionar; se portabilidade, conferir prazo e parcela contra a Res. CMN 5.057/2022, art. 6º.",
+    "C-1: obter a data da exclusão para confirmar a substituição no mesmo banco.",
+    "Margem utilizada de 98% (R$ 980,00 de R$ 1.000,00): sem base de cálculo não é possível medir os limites do art. 6º da Lei 10.820/2003 (35% empréstimos / 45% total no RGPS).",
+    "Confirmar nos portais oficiais (STF, STJ, DOU/MPS) as checagens do teto marcadas [CONFERIR].",
+    "Sistema: o ler_roteiro.py não lê o HTML gerado pelo gerar_roteiro_consignado.py (código 3); ajustar o parser ou incluir no HTML um bloco de resumo no formato do PDF."
+  ],
+  "proposed_actions": [],
+  "references_used": [],
+  "theses_considered": []
+}
