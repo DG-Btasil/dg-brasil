@@ -168,6 +168,22 @@ describe("API do computador do escritório", () => {
     expect(c.args).toEqual([sha256Hex(TOKEN), JOB, sha256Hex(LEASE)]);
   });
 
+  it("verificar agora: só com o token do computador, pela porta atômica do banco, e só três campos saem", async () => {
+    const { send, calls } = setup({
+      executor_wake_poll: { wake: true, execution_enabled: true, newest_job_at: "2026-11-11T12:00:00Z", extra: "JOSE DA SILVA FICTICIO" },
+    });
+    const r = await send("POST", "wake");
+    expect(r).toEqual({ status: 200, body: { wake: true, execution_enabled: true, newest_job_at: "2026-11-11T12:00:00Z" } });
+    expect(calls).toEqual([{ fn: "executor_wake_poll", args: [sha256Hex(TOKEN)] }]);
+    expect((await send("GET", "wake")).status).toBe(404);
+  });
+
+  it("verificar agora: computador revogado recebe 403, sem tocar em mais nada", async () => {
+    const revogado = Object.assign(new Error("Acesso do computador inválido ou revogado"), { code: "42501" });
+    const { send } = setup({ executor_wake_poll: revogado });
+    expect((await send("POST", "wake")).status).toBe(403);
+  });
+
   it("erro do banco: permissão vira 403 com a mensagem; erro desconhecido vira 500 genérico", async () => {
     const negado = Object.assign(new Error("Trabalho não está reservado por este computador"), { code: "42501" });
     const { job } = setup({ executor_get_case: negado });

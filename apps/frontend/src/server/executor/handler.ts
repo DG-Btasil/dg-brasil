@@ -126,6 +126,17 @@ async function route_(req: ExecutorRequest, tokenHash: string, deps: ExecutorDep
     const limit = Math.min(Math.max(Number(req.query.get("limit") ?? 20) || 20, 1), 50);
     return ok({ jobs: await call("executor_list_jobs", limit) });
   }
+  // "Verificar agora" (052): o comando "esperar" da Vigia consulta aqui. Diz se há
+  // pedido e já o marca como atendido (atômico no banco). Só três campos saem:
+  // nada de cliente, caso ou agente.
+  if (s.length === 1 && s[0] === "wake" && m === "POST") {
+    const r = await call<{ wake?: unknown; execution_enabled?: unknown; newest_job_at?: unknown }>("executor_wake_poll");
+    return ok({
+      wake: r?.wake === true,
+      execution_enabled: r?.execution_enabled === true,
+      newest_job_at: typeof r?.newest_job_at === "string" ? r.newest_job_at : null,
+    });
+  }
   if (s[0] !== "jobs" || s.length < 3 || !UUID.test(s[1])) throw new HttpError(404, "NOT_FOUND", "Rota inexistente.");
 
   const jobId = s[1];
