@@ -321,10 +321,13 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onD
   const canDecide = usePermission("cases.decide");
   const partnerOrigin = legalCase.originOrganizationId !== owner.id;
   const needsLawyer = !legalCase.assignedLawyerId && isDecidable(legalCase.status);
+  // A coluna da direita só tem o painel "Parceria". Sem ele, os dados ocupam a
+  // largura toda (antes sobrava um terço da tela vazio ao lado do quadro).
+  const hasAside = partnerOrigin;
 
   return (
     <div className="grid grid-cols-12 gap-5">
-      <div className="col-span-12 space-y-5 xl:col-span-8">
+      <div className={`col-span-12 space-y-5 ${hasAside ? "xl:col-span-8" : ""}`}>
         {needsLawyer && (
           <Callout
             tone="warning"
@@ -357,6 +360,7 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onD
           <PanelHeader title="Dados do caso" />
           <PanelBody>
             <DefinitionGrid
+              columns={hasAside ? 2 : 3}
               items={[
                 { label: "Área", value: LEGAL_AREA_LABEL[legalCase.area as LegalArea] ?? legalCase.areaName },
                 { label: "Parte contrária", value: legalCase.opposingParty ?? "—" },
@@ -379,8 +383,8 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onD
           </PanelBody>
         </Panel>
       </div>
-      <div className="col-span-12 space-y-5 xl:col-span-4">
-        {partnerOrigin && (
+      {hasAside && (
+        <div className="col-span-12 space-y-5 xl:col-span-4">
           <Panel>
             <PanelHeader title="Parceria" />
             <PanelBody className="space-y-2 text-[13px]">
@@ -394,8 +398,8 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onD
               </p>
             </PanelBody>
           </Panel>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
