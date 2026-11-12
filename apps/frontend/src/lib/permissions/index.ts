@@ -92,6 +92,8 @@ export const OWNER_PERMISSIONS = [
   "dgbrasil.view",
   "dgbrasil.manage",
   "dgbrasil.activity.view",
+  // "Verificar agora" da sessão Vigia (052): ADMIN e LAWYER; o banco também confere.
+  "office.wake",
   "settings.view",
   "settings.office.edit",
   "settings.team.manage",
@@ -156,6 +158,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "reviews.decide",
     "partners.view",
     "partnerRequests.manage",
+    "office.wake",
     "settings.view",
     "settings.integrations.view",
     "settings.notifications.edit",

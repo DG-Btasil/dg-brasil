@@ -172,6 +172,24 @@ export interface OfficeStatusDTO {
   executors?: ExecutorDTO[];
 }
 
+/** "Verificar agora" (052): o último pedido do escritório para a sessão Vigia. */
+export type ExecutorWakeStatus = "PENDING" | "ATTENDED" | "EXPIRED";
+export interface ExecutorWakeDTO {
+  /** ADMIN ou LAWYER (o banco decide). */
+  canRequest: boolean;
+  /** Só na resposta do clique: false = já havia um pedido esperando. */
+  created?: boolean;
+  last?: {
+    id: ID;
+    status: ExecutorWakeStatus;
+    requestedAt: ISODateTime;
+    requestedByName?: string;
+    attendedAt?: ISODateTime;
+    /** Nome do computador que atendeu: só para o ADMIN (mesma regra da lista de computadores). */
+    attendedByName?: string;
+  };
+}
+
 /** O token aparece UMA vez, na criação. O banco guarda só o hash. */
 export interface CreatedExecutorDTO {
   id: ID;

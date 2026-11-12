@@ -27,6 +27,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "dgbrasil.view": "Acessar a Central DG Brasil",
   "dgbrasil.manage": "Configurar agentes e Skills",
   "dgbrasil.activity.view": "Ver atividade dos agentes",
+  "office.wake": "Pedir \"Verificar agora\" à Vigia do escritório",
   "settings.view": "Acessar configurações",
   "settings.office.edit": "Editar dados do escritório",
   "settings.team.manage": "Gerenciar equipe e papéis",
@@ -57,7 +58,7 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   { label: "Revisões", permissions: ["reviews.view", "reviews.decide"] },
   { label: "Financeiro", permissions: ["finance.view", "finance.manage"] },
   { label: "Parceiros", permissions: ["partners.view", "partners.manage", "partners.finance.view", "partnerRequests.manage"] },
-  { label: "DG Brasil", permissions: ["dgbrasil.view", "dgbrasil.manage", "dgbrasil.activity.view"] },
+  { label: "DG Brasil", permissions: ["dgbrasil.view", "dgbrasil.manage", "dgbrasil.activity.view", "office.wake"] },
   {
     label: "Configurações",
     permissions: [

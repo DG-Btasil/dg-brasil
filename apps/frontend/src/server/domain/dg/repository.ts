@@ -252,4 +252,6 @@ export const setAiEnabled = (db: SupabaseClient, enabled: boolean, reason?: stri
 export const executorStatus = (db: SupabaseClient) => rpc<Record<string, unknown>>(db, "get_executor_status", {});
 export const createExecutor = (db: SupabaseClient, name: string, tokenHash: string, tokenPrefix: string) =>
   rpc<Record<string, unknown>>(db, "dg_create_executor", { p_name: name, p_token_hash: tokenHash, p_token_prefix: tokenPrefix });
+export const executorWakeStatus = (db: SupabaseClient) => rpc<Record<string, unknown>>(db, "get_executor_wake_status", {});
+export const requestExecutorWake = (db: SupabaseClient) => rpc<Record<string, unknown>>(db, "dg_request_executor_wake", {});
 export const revokeExecutor = (db: SupabaseClient, id: string) => rpc<Record<string, unknown>>(db, "dg_revoke_executor", { p_executor_id: id });

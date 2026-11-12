@@ -73,6 +73,13 @@ export async function getAiStatusAction() {
 export async function getOfficeStatusAction() {
   return runAction({ name: "office.status", schema: empty, input: {}, handler: (ctx) => service.getOfficeStatus(ctx) });
 }
+/** "Verificar agora" (052): a situação qualquer usuário interno lê; pedir, só ADMIN e LAWYER. */
+export async function getExecutorWakeAction() {
+  return runAction({ name: "office.wake_status", schema: empty, input: {}, handler: (ctx) => service.getExecutorWake(ctx) });
+}
+export async function requestExecutorWakeAction() {
+  return runAction({ name: "office.wake_request", permission: "office.wake", schema: empty, input: {}, handler: (ctx) => service.requestExecutorWake(ctx) });
+}
 export async function setAiEnabledAction(input: unknown) {
   return runAction({ name: "ai.set_enabled", permission: manage, schema: setAiEnabledSchema, input, handler: (ctx, v) => service.setAiEnabled(ctx, v.enabled, v.reason) });
 }

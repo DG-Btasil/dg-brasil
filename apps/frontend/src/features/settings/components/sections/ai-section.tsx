@@ -14,6 +14,7 @@ import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { formatDateTime, formatEventTime, formatNumber } from "@/lib/formatting";
 import { usePermission } from "@/features/auth/hooks";
+import { VerifyNowButton } from "@/features/dg-brasil/components/verify-now";
 import { createExecutorAction, getAiStatusAction, getOfficeStatusAction, revokeExecutorAction, setAiEnabledAction } from "@/server/domain/dg/actions";
 import type { AiRuntimeStatusDTO, CreatedExecutorDTO, ExecutorDTO, OfficeStatusDTO } from "@/server/domain/dg/dto";
 import { useToast } from "@/store/ui-store";
@@ -73,6 +74,8 @@ function OfficePanel({ o }: { o: OfficeStatusDTO }) {
             { label: "Em andamento", value: formatNumber(o.running) },
           ]}
         />
+        {/* Sessão Vigia aberta: roda na hora em vez de esperar os 15 minutos (052). */}
+        <VerifyNowButton executionEnabled={o.executionEnabled} />
         {!o.online && o.queued > 0 && (
           <Callout tone="info">
             Há trabalhos esperando. Para processar, alguém no escritório abre o Claude Code e digita <code className="font-mono">/mcp__dg-brasil__trabalhos</code>.

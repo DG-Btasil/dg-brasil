@@ -4,7 +4,7 @@ import type { AgentStatus, ReferenceMaterialStatus, ReferenceMaterialType, Thesi
 import { requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { DomainError, notFound } from "@/server/core/errors";
 import type {
-  AgentDetailDTO, AgentListItemDTO, AiRuntimeStatusDTO, CreatedExecutorDTO, DgCatalogDTO, DgOverviewDTO, ExecutorDTO, HistoryEntryDTO,
+  AgentDetailDTO, AgentListItemDTO, AiRuntimeStatusDTO, CreatedExecutorDTO, DgCatalogDTO, DgOverviewDTO, ExecutorDTO, ExecutorWakeDTO, ExecutorWakeStatus, HistoryEntryDTO,
   OfficeStatusDTO, PreparedReferenceFileDTO, ReferenceItemDTO, SaveResultDTO, ThesisDetailDTO, ThesisListItemDTO, VersionItemDTO,
 } from "./dto";
 import { agentStatusFromDb, agentStatusToDb, agentVersionText, configFromDb, configToDb, lineDiff, skillVersionText, slugify, thesisText } from "./mappers";
@@ -367,6 +367,39 @@ export async function getOfficeStatus(ctx: ServiceContext): Promise<OfficeStatus
       createdAt: String(e.created_at), createdByName: str(e.created_by_name), running: Number(e.running ?? 0),
     })),
   };
+}
+
+const WAKE_STATUSES = new Set(["PENDING", "ATTENDED", "EXPIRED"]);
+
+function wakeFrom(r: Record<string, unknown>): ExecutorWakeDTO {
+  const l = r.last && typeof r.last === "object" ? (r.last as Record<string, unknown>) : null;
+  const status = String(l?.status ?? "");
+  return {
+    canRequest: r.can_request === true,
+    created: typeof r.created === "boolean" ? r.created : undefined,
+    last: l && WAKE_STATUSES.has(status)
+      ? {
+          id: String(l.id), status: status as ExecutorWakeStatus,
+          requestedAt: String(l.requested_at), requestedByName: str(l.requested_by_name),
+          attendedAt: str(l.attended_at), attendedByName: str(l.attended_by_name),
+        }
+      : undefined,
+  };
+}
+
+/** "Verificar agora": o último pedido (qualquer usuário interno vê; só ADMIN vê qual computador atendeu). */
+export async function getExecutorWake(ctx: ServiceContext): Promise<ExecutorWakeDTO> {
+  requireInternal(ctx);
+  return wakeFrom(await repo.executorWakeStatus(ctx.db));
+}
+
+/** ADMIN ou LAWYER pede para a Vigia processar a fila agora. Um pedido pendente por vez (o banco garante). */
+export async function requestExecutorWake(ctx: ServiceContext): Promise<ExecutorWakeDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "office.wake");
+  const r = wakeFrom(await repo.requestExecutorWake(ctx.db));
+  ctx.log.info("dg.executor_wake_requested", { created: r.created === true });
+  return r;
 }
 
 /**

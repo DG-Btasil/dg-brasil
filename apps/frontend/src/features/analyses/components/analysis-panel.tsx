@@ -23,6 +23,7 @@ import { InterruptDialog } from "@/features/agent-runs/components/interrupt-dial
 import type { AnalysisDetailDTO, AnalysisListItem, TemplateFieldDTO } from "@/server/domain/analyses/dto";
 import { useToast } from "@/store/ui-store";
 import { useAutoRefresh } from "@/lib/hooks/use-auto-refresh";
+import { VerifyNowButton } from "@/features/dg-brasil/components/verify-now";
 import { formatFieldValue, SENDABLE_STATUSES } from "../fields";
 import { AnalysisResultView } from "./analysis-result-view";
 
@@ -220,6 +221,7 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, office }: { ana
             }
           >
             O resultado será enviado para Revisões e só segue depois da decisão humana.
+            {analysis.dbStatus === "QUEUED" && office?.enabled && <VerifyNowButton executionEnabled className="mt-3" />}
           </Callout>
         )}
         {interrupting && (
