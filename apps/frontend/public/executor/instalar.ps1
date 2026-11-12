@@ -12,7 +12,8 @@
 #   5. ponte com os agentes da máquina (docs/ponte.md): ponte.json, permissões
 #      das pastas dos clientes e os agentes Porteiro, Arquivista e Mensageiro;
 #   6. cria o atalho "DG Brasil - Vigia" na área de trabalho (sessão que
-#      processa a fila sozinha a cada 15 minutos enquanto estiver aberta);
+#      processa a fila sozinha a cada 15 minutos enquanto estiver aberta, e na
+#      hora quando alguém clica em "Verificar agora" no DG Brasil);
 #   7. roda o diagnóstico.
 # Nada aqui mexe em outras pastas, nos agendamentos atuais nem no Claude Code
 # fora da pasta de sessão. Pode rodar de novo para atualizar.
@@ -71,7 +72,15 @@ if (-not $token) {
 }
 $token = $token.Trim()
 if (-not $token.StartsWith('dgx_')) { Falha 'O token começa com "dgx_". Gere de novo no DG Brasil e cole o texto inteiro.' }
-$config = [ordered]@{ url = $Base; token = $token; pasta_trabalhos = $Trabalhos } | ConvertTo-Json
+# "Verificar agora": com $env:DG_BRASIL_ESPERAR_FILA = '1', a Vigia também acorda
+# sozinha quando entra trabalho novo na fila (padrão: só o botão e os 15 min).
+# Sem a variável, vale o que já estava neste computador.
+$esperarFila = $false
+if ($env:DG_BRASIL_ESPERAR_FILA) { $esperarFila = $env:DG_BRASIL_ESPERAR_FILA -eq '1' }
+elseif (Test-Path $Cfg) {
+  try { $esperarFila = ((Get-Content -Raw -Encoding UTF8 $Cfg | ConvertFrom-Json).esperar_fila -eq $true) } catch { }
+}
+$config = [ordered]@{ url = $Base; token = $token; pasta_trabalhos = $Trabalhos; esperar_fila = $esperarFila } | ConvertTo-Json
 Gravar $Cfg $config
 try {
   # Só a conta atual do Windows lê o arquivo do token.
@@ -99,7 +108,15 @@ $allow = @(
   'mcp__dg-brasil__informar_progresso', 'mcp__dg-brasil__entregar_analise', 'mcp__dg-brasil__entregar_minuta',
   'mcp__dg-brasil__propor', 'mcp__dg-brasil__concluir_trabalho', 'mcp__dg-brasil__informar_falha',
   'mcp__dg-brasil__devolver_trabalho', 'mcp__dg-brasil__reservar_trabalho', 'mcp__dg-brasil__roteiro_vigia',
-  'Read(./trabalhos/**)', 'Edit(./trabalhos/**)'
+  'Read(./trabalhos/**)', 'Edit(./trabalhos/**)',
+  # "Verificar agora" (docs/mcp/instalacao.md, seção 6): no fim de cada rodada a
+  # Vigia pergunta se já há espera e deixa o "esperar" em segundo plano. SÓ estas
+  # duas linhas exatas (nada de Bash(node *)): o Claude Code compara o comando
+  # inteiro, com barras normais, como o roteiro_vigia manda escrever.
+  'Bash(node C:/DGBrasil/executor/dg-executor.mjs esperar --situacao)',
+  'Bash(node C:/DGBrasil/executor/dg-executor.mjs esperar)',
+  'PowerShell(node C:/DGBrasil/executor/dg-executor.mjs esperar --situacao)',
+  'PowerShell(node C:/DGBrasil/executor/dg-executor.mjs esperar)'
 )
 # Ponte com os agentes da máquina (docs/ponte.md). Os agentes do escritório
 # trabalham na pasta do cliente no G:, na pasta de trabalho deles e com os
@@ -215,8 +232,9 @@ if ($ComPonte) {
 Passo 'Atalhos na área de trabalho'
 # "DG Brasil - Sessão": modo assistido (a pessoa digita /mcp__dg-brasil__trabalhos).
 # "DG Brasil - Vigia": processa a fila sozinha a cada 15 minutos enquanto estiver
-# aberta (uma pessoa abre de manhã e fecha no fim do dia). Tudo continua indo
-# para Revisões: só a aprovação de um advogado produz efeito.
+# aberta (uma pessoa abre de manhã e fecha no fim do dia), e na hora quando
+# alguém clica em "Verificar agora" no DG Brasil. Tudo continua indo para
+# Revisões: só a aprovação de um advogado produz efeito.
 # Os dois abrem com --strict-mcp-config: só o servidor dg-brasil carrega.
 $Isolado = 'claude --strict-mcp-config --mcp-config .mcp.json'
 $Loop = '/loop 15m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga exatamente o roteiro que ela devolver.'
@@ -245,6 +263,7 @@ Passo 'Diagnóstico'
 Write-Host "`nPronto. Para processar os trabalhos:" -ForegroundColor Green
 Write-Host '  - Modo assistido: abra o atalho "DG Brasil - Sessão" e digite /mcp__dg-brasil__trabalhos'
 Write-Host '  - Sozinho, a cada 15 minutos: abra o atalho "DG Brasil - Vigia" (feche no fim do dia)'
+Write-Host '    Com a Vigia aberta, "Verificar agora" no DG Brasil (Computador do escritório) faz ela rodar na hora.'
 Write-Host 'Abra sempre pelos atalhos: eles carregam só o DG Brasil, sem os conectores do claude.ai.'
 Write-Host 'Nunca autorize um conector (link de login) pedido nessa janela.' -ForegroundColor Yellow
 Write-Host 'No DG Brasil, a aba Conexões mostra este computador como conectado.'
