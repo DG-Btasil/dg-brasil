@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listReviewsSchema } from "@/server/domain/reviews/schemas";
+import { listReviewGroupsSchema, listReviewsSchema } from "@/server/domain/reviews/schemas";
 import { listItemFromRow, type ReviewRow } from "@/server/domain/reviews/mappers";
 import { templateSetupFromRow } from "@/server/domain/analyses/mappers";
 import type { TemplateSetupRow } from "@/server/domain/analyses/repository";
@@ -7,15 +7,22 @@ import { startAnalysisSchema, sendAnalysisToAgentSchema } from "@/server/domain/
 import type { TemplateFieldDTO } from "@/server/domain/analyses/dto";
 import { fieldsPayload, formatFieldValue, validateFields } from "@/features/analyses/fields";
 import {
+  clearReviewFilters,
+  countReviewFilters,
   DEFAULT_REVIEW_QUERY,
   isReviewCounterActive,
+  REVIEW_GROUP_ITEMS_PAGE_SIZE,
   REVIEW_TOP_PRIORITY,
+  reviewGroupItemsInput,
+  reviewQueryFitsUrl,
   reviewQueryFromSearchParams,
+  reviewQueryToGroupInput,
   reviewQueryToInput,
   reviewQueryToSearchParams,
   toggleReviewCounter,
   type ReviewListQuery,
 } from "./list-query";
+import { groupCountsLabel, groupTitle, queueFromGroups, queueFromReviews } from "./queue-entries";
 
 const UUID = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
 
@@ -25,7 +32,7 @@ const UUID = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
 
 describe("fila de revisões — URL e entrada da action", () => {
   it("ida e volta pela URL", () => {
-    const q: ReviewListQuery = { view: "todas", priority: "URGENT", kind: "ANALYSIS", status: "APPROVED", due: "NEXT_7_DAYS", unassigned: true, page: 2 };
+    const q: ReviewListQuery = { mode: "lista", view: "todas", search: "maria da silva", priority: "URGENT", kind: "ANALYSIS", status: "APPROVED", due: "NEXT_7_DAYS", unassigned: true, page: 2 };
     expect(reviewQueryFromSearchParams(Object.fromEntries(reviewQueryToSearchParams(q)))).toEqual(q);
     const top: ReviewListQuery = { ...DEFAULT_REVIEW_QUERY, priority: REVIEW_TOP_PRIORITY };
     expect(reviewQueryToSearchParams(top).toString()).toBe("prioridade=URGENT_HIGH");
@@ -56,6 +63,109 @@ describe("fila de revisões — URL e entrada da action", () => {
     expect(listReviewsSchema.parse(reviewQueryToInput({ ...DEFAULT_REVIEW_QUERY, view: "minhas" }))).toMatchObject({ assignee: "me" });
     expect(listReviewsSchema.parse(reviewQueryToInput({ ...DEFAULT_REVIEW_QUERY, unassigned: true }))).toMatchObject({ assignee: "unassigned" });
     expect(listReviewsSchema.parse(reviewQueryToInput({ ...DEFAULT_REVIEW_QUERY, view: "todas", status: "REJECTED" }))).toMatchObject({ status: "REJECTED", ascending: false });
+  });
+});
+
+describe("fila agrupada por execução, lista e busca (067)", () => {
+  const UUID2 = "1f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8b";
+  it("o padrão é agrupar por execução; a lista vai para a URL; modo desconhecido volta ao padrão", () => {
+    expect(DEFAULT_REVIEW_QUERY.mode).toBe("grupos");
+    expect(reviewQueryToSearchParams({ ...DEFAULT_REVIEW_QUERY, mode: "lista" }).toString()).toBe("modo=lista");
+    expect(reviewQueryFromSearchParams({ modo: "lista" }).mode).toBe("lista");
+    expect(reviewQueryFromSearchParams({ modo: "tabela" }).mode).toBe("grupos");
+  });
+  it("busca: vai para a URL só sem dígito (CPF e número de processo ficam fora); é aparada e limitada", () => {
+    expect(reviewQueryToSearchParams({ ...DEFAULT_REVIEW_QUERY, search: "maria" }).toString()).toBe("busca=maria");
+    const cpf = { ...DEFAULT_REVIEW_QUERY, search: "123.456.789-00" };
+    expect(reviewQueryToSearchParams(cpf).toString()).toBe("");
+    expect([reviewQueryFitsUrl(cpf), reviewQueryFitsUrl(DEFAULT_REVIEW_QUERY)]).toEqual([false, true]);
+    expect(reviewQueryFromSearchParams({ busca: "  maria  " }).search).toBe("maria");
+    expect(reviewQueryFromSearchParams({ busca: "0001234-56.2026" }).search).toBe("");
+    expect(reviewQueryFromSearchParams({ busca: "a".repeat(300) }).search).toHaveLength(120);
+  });
+  it("a busca chega às duas listagens e conta como filtro; em branco não é filtro", () => {
+    const q = { ...DEFAULT_REVIEW_QUERY, search: "  extrato  " };
+    expect(listReviewsSchema.parse(reviewQueryToInput(q))).toMatchObject({ search: "extrato", status: "OPEN" });
+    expect(listReviewGroupsSchema.parse(reviewQueryToGroupInput(q))).toMatchObject({ search: "extrato", status: "OPEN" });
+    expect(countReviewFilters(q)).toBe(1);
+    expect(countReviewFilters({ ...DEFAULT_REVIEW_QUERY, search: "   " })).toBe(0);
+    expect(isReviewCounterActive(q, "open")).toBe(false);
+  });
+  it("grupos: mesmos filtros da lista, passam no schema real; abertas = mais antigos primeiro, todas = mais recentes", () => {
+    const q: ReviewListQuery = { ...DEFAULT_REVIEW_QUERY, priority: REVIEW_TOP_PRIORITY, kind: "AGENT_PROPOSAL", due: "NEXT_7_DAYS", unassigned: true, page: 3 };
+    expect(listReviewGroupsSchema.parse(reviewQueryToGroupInput(q))).toMatchObject({
+      status: "OPEN",
+      priority: ["URGENT", "HIGH"],
+      targetKind: "AGENT_PROPOSAL",
+      due: "NEXT_7_DAYS",
+      assignee: "unassigned",
+      sortDirection: "asc",
+      page: 3,
+      pageSize: 25,
+    });
+    expect(listReviewGroupsSchema.parse(reviewQueryToGroupInput({ ...DEFAULT_REVIEW_QUERY, view: "todas", status: "REJECTED" }))).toMatchObject({ status: "REJECTED", sortDirection: "desc" });
+    expect(listReviewGroupsSchema.parse(reviewQueryToGroupInput({ ...DEFAULT_REVIEW_QUERY, view: "minhas" }))).toMatchObject({ assignee: "me" });
+  });
+  it("itens de um grupo: execução ou caso, com os filtros da fila e a página própria do grupo", () => {
+    const q = { ...DEFAULT_REVIEW_QUERY, kind: "AGENT_PROPOSAL" as const, page: 4 };
+    const run = listReviewsSchema.parse(reviewGroupItemsInput(q, { agentRunId: UUID, legalCaseId: UUID2 }));
+    expect(run).toMatchObject({ groupRunId: UUID, status: "OPEN", targetKind: "AGENT_PROPOSAL", page: 1, pageSize: REVIEW_GROUP_ITEMS_PAGE_SIZE, column: "created_at", ascending: true });
+    expect(run.groupCaseId).toBeUndefined();
+    const people = listReviewsSchema.parse(reviewGroupItemsInput(q, { legalCaseId: UUID2 }, 2));
+    expect(people).toMatchObject({ groupCaseId: UUID2, page: 2 });
+    expect(people.groupRunId).toBeUndefined();
+  });
+  it("limpar filtros e trocar de visão mantêm o modo escolhido", () => {
+    const q: ReviewListQuery = { ...DEFAULT_REVIEW_QUERY, mode: "lista", view: "todas", search: "maria", status: "APPROVED", page: 5 };
+    expect(clearReviewFilters(q)).toEqual({ ...DEFAULT_REVIEW_QUERY, mode: "lista", view: "todas" });
+    expect(clearReviewFilters(q, "minhas")).toEqual({ ...DEFAULT_REVIEW_QUERY, mode: "lista", view: "minhas" });
+    expect(toggleReviewCounter(q, "open")).toEqual({ ...DEFAULT_REVIEW_QUERY, mode: "lista" });
+  });
+  it("página da fila: cada linha diz se é grupo ou revisão; erro passa adiante", () => {
+    const group = {
+      key: `run:${UUID}`,
+      agentRunId: UUID,
+      total: 3,
+      documents: 1,
+      proposals: 2,
+      analyses: 0,
+      open: 3,
+      unassigned: 0,
+      topPriority: "HIGH" as const,
+      firstCreatedAt: "2026-11-13T10:00:00Z",
+      lastCreatedAt: "2026-11-13T10:05:00Z",
+      reviewerIds: [],
+    };
+    const groups = queueFromGroups({ ok: true, requestId: "r", data: { items: [group], page: 1, pageSize: 25, total: 1, hasMore: false, totalItems: 3 } });
+    expect(groups).toMatchObject({ ok: true, data: { total: 1, totalItems: 3, items: [{ type: "group", group: { key: `run:${UUID}` } }] } });
+    const review = listItemFromRow({
+      id: UUID,
+      legal_case_id: UUID,
+      legal_process_id: null,
+      document_version_id: null,
+      legal_analysis_id: UUID,
+      agent_proposal_id: null,
+      status: "PENDING",
+      priority: "NORMAL",
+      assigned_reviewer_id: null,
+      due_at: null,
+      created_at: "2026-10-12T10:00:00Z",
+      updated_at: "2026-10-12T10:00:00Z",
+      decided_at: null,
+    });
+    const reviews = queueFromReviews({ ok: true, requestId: "r", data: { items: [review], page: 1, pageSize: 25, total: 1, hasMore: false } });
+    expect(reviews).toMatchObject({ ok: true, data: { items: [{ type: "review", review: { id: UUID } }] } });
+    const failure = { ok: false as const, requestId: "r", error: { code: "FORBIDDEN" as const, message: "x" } };
+    expect(queueFromGroups(failure)).toBe(failure);
+    expect(queueFromReviews(failure)).toBe(failure);
+  });
+  it("cabeçalho do grupo: agente (ou a equipe) e contagem por tipo, só dos tipos presentes", () => {
+    expect(groupTitle({ agentRunId: UUID, agentName: "Laura" })).toBe("Trabalho de Laura");
+    expect(groupTitle({ agentRunId: UUID })).toBe("Trabalho de agente");
+    expect(groupTitle({ agentName: undefined })).toBe("Enviado pela equipe");
+    expect(groupCountsLabel({ documents: 2, proposals: 17, analyses: 1 })).toBe("2 documentos · 17 propostas · 1 análise");
+    expect(groupCountsLabel({ documents: 1, proposals: 0, analyses: 0 })).toBe("1 documento");
+    expect(groupCountsLabel({ documents: 0, proposals: 1, analyses: 0 })).toBe("1 proposta");
   });
 });
 

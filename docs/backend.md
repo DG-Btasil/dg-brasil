@@ -129,7 +129,7 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Processos e prazos | processos (CRUD, partes), movimentações (só MANUAL pela tela), prazos (criar, cumprir, cancelar, perdido; próximos e vencidos derivados) | `deadline_status` (026: responsável e escopo excluído) |
 | Documentos | listar, ficha, criar/vincular, preparar e confirmar upload (idempotente), download, visibilidade, arquivar, excluir, verificação; pendências (criar, solicitar, atender com versão, aprovar/rejeitar) | `authorize_document_upload/download` (026) + Storage assinado |
 | Solicitações ao parceiro | listar, ficha com mensagens, criar, responder (atômico), resolver/cancelar | `answer_partner_request` + máquina de estados (026) |
-| Revisões | listar, ficha (conteúdo do alvo), atribuir, decidir, reabrir | `decide_review` (nunca `UPDATE reviews.status`) |
+| Revisões | listar (lista ou agrupada por execução do agente, com busca por texto), ficha (conteúdo do alvo), atribuir, decidir, decidir em conjunto, reabrir | `decide_review` (nunca `UPDATE reviews.status`); `list_review_groups` e `list_review_queue` (067) |
 | Análises | listar, ficha, iniciar, documentos que faltam, enviar ao agente | `legal_analyses` + `request_agent_run_once` |
 | Execuções de agente | pedir (idempotente), resumos, cancelar (ADMIN) | `request_agent_run_once` (026), `get_agent_run_summaries` |
 | Financeiro | modelos, acordos, obrigações, lançamentos (recebimento, ajuste, estorno — append-only), divisões (leitura), parcerias, repasses, visão do parceiro | ledger + views; chaves de idempotência e `create_partner_transfer` (026) |
@@ -138,6 +138,29 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Integração judicial (043) | visão e configuração; OABs (ADMIN e administrador do parceiro); cobertura; publicações (listar, abrir, criar prazo, sem prazo, reabrir); prévia da contagem; calendário; situação e pausa do processo; buscar agora | RPCs `*_judicial_*` (invoker → definer, papel conferido no banco); busca no DJEN/DataJud pelo servidor com `dg_worker` (`docs/judicial.md`) |
 | Conta (`server/domain/account`) | sessões da própria conta (lista, MFA), sair dos outros dispositivos, sair de todos — toda sessão liberada, qualquer papel, sem `userId` no input | `get_my_sessions`, `record_account_security_event` (038) + `auth.signOut({ scope })` com o JWT do usuário |
 | Auditoria | eventos e acessos a dado pessoal (ADMIN, paginado, metadata por whitelist, sem IP/navegador) | `audit_events`, `personal_data_access_events` |
+
+### Revisões: fila por execução e decisão em conjunto (067)
+
+- **Execução e responsável ao nascer.** O banco grava em `reviews.agent_run_id`
+  a execução do agente que gerou o item (proposta, resultado de análise ou
+  minuta) e atribui a revisão ao advogado responsável pelo caso, se ele estiver
+  ativo. Nada disso vem do navegador. Item enviado por pessoa fica sem execução.
+  O aviso "revisão atribuída" sai uma vez por execução e por responsável.
+- **Fila agrupada (padrão) e lista.** `list_review_groups` devolve um grupo por
+  execução (agente, caso, cliente, quando chegou, contagem por tipo, prioridade
+  mais alta); o que veio de pessoas forma um grupo por caso. Abrir o grupo usa a
+  listagem normal com `groupRunId` ou `groupCaseId`. Filtros, busca (cliente,
+  caso, título, agente; sem diferenciar acento) e página ficam no banco.
+- **Decisão em conjunto** (`decideReviewsBulkAction`, regras em
+  `server/domain/reviews/bulk-rules.ts`): é um laço no servidor sobre
+  `decide_review`, item a item, na sessão de quem clicou, com a auditoria de
+  cada um. Documento e análise nunca entram. Aprovar em conjunto vale só para
+  pedido de documento (sem mensagem ao parceiro) e proposta sem efeito
+  automático; rejeitar, para qualquer proposta que a pessoa pode decidir. A
+  falha de um item não desfaz os outros e o resultado volta item a item.
+- **Proposta só se aprova ou rejeita.** `decide_review` recusa "alterações
+  solicitadas" quando o alvo é proposta do agente (antes, a revisão ficava sem
+  saída). Documento e análise continuam aceitando.
 
 ## Idempotência
 

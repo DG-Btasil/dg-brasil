@@ -9,7 +9,7 @@ import {
 } from "@/repositories/api/db-mappings";
 import type { DocumentCategory, Priority, ReviewDecisionKind } from "@/lib/constants/status";
 import { resultFromRow } from "../analyses/mappers";
-import type { ReviewDecisionDTO, ReviewListItem, ReviewTargetDTO, ReviewTargetKind } from "./dto";
+import type { ReviewDecisionDTO, ReviewGroupDTO, ReviewListItem, ReviewTargetDTO, ReviewTargetKind } from "./dto";
 import type { AssignReviewInput, ReviewDueFilter } from "./schemas";
 import { PROPOSAL_TYPE_LABEL } from "./labels";
 
@@ -31,6 +31,8 @@ export interface ReviewRow {
   /** Resultado exato revisado (039); null em revisões anteriores à Etapa 5. */
   legal_analysis_result_id?: string | null;
   agent_proposal_id: string | null;
+  /** Execução do agente que gerou o item (067); null = enviado por pessoa. */
+  agent_run_id?: string | null;
   status: DbReviewStatus;
   priority: DbReviewPriority;
   assigned_reviewer_id: string | null;
@@ -38,7 +40,7 @@ export interface ReviewRow {
   created_at: string;
   updated_at: string;
   decided_at: string | null;
-  agent_proposals?: Many<{ proposal_type: string; agent_runs?: Many<{ agents?: Many<{ name: string }> }> }>;
+  agent_proposals?: Many<{ proposal_type: string; payload?: unknown; agent_runs?: Many<{ agents?: Many<{ name: string }> }> }>;
   legal_analyses?: Many<{ analysis_templates?: Many<{ name: string }> }>;
   document_versions?: Many<{ version_number: number; documents?: Many<{ title: string }> }>;
   legal_cases?: Many<{
@@ -175,6 +177,35 @@ function subjectOf(row: ReviewRow, kind: ReviewTargetKind, proposalType: string 
   return (proposalType && PROPOSAL_TYPE_LABEL[proposalType]) ?? "Proposta do agente";
 }
 
+/** Tamanho da linha que descreve a proposta na fila. */
+export const PROPOSAL_DETAIL_MAX = 160;
+
+/**
+ * O que a proposta pede, em uma linha, para a pessoa distinguir os itens na
+ * fila e na confirmação da decisão em conjunto: o nome do documento pedido, o
+ * título (prazo, providência) ou, na falta, o resumo escrito pelo agente.
+ * Payload do worker: { summary, data } (018/039).
+ */
+export function proposalDetail(payload: unknown): string | undefined {
+  if (!isObject(payload)) return undefined;
+  const data = isObject(payload.data) ? payload.data : {};
+  const text = [data.label, data.title, payload.summary].find((v): v is string => typeof v === "string" && v.trim() !== "");
+  if (!text) return undefined;
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > PROPOSAL_DETAIL_MAX ? `${line.slice(0, PROPOSAL_DETAIL_MAX - 1)}…` : line;
+}
+
+/**
+ * A proposta, se aprovada, manda um texto ao parceiro do caso? Hoje, só o
+ * pedido de documento com `message_to_partner` (018: vira solicitação ao
+ * parceiro). Esse texto não aparece na fila: a aprovação exige abrir o item.
+ */
+export function proposalSendsToPartner(proposalType: string | undefined, payload: unknown): boolean {
+  if (proposalType !== "REQUEST_DOCUMENT" || !isObject(payload) || !isObject(payload.data)) return false;
+  const message = payload.data.message_to_partner;
+  return typeof message === "string" && message.trim() !== "";
+}
+
 function caseClientName(row: ReviewRow): string | undefined {
   const c = one(one(row.legal_cases)?.clients);
   return one(c?.individual_client_details)?.full_name ?? one(c?.company_client_details)?.legal_name ?? undefined;
@@ -190,12 +221,15 @@ export function listItemFromRow(row: ReviewRow): ReviewListItem {
     targetId: target.id,
     proposalType,
     subject: subjectOf(row, target.kind, proposalType),
+    detail: target.kind === "AGENT_PROPOSAL" ? proposalDetail(proposal?.payload) : undefined,
+    sendsToPartner: target.kind === "AGENT_PROPOSAL" && proposalSendsToPartner(proposalType, proposal?.payload) ? true : undefined,
     agentName: one(one(proposal?.agent_runs)?.agents)?.name,
     caseTitle: one(row.legal_cases)?.title,
     clientName: caseClientName(row),
     requiresAdmin: requiresAdminDecision(proposalType),
     legalCaseId: opt(row.legal_case_id),
     processId: opt(row.legal_process_id),
+    agentRunId: opt(row.agent_run_id),
     status: reviewStatusFromDb(row.status, row.priority),
     dbStatus: row.status,
     priority: row.priority,
@@ -204,6 +238,47 @@ export function listItemFromRow(row: ReviewRow): ReviewListItem {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     decidedAt: opt(row.decided_at),
+  };
+}
+
+/** Um grupo devolvido por list_review_groups (067). */
+export interface ReviewGroupRow {
+  key: string;
+  agent_run_id: string | null;
+  legal_case_id: string | null;
+  agent_name: string | null;
+  case_title: string | null;
+  client_name: string | null;
+  total: number;
+  documents: number;
+  proposals: number;
+  analyses: number;
+  open: number;
+  unassigned: number;
+  top_priority: DbReviewPriority;
+  first_created_at: string;
+  last_created_at: string;
+  reviewer_ids: string[] | null;
+}
+
+export function groupFromRow(row: ReviewGroupRow): ReviewGroupDTO {
+  return {
+    key: row.key,
+    agentRunId: opt(row.agent_run_id),
+    legalCaseId: opt(row.legal_case_id),
+    agentName: opt(row.agent_name),
+    caseTitle: opt(row.case_title),
+    clientName: opt(row.client_name),
+    total: Number(row.total),
+    documents: Number(row.documents),
+    proposals: Number(row.proposals),
+    analyses: Number(row.analyses),
+    open: Number(row.open),
+    unassigned: Number(row.unassigned),
+    topPriority: row.top_priority,
+    firstCreatedAt: row.first_created_at,
+    lastCreatedAt: row.last_created_at,
+    reviewerIds: row.reviewer_ids ?? [],
   };
 }
 

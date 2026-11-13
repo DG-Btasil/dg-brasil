@@ -1,6 +1,8 @@
 import type { DocumentCategory, Priority, ReviewDecisionKind, ReviewStatus } from "@/lib/constants/status";
 import type { DbAnalysisStatus, DbReviewDecision, DbReviewStatus } from "@/repositories/api/db-mappings";
 import type { AnalysisResult, ID, ISODateTime } from "@/types";
+import type { Page } from "@/server/core/pagination";
+import type { BulkDecision, BulkPlanItem } from "./bulk-rules";
 import type { REVIEW_TARGET_KINDS } from "./schemas";
 
 /**
@@ -19,6 +21,10 @@ export interface ReviewListItem {
   proposalType?: string;
   /** O que está em revisão (template da análise, documento e versão, tipo da proposta). Só rótulo. */
   subject: string;
+  /** Só em proposta do agente: o que ela pede, em uma linha (documento pedido, título ou resumo). */
+  detail?: string;
+  /** Só em proposta do agente: se aprovada, manda um texto ao parceiro do caso (não entra na aprovação em conjunto). */
+  sendsToPartner?: boolean;
   /** Agente que gerou a proposta (quando houver). */
   agentName?: string;
   caseTitle?: string;
@@ -27,6 +33,8 @@ export interface ReviewListItem {
   requiresAdmin: boolean;
   legalCaseId?: ID;
   processId?: ID;
+  /** Execução do agente que gerou o item (067); vazio quando foi enviado por uma pessoa. */
+  agentRunId?: ID;
   /** Status do front (PENDING + prioridade URGENT = URGENT). */
   status: ReviewStatus;
   dbStatus: DbReviewStatus;
@@ -51,6 +59,55 @@ export interface ReviewSummaryDTO {
   dueSoon: number;
   /** Em aberto sem responsável. */
   unassigned: number;
+}
+
+/**
+ * Um grupo da fila agrupada (067): os itens de uma execução do agente ou, para
+ * o que foi enviado por pessoas, os itens de um caso. Só rótulos e contagens
+ * dos itens que passam nos filtros; nenhum conteúdo revisado.
+ */
+export interface ReviewGroupDTO {
+  /** "run:<id da execução>" ou "case:<id do caso>". */
+  key: string;
+  /** Presente quando o grupo é de uma execução do agente. */
+  agentRunId?: ID;
+  legalCaseId?: ID;
+  agentName?: string;
+  caseTitle?: string;
+  clientName?: string;
+  total: number;
+  documents: number;
+  proposals: number;
+  analyses: number;
+  /** Quantos ainda aguardam decisão. */
+  open: number;
+  unassigned: number;
+  /** A prioridade mais alta entre os itens. */
+  topPriority: Priority;
+  /** Quando o primeiro e o último item chegaram. */
+  firstCreatedAt: ISODateTime;
+  lastCreatedAt: ISODateTime;
+  reviewerIds: ID[];
+}
+
+/** Página de grupos; `total` conta grupos e `totalItems`, as revisões dentro deles. */
+export type ReviewGroupPage = Page<ReviewGroupDTO> & { totalItems: number };
+
+/**
+ * O que aconteceu com UM item da decisão em conjunto. DECIDED = decisão
+ * registrada; SKIPPED = ficou de fora pela regra (`reason` e `message` dizem
+ * por quê); FAILED = o sistema recusou ou deu erro (`message`). `subject` é o
+ * rótulo do item na fila (vazio quando a revisão não foi encontrada).
+ */
+export type BulkDecisionItemDTO = BulkPlanItem;
+
+export interface BulkDecisionResultDTO {
+  decision: BulkDecision;
+  decided: number;
+  skipped: number;
+  failed: number;
+  /** Um resultado por item, na ordem pedida. */
+  items: BulkDecisionItemDTO[];
 }
 
 export type ReviewTargetDTO =

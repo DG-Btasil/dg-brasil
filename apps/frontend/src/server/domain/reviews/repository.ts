@@ -3,7 +3,7 @@ import type { Priority } from "@/lib/constants/status";
 import { fromDbError, unwrap } from "@/server/core/db-errors";
 import { toRange, type PageInput } from "@/server/core/pagination";
 import type { DbReviewDecision, DbReviewStatus } from "@/repositories/api/db-mappings";
-import type { AnalysisTargetRow, DocumentVersionTargetRow, ProposalTargetRow, ReviewDecisionRow, ReviewRow } from "./mappers";
+import type { AnalysisTargetRow, DocumentVersionTargetRow, ProposalTargetRow, ReviewDecisionRow, ReviewGroupRow, ReviewRow } from "./mappers";
 
 /**
  * Acesso a dados de revisão humana. GATE HUMANO: este arquivo NUNCA grava
@@ -15,11 +15,13 @@ import type { AnalysisTargetRow, DocumentVersionTargetRow, ProposalTargetRow, Re
 /**
  * Colunas da revisão + rótulos de leitura do alvo e do caso (embeds; a RLS de
  * cada tabela vale — o que o usuário não vê volta nulo). Só nomes/títulos:
- * nenhum conteúdo revisado entra na listagem.
+ * nenhum conteúdo revisado entra na listagem. Da proposta do agente o mapper
+ * tira UMA linha (o que ela pede: rótulo, título ou resumo); o resto do
+ * payload não sai do servidor.
  */
 const REVIEW_COLUMNS = `id, legal_case_id, legal_process_id, document_version_id, legal_analysis_id, legal_analysis_result_id, agent_proposal_id,
-  status, priority, assigned_reviewer_id, due_at, created_at, updated_at, decided_at,
-  agent_proposals(proposal_type, agent_runs(agents(name))),
+  agent_run_id, status, priority, assigned_reviewer_id, due_at, created_at, updated_at, decided_at,
+  agent_proposals(proposal_type, payload, agent_runs(agents(name))),
   legal_analyses(analysis_templates(name)),
   document_versions(version_number, documents(title)),
   legal_cases(title, clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name)))`;
@@ -33,6 +35,10 @@ export interface ReviewFilters {
   targetKind?: "DOCUMENT_VERSION" | "ANALYSIS" | "AGENT_PROPOSAL";
   /** Prazo (`due_at`) antes deste instante. Revisão sem prazo não entra. */
   dueBefore?: string;
+  /** Itens de um grupo da fila agrupada (067): de uma execução, ou os sem execução de um caso. */
+  group?: { kind: "run"; id: string } | { kind: "case"; id: string };
+  /** Texto livre (cliente, caso, título do item, agente). Só pelas funções do banco (067). */
+  search?: string;
 }
 
 const TARGET_COLUMN = { DOCUMENT_VERSION: "document_version_id", ANALYSIS: "legal_analysis_id", AGENT_PROPOSAL: "agent_proposal_id" } as const;
@@ -48,7 +54,26 @@ function filtered(db: SupabaseClient, columns: string, filters: ReviewFilters, h
   if (filters.processId) query = query.eq("legal_process_id", filters.processId);
   if (filters.targetKind) query = query.not(TARGET_COLUMN[filters.targetKind], "is", null);
   if (filters.dueBefore) query = query.lt("due_at", filters.dueBefore);
+  if (filters.group?.kind === "run") query = query.eq("agent_run_id", filters.group.id);
+  if (filters.group?.kind === "case") query = query.is("agent_run_id", null).eq("legal_case_id", filters.group.id);
   return query;
+}
+
+/** Os mesmos filtros, no formato das funções list_review_queue e list_review_groups (067). */
+export function filtersToRpc(filters: ReviewFilters): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (filters.statuses) out.statuses = filters.statuses;
+  if (filters.priorities) out.priorities = filters.priorities;
+  if (filters.assignee?.kind === "user") out.assignee = filters.assignee.id;
+  if (filters.assignee?.kind === "unassigned") out.unassigned = true;
+  if (filters.legalCaseId) out.legal_case_id = filters.legalCaseId;
+  if (filters.processId) out.legal_process_id = filters.processId;
+  if (filters.targetKind) out.target_kind = filters.targetKind;
+  if (filters.dueBefore) out.due_before = filters.dueBefore;
+  if (filters.group?.kind === "run") out.group_run = filters.group.id;
+  if (filters.group?.kind === "case") out.group_case = filters.group.id;
+  if (filters.search?.trim()) out.search = filters.search.trim();
+  return out;
 }
 
 export async function list(
@@ -57,6 +82,8 @@ export async function list(
   page: PageInput,
   sort: { column: string; ascending: boolean },
 ): Promise<{ rows: ReviewRow[]; total: number }> {
+  // Busca por texto olha cliente, caso, título e agente: só o banco faz (067).
+  if (filters.search?.trim()) return listBySearch(db, filters, page, sort);
   const { from, to } = toRange(page);
   const { data, error, count } = await filtered(db, REVIEW_COLUMNS, filters)
     .order(sort.column, { ascending: sort.ascending, nullsFirst: false })
@@ -64,6 +91,47 @@ export async function list(
     .range(from, to);
   if (error) throw fromDbError(error);
   return { rows: (data ?? []) as unknown as ReviewRow[], total: count ?? 0 };
+}
+
+/**
+ * Página com busca por texto: o banco filtra, ordena e pagina
+ * (list_review_queue devolve o total e os ids da página); as linhas vêm da
+ * tabela, com a RLS e os mesmos rótulos da listagem direta, na ordem do banco.
+ */
+async function listBySearch(
+  db: SupabaseClient,
+  filters: ReviewFilters,
+  page: PageInput,
+  sort: { column: string; ascending: boolean },
+): Promise<{ rows: ReviewRow[]; total: number }> {
+  const { from } = toRange(page);
+  const found = unwrap(
+    await db.rpc("list_review_queue", { p_filters: filtersToRpc(filters), p_sort: sort.column, p_ascending: sort.ascending, p_limit: page.pageSize, p_offset: from }),
+  ) as { total: number; ids: string[] } | null;
+  const ids = found?.ids ?? [];
+  const rows = await listByIds(db, ids);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return { rows: ids.flatMap((id) => byId.get(id) ?? []), total: Number(found?.total ?? 0) };
+}
+
+/** Revisões pelos ids (até uma página), com os rótulos da listagem. Sem ordem garantida. */
+export async function listByIds(db: SupabaseClient, ids: string[]): Promise<ReviewRow[]> {
+  if (ids.length === 0) return [];
+  return (unwrap(await db.from("reviews").select(REVIEW_COLUMNS).in("id", ids)) ?? []) as unknown as ReviewRow[];
+}
+
+/** A fila agrupada por execução do agente (067): grupos da página, total de grupos e de revisões. */
+export async function listGroups(
+  db: SupabaseClient,
+  filters: ReviewFilters,
+  page: PageInput,
+  ascending: boolean,
+): Promise<{ rows: ReviewGroupRow[]; total: number; totalItems: number }> {
+  const { from } = toRange(page);
+  const found = unwrap(
+    await db.rpc("list_review_groups", { p_filters: filtersToRpc(filters), p_ascending: ascending, p_limit: page.pageSize, p_offset: from }),
+  ) as { total: number; total_items: number; groups: ReviewGroupRow[] } | null;
+  return { rows: found?.groups ?? [], total: Number(found?.total ?? 0), totalItems: Number(found?.total_items ?? 0) };
 }
 
 /** Só o total (`head`: nenhuma linha trafega), contado no banco com a RLS de quem pergunta. */
