@@ -15,7 +15,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "home",
     anchors: ["home-kpis"],
-    title: "Home: visão do escritório",
+    title: "Início: visão do escritório",
     text: "Os indicadores resumem o volume jurídico do escritório. Cada número leva à lista correspondente.",
   },
   {

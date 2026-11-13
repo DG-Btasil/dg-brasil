@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { connection } from "next/server";
 import { PageContainer } from "@/components/layout/guards";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -5,8 +7,12 @@ import { ReferenceTable } from "@/features/dg-brasil/components/references/refer
 import { DgHeader } from "@/features/dg-brasil/components/shared/dg-header";
 import { getDgCatalogAction, getDgOverviewAction, listDgReferencesAction } from "@/server/domain/dg/actions";
 
+export const metadata: Metadata = { title: "Referências" };
+
 /** Referências: somente Administrador (o layout já exige "dgbrasil.view"). */
 export default async function DgReferencesRoute() {
+  // Página por usuário (lê a sessão): só é montada com a requisição, nunca no build.
+  await connection();
   const [overview, catalog, references] = await Promise.all([getDgOverviewAction(), getDgCatalogAction(), listDgReferencesAction()]);
   return (
     <RequirePermission permission="dgbrasil.manage">

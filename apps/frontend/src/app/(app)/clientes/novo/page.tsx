@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { ClientCreate } from "@/features/clients/components/form/client-create";
 import { NewCaseWizard } from "@/features/partner-portal/components/new-case-wizard";
 import { getCaseCatalogAction } from "@/server/domain/cases/actions";
+
+export const metadata: Metadata = { title: "Novo cliente" };
 
 /** Portal: novo cliente = envio de cliente + primeiro caso (catálogo do servidor). */
 async function PartnerWizard() {

@@ -12,6 +12,7 @@ import { OAB_OPTIONAL_ROLES, OAB_REQUIRED_ROLES, OAB_UF_OPTIONS } from "@/lib/au
 import { MenuButton, type MenuItem } from "@/components/ui/menu";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
+import { organizationStatusNotice } from "@/lib/constants/status";
 import { formatDate, formatEventTime } from "@/lib/formatting";
 import { PARTNER_ROLES, ROLES, ROLE_DESCRIPTION, ROLE_LABEL, type Role } from "@/lib/permissions";
 import {
@@ -91,7 +92,7 @@ export function TeamManager({ title = "Equipe e permissões", description }: { t
     reload();
   }
 
-  if (error && !data) return <ErrorState description={error} action={<Button variant="secondary" onClick={reload}>Tentar de novo</Button>} />;
+  if (error && !data) return <ErrorState description={error} action={<Button variant="secondary" onClick={reload}>Tentar novamente</Button>} />;
   if (!data) return <SkeletonRows rows={4} />;
 
   const { organization, viewer } = data;
@@ -212,10 +213,10 @@ export function TeamManager({ title = "Equipe e permissões", description }: { t
       </div>
 
       {organization.status !== "ACTIVE" && (
-        <Callout tone="warning" title={`Escritório com status ${organization.status}.`}>
+        <Callout tone="warning" title={organizationStatusNotice(organization.status)}>
           {organization.status === "PENDING"
             ? "O escritório é ativado quando o primeiro administrador do parceiro aceitar o convite."
-            : "Usuários deste escritório não conseguem acessar enquanto o status não for ativo."}
+            : "As pessoas deste escritório não conseguem acessar enquanto ele não estiver ativo."}
         </Callout>
       )}
 
@@ -226,7 +227,7 @@ export function TeamManager({ title = "Equipe e permissões", description }: { t
             <tr>
               <Th>Nome</Th>
               <Th className="w-[200px]">Papel</Th>
-              <Th>Status</Th>
+              <Th>Situação</Th>
               <Th>MFA</Th>
               <Th>Último acesso</Th>
               <Th className="w-[90px]">

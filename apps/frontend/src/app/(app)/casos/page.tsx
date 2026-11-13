@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { MetricsBoard } from "@/features/metrics/components/metrics-board";
 import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
@@ -6,6 +7,8 @@ import { caseQueryFromSearchParams, caseQueryToInput } from "@/features/cases/li
 import { PortalCaseList } from "@/features/partner-portal/components/portal-cases";
 import { portalCaseInput, portalQueryFromSearchParams } from "@/features/partner-portal/list-query";
 import { listCasesAction } from "@/server/domain/cases/actions";
+
+export const metadata: Metadata = { title: "Casos" };
 
 /** Primeira página carregada no servidor, já com os filtros da URL. */
 async function InternalCaseList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {

@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { ClientNotFound } from "@/features/clients/components/detail/client-not-found";
 import { ClientEdit } from "@/features/clients/components/form/client-edit";
 import { getClientAction } from "@/server/domain/clients/actions";
+
+export const metadata: Metadata = { title: "Editar cliente" };
 
 async function EditClient({ id }: { id: string }) {
   const result = await getClientAction({ id });

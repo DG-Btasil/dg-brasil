@@ -57,6 +57,15 @@ export function formatCNJ(value: string): string {
   return applyPattern(value, PATTERNS.cnj);
 }
 
+/**
+ * Número de processo para EXIBIR: com os 20 dígitos do CNJ, sai com a máscara
+ * (0000000-00.0000.0.00.0000); numeração antiga ou incompleta sai como foi
+ * gravada, sem cortar nem inventar pontuação.
+ */
+export function displayCNJ(value: string): string {
+  return onlyDigits(value).length === 20 ? formatCNJ(value) : value.trim();
+}
+
 export function formatDocument(value: string): string {
   const digits = onlyDigits(value);
   return digits.length > 11 ? formatCNPJ(digits) : formatCPF(digits);

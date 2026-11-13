@@ -552,7 +552,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   DEADLINE: "Prazo",
   REVIEW_WAITING: "Revisão aguardando",
   DOCUMENT_MISSING: "Documento ausente",
-  PROCESS_MOVEMENT: "Movimentação processual",
+  PROCESS_MOVEMENT: "Andamento processual",
   AGENT_INTERVENTION: "Agente solicita intervenção",
   INTEGRATION_ISSUE: "Integração",
   TASK_OVERDUE: "Tarefa atrasada",
@@ -738,6 +738,20 @@ export const PARTNER_OFFICE_STATUS_TONE: Record<PartnerOfficeStatus, Tone> = {
   PENDING_INVITE: "gold",
   SUSPENDED: "orange",
 };
+
+/**
+ * Aviso de escritório que ainda não está ativo, pela situação gravada no
+ * sistema (organizations.status). Situação desconhecida sai com texto neutro,
+ * nunca o código.
+ */
+const ORGANIZATION_STATUS_NOTICE: Record<string, string> = {
+  PENDING: "Escritório com convite pendente.",
+  SUSPENDED: "Escritório suspenso.",
+  INACTIVE: "Escritório inativo.",
+};
+export function organizationStatusNotice(status: string): string {
+  return ORGANIZATION_STATUS_NOTICE[status] ?? "Escritório sem acesso liberado.";
+}
 
 /**
  * Origem RELACIONAL do caso (de quem é o caso na operação). Não confundir

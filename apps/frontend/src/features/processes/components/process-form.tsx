@@ -82,7 +82,7 @@ function ProcessFieldSections({ cnjHint }: { cnjHint: boolean }) {
         <Field label="Data de distribuição" requirement="optional" error={errors.distributionDate?.message}>
           {(a) => <Input {...a} type="date" {...register("distributionDate")} />}
         </Field>
-        <Field label="Status" requirement="required" hint={cnjHint ? "Sugerido a partir do número CNJ." : undefined} error={errors.status?.message}>
+        <Field label="Situação" requirement="required" hint={cnjHint ? "Sugerido a partir do número CNJ." : undefined} error={errors.status?.message}>
           {(a) => <Select {...a} {...register("status")} options={opts(PROCESS_STATUSES, PROCESS_STATUS_LABEL)} />}
         </Field>
         <Field label="Fase processual" requirement="required" error={errors.phase?.message}>

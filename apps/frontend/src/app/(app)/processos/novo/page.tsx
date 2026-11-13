@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PageContainer } from "@/components/layout/guards";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
@@ -5,6 +6,8 @@ import { SkeletonRows } from "@/components/feedback/states";
 import { NewProcessPage } from "@/features/processes/components/new-process-page";
 import { PortalProcessForm } from "@/features/partner-portal/components/portal-processes";
 import { getCaseAction } from "@/server/domain/cases/actions";
+
+export const metadata: Metadata = { title: "Novo processo" };
 
 const fallback = (
   <PageContainer>

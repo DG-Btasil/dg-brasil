@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { MetricsBoard } from "@/features/metrics/components/metrics-board";
 import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
@@ -6,6 +7,8 @@ import { processQueryFromSearchParams, processQueryToInput } from "@/features/pr
 import { PortalProcessList } from "@/features/partner-portal/components/portal-processes";
 import { portalProcessInput, portalQueryFromSearchParams } from "@/features/partner-portal/list-query";
 import { getProcessSummaryAction, listProcessesAction } from "@/server/domain/processes/actions";
+
+export const metadata: Metadata = { title: "Processos" };
 
 /** Primeira página carregada no servidor, já com os filtros da URL. */
 async function InternalProcessList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {

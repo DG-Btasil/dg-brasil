@@ -15,7 +15,7 @@ export const CATEGORY_INFO: Record<NotificationCategory, { label: string; descri
   PARTNER_REQUESTS: { label: "Solicitações", description: "Solicitação nova e respostas na conversa." },
   ANALYSES: { label: "Análises", description: "Análise enviada ao agente, aguardando revisão, concluída ou com falha." },
   FINANCE: { label: "Financeiro", description: "Repasse registrado e repasse pago." },
-  JUDICIAL: { label: "Publicações e andamentos", description: "Publicação do DJEN, publicação cancelada e movimentação nova nos processos acompanhados; falha na busca (administradores)." },
+  JUDICIAL: { label: "Publicações e andamentos", description: "Publicação do DJEN, publicação cancelada e andamento novo nos processos acompanhados; falha na busca (administradores)." },
   SECURITY: { label: "Segurança da conta", description: "Redefinição do autenticador e mudança do seu perfil de acesso. Sempre ativo." },
 };
 

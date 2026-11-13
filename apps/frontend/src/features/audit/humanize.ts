@@ -25,6 +25,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   CASE_UPDATED: "Caso atualizado",
   CASE_SUBMITTED: "Caso enviado para análise",
   CASE_STATUS_CHANGED: "Situação do caso alterada",
+  CASE_STATUS_OVERRIDDEN: "Situação do caso alterada por exceção (Administrador)",
   CASE_ACCEPTED: "Caso aceito",
   CASE_REJECTED: "Caso não aceito",
   CASE_LAWYER_ASSIGNED: "Advogado responsável definido",
@@ -39,6 +40,15 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   PROCESS_DELETED: "Processo excluído",
   PROCESS_EVENT_CREATED: "Andamento registrado",
   PROCESS_EVENT_UPDATED: "Andamento atualizado",
+  PROCESS_SYNC_ENABLED: "Acompanhamento automático do processo ligado",
+  PROCESS_SYNC_PAUSED: "Acompanhamento automático do processo pausado",
+  PROCESS_EXPENSE_CREATED: "Despesa do processo registrada",
+  PROCESS_EXPENSE_UPDATED: "Despesa do processo atualizada",
+  PROCESS_EXPENSE_CANCELLED: "Despesa do processo cancelada",
+  // Gatilho geral das tabelas do Roadmap 2.0 (046): NOME_DA_TABELA + operação.
+  PROCESS_TASKS_INSERT: "Tarefa do processo criada",
+  PROCESS_TASKS_UPDATE: "Tarefa do processo atualizada",
+  PROCESS_TASK_SETTINGS_UPDATED: "Configuração das tarefas de processo atualizada",
   DEADLINE_CREATED: "Prazo criado",
   DEADLINE_UPDATED: "Prazo atualizado",
   DEADLINE_COMPLETED: "Prazo cumprido",
@@ -47,6 +57,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   DOCUMENT_UPDATED: "Documento atualizado",
   DOCUMENT_UPLOADED: "Arquivo enviado",
   DOCUMENT_VERSION_CREATED: "Nova versão de documento",
+  DOCUMENT_MANUALLY_REVISED: "Documento editado manualmente na revisão",
   DOCUMENT_DOWNLOADED: "Documento baixado",
   DOCUMENT_VERIFIED: "Arquivo verificado",
   DOCUMENT_VERIFICATION_FAILED: "Divergência registrada no arquivo",
@@ -58,6 +69,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   ANALYSIS_STARTED: "Análise jurídica iniciada",
   ANALYSIS_STATUS_CHANGED: "Situação da análise alterada",
   ANALYSIS_UPDATED: "Análise atualizada",
+  ANALYSIS_RESULT_SUBMITTED: "Resultado da análise entregue pelo agente",
   REVIEW_CREATED: "Revisão criada",
   REVIEW_UPDATED: "Revisão atualizada",
   REVIEW_APPROVED: "Revisão aprovada",
@@ -65,8 +77,34 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   REVIEW_CHANGES_REQUESTED: "Alterações solicitadas na revisão",
   REVIEW_REOPENED: "Revisão reaberta",
   AGENT_RUN_REQUESTED: "Execução de agente pedida",
+  AGENT_RUN_QUEUED: "Execução de agente voltou para a fila",
+  AGENT_RUN_RUNNING: "Execução de agente iniciada",
+  AGENT_RUN_WAITING_HUMAN: "Execução de agente aguardando decisão humana",
+  AGENT_RUN_COMPLETED: "Execução de agente concluída",
+  AGENT_RUN_FAILED: "Execução de agente falhou",
+  AGENT_RUN_CANCELLED: "Execução de agente interrompida",
+  AGENT_RUN_CANCEL_REQUESTED: "Interrupção de execução pedida",
   AGENT_PROPOSAL_CREATED: "Proposta do agente criada",
+  AGENT_PROPOSAL_PENDING: "Proposta do agente aguardando decisão",
+  AGENT_PROPOSAL_APPROVED: "Proposta do agente aprovada",
+  AGENT_PROPOSAL_REJECTED: "Proposta do agente rejeitada",
+  AGENT_PROPOSAL_APPLIED: "Proposta do agente aplicada",
+  AGENT_PROPOSAL_FAILED: "Proposta do agente não pôde ser aplicada",
+  AGENT_PROPOSAL_EFFECT: "Registro criado a partir de proposta do agente",
+  AUTO_SEQUENCE_QUEUED: "Sequência automática: próximo agente acionado",
+  AUTO_SEQUENCE_SKIPPED: "Sequência automática: agente pulado",
+  AUTO_SEQUENCE_FAILED: "Sequência automática: falha ao acionar agente",
+  AI_EXECUTION_ENABLED: "Execução dos agentes ligada",
+  AI_EXECUTION_DISABLED: "Execução dos agentes desligada",
+  EXECUTOR_CREATED: "Computador do escritório autorizado",
+  EXECUTOR_REVOKED: "Computador do escritório revogado",
+  EXECUTOR_WAKE_REQUESTED: "Verificação imediata pedida ao computador do escritório",
   PARTNER_REQUEST_CREATED: "Solicitação ao parceiro criada",
+  PARTNER_REQUEST_OPEN: "Solicitação ao parceiro reaberta",
+  PARTNER_REQUEST_ANSWERED: "Solicitação respondida pelo parceiro",
+  PARTNER_REQUEST_RESOLVED: "Solicitação ao parceiro resolvida",
+  PARTNER_REQUEST_CANCELLED: "Solicitação ao parceiro cancelada",
+  PARTNER_PROFILE_COMPLETED: "Cadastro do escritório parceiro completado",
   PARTNERSHIP_AGREEMENT_CREATED: "Parceria do caso registrada",
   PARTNERSHIP_AGREEMENT_CANCELLED: "Parceria do caso cancelada",
   PARTNER_SETTINGS_CREATED: "Divisão do parceiro registrada",
@@ -80,6 +118,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   PARTNER_TRANSFER_ITEM_ADDED: "Item de repasse registrado",
   FINANCIAL_AGREEMENT_CREATED: "Contrato de honorários criado",
   FINANCIAL_AGREEMENT_UPDATED: "Contrato de honorários atualizado",
+  PAYMENT_SCHEDULE_CREATED: "Cronograma de parcelas criado",
   PAYMENT_REGISTERED: "Obrigação registrada",
   PAYMENT_UPDATED: "Obrigação atualizada",
   PAYMENT_DUE_DATE_CHANGED: "Vencimento alterado",
@@ -92,6 +131,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   ORGANIZATION_STATUS_CHANGED: "Situação do escritório alterada",
   PROFILE_CREATED: "Usuário criado",
   PROFILE_UPDATED: "Perfil atualizado",
+  PROFILE_OAB_ADDED: "OAB cadastrada",
+  PROFILE_OAB_REMOVED: "OAB removida",
   USER_INVITED: "Usuário convidado",
   USER_DEACTIVATED: "Usuário desativado",
   USER_REACTIVATED: "Usuário reativado",
@@ -104,6 +145,10 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   MFA_RESET_REQUESTED: "Redefinição de MFA pedida",
   MFA_RESET_COMPLETED: "MFA redefinido",
   LEGAL_TERMS_ACCEPTED: "Termos aceitos",
+  PASSWORD_CHANGED: "Senha alterada",
+  SESSION_CURRENT_REVOKED: "Saída da conta neste dispositivo",
+  OTHER_SESSIONS_REVOKED: "Saída da conta nos outros dispositivos",
+  ALL_SESSIONS_REVOKED: "Saída da conta em todos os dispositivos",
   AGENT_CREATED: "Agente criado",
   AGENT_UPDATED: "Agente atualizado",
   AGENT_BINDING_CHANGED: "Vínculos do agente alterados",
@@ -118,28 +163,252 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   INTEGRATION_CREATED: "Integração criada",
   INTEGRATION_UPDATED: "Integração atualizada",
   JUDICIAL_SOURCE_CONFIGURED: "Fonte judicial configurada",
+  JUDICIAL_SETTINGS_UPDATED: "Configuração da integração judicial atualizada",
+  JUDICIAL_PUBLICATION_DEADLINE: "Prazo criado a partir de publicação",
+  JUDICIAL_PUBLICATION_NO_DEADLINE: "Publicação tratada sem prazo",
+  JUDICIAL_PUBLICATION_REOPEN: "Publicação reaberta para tratamento",
+  COURT_CALENDAR_DAY_SAVED: "Calendário forense: dia registrado",
+  COURT_CALENDAR_DAY_DELETED: "Calendário forense: dia removido",
+  DRIVE_FOLDER_LINKED: "Pasta do Google Drive vinculada",
+  DRIVE_FOLDER_UNLINKED: "Pasta do Google Drive desvinculada",
+  DRIVE_FILE_IMPORTED: "Arquivo importado do Google Drive",
   IMPORT_JOB_CREATED: "Importação iniciada",
+  IMPORT_JOB_UPLOADED: "Importação: planilha enviada",
+  IMPORT_JOB_COLUMNS_DETECTED: "Importação: colunas lidas",
+  IMPORT_JOB_MAPPED: "Importação: colunas conferidas",
+  IMPORT_JOB_VALIDATED: "Importação: planilha validada",
+  IMPORT_JOB_CONFLICTS_PENDING: "Importação: conflitos a resolver",
+  IMPORT_JOB_CONFIRMED: "Importação confirmada",
+  IMPORT_JOB_PROCESSING: "Importação em processamento",
+  IMPORT_JOB_COMPLETED: "Importação concluída",
+  IMPORT_JOB_FAILED: "Importação falhou",
+  IMPORT_JOB_CANCELLED: "Importação cancelada",
   IMPORT_JOB_SUMMARY: "Importação concluída (resumo)",
   IMPORT_CONFLICT_RESOLVED: "Conflito de importação resolvido",
 };
 
-/** Ações com prefixo dinâmico (ex.: AGENT_RUN_COMPLETED, IMPORT_JOB_FINISHED). */
-const PREFIX_LABEL: [string, string][] = [
+/**
+ * Ações com sufixo dinâmico (o banco monta PREFIXO + situação). As situações
+ * conhecidas têm rótulo próprio acima; este é o rótulo de uma situação nova.
+ */
+export const PREFIX_LABEL: [string, string][] = [
   ["AGENT_RUN_", "Execução de agente atualizada"],
   ["AGENT_PROPOSAL_", "Proposta do agente atualizada"],
   ["PARTNER_REQUEST_", "Solicitação ao parceiro atualizada"],
   ["IMPORT_JOB_", "Importação atualizada"],
+  ["JUDICIAL_PUBLICATION_", "Publicação atualizada"],
 ];
 
 export const ACTOR_TYPE_LABEL: Record<AuditEventDTO["actorType"], string> = { USER: "Pessoa", AGENT: "Agente", SYSTEM: "Sistema" };
 
-/** Rótulo da ação; desconhecida vira texto legível ("ALGO_NOVO" → "Algo novo"). */
+/** true quando a ação tem rótulo em português (próprio ou pelo prefixo). */
+export function hasActionLabel(action: string): boolean {
+  return action in AUDIT_ACTION_LABEL || PREFIX_LABEL.some(([p]) => action.startsWith(p));
+}
+
+/**
+ * Rótulo da ação. Ação que ainda não tem rótulo aparece como texto legível
+ * ("ALGO_NOVO" → "Algo novo"), nunca some; `humanize.test.ts` falha quando uma
+ * ação das migrations fica sem rótulo.
+ */
 export function actionLabel(action: string): string {
   if (AUDIT_ACTION_LABEL[action]) return AUDIT_ACTION_LABEL[action];
   const prefixed = PREFIX_LABEL.find(([p]) => action.startsWith(p));
   if (prefixed) return prefixed[1];
   const words = action.toLowerCase().replace(/_/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Nome da coluna do banco → nome do campo como a tela mostra. A auditoria
+ * guarda só o NOME dos campos alterados (nunca o valor).
+ */
+export const AUDIT_FIELD_LABEL: Record<string, string> = {
+  // Identificação e contato
+  name: "nome",
+  full_name: "nome completo",
+  preferred_name: "nome de tratamento",
+  social_name: "nome social",
+  legal_name: "razão social",
+  trade_name: "nome fantasia",
+  title: "título",
+  label: "descrição",
+  description: "descrição",
+  summary: "resumo",
+  legal_summary: "resumo jurídico",
+  notes: "observações",
+  internal_notes: "observações internas",
+  partner_notes: "observações do parceiro",
+  additional_info: "informações adicionais",
+  email: "e-mail",
+  phone: "telefone",
+  website: "site",
+  cpf: "CPF",
+  cnpj: "CNPJ",
+  document_number: "CPF/CNPJ",
+  birth_date: "data de nascimento",
+  birthplace: "naturalidade",
+  nationality: "nacionalidade",
+  gender: "gênero",
+  marital_status: "estado civil",
+  stable_union: "união estável",
+  profession: "profissão",
+  job_title: "cargo",
+  role_title: "cargo",
+  qualification: "qualificação",
+  identity_document_type: "tipo do documento de identidade",
+  identity_document_number: "número do documento de identidade",
+  identity_document_issuer: "órgão emissor",
+  identity_document_state: "UF do documento de identidade",
+  legal_nature: "natureza jurídica",
+  main_cnae: "atividade principal (CNAE)",
+  secondary_cnaes: "atividades secundárias (CNAE)",
+  registration_status: "situação cadastral",
+  opening_date: "data de abertura",
+  primary_representative: "representante principal",
+  share_percentage: "participação societária",
+  avatar_url: "foto",
+  // Endereço
+  address_street: "logradouro",
+  street: "logradouro",
+  address_number: "número do endereço",
+  address_complement: "complemento",
+  complement: "complemento",
+  address_neighborhood: "bairro",
+  neighborhood: "bairro",
+  address_city: "cidade",
+  city: "cidade",
+  address_state: "UF",
+  address_postal_code: "CEP",
+  postal_code: "CEP",
+  address_country: "país",
+  country: "país",
+  // Caso
+  legal_area_id: "área jurídica",
+  case_type_id: "tipo de caso",
+  opposing_party: "parte contrária",
+  adverse_party_summary: "parte contrária",
+  acquisition_channel: "canal de entrada",
+  assigned_lawyer_id: "advogado responsável",
+  responsible_user_id: "responsável",
+  origin_organization_id: "escritório de origem",
+  partner_organization_id: "parceiro do caso",
+  rejection_reason_public: "motivo comunicado ao parceiro",
+  rejection_reason_internal: "nota interna da rejeição",
+  // Processo
+  cnj_number: "número CNJ",
+  court: "tribunal",
+  court_unit: "vara ou órgão julgador",
+  district: "comarca",
+  state: "UF",
+  legal_class: "classe",
+  class_name: "classe",
+  subject: "assunto",
+  phase: "fase",
+  client_side: "polo do cliente",
+  case_value: "valor da causa",
+  distribution_date: "data de distribuição",
+  sync_enabled: "acompanhamento automático",
+  party_type: "tipo de parte",
+  lawyer_name: "advogado da parte",
+  // Prazos, tarefas e andamentos
+  due_date: "vencimento",
+  due_at: "vencimento",
+  operational_due_at: "data interna",
+  deadline_type: "tipo de prazo",
+  priority: "prioridade",
+  important: "marcação de importante",
+  occurred_at: "data do andamento",
+  event_type: "tipo de andamento",
+  completion_note: "nota de conclusão",
+  cancellation_reason: "motivo do cancelamento",
+  cancel_reason: "motivo do cancelamento",
+  agent_id: "agente",
+  request_text: "pedido ao agente",
+  // Documentos
+  category: "categoria",
+  document_category: "categoria do documento",
+  visibility: "visibilidade",
+  current_version_id: "versão atual",
+  file_name: "nome do arquivo",
+  required: "obrigatoriedade",
+  // Financeiro
+  amount: "valor",
+  base_amount: "valor base",
+  fee_model_id: "modelo de honorários",
+  fee_amount: "valor dos honorários",
+  fee_percentage: "percentual de honorários",
+  fixed_fee: "honorários fixos",
+  monthly_fee: "honorários mensais",
+  upfront_fee: "entrada",
+  success_fee_percentage: "percentual de êxito",
+  installments: "parcelas",
+  payment_type: "tipo de pagamento",
+  contract_payment_method: "forma de pagamento",
+  billing_moment: "momento da cobrança",
+  start_date: "data de início",
+  paid_on: "data do pagamento",
+  incurred_on: "data da despesa",
+  supplier: "fornecedor",
+  reimbursable: "reembolso pelo cliente",
+  method: "forma de pagamento",
+  reference: "referência",
+  partner_percentage: "participação do parceiro",
+  owner_percentage: "participação do escritório",
+  default_partner_percentage: "participação padrão do parceiro",
+  default_owner_percentage: "participação padrão do escritório",
+  // Escritório, equipe e parceiros
+  oab_number: "número da OAB",
+  oab_state: "UF da OAB",
+  principal_lawyer_name: "advogado principal",
+  principal_oab_number: "OAB do advogado principal",
+  principal_oab_state: "UF da OAB do advogado principal",
+  responsible_name: "responsável",
+  responsible_oab_number: "OAB do responsável",
+  responsible_oab_state: "UF da OAB do responsável",
+  states_of_practice: "estados de atuação",
+  units: "unidades",
+  role: "papel",
+  active: "acesso ativo",
+  is_primary: "OAB principal",
+  // DG Brasil
+  instructions: "instruções",
+  content: "conteúdo",
+  body: "texto",
+  foundations: "fundamentos",
+  application_criteria: "critérios de aplicação",
+  exclusion_criteria: "critérios de exclusão",
+  requires_human_review: "exigência de revisão humana",
+  tags: "marcadores",
+  enabled: "ligado ou desligado",
+  execution_enabled: "execução dos agentes",
+  djen_enabled: "busca no DJEN",
+  datajud_enabled: "busca no DataJud",
+  lookback_days: "dias de busca retroativa",
+  deadline_agent_id: "agente de prazos",
+  deadline_auto_apply: "prazo direto na agenda",
+  deadline_auto_task: "prazo vira tarefa",
+  orchestrator_agent_id: "agente orquestrador",
+  configuration: "configuração",
+  config: "configuração",
+};
+
+/** Colunas de controle, sem significado para quem lê: não entram no detalhe. */
+const HIDDEN_FIELDS = new Set(["updated_at", "updated_by", "status"]);
+
+/**
+ * Campos alterados, em linguagem de tela: "campos: título, resumo". Coluna sem
+ * rótulo não aparece com o nome do banco; entra na contagem ("e mais 2").
+ */
+export function changedFieldsText(fields: string[]): string | undefined {
+  const visible = fields.filter((f) => !HIDDEN_FIELDS.has(f));
+  if (!visible.length) return undefined;
+  const labels = [...new Set(visible.map((f) => AUDIT_FIELD_LABEL[f]).filter((l): l is string => !!l))];
+  const unknown = visible.filter((f) => !AUDIT_FIELD_LABEL[f]).length;
+  if (!labels.length) return unknown === 1 ? "1 campo alterado" : `${unknown} campos alterados`;
+  const list = labels.join(", ");
+  if (unknown) return `campos: ${list} e mais ${unknown}`;
+  return `${labels.length === 1 ? "campo" : "campos"}: ${list}`;
 }
 
 const STATUS_WORD: Record<string, string> = {
@@ -173,6 +442,25 @@ const STATUS_WORD: Record<string, string> = {
   PAID: "pago",
   REOPENED: "reaberto",
   CHANGES_REQUESTED: "alterações solicitadas",
+  WAITING_HUMAN: "aguardando decisão humana",
+  APPLIED: "aplicado",
+  DONE: "tratado",
+  PROCESSING: "em processamento",
+  CONFIRMED: "confirmado",
+  VALIDATED: "validado",
+  UPLOADED: "enviado",
+  COLUMNS_DETECTED: "colunas lidas",
+  MAPPED: "colunas conferidas",
+  CONFLICTS_PENDING: "com conflitos a resolver",
+  PENDING_INVITE: "convite pendente",
+  INVITED: "convidado",
+  CONNECTED: "conectado",
+  DISCONNECTED: "desconectado",
+  ERROR: "com erro",
+  IN_REVIEW: "em revisão",
+  DEPRECATED: "descontinuado",
+  NEW: "novo",
+  VERIFIED: "verificado",
   // Condução do processo (045).
   PRE_FILING: "pré-ajuizamento",
   PREPARING: "em preparação",
@@ -183,9 +471,9 @@ const STATUS_WORD: Record<string, string> = {
   ENFORCEMENT: "execução",
 };
 
-const status = (v: unknown) => (typeof v === "string" ? (STATUS_WORD[v] ?? v.toLowerCase()) : undefined);
+const status = (v: unknown) => (typeof v === "string" ? (STATUS_WORD[v] ?? v.toLowerCase().replace(/_/g, " ")) : undefined);
 
-/** Detalhe curto e seguro: "de enviado para aceito", "campos: title, summary", contagens. */
+/** Detalhe curto e seguro: "de enviado para aceito", "campos: título, resumo", contagens. */
 export function eventDetail(event: Pick<AuditEventDTO, "metadata" | "metadataOmitted">): string | undefined {
   const m = event.metadata;
   const parts: string[] = [];
@@ -193,7 +481,7 @@ export function eventDetail(event: Pick<AuditEventDTO, "metadata" | "metadataOmi
   const to = status(m.to);
   if (to && from && from !== to) parts.push(`de ${from} para ${to}`);
   else if (to) parts.push(to);
-  const fields = Array.isArray(m.fields) ? m.fields.filter((f) => !["updated_at", "status"].includes(f)) : [];
-  if (fields.length) parts.push(`${fields.length === 1 ? "campo" : "campos"}: ${fields.join(", ")}`);
+  const fields = Array.isArray(m.fields) ? changedFieldsText(m.fields.filter((f): f is string => typeof f === "string")) : undefined;
+  if (fields) parts.push(fields);
   return parts.length ? parts.join(" · ") : undefined;
 }

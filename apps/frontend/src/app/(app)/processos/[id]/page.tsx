@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { loadProcessFinance } from "@/features/finance/load";
 import { Suspense } from "react";
 import { FileSearch } from "lucide-react";
@@ -19,6 +20,8 @@ import { requireAppSession } from "@/server/auth/session";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 import { listProcessTasksAction } from "@/server/domain/process-tasks/actions";
+
+export const metadata: Metadata = { title: "Processo" };
 
 // "Buscar andamentos agora" (Server Action desta página) espera o DataJud até 2 min.
 export const maxDuration = 180;

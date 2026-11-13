@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { SettingsPage } from "@/features/settings/components/settings-page";
+
+export const metadata: Metadata = { title: "Configurações" };
 
 export default function ConfiguracoesPage() {
   return (

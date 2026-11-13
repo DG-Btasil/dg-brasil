@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { ReviewQueue } from "@/features/reviews/components/review-queue";
 import { reviewQueryFromSearchParams, reviewQueryToInput } from "@/features/reviews/list-query";
 import { getReviewSummaryAction, listReviewsAction } from "@/server/domain/reviews/actions";
+
+export const metadata: Metadata = { title: "Revisões" };
 
 /** Primeira página da fila, já com a visão e os filtros da URL, e os indicadores da fila inteira (em paralelo). */
 async function Queue({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {

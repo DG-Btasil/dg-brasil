@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { DEFAULT_AGENT_RUN_QUERY, agentRunQueryToInput } from "@/features/agent-runs/list-query";
 import { AgentDetail } from "@/features/dg-brasil/components/agents/agent-detail";
@@ -5,6 +6,8 @@ import { DgNotFound } from "@/features/dg-brasil/components/shared/not-found";
 import { dgRoutes } from "@/features/dg-brasil/utils";
 import { listAgentRunsAction } from "@/server/domain/agents/actions";
 import { getDgAgentAction, getDgCatalogAction } from "@/server/domain/dg/actions";
+
+export const metadata: Metadata = { title: "Agente" };
 
 export default async function AgentPage({ params }: PageProps<"/dg-brasil/agentes/[id]">) {
   const { id } = await params;

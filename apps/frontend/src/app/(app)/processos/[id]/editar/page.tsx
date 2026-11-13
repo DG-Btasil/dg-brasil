@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { FileSearch } from "lucide-react";
 import { PageContainer } from "@/components/layout/guards";
 import { RequirePermission } from "@/components/layout/server-guards";
@@ -7,6 +8,8 @@ import { ButtonLink } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { EditProcessPage } from "@/features/processes/components/edit-process-page";
 import { getProcessAction } from "@/server/domain/processes/actions";
+
+export const metadata: Metadata = { title: "Editar processo" };
 
 async function EditProcess({ id }: { id: string }) {
   const result = await getProcessAction({ id });

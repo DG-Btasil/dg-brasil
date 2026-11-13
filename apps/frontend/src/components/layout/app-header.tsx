@@ -18,7 +18,7 @@ export function AppHeader() {
     <header className="sticky top-0 z-40 h-[var(--header-height)] bg-navy text-white shadow-[0_1px_0_rgb(0_0_0/0.2)]">
       <div className="mx-auto grid h-full max-w-[1600px] grid-cols-[1fr_auto_1fr] items-center px-8">
         <div className="flex items-center gap-4">
-          <Link href="/home" aria-label="DG Brasil — ir para a Home" className="rounded-sm">
+          <Link href="/home" aria-label="DG Brasil: ir para o Início" className="rounded-sm">
             <Wordmark />
           </Link>
           {partnerOffice && (

@@ -80,7 +80,7 @@ export function AccessDenied() {
         Seu perfil não tem permissão para acessar esta área. Se precisar dela, fale com o administrador do seu escritório.
       </p>
       <Link href="/home" className={buttonClasses("secondary", "md", "mt-5")}>
-        Voltar para a Home
+        Voltar para o Início
       </Link>
     </div>
   );

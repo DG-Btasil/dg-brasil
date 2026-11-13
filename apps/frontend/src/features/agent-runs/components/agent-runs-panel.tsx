@@ -26,6 +26,7 @@ import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUserMap } from "@/features/directory/directory-context";
 import { canInterrupt } from "../interrupt";
 import { AGENT_RUN_PAGE_SIZE, agentRunQueryToInput, agentRunQueryToSearchParams, type AgentRunListQuery } from "../list-query";
+import { agentRunOperationLabel } from "../labels";
 import { InterruptDialog } from "./interrupt-dialog";
 
 export const AGENT_RUN_STATUS_LABEL: Record<AgentRunStatus, string> = {
@@ -147,7 +148,7 @@ export function AgentRunsPanel({
                         {r.agentName}
                       </Link>
                       <span className="block text-[12px] text-muted">
-                        {r.operation}
+                        {agentRunOperationLabel(r.operation)}
                         {r.attempt > 1 ? ` · tentativa ${r.attempt}` : ""}
                       </span>
                     </Td>

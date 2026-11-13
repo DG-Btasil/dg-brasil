@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PageContainer } from "@/components/layout/guards";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
@@ -15,6 +16,8 @@ import { auditTimelineInput } from "@/features/audit/query";
 import { can } from "@/lib/permissions";
 import { requireAppSession } from "@/server/auth/session";
 import { listAuditEventsAction } from "@/server/domain/audit/actions";
+
+export const metadata: Metadata = { title: "Cliente" };
 
 /**
  * Ficha do cliente, lida no servidor a cada acesso (rota direta, nova aba e

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { FileSearch } from "lucide-react";
 import { PageContainer } from "@/components/layout/guards";
 import { RequirePermission } from "@/components/layout/server-guards";
@@ -7,6 +8,8 @@ import { ButtonLink } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { ReviewDetail } from "@/features/reviews/components/review-detail";
 import { getReviewAction } from "@/server/domain/reviews/actions";
+
+export const metadata: Metadata = { title: "Revisão" };
 
 function ReviewNotFound() {
   return (

@@ -42,7 +42,7 @@ function OriginPanel({ process }: { process: ProcessInternalDTO }) {
           <RefreshCw className="mt-0.5 size-4 shrink-0 text-subtle" aria-hidden />
           <div>
             <p className="font-medium text-foreground">Sincronizado pelo provedor de acompanhamento processual</p>
-            <p className="mt-0.5 text-[12.5px] text-muted">Movimentações do tribunal chegam automaticamente pela integração.</p>
+            <p className="mt-0.5 text-[12.5px] text-muted">Andamentos do tribunal chegam automaticamente pela integração.</p>
           </div>
         </PanelBody>
       </Panel>
@@ -190,7 +190,7 @@ export function OverviewTab({
               items={[
                 { label: "Distribuição", value: p.distributionDate ? formatDate(p.distributionDate) : "Não distribuído" },
                 { label: "Cadastro", value: formatDate(p.createdAt) },
-                { label: "Última movimentação", value: lastMovementAt ? formatDateTime(lastMovementAt) : "—", wide: true },
+                { label: "Último andamento", value: lastMovementAt ? formatDateTime(lastMovementAt) : "—", wide: true },
               ]}
             />
           </PanelBody>

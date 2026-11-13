@@ -342,7 +342,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
                     </div>
                     {u.status === "failed" && draft && (
                       <Button size="sm" variant="secondary" onClick={() => uploadOne(result.legalCaseId, draft, u.resume)}>
-                        Tentar de novo
+                        Tentar novamente
                       </Button>
                     )}
                   </li>

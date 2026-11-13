@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 import { loadAllPages } from "@/lib/actions/all-pages";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
@@ -32,6 +33,8 @@ import {
   listProcessFinanceAction,
   listTransfersAction,
 } from "@/server/domain/finance/actions";
+
+export const metadata: Metadata = { title: "Financeiro" };
 
 type Params = Record<string, string | string[] | undefined>;
 

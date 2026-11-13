@@ -215,7 +215,7 @@ export type ListEventsInput = z.infer<typeof listEventsSchema>;
  */
 export const createEventSchema = z.object({
   processId: zUuid(),
-  title: zText(300, "Informe o título da movimentação."),
+  title: zText(300, "Informe o título do andamento."),
   description: zOptionalText(10_000),
   occurredAt: zIsoDateTime().optional(),
   important: z.boolean().default(false),
@@ -223,7 +223,7 @@ export const createEventSchema = z.object({
   eventType: z
     .string()
     .trim()
-    .regex(/^[A-Z][A-Z0-9_]{1,59}$/, "Tipo de movimentação inválido.")
+    .regex(/^[A-Z][A-Z0-9_]{1,59}$/, "Tipo de andamento inválido.")
     .default("MANUAL_NOTE"),
 });
 export type CreateEventInput = z.infer<typeof createEventSchema>;

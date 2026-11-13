@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { MetricsBoard } from "@/features/metrics/components/metrics-board";
 import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 import { PageContainer } from "@/components/layout/guards";
@@ -7,6 +8,8 @@ import { clientQueryFromSearchParams, clientQueryToInput } from "@/features/clie
 import { PortalClientList } from "@/features/partner-portal/components/portal-clients";
 import { portalClientInput, portalQueryFromSearchParams } from "@/features/partner-portal/list-query";
 import { listClientsAction } from "@/server/domain/clients/actions";
+
+export const metadata: Metadata = { title: "Clientes" };
 
 /** Primeira página carregada no servidor, já com os filtros da URL. */
 async function InternalClientList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { AgentList } from "@/features/dg-brasil/components/agents/agent-list";
@@ -13,10 +14,17 @@ import type { ActionResult } from "@/lib/actions/result";
 
 type Section = "conexoes" | "agentes" | "teses";
 
+const SECTION_TITLE: Record<Section, string> = { conexoes: "Conexões", agentes: "Agentes", teses: "Teses" };
+const sectionOf = (raw: unknown): Section => (raw === "teses" || raw === "agentes" ? raw : "conexoes");
+
+/** Título da aba: a seção aberta (vem da URL, sem consulta ao servidor). */
+export async function generateMetadata({ searchParams }: PageProps<"/dg-brasil">): Promise<Metadata> {
+  return { title: SECTION_TITLE[sectionOf((await searchParams).secao)] };
+}
+
 /** /dg-brasil — Conexões (padrão), Agentes ou Teses (?secao=), dados do banco. */
 export default async function DgBrasilPage({ searchParams }: PageProps<"/dg-brasil">) {
-  const raw = (await searchParams).secao;
-  const section: Section = raw === "teses" || raw === "agentes" ? raw : "conexoes";
+  const section = sectionOf((await searchParams).secao);
   const overview = await getDgOverviewAction();
   return (
     <PageContainer>

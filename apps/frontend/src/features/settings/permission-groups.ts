@@ -2,7 +2,7 @@ import type { Permission } from "@/lib/permissions";
 
 /** Rótulos legíveis de cada permissão (matriz somente leitura). */
 export const PERMISSION_LABEL: Record<Permission, string> = {
-  "home.view": "Ver a Home",
+  "home.view": "Ver o Início",
   "clients.view": "Ver clientes",
   "clients.edit": "Cadastrar e editar clientes",
   "clients.delete": "Excluir clientes",

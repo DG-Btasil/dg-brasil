@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { NotificationsPage } from "@/features/notifications/components/notifications-page";
 import { listNotificationsAction } from "@/server/domain/notifications/actions";
+
+export const metadata: Metadata = { title: "Notificações" };
 
 /** Caixa do PRÓPRIO usuário (o destinatário vem da sessão; a RLS confere). */
 async function Notifications() {

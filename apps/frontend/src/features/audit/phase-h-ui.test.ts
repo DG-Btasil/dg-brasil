@@ -16,12 +16,13 @@ const UUID = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
 describe("auditoria humanizada", () => {
   it("ação conhecida, com prefixo dinâmico e desconhecida", () => {
     expect(actionLabel("CASE_ACCEPTED")).toBe("Caso aceito");
-    expect(actionLabel("AGENT_RUN_COMPLETED")).toBe("Execução de agente atualizada");
+    expect(actionLabel("AGENT_RUN_COMPLETED")).toBe("Execução de agente concluída");
+    expect(actionLabel("AGENT_RUN_OUTRA_SITUACAO")).toBe("Execução de agente atualizada");
     expect(actionLabel("ALGO_NOVO")).toBe("Algo novo");
   });
   it("detalhe: situação de → para e campos alterados (sem updated_at/status)", () => {
     expect(eventDetail({ metadata: { from: "SUBMITTED", to: "ACCEPTED", fields: ["status", "updated_at"] }, metadataOmitted: false })).toBe("de enviado para aceito");
-    expect(eventDetail({ metadata: { fields: ["title", "summary", "updated_at"] }, metadataOmitted: false })).toBe("campos: title, summary");
+    expect(eventDetail({ metadata: { fields: ["title", "summary", "updated_at"] }, metadataOmitted: false })).toBe("campos: título, resumo");
     expect(eventDetail({ metadata: {}, metadataOmitted: true })).toBeUndefined();
   });
   it("linha do tempo de um registro: entrada aceita pelo schema real", () => {

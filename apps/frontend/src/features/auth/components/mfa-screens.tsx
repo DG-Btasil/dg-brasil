@@ -101,7 +101,7 @@ export function MfaEnrollScreen({ next }: { next?: string }) {
       <OnboardingSteps current="mfa" withPassword={false} />
       {fatal || !enrollment ? (
         <Callout tone="danger" title={error ?? "Não foi possível iniciar o cadastro."} action={<SignOutButton />}>
-          Recarregue a página para tentar de novo.
+          Recarregue a página para tentar novamente.
         </Callout>
       ) : (
         <form onSubmit={onSubmit} noValidate className="space-y-4">

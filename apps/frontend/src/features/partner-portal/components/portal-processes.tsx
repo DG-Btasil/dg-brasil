@@ -98,7 +98,7 @@ export function PortalProcessDetail({
   const tabs = useMemo<TabItem<TabKey>[]>(
     () => [
       { key: "visao-geral", label: "Visão geral" },
-      { key: "movimentacoes", label: "Movimentações" },
+      { key: "movimentacoes", label: "Andamentos" },
       { key: "documentos", label: "Documentos" },
       { key: "pendencias", label: "Pendências do caso", count: open, attention: open > 0 },
     ],

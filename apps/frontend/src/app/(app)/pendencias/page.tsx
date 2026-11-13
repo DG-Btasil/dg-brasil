@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { PortalPending } from "@/features/partner-portal/components/portal-pending";
 import { requestListInput } from "@/features/partner-requests/query";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
+
+export const metadata: Metadata = { title: "Pendências" };
 
 /** Solicitações do próprio escritório (escopo vazio: a RLS recorta ao parceiro da sessão). */
 async function Pending() {
