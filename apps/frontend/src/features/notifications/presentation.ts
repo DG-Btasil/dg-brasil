@@ -31,7 +31,8 @@ export function notificationTarget(
     if (n.relatedType === "publication" && audience === "INTERNAL") return { href: `/publicacoes?id=${n.relatedId}`, label: "Abrir publicação" };
     if (n.relatedType === "deadline" && audience === "INTERNAL") {
       if (n.processId) return { href: `/processos/${n.processId}?aba=prazos`, label: "Ver prazo" };
-      if (n.legalCaseId) return { href: `/casos/${n.legalCaseId}`, label: "Ver caso" };
+      // Prazo só do caso (sem processo): a agenda é onde ele pode ser cumprido, cancelado ou reaberto.
+      if (n.legalCaseId) return { href: `/prazos?caso=${n.legalCaseId}`, label: "Ver prazo" };
     }
   }
   if (n.partnerRequestId) {

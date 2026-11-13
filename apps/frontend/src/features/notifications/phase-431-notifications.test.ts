@@ -8,22 +8,25 @@ import { notificationTarget, notificationTypeLabel } from "./presentation";
 const UUID = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
 
 describe("preferências de notificação (4.3.1, 037)", () => {
-  it("padrão: tudo na plataforma, nada por e-mail, sem resumo; segurança travada", () => {
+  it("padrão: tudo na plataforma, nada por e-mail, sem resumo; segurança e prazos travados (063)", () => {
     const d = defaultPreferences();
     expect(d.categories.every((c) => c.inApp && !c.email)).toBe(true);
-    expect(d.categories.find((c) => c.category === "SECURITY")?.locked).toBe(true);
+    expect(d.categories.filter((c) => c.locked).map((c) => c.category)).toEqual(["DEADLINES", "SECURITY"]);
     expect([d.digest, d.saved]).toEqual(["NONE", false]);
   });
 
-  it("linhas do banco por categoria; segurança nunca aparece desligada; resumo desconhecido vira NONE", () => {
+  it("linhas do banco por categoria; segurança e prazos nunca aparecem desligados; resumo desconhecido vira NONE", () => {
     const p = preferencesFromRows(
       [
+        { notification_type: "CASES", in_app: false, email: true },
         { notification_type: "DEADLINES", in_app: false, email: true },
         { notification_type: "SECURITY", in_app: false, email: false },
       ],
       "QUALQUER",
     );
-    expect(p.categories.find((c) => c.category === "DEADLINES")).toMatchObject({ inApp: false, email: true });
+    expect(p.categories.find((c) => c.category === "CASES")).toMatchObject({ inApp: false, email: true, locked: false });
+    // Linha antiga com Prazos desligado (antes da 063): a tela mostra ligado e travado; o e-mail escolhido fica guardado.
+    expect(p.categories.find((c) => c.category === "DEADLINES")).toMatchObject({ inApp: true, email: true, locked: true });
     expect(p.categories.find((c) => c.category === "SECURITY")).toMatchObject({ inApp: true, locked: true });
     expect([p.digest, p.saved]).toEqual(["NONE", true]);
   });
@@ -75,6 +78,11 @@ describe("avisos produzidos pelo banco (037) na tela", () => {
     expect(notificationTarget(row(), "INTERNAL")?.href).toBe(`/revisoes/${UUID}`);
     expect(notificationTarget(row({ type: "ANALYSIS_COMPLETED", related_type: "analysis" }), "INTERNAL")?.href).toBe(`/casos/${UUID}?aba=analise`);
     expect(notificationTarget(row({ type: "DEADLINE_DUE_SOON", related_type: "deadline", legal_process_id: UUID }), "INTERNAL")?.href).toBe(`/processos/${UUID}?aba=prazos`);
+    // Prazo só do caso (sem processo): abre a agenda filtrada pelo caso, onde dá para cumprir, cancelar e reabrir.
+    expect(notificationTarget(row({ type: "DEADLINE_OVERDUE", related_type: "deadline" }), "INTERNAL")).toEqual({ href: `/prazos?caso=${UUID}`, label: "Ver prazo" });
+    // Proposta de prazo aprovada que falhou ao aplicar (063): o aviso leva à revisão.
+    expect(notificationTypeLabel("DEADLINE")).toBe("Prazo");
+    expect(notificationTarget(row({ type: "DEADLINE", related_type: "review" }), "INTERNAL")?.href).toBe(`/revisoes/${UUID}`);
     expect(notificationTarget(row({ type: "PARTNER_TRANSFER_PAID", related_type: "transfer", legal_case_id: null }), "PARTNER")?.href).toBe("/financeiro");
     expect(notificationTarget(row({ type: "AGENT_RUN_ATTENTION", related_type: "agent_run", legal_case_id: null }), "INTERNAL")?.href).toBe("/dg-brasil/execucoes");
   });

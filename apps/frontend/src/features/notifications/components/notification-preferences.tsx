@@ -19,15 +19,16 @@ import { CATEGORY_INFO, visibleCategories } from "../categories";
 
 const DIGEST_OPTIONS: { value: DigestFrequency; label: string; description: string }[] = [
   { value: "NONE", label: "Sem resumo", description: "Apenas os avisos individuais." },
-  { value: "DAILY", label: "Diário", description: "Um e-mail por dia com as pendências." },
-  { value: "WEEKLY", label: "Semanal", description: "Um e-mail por semana, às segundas." },
+  { value: "DAILY", label: "Diário", description: "Um e-mail por dia com as pendências, quando o envio existir." },
+  { value: "WEEKLY", label: "Semanal", description: "Um e-mail por semana, às segundas, quando o envio existir." },
 ];
 
 /**
  * Preferências de aviso do PRÓPRIO usuário (4.3.1), lidas e gravadas no
  * servidor. "Na plataforma" é respeitado na hora: categoria desligada não
  * gera aviso. E-mail e resumo ficam guardados para quando o envio por e-mail
- * existir — nada é enviado agora, e a tela diz isso. Segurança não desliga.
+ * existir — nada é enviado agora, e a tela diz isso sem rodeio. Segurança e
+ * Prazos não desligam (migration 063).
  */
 export function NotificationPreferences() {
   const session = useClientSession();
@@ -92,13 +93,16 @@ function PreferencesForm({
   return (
     <div className="space-y-5">
       <Panel>
-        <PanelHeader title="Avisos por categoria" description={initial.saved ? "Preferências salvas." : "Você está usando as preferências padrão: tudo na plataforma, nada por e-mail."} />
+        <PanelHeader
+          title="Avisos por categoria"
+          description={`${initial.saved ? "Preferências salvas." : "Você está usando as preferências padrão: tudo na plataforma, nada por e-mail."} Prazos e Segurança da conta ficam sempre ligados na plataforma.`}
+        />
         <Table caption="Canais de aviso por categoria">
           <THead>
             <tr>
               <Th>Categoria</Th>
               <Th className="w-[150px] text-center">Na plataforma</Th>
-              <Th className="w-[150px] text-center">Por e-mail</Th>
+              <Th className="w-[190px] text-center">Por e-mail (ainda não enviado)</Th>
             </tr>
           </THead>
           <TBody>
@@ -138,14 +142,15 @@ function PreferencesForm({
           </TBody>
         </Table>
         <div className="border-t border-line px-5 py-3">
-          <Callout tone="neutral" title="Por e-mail: guardado para depois">
-            Será usada quando notificações por e-mail forem ativadas. Por enquanto, nenhum e-mail de aviso é enviado — os avisos aparecem no sino e em Notificações.
+          <Callout tone="warning" title="O sistema ainda não envia e-mail">
+            Nenhum aviso sai por e-mail hoje, nem os de prazo. Os avisos aparecem só no sino e em Notificações: abra o sistema todos os dias. O que você marcar na coluna “Por e-mail” fica guardado e
+            passa a valer quando o envio por e-mail for ligado.
           </Callout>
         </div>
       </Panel>
 
       <Panel>
-        <PanelHeader title="Resumo por e-mail" description="Consolidado das pendências para o seu perfil. Será usado quando notificações por e-mail forem ativadas." />
+        <PanelHeader title="Resumo por e-mail" description="Consolidado das pendências para o seu perfil. Ainda não é enviado: a escolha fica guardada para quando o envio por e-mail for ligado." />
         <div className="px-5 py-4">
           <ChoiceCards legend="Frequência do resumo" name="digest" value={draft.digest} onChange={(digest) => setDraft((d) => ({ ...d, digest }))} options={DIGEST_OPTIONS} />
         </div>

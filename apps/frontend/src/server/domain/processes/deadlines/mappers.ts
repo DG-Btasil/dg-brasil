@@ -1,4 +1,4 @@
-import type { DeadlineStatus, DeadlineType } from "@/lib/constants/status";
+import type { DeadlineStatus, DeadlineType, HearingMode } from "@/lib/constants/status";
 import type { ID } from "@/types";
 import type { DeadlineDTO } from "./dto";
 import type { CreateDeadlineInput, DeadlineEffectiveStatus, DeadlinePriority, UpdateDeadlineInput } from "./schemas";
@@ -12,7 +12,8 @@ export const OFFICE_TIME_ZONE = "America/Sao_Paulo";
  */
 const OFFICE_UTC_OFFSET = "-03:00";
 
-export interface DeadlineRow {
+/** Linha da view `deadline_agenda` (migration 063): prazo + situação efetiva + cliente, caso e processo. */
+export interface DeadlineAgendaRow {
   id: string;
   legal_case_id: string;
   legal_process_id: string | null;
@@ -20,25 +21,42 @@ export interface DeadlineRow {
   deadline_type: DeadlineType;
   description: string | null;
   due_at: string;
+  due_date_local: string;
   priority: DeadlinePriority;
   status: DeadlineStatus;
+  effective_status: DeadlineEffectiveStatus;
   responsible_user_id: string | null;
   source: DeadlineDTO["source"];
   created_at: string;
   updated_at: string;
   completed_at: string | null;
-}
-
-/** Linha da view deadline_status (estado derivado, nunca gravado). */
-export interface DeadlineStatusRow {
-  deadline_id: string;
-  effective_status: DeadlineEffectiveStatus;
-  due_date_local: string;
+  status_reason: string | null;
+  status_changed_at: string | null;
+  status_changed_by: string | null;
+  checked_at: string | null;
+  checked_by: string | null;
+  agent_unchecked: boolean;
+  hearing_mode: HearingMode | null;
+  hearing_location: string | null;
+  hearing_link: string | null;
+  case_title: string | null;
+  client_id: string | null;
+  client_name: string | null;
+  process_title: string | null;
+  process_cnj: string | null;
+  process_court: string | null;
 }
 
 const opt = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v);
 
-export function deadlineFromRows(row: DeadlineRow, status: DeadlineStatusRow): DeadlineDTO {
+const officeTimeFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: OFFICE_TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/** Hora (HH:MM) de um instante no fuso do escritório. */
+export function officeLocalTime(at: string | Date): string {
+  return officeTimeFmt.format(typeof at === "string" ? new Date(at) : at);
+}
+
+export function deadlineFromAgendaRow(row: DeadlineAgendaRow): DeadlineDTO {
   return {
     id: row.id,
     legalCaseId: row.legal_case_id,
@@ -47,32 +65,32 @@ export function deadlineFromRows(row: DeadlineRow, status: DeadlineStatusRow): D
     type: row.deadline_type,
     description: opt(row.description),
     dueAt: row.due_at,
-    dueDateLocal: status.due_date_local,
+    dueDateLocal: row.due_date_local,
+    dueTimeLocal: officeLocalTime(row.due_at),
     priority: row.priority,
     status: row.status,
-    effectiveStatus: status.effective_status,
+    effectiveStatus: row.effective_status,
     responsibleUserId: opt(row.responsible_user_id),
     source: row.source,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: opt(row.completed_at),
+    statusReason: opt(row.status_reason),
+    statusChangedAt: opt(row.status_changed_at),
+    statusChangedByUserId: opt(row.status_changed_by),
+    agentUnchecked: row.agent_unchecked,
+    checkedAt: opt(row.checked_at),
+    checkedByUserId: opt(row.checked_by),
+    hearingMode: opt(row.hearing_mode),
+    hearingLocation: opt(row.hearing_location),
+    hearingLink: opt(row.hearing_link),
+    caseTitle: opt(row.case_title),
+    clientId: opt(row.client_id),
+    clientName: opt(row.client_name),
+    processTitle: opt(row.process_title),
+    processCnj: opt(row.process_cnj),
+    processCourt: opt(row.process_court),
   };
-}
-
-/**
- * Junta a página da view (que manda na ordem e no total) com as linhas da
- * tabela. Linha que sumiu entre as duas leituras é descartada. Dentro da
- * página, ordena pelo instante do vencimento (a view só tem a data local).
- */
-export function mergePage(statusRows: DeadlineStatusRow[], rows: DeadlineRow[], ascending = true): DeadlineDTO[] {
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const items = statusRows.flatMap((s) => {
-    const row = byId.get(s.deadline_id);
-    return row ? [deadlineFromRows(row, s)] : [];
-  });
-  const dir = ascending ? 1 : -1;
-  // A view já vem ordenada pela data local; aqui só desempata pelo horário (sort é estável).
-  return items.sort((a, b) => dir * (a.dueDateLocal.localeCompare(b.dueDateLocal) || Date.parse(a.dueAt) - Date.parse(b.dueAt)));
 }
 
 /** Filtro de responsável: "me" vira o usuário da sessão (nunca confiado do navegador). */
@@ -94,20 +112,27 @@ export function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Vencimento informado → timestamptz. Data civil = 23:59:59 em Brasília. */
-export function dueAtFromInput(input: { dueAt?: string; dueDate?: string }): string | undefined {
+/**
+ * Vencimento informado → timestamptz. Data civil = 23:59:59 em Brasília; com
+ * hora (audiência), a hora informada em Brasília.
+ */
+export function dueAtFromInput(input: { dueAt?: string; dueDate?: string; dueTime?: string }): string | undefined {
   if (input.dueAt) return input.dueAt;
-  if (input.dueDate) return `${input.dueDate}T23:59:59${OFFICE_UTC_OFFSET}`;
+  if (input.dueDate) return `${input.dueDate}T${input.dueTime ? `${input.dueTime}:00` : "23:59:59"}${OFFICE_UTC_OFFSET}`;
   return undefined;
 }
 
 type Json = Record<string, unknown>;
 
+/** Campos de prazo que os dois caminhos de criação usam (a chave de envio fica de fora). */
+type DeadlineFields = Pick<CreateDeadlineInput, "legalCaseId" | "processId" | "title" | "type" | "description" | "dueAt" | "dueDate" | "dueTime" | "priority" | "responsibleUserId">;
+
 /**
  * Linha nova de deadlines. `status` fica no default (OPEN) e `source` é
- * sempre MANUAL: prazo de integração/agente não é digitado.
+ * sempre MANUAL: prazo de integração/agente não é digitado. Usada também pelo
+ * prazo inicial do cadastro de processo (create_legal_process_once).
  */
-export function deadlineInsertRow(id: ID, input: CreateDeadlineInput, responsibleUserId: ID): Json {
+export function deadlineInsertRow(id: ID, input: DeadlineFields, responsibleUserId: ID): Json {
   return {
     id,
     legal_case_id: input.legalCaseId,
@@ -122,7 +147,25 @@ export function deadlineInsertRow(id: ID, input: CreateDeadlineInput, responsibl
   };
 }
 
-/** PATCH: só chaves presentes; null limpa. Status não passa por aqui (complete/cancel/missed). */
+/** Modalidade, local e link só ficam gravados quando o tipo é Audiência. */
+function hearingColumns(type: DeadlineType | undefined, input: { hearingMode?: HearingMode | null; hearingLocation?: string | null; hearingLink?: string | null }): Json {
+  if (type !== "HEARING") return { hearing_mode: null, hearing_location: null, hearing_link: null };
+  return { hearing_mode: input.hearingMode ?? null, hearing_location: input.hearingLocation ?? null, hearing_link: input.hearingLink ?? null };
+}
+
+/**
+ * Pedido de `create_deadline_once` (migration 063). Montagem determinística:
+ * o mesmo formulário reenviado gera o mesmo JSON (sem id, sem "agora"), para a
+ * chave de envio reconhecer a repetição.
+ */
+export function deadlineCreatePayload(input: CreateDeadlineInput, responsibleUserId: ID): Json {
+  const { id: _id, source: _source, ...row } = deadlineInsertRow("", input, responsibleUserId);
+  void _id;
+  void _source;
+  return { ...row, ...hearingColumns(input.type, input) };
+}
+
+/** PATCH: só chaves presentes; null limpa. Status não passa por aqui (cumprir, cancelar, perder e reabrir têm operação própria). */
 export function deadlineUpdatePatch(patch: UpdateDeadlineInput["patch"]): Json {
   const out: Json = {};
   const p = patch as Record<string, unknown>;
@@ -133,5 +176,12 @@ export function deadlineUpdatePatch(patch: UpdateDeadlineInput["patch"]): Json {
   if ("responsibleUserId" in p) out.responsible_user_id = patch.responsibleUserId ?? null;
   const dueAt = dueAtFromInput(patch);
   if (dueAt) out.due_at = dueAt;
+  // Trocou para um tipo que não é audiência: os dados da audiência saem junto.
+  if ("type" in p && patch.type !== "HEARING") Object.assign(out, hearingColumns(patch.type, {}));
+  else {
+    if ("hearingMode" in p) out.hearing_mode = patch.hearingMode ?? null;
+    if ("hearingLocation" in p) out.hearing_location = patch.hearingLocation ?? null;
+    if ("hearingLink" in p) out.hearing_link = patch.hearingLink ?? null;
+  }
   return out;
 }

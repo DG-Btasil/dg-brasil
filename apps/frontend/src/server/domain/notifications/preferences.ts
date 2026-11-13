@@ -10,12 +10,16 @@ import { fromDbError } from "@/server/core/db-errors";
  *
  * In-app é respeitado pelo produtor do banco na hora de gravar o aviso.
  * E-mail e resumo são GUARDADOS para quando o envio existir: nenhum e-mail é
- * enviado nesta etapa. SECURITY (conta) não se desliga na plataforma — o
- * banco recusa (constraint) e este service nem tenta.
+ * enviado nesta etapa. SECURITY (conta) e DEADLINES (prazos, migration 063)
+ * não se desligam na plataforma — o banco recusa (constraint), o produtor de
+ * avisos ignora a preferência e este service nem tenta.
  */
 
 export const NOTIFICATION_CATEGORIES = ["CASES", "DEADLINES", "DOCUMENTS", "REVIEWS", "PARTNER_REQUESTS", "ANALYSES", "FINANCE", "JUDICIAL", "SECURITY"] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+/** Categorias sempre ligadas na plataforma: perder um desses avisos custa caro demais. */
+export const LOCKED_CATEGORIES: readonly NotificationCategory[] = ["SECURITY", "DEADLINES"];
+export const isLockedCategory = (category: string): boolean => (LOCKED_CATEGORIES as readonly string[]).includes(category);
 export const DIGEST_FREQUENCIES = ["NONE", "DAILY", "WEEKLY"] as const;
 export type DigestFrequency = (typeof DIGEST_FREQUENCIES)[number];
 
@@ -23,7 +27,7 @@ export interface CategoryPreference {
   category: NotificationCategory;
   inApp: boolean;
   email: boolean;
-  /** SECURITY: sempre in-app (não editável). */
+  /** SECURITY e DEADLINES: sempre in-app (não editável). */
   locked: boolean;
 }
 
@@ -46,7 +50,7 @@ export type SaveNotificationPreferencesInput = z.infer<typeof saveNotificationPr
 /** Padrão do sistema: tudo na plataforma, nada por e-mail, sem resumo. */
 export function defaultPreferences(): NotificationPreferencesDTO {
   return {
-    categories: NOTIFICATION_CATEGORIES.map((category) => ({ category, inApp: true, email: false, locked: category === "SECURITY" })),
+    categories: NOTIFICATION_CATEGORIES.map((category) => ({ category, inApp: true, email: false, locked: isLockedCategory(category) })),
     digest: "NONE",
     saved: false,
   };
@@ -76,10 +80,10 @@ export async function getNotificationPreferences(ctx: ServiceContext): Promise<N
   return preferencesFromRows((prefs.data ?? []) as { notification_type: string; in_app: boolean; email: boolean }[], (general.data as { digest?: string } | null)?.digest ?? null);
 }
 
-/** Grava o estado final (todas as categorias enviadas). Segurança fica sempre in-app. */
+/** Grava o estado final (todas as categorias enviadas). Segurança e Prazos ficam sempre in-app. */
 export async function saveNotificationPreferences(ctx: ServiceContext, input: SaveNotificationPreferencesInput): Promise<NotificationPreferencesDTO> {
   const userId = ctx.session.userId;
-  const rows = input.categories.map((c) => ({ user_id: userId, notification_type: c.category, in_app: c.category === "SECURITY" ? true : c.inApp, email: c.email }));
+  const rows = input.categories.map((c) => ({ user_id: userId, notification_type: c.category, in_app: isLockedCategory(c.category) ? true : c.inApp, email: c.email }));
   if (rows.length > 0) {
     const { error } = await ctx.db.from("user_notification_preferences").upsert(rows, { onConflict: "user_id,notification_type" });
     if (error) throw fromDbError(error);

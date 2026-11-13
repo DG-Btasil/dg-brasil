@@ -2,13 +2,23 @@
 
 import { runAction } from "@/server/core/action";
 import * as service from "./service";
-import { createDeadlineSchema, deadlineIdSchema, listDeadlinesSchema, listOverdueSchema, listUpcomingSchema, updateDeadlineSchema } from "./schemas";
+import {
+  cancelDeadlineSchema,
+  createDeadlineSchema,
+  deadlineIdSchema,
+  listDeadlinesSchema,
+  listOverdueSchema,
+  listUpcomingSchema,
+  missDeadlineSchema,
+  reopenDeadlineSchema,
+  updateDeadlineSchema,
+} from "./schemas";
 
 /**
  * Server Actions de Prazo — a única porta do navegador para este domínio.
  * Leitura: `processes.view` (equipe interna). Escrita: `processes.edit`
- * (ADMIN/LAWYER). O service confere de novo (superfície interna); a RLS é a
- * segunda barreira.
+ * (ADMIN/LAWYER). O service confere de novo (superfície interna); a RLS e as
+ * funções do banco são a segunda barreira.
  */
 
 export async function listDeadlinesAction(input: unknown) {
@@ -52,9 +62,23 @@ export async function completeDeadlineAction(input: unknown) {
 }
 
 export async function cancelDeadlineAction(input: unknown) {
-  return runAction({ name: "deadlines.cancel", permission: "processes.edit", schema: deadlineIdSchema, input, handler: (ctx, { id }) => service.cancelDeadline(ctx, id) });
+  return runAction({ name: "deadlines.cancel", permission: "processes.edit", schema: cancelDeadlineSchema, input, handler: service.cancelDeadline });
 }
 
 export async function markDeadlineMissedAction(input: unknown) {
-  return runAction({ name: "deadlines.missed", permission: "processes.edit", schema: deadlineIdSchema, input, handler: (ctx, { id }) => service.markDeadlineMissed(ctx, id) });
+  return runAction({ name: "deadlines.missed", permission: "processes.edit", schema: missDeadlineSchema, input, handler: service.markDeadlineMissed });
+}
+
+export async function reopenDeadlineAction(input: unknown) {
+  return runAction({ name: "deadlines.reopen", permission: "processes.edit", schema: reopenDeadlineSchema, input, handler: service.reopenDeadline });
+}
+
+export async function markDeadlineCheckedAction(input: unknown) {
+  return runAction({
+    name: "deadlines.checked",
+    permission: "processes.edit",
+    schema: deadlineIdSchema,
+    input,
+    handler: (ctx, { id }) => service.markDeadlineChecked(ctx, id),
+  });
 }

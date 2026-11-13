@@ -5,7 +5,15 @@ import { useCallback, useMemo } from "react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { createProcessEventAction, removeProcessAction } from "@/server/domain/processes/actions";
-import { cancelDeadlineAction, completeDeadlineAction, createDeadlineAction, updateDeadlineAction } from "@/server/domain/processes/deadlines/actions";
+import {
+  cancelDeadlineAction,
+  completeDeadlineAction,
+  createDeadlineAction,
+  markDeadlineCheckedAction,
+  markDeadlineMissedAction,
+  reopenDeadlineAction,
+  updateDeadlineAction,
+} from "@/server/domain/processes/deadlines/actions";
 import { useToast } from "@/store/ui-store";
 import type { ID } from "@/types";
 
@@ -39,12 +47,20 @@ export function useProcessActions() {
     () => ({
       addEvent: (processId: ID, input: { title: string; description?: string; important: boolean }) =>
         run(() => createProcessEventAction({ processId, ...input }), { title: "Andamento registrado", description: input.title }, "Não foi possível registrar o andamento."),
-      addDeadline: (input: { legalCaseId: ID; processId: ID; title: string; type: string; dueDate: string; responsibleUserId?: ID; description?: string }) =>
+      /** `idempotencyKey`: a mesma chave em nova tentativa do mesmo envio (o servidor não duplica o prazo). */
+      addDeadline: (input: { idempotencyKey: string; legalCaseId: ID; processId?: ID; title: string } & Record<string, unknown>) =>
         run(() => createDeadlineAction(input), { title: "Prazo adicionado", description: input.title }, "Não foi possível adicionar o prazo."),
       updateDeadline: (id: ID, patch: Record<string, unknown>) => run(() => updateDeadlineAction({ id, patch }), { title: "Prazo atualizado" }, "Não foi possível atualizar o prazo."),
       completeDeadline: (id: ID, title: string) =>
         run(() => completeDeadlineAction({ id }), { title: "Prazo marcado como cumprido", description: title }, "Não foi possível atualizar o prazo."),
-      cancelDeadline: (id: ID, title: string) => run(() => cancelDeadlineAction({ id }), { title: "Prazo cancelado", description: title }, "Não foi possível cancelar o prazo."),
+      cancelDeadline: (id: ID, title: string, reason: string) =>
+        run(() => cancelDeadlineAction({ id, reason }), { title: "Prazo cancelado", description: title }, "Não foi possível cancelar o prazo."),
+      missDeadline: (id: ID, title: string, reason?: string) =>
+        run(() => markDeadlineMissedAction({ id, reason }), { title: "Prazo marcado como perdido", description: title }, "Não foi possível atualizar o prazo."),
+      reopenDeadline: (id: ID, title: string, reason: string) =>
+        run(() => reopenDeadlineAction({ id, reason }), { title: "Prazo reaberto", description: title }, "Não foi possível reabrir o prazo."),
+      markDeadlineChecked: (id: ID, title: string) =>
+        run(() => markDeadlineCheckedAction({ id }), { title: "Prazo conferido", description: title }, "Não foi possível registrar a conferência."),
       removeProcess: (id: ID) =>
         run(
           () => removeProcessAction({ id }),

@@ -267,6 +267,14 @@ export const DEADLINE_TYPE_LABEL: Record<DeadlineType, string> = {
   INTERNAL: "Prazo interno",
 };
 
+/** Modalidade da audiência (prazo do tipo HEARING, migration 063). */
+export const HEARING_MODES = ["IN_PERSON", "VIDEO"] as const;
+export type HearingMode = (typeof HEARING_MODES)[number];
+export const HEARING_MODE_LABEL: Record<HearingMode, string> = {
+  IN_PERSON: "Presencial",
+  VIDEO: "Videoconferência",
+};
+
 /**
  * Status do prazo (vocabulário canônico do banco de dados).
  * "Vencido" NÃO é status: é derivado da data na UI (ver DeadlineUrgency).

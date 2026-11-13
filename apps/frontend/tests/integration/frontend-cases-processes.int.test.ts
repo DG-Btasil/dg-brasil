@@ -143,15 +143,15 @@ describe("Fase B — processos, prazos e andamentos pela UI", () => {
     const lawyer = await ctxFor("LAWYER");
     const legalCaseId = await caseId();
     const { id: processId } = await processes.createProcess(lawyer, createProcessSchema.parse({ ...processCreateInput(processForm(legalCaseId)), idempotencyKey: randomUUID() }));
-    const past = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId, processId, title: "Vencido", type: "REPLY", dueDate: "2026-01-05", description: "" }));
-    const future = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId, processId, title: "Futuro", type: "REPLY", dueDate: "2027-01-05" }));
+    const past = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId, processId, title: "Vencido", type: "REPLY", dueDate: "2026-01-05", description: "" }));
+    const future = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId, processId, title: "Futuro", type: "REPLY", dueDate: "2027-01-05" }));
     await deadlines.updateDeadline(lawyer, updateDeadlineSchema.parse({ id: future.id, patch: { title: "Futuro editado", dueDate: "2027-02-01" } }));
     const list = await deadlines.listDeadlines(lawyer, listDeadlinesSchema.parse({ processId, pageSize: 50 }));
     const byTitle = new Map(list.items.map((d) => [d.title, d]));
     expect(byTitle.get("Vencido")?.effectiveStatus).toBe("OVERDUE");
     expect(byTitle.get("Futuro editado")).toMatchObject({ dueDateLocal: "2027-02-01", effectiveStatus: "OPEN" });
     await deadlines.completeDeadline(lawyer, past.id);
-    await deadlines.cancelDeadline(lawyer, future.id);
+    await deadlines.cancelDeadline(lawyer, { id: future.id, reason: "Cancelado no teste" });
     const after = await deadlines.listDeadlines(lawyer, listDeadlinesSchema.parse({ processId, pageSize: 50 }));
     // O cadastro pela tela não cria prazo inicial (045): só os lançados aqui, já cumpridos/cancelados.
     expect(after.items.filter((d) => d.status === "OPEN").map((d) => d.title)).toEqual([]);

@@ -9,7 +9,7 @@ import type { NotificationCategory } from "@/server/domain/notifications/prefere
  */
 export const CATEGORY_INFO: Record<NotificationCategory, { label: string; description: string }> = {
   CASES: { label: "Casos", description: "Novo caso enviado, caso atribuído a você, aceite e recusa." },
-  DEADLINES: { label: "Prazos", description: "Prazo novo ou atribuído a você, prazo próximo (48 h) e vencido." },
+  DEADLINES: { label: "Prazos", description: "Prazo novo ou atribuído a você, lembretes em 5, 3 e 1 dia útil antes e no dia do vencimento, e prazo vencido (todo dia útil, enquanto estiver em aberto). Sempre ativo." },
   DOCUMENTS: { label: "Documentos", description: "Documento solicitado ao escritório parceiro e documento recebido." },
   REVIEWS: { label: "Revisões", description: "Revisão atribuída a você e decisão sobre o que você enviou." },
   PARTNER_REQUESTS: { label: "Solicitações", description: "Solicitação nova e respostas na conversa." },

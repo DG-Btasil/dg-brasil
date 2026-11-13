@@ -2,6 +2,7 @@ import {
   Banknote,
   Bell,
   Briefcase,
+  CalendarClock,
   ClipboardCheck,
   ClipboardList,
   FolderOpen,
@@ -20,6 +21,7 @@ export type NavKey =
   | "clients"
   | "cases"
   | "processes"
+  | "deadlines"
   | "publications"
   | "reviews"
   | "finance"
@@ -49,6 +51,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: "clients", label: "Clientes", href: "/clientes", description: "Cadastro, documentos e casos de cada cliente", icon: Users, permission: "clients.view", audience: "OWNER" },
   { key: "cases", label: "Casos", href: "/casos", description: "Demandas dos clientes: origem, análise, aceite e processos", icon: FolderOpen, permission: "cases.view", audience: "OWNER" },
   { key: "processes", label: "Processos", href: "/processos", description: "Acompanhamento, movimentações e prazos", icon: Briefcase, permission: "processes.view", audience: "OWNER" },
+  { key: "deadlines", label: "Prazos", href: "/prazos", description: "Agenda de prazos do escritório, por dia e por responsável", icon: CalendarClock, permission: "processes.view", audience: "OWNER" },
   { key: "publications", label: "Publicações", href: "/publicacoes", description: "Intimações do DJEN a tratar: prazo ou sem prazo", icon: Newspaper, permission: "processes.view", audience: "OWNER" },
   { key: "reviews", label: "Revisões", href: "/revisoes", description: "Materiais dos agentes aguardando decisão", icon: ClipboardCheck, permission: "reviews.view", audience: "OWNER" },
   { key: "finance", label: "Financeiro", href: "/financeiro", description: "Honorários, recebimentos e contratos", icon: Banknote, permission: "finance.view", audience: "OWNER" },
@@ -68,6 +71,15 @@ export const NAV_ITEMS: NavItem[] = [
 
 export function navItemsFor(audience: Audience | undefined): NavItem[] {
   return NAV_ITEMS.filter((item) => item.audience === (audience ?? "OWNER"));
+}
+
+/**
+ * Colunas do painel do menu. Três, como sempre; com dez itens (o menu completo
+ * do Administrador, depois de "Prazos") são cinco, para fechar duas linhas
+ * inteiras em vez de sobrar um item sozinho na quarta.
+ */
+export function navColumns(count: number): 3 | 5 {
+  return count === 10 ? 5 : 3;
 }
 
 export function isNavActive(pathname: string, href: string): boolean {

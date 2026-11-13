@@ -1,24 +1,32 @@
 "use client";
 
 import { useId } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { DEADLINE_TYPE_LABEL, DEADLINE_TYPES } from "@/lib/constants/status";
+import { DEADLINE_TYPE_LABEL, DEADLINE_TYPES, HEARING_MODE_LABEL, HEARING_MODES } from "@/lib/constants/status";
+import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
 import { useResponsibleUserOptions } from "@/features/directory/directory-context";
-import { deadlineSchema, type DeadlineFormInput, type DeadlineFormValues } from "../schemas";
+import { deadlineFormFields, deadlineSchema, type DeadlineFormInput, type DeadlineFormValues } from "../schemas";
 import { useProcessActions } from "../use-process-actions";
+import { deadlineHasTime } from "./deadline-actions";
 
 const typeOptions = DEADLINE_TYPES.map((t) => ({ value: t, label: DEADLINE_TYPE_LABEL[t] }));
+const modeOptions = HEARING_MODES.map((m) => ({ value: m, label: HEARING_MODE_LABEL[m] }));
 const FIELD_MAP: Record<string, keyof DeadlineFormInput> = { description: "notes", "patch.description": "notes" };
 
 /**
- * Adicionar (ou editar, com `deadline`) prazo do processo. Vencimento é uma
- * data civil: o servidor grava 23:59:59 no horário de Brasília. "Vencido" não
- * é gravado: é derivado no banco (view deadline_status).
+ * Adicionar (ou editar, com `deadline`) um prazo. O vencimento é uma data
+ * civil: o servidor grava 23:59:59 no horário de Brasília. Quando o tipo é
+ * "Audiência", o diálogo pede também a hora, a modalidade, o local e o link.
+ * "Vencido" não é gravado: é derivado no banco.
+ *
+ * Criação usa chave de envio (clique duplo ou nova tentativa não duplicam o
+ * prazo). Na edição, a data só é enviada se mudou: prazo lançado com hora
+ * (por agente, por exemplo) não perde a hora ao trocar só o título.
  */
 export function AddDeadlineDialog({
   open,
@@ -30,25 +38,39 @@ export function AddDeadlineDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  processId: string;
-  legalCaseId: string;
+  /** Criação: caso (obrigatório) e processo do prazo. Na edição vêm do próprio prazo. */
+  processId?: string;
+  legalCaseId?: string;
   defaultResponsibleId?: string;
   /** Presente = edição de prazo em aberto. */
   deadline?: DeadlineDTO;
 }) {
   const formId = useId();
   const { addDeadline, updateDeadline } = useProcessActions();
+  const idempotency = useIdempotencyKey();
   const responsibleOptions = useResponsibleUserOptions();
   const defaults: DeadlineFormInput = deadline
-    ? { title: deadline.title, type: deadline.type, dueDate: deadline.dueDateLocal, responsibleUserId: deadline.responsibleUserId ?? "", notes: deadline.description ?? "" }
-    : { title: "", type: "MANIFESTATION", dueDate: "", responsibleUserId: defaultResponsibleId ?? "", notes: "" };
+    ? {
+        title: deadline.title,
+        type: deadline.type,
+        dueDate: deadline.dueDateLocal,
+        dueTime: deadline.type === "HEARING" && deadlineHasTime(deadline) ? deadline.dueTimeLocal : "",
+        responsibleUserId: deadline.responsibleUserId ?? "",
+        hearingMode: deadline.hearingMode ?? "",
+        hearingLocation: deadline.hearingLocation ?? "",
+        hearingLink: deadline.hearingLink ?? "",
+        notes: deadline.description ?? "",
+      }
+    : { title: "", type: "MANIFESTATION", dueDate: "", dueTime: "", responsibleUserId: defaultResponsibleId ?? "", hearingMode: "", hearingLocation: "", hearingLink: "", notes: "" };
   const {
     register,
     handleSubmit,
     reset,
     setError,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<DeadlineFormInput, unknown, DeadlineFormValues>({ resolver: zodResolver(deadlineSchema), defaultValues: defaults });
+  const isHearing = useWatch({ control, name: "type" }) === "HEARING";
 
   function close(next: boolean) {
     if (!next) reset(defaults);
@@ -57,15 +79,20 @@ export function AddDeadlineDialog({
 
   const submit = handleSubmit(async (values) => {
     if (isSubmitting) return;
-    const fields = {
-      title: values.title.trim(),
-      type: values.type,
-      dueDate: values.dueDate,
-      responsibleUserId: values.responsibleUserId,
-      description: values.notes?.trim() ?? "",
-    };
-    const result = deadline ? await updateDeadline(deadline.id, fields) : await addDeadline({ legalCaseId, processId, ...fields });
+    const fields = deadlineFormFields(values);
+    let result;
+    if (deadline) {
+      // Data e hora só vão no pedido quando mudaram (ou quando o tipo mudou e a regra da hora é outra).
+      const dueChanged = values.dueDate !== defaults.dueDate || (values.dueTime ?? "") !== (defaults.dueTime ?? "") || values.type !== defaults.type;
+      const { dueDate, dueTime, ...rest } = fields;
+      result = await updateDeadline(deadline.id, dueChanged ? { ...rest, dueDate, dueTime } : rest);
+    } else {
+      if (!legalCaseId) return;
+      const payload = { legalCaseId, processId, ...fields };
+      result = await addDeadline({ ...payload, idempotencyKey: idempotency.keyFor(payload) });
+    }
     if (result.ok) {
+      idempotency.reset();
       close(false);
       return;
     }
@@ -80,7 +107,7 @@ export function AddDeadlineDialog({
       open={open}
       onOpenChange={close}
       title={deadline ? "Editar prazo" : "Adicionar prazo"}
-      description="O prazo passa a ser acompanhado na aba Prazos e nas notificações do responsável."
+      description="O prazo aparece na aba Prazos do processo e na agenda do escritório, e gera lembretes para o responsável."
       footer={
         <>
           <Button variant="ghost" onClick={() => close(false)} disabled={isSubmitting}>
@@ -96,12 +123,28 @@ export function AddDeadlineDialog({
         <Field label="Título" requirement="required" className="col-span-2" error={errors.title?.message}>
           {(a) => <Input {...a} {...register("title")} maxLength={300} placeholder="Ex.: Apresentar réplica" autoFocus />}
         </Field>
-        <Field label="Tipo" requirement="required" error={errors.type?.message}>
+        <Field label="Tipo" requirement="required" className={isHearing ? "col-span-2" : undefined} error={errors.type?.message}>
           {(a) => <Select {...a} {...register("type")} options={typeOptions} />}
         </Field>
-        <Field label="Data do prazo" requirement="required" error={errors.dueDate?.message}>
+        <Field label={isHearing ? "Data da audiência" : "Data do prazo"} requirement="required" error={errors.dueDate?.message}>
           {(a) => <Input {...a} type="date" {...register("dueDate")} />}
         </Field>
+        {isHearing && (
+          <>
+            <Field label="Hora" requirement="required" hint="Horário de Brasília." error={errors.dueTime?.message}>
+              {(a) => <Input {...a} type="time" {...register("dueTime")} />}
+            </Field>
+            <Field label="Modalidade" requirement="required" error={errors.hearingMode?.message}>
+              {(a) => <Select {...a} {...register("hearingMode")} options={modeOptions} placeholder="Selecione" />}
+            </Field>
+            <Field label="Local" requirement="optional" hint="Fórum, vara e sala." error={errors.hearingLocation?.message}>
+              {(a) => <Input {...a} {...register("hearingLocation")} maxLength={500} placeholder="Ex.: Fórum Central, 3ª Vara Cível, sala 12" />}
+            </Field>
+            <Field label="Link da sala" requirement="optional" className="col-span-2" hint="Para audiência por videoconferência." error={errors.hearingLink?.message}>
+              {(a) => <Input {...a} type="url" {...register("hearingLink")} maxLength={1000} placeholder="https://" />}
+            </Field>
+          </>
+        )}
         <Field label="Responsável" requirement="required" className="col-span-2" error={errors.responsibleUserId?.message}>
           {(a) => <Select {...a} {...register("responsibleUserId")} options={responsibleOptions} placeholder="Selecione" />}
         </Field>

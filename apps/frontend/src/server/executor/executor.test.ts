@@ -139,6 +139,9 @@ describe("API do computador do escritório", () => {
     const c = calls.find((x) => x.fn === "executor_create_proposal")!;
     expect(c.args.slice(3)).toEqual(["CREATE_DEADLINE", { summary: "Prazo da réplica", data: { ...data, priority: "NORMAL" } },
       proposalKey("CREATE_DEADLINE", { ...data, priority: "NORMAL" }), "NORMAL", JOB]);
+    // 063: o tipo do prazo pode vir na proposta (o aplicador grava); tipo fora da lista é recusado aqui.
+    expect((await job("POST", "proposals", { type: "CREATE_DEADLINE", summary: "Prazo da réplica", data: { ...data, deadline_type: "REPLY" } })).status).toBe(200);
+    expect((await job("POST", "proposals", { type: "CREATE_DEADLINE", summary: "Prazo da réplica", data: { ...data, deadline_type: "QUALQUER" } })).status).toBe(422);
   });
 
   it("minuta: extensão e tipo precisam combinar; envio assinado no caminho do banco", async () => {

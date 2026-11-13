@@ -8,7 +8,7 @@ import { useAudience, useCan } from "@/features/auth/hooks";
 import { useNavCounts } from "@/features/navigation/hooks";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
 import { useUiStore } from "@/store/ui-store";
-import { isNavActive, navItemsFor } from "./nav-config";
+import { isNavActive, navColumns, navItemsFor } from "./nav-config";
 import { resolveRouteArea } from "./route-areas";
 
 const OPEN_DELAY = 90;
@@ -25,6 +25,7 @@ export function HomeMenu() {
   const counts = useNavCounts();
   const audience = useAudience();
   const items = useMemo(() => navItemsFor(audience).filter((item) => can(item.permission)), [can, audience]);
+  const cols = navColumns(items.length);
   const [openState, setOpen] = useState(false);
   // Durante o tour guiado, o painel fica aberto para mostrar os módulos.
   const tourMenuOpen = useUiStore((s) => s.tourMenuOpen);
@@ -97,7 +98,6 @@ export function HomeMenu() {
   }
 
   function onLinkKeyDown(event: KeyboardEvent<HTMLAnchorElement>, index: number) {
-    const cols = 3;
     let next = index;
     if (event.key === "ArrowRight") next = Math.min(index + 1, items.length - 1);
     else if (event.key === "ArrowLeft") next = Math.max(index - 1, 0);
@@ -145,11 +145,11 @@ export function HomeMenu() {
       {open && (
         <div
           id={panelId}
-          className="absolute left-1/2 top-full z-40 w-[760px] -translate-x-1/2 animate-panel-down"
+          className={cn("absolute left-1/2 top-full z-40 max-w-[calc(100vw-2rem)] -translate-x-1/2 animate-panel-down", cols === 5 ? "w-[1080px]" : "w-[760px]")}
         >
           <nav aria-label="Módulos" data-tour="nav-panel" className="mt-0 overflow-hidden rounded-b-lg border border-t-0 border-line bg-surface shadow-overlay">
             <div className="h-0.5 bg-gold" aria-hidden />
-            <ul className="grid grid-cols-3 gap-px bg-line">
+            <ul className={cn("grid gap-px bg-line", cols === 5 ? "grid-cols-5" : "grid-cols-3")}>
               {items.map((item, index) => {
                 const active = isNavActive(pathname, item.href);
                 const Icon = item.icon;
@@ -165,7 +165,8 @@ export function HomeMenu() {
                       onKeyDown={(e) => onLinkKeyDown(e, index)}
                       onClick={() => close()}
                       className={cn(
-                        "group/item relative flex h-full items-start gap-3 px-5 py-4 transition-colors focus:outline-none focus-visible:bg-navy-50",
+                        "group/item relative flex h-full items-start gap-3 py-4 transition-colors focus:outline-none focus-visible:bg-navy-50",
+                        cols === 5 ? "px-4" : "px-5",
                         active ? "bg-navy-50/70" : "hover:bg-surface-muted",
                       )}
                     >
@@ -189,7 +190,7 @@ export function HomeMenu() {
                   </li>
                 );
               })}
-              {Array.from({ length: (3 - (items.length % 3)) % 3 }, (_, i) => (
+              {Array.from({ length: (cols - (items.length % cols)) % cols }, (_, i) => (
                 <li key={`filler-${i}`} className="bg-surface" aria-hidden />
               ))}
             </ul>

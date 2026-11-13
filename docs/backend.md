@@ -126,7 +126,7 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 |---|---|---|
 | Clientes | listar/buscar (paginado), ficha (LGPD), consultar CPF/CNPJ, criar, editar, contato/endereço do parceiro, inativar/reativar, excluir (ADMIN), relacionamentos | `client_directory`, `save_client`, `set_client_status`, `partner_lookup_client` (025); representantes/sócios de PJ: `replace_company_people` (028, estado final atômico) |
 | Casos | listar, ficha, criar (interno), envio pelo portal, editar rascunho, enviar, pedir documentos, aceitar, rejeitar, iniciar, encerrar, arquivar, advogado, troca de origem, exceção de status | `partner_submit_case`, `change_case_origin`, `override_case_status`; máquina de estados e snapshot por trigger |
-| Processos e prazos | processos (CRUD, partes), movimentações (só MANUAL pela tela), prazos (criar, cumprir, cancelar, perdido; próximos e vencidos derivados) | `deadline_status` (026: responsável e escopo excluído) |
+| Processos e prazos | processos (CRUD, partes), movimentações (só MANUAL pela tela), prazos (criar com chave de envio, editar, cumprir, cancelar com motivo, perdido, reabrir com motivo, conferir prazo de agente; agenda do escritório com filtros; próximos e vencidos derivados) | `deadline_agenda`, `deadline_transition`, `deadline_mark_checked`, `create_deadline_once` (063); `deadline_status` (026) |
 | Documentos | listar, ficha, criar/vincular, preparar e confirmar upload (idempotente), download, visibilidade, arquivar, excluir, verificação; pendências (criar, solicitar, atender com versão, aprovar/rejeitar) | `authorize_document_upload/download` (026) + Storage assinado |
 | Solicitações ao parceiro | listar, ficha com mensagens, criar, responder (atômico), resolver/cancelar | `answer_partner_request` + máquina de estados (026) |
 | Revisões | listar, ficha (conteúdo do alvo), atribuir, decidir, reabrir | `decide_review` (nunca `UPDATE reviews.status`) |
@@ -134,10 +134,47 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Execuções de agente | pedir (idempotente), resumos, cancelar (ADMIN) | `request_agent_run_once` (026), `get_agent_run_summaries` |
 | Financeiro | modelos, acordos, obrigações, lançamentos (recebimento, ajuste, estorno — append-only), divisões (leitura), parcerias, repasses, visão do parceiro | ledger + views; chaves de idempotência e `create_partner_transfer` (026) |
 | Organizações | escritório proprietário, parceiros (listar, cadastrar atômico, editar, status, divisão padrão), usuários (leitura), divisão do próprio escritório (administrador do parceiro) | `create_partner_office` (026), `get_my_partner_settings` (027); gestão de equipe segue em `server/auth/team-actions.ts` |
-| Notificações | listar, contar não lidas, marcar lida(s) | RLS do próprio usuário (aal2) |
+| Notificações | listar, contar não lidas, marcar lida(s); preferências por categoria (Segurança e Prazos não desligam) | RLS do próprio usuário (aal2); `private.notify` (037, 063) |
 | Integração judicial (043) | visão e configuração; OABs (ADMIN e administrador do parceiro); cobertura; publicações (listar, abrir, criar prazo, sem prazo, reabrir); prévia da contagem; calendário; situação e pausa do processo; buscar agora | RPCs `*_judicial_*` (invoker → definer, papel conferido no banco); busca no DJEN/DataJud pelo servidor com `dg_worker` (`docs/judicial.md`) |
 | Conta (`server/domain/account`) | sessões da própria conta (lista, MFA), sair dos outros dispositivos, sair de todos — toda sessão liberada, qualquer papel, sem `userId` no input | `get_my_sessions`, `record_account_security_event` (038) + `auth.signOut({ scope })` com o JWT do usuário |
 | Auditoria | eventos e acessos a dado pessoal (ADMIN, paginado, metadata por whitelist, sem IP/navegador) | `audit_events`, `personal_data_access_events` |
+
+## Prazos (063)
+
+Tela: aba Prazos do processo e a agenda `/prazos` (todos os prazos do
+escritório, agrupados por dia, vencidos no topo; mesma permissão de ver
+processos; parceiro não entra). Prazo de caso sem processo aparece e é tratado
+na agenda.
+
+- **Leitura**: tudo sai da view `deadline_agenda` (security_invoker): prazo +
+  situação efetiva (`OVERDUE` derivado) + cliente, caso, processo e CNJ. Filtros
+  no servidor: responsável (`me`), situação gravada ou derivada, tipo, período
+  (datas do fuso do escritório), "do agente, não conferidos", caso e processo.
+- **Situação**: o banco é quem decide (gatilho `deadlines_transition_guard` e
+  `deadline_transition`): em aberto → cumprido, cancelado ou perdido; e de volta
+  para em aberto ao **reabrir**. Cancelar e reabrir exigem motivo. Cancelar,
+  perder e reabrir gravam auditoria própria com o motivo (`DEADLINE_CANCELLED`,
+  `DEADLINE_MISSED`, `DEADLINE_REOPENED`). O service só chama a função: não repete
+  a regra. A edição continua só em prazo em aberto.
+- **Prazo de agente**: `source = 'AGENT'` (prazo direto ou aprovado em Revisões)
+  aparece com o selo "Agente, sem conferência" até alguém clicar em "Conferido"
+  (`deadline_mark_checked`: quem, quando, uma vez só, auditado). O aplicador
+  grava o `deadline_type` da proposta quando vem (o contrato do computador do
+  escritório aceita a chave opcional `deadline_type`).
+- **Audiência**: tipo `HEARING` guarda hora (em `due_at`), modalidade, local e
+  link (`hearing_mode`, `hearing_location`, `hearing_link`). Nos outros tipos o
+  vencimento continua sendo o fim do dia em Brasília.
+- **Avisos** (`private.notify_deadline_reminders`, a cada 15 min): 5, 3 e 1 dia
+  útil antes, no dia, e vencido uma vez por dia útil enquanto estiver em aberto
+  (vencido avisa também os ADMINs). Destinatário de reserva: responsável ativo →
+  advogado do caso ativo → ADMINs. A data entra na chave do aviso (mudou a data,
+  rearma). Dia útil = `private.non_business_reason` sem tribunal (feriados
+  nacionais, recesso e dias cadastrados para todos os tribunais). A categoria
+  Prazos não se desliga. **Não há envio por e-mail**: os avisos são só no
+  sistema.
+- **Aplicador de propostas**: não cria prazo em caso ou processo excluído;
+  `due_at` só com a data vale como fim do dia em Brasília; proposta aprovada que
+  falha ao aplicar avisa quem aprovou e os ADMINs.
 
 ## Idempotência
 
@@ -187,6 +224,7 @@ API (schema `private`, sem grant para ninguém; só as funções
 | Criar caso (interno) | `create_legal_case_once` | caso + notas internas atômicos; SECURITY INVOKER (RLS de `legal_cases` vale) |
 | Enviar caso (portal) | `partner_submit_case_once` | envolve `partner_submit_case` (025, inalterada); repete cliente + caso |
 | Criar processo (interno e portal) | `create_legal_process_once` | processo + dados internos + prazo inicial atômicos; não depende do CNJ; parceiro não grava campo interno nem chamando direto |
+| Criar prazo (manual) | `create_deadline_once` (063) | SECURITY INVOKER (RLS de `deadlines` vale); o id nasce no banco e a origem é sempre MANUAL |
 | Lançamentos, obrigações, acordos, repasses, execução de agente | índices únicos por autor (026) | mesmo contrato da tela |
 
 Outros: upload (id da versão gerado no servidor é a chave natural da

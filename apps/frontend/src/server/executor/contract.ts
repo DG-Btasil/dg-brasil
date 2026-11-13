@@ -74,6 +74,8 @@ export const PROPOSAL_DATA = {
     description: z.string().max(4000).optional(),
     due_at: isoDate,
     priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).default("NORMAL"),
+    /** Tipo do prazo (063): o aplicador grava quando vem; sem ele, fica "Prazo interno". */
+    deadline_type: z.enum(["MANIFESTATION", "REPLY", "APPEAL", "HEARING", "DOCUMENT_DELIVERY", "FILING", "INTERNAL"]).optional(),
     legal_process_id: uuid.optional(),
     responsible_user_id: uuid.optional(),
   }).strict(),

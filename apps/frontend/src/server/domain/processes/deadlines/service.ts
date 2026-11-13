@@ -1,19 +1,29 @@
-import { randomUUID } from "node:crypto";
 import { requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { invalidState, notFound, validation } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
-import type { DeadlineDTO } from "./dto";
-import { addDays, deadlineFromRows, deadlineInsertRow, deadlineUpdatePatch, mergePage, officeLocalDate, resolveResponsible } from "./mappers";
+import type { DeadlineCreatedDTO, DeadlineDTO } from "./dto";
+import { addDays, deadlineCreatePayload, deadlineFromAgendaRow, deadlineUpdatePatch, officeLocalDate, resolveResponsible } from "./mappers";
 import * as repo from "./repository";
-import type { CreateDeadlineInput, ListDeadlinesInput, ListOverdueInput, ListUpcomingInput, UpdateDeadlineInput } from "./schemas";
+import type {
+  CancelDeadlineInput,
+  CreateDeadlineInput,
+  ListDeadlinesInput,
+  ListOverdueInput,
+  ListUpcomingInput,
+  MissDeadlineInput,
+  ReopenDeadlineInput,
+  UpdateDeadlineInput,
+} from "./schemas";
 
 /**
  * Regras de Prazo. Só equipe interna (parceiro não tem política de leitura
  * em `deadlines`). Leitura: `processes.view` (ADMIN, LAWYER, ASSISTANT).
  * Escrita: `processes.edit` (ADMIN, LAWYER) — ASSISTANT só lê, como na RLS.
  *
- * Status gravado: OPEN → COMPLETED | CANCELLED | MISSED (só a partir de
- * OPEN). OVERDUE é derivado (view deadline_status) e nunca é gravado.
+ * Situação gravada: OPEN → COMPLETED | CANCELLED | MISSED, e de volta para
+ * OPEN ao reabrir (com motivo). Quem garante a troca, o motivo e a auditoria é
+ * o banco (deadline_transition, migration 063); aqui não se repete a regra.
+ * OVERDUE é derivado e nunca é gravado.
  */
 
 function requireRead(ctx: ServiceContext) {
@@ -27,96 +37,111 @@ function requireWrite(ctx: ServiceContext) {
 }
 
 /** Filtros comuns das listagens (só equipe interna chega aqui — requireRead). */
-function scope(ctx: ServiceContext, input: { caseId?: string; processId?: string; responsibleUserId?: string }): repo.StatusFilters {
+function scope(ctx: ServiceContext, input: { caseId?: string; processId?: string; responsibleUserId?: string }): repo.AgendaFilters {
   return { caseId: input.caseId, processId: input.processId, responsibleUserId: resolveResponsible(input.responsibleUserId, ctx.session.userId) };
 }
 
-async function pageFromStatus(
-  ctx: ServiceContext,
-  filters: repo.StatusFilters,
-  input: { page: number; pageSize: number },
-  ascending = true,
-): Promise<Page<DeadlineDTO>> {
-  const { rows: statusRows, total } = await repo.listStatusPage(ctx.db, filters, input, ascending);
-  const rows = await repo.getByIds(
-    ctx.db,
-    statusRows.map((s) => s.deadline_id),
-  );
-  return toPage(mergePage(statusRows, rows, ascending), total, input);
+async function agendaPage(ctx: ServiceContext, filters: repo.AgendaFilters, input: { page: number; pageSize: number }, ascending = true): Promise<Page<DeadlineDTO>> {
+  const { rows, total } = await repo.listAgendaPage(ctx.db, filters, input, ascending);
+  return toPage(rows.map(deadlineFromAgendaRow), total, input);
 }
 
-/** Prazos de um caso/processo (ou do escritório), por vencimento. */
+/** Prazos de um caso, de um processo ou do escritório (agenda), por vencimento. */
 export async function listDeadlines(ctx: ServiceContext, input: ListDeadlinesInput): Promise<Page<DeadlineDTO>> {
   requireRead(ctx);
-  return pageFromStatus(ctx, { ...scope(ctx, input), effectiveStatus: input.effectiveStatus }, input);
+  return agendaPage(
+    ctx,
+    {
+      ...scope(ctx, input),
+      effectiveStatus: input.effectiveStatus,
+      status: input.status,
+      type: input.type,
+      fromLocalDate: input.fromDate,
+      untilLocalDate: input.untilDate,
+      agentUnchecked: input.agentUnchecked,
+    },
+    input,
+    input.sortDirection !== "desc",
+  );
 }
 
 /** Em aberto e no prazo, vencendo de hoje até hoje + `days` (data local de São Paulo). */
 export async function listUpcomingDeadlines(ctx: ServiceContext, input: ListUpcomingInput, now = new Date()): Promise<Page<DeadlineDTO>> {
   requireRead(ctx);
   const today = officeLocalDate(now);
-  return pageFromStatus(
-    ctx,
-    { ...scope(ctx, input), effectiveStatus: "OPEN", fromLocalDate: today, untilLocalDate: addDays(today, input.days) },
-    input,
-  );
+  return agendaPage(ctx, { ...scope(ctx, input), effectiveStatus: "OPEN", fromLocalDate: today, untilLocalDate: addDays(today, input.days) }, input);
 }
 
-/** Vencidos (OPEN com vencimento no passado — derivado pela view), mais antigos primeiro. */
+/** Vencidos (OPEN com vencimento no passado — derivado no banco), mais antigos primeiro. */
 export async function listOverdueDeadlines(ctx: ServiceContext, input: ListOverdueInput): Promise<Page<DeadlineDTO>> {
   requireRead(ctx);
-  return pageFromStatus(ctx, { ...scope(ctx, input), effectiveStatus: "OVERDUE" }, input);
+  return agendaPage(ctx, { ...scope(ctx, input), effectiveStatus: "OVERDUE" }, input);
 }
 
 export async function getDeadline(ctx: ServiceContext, id: string): Promise<DeadlineDTO> {
   requireRead(ctx);
-  const found = await repo.getOne(ctx.db, id);
-  if (!found) throw notFound("Prazo não encontrado.");
-  return deadlineFromRows(found.row, found.status);
+  const row = await repo.getOne(ctx.db, id);
+  if (!row) throw notFound("Prazo não encontrado.");
+  return deadlineFromAgendaRow(row);
 }
 
-/** Cadastro manual. Caso obrigatório; processo opcional e do MESMO caso. */
-export async function createDeadline(ctx: ServiceContext, input: CreateDeadlineInput): Promise<{ id: string }> {
+/**
+ * Cadastro manual, com chave de envio (reenvio não duplica). Caso
+ * obrigatório; processo opcional e do MESMO caso.
+ */
+export async function createDeadline(ctx: ServiceContext, input: CreateDeadlineInput): Promise<DeadlineCreatedDTO> {
   requireWrite(ctx);
   if (!(await repo.caseVisible(ctx.db, input.legalCaseId))) throw notFound("Caso não encontrado.");
   if (input.processId && !(await repo.processBelongsToCase(ctx.db, input.processId, input.legalCaseId))) {
     throw validation({ processId: ["O processo não pertence a este caso."] }, "O processo não pertence a este caso.");
   }
-  const id = randomUUID();
-  await repo.insert(ctx.db, deadlineInsertRow(id, input, ctx.session.userId));
-  ctx.log.info("deadline.created", { deadlineId: id, legalCaseId: input.legalCaseId, processId: input.processId });
-  return { id };
+  const created = await repo.createOnce(ctx.db, input.idempotencyKey, deadlineCreatePayload(input, ctx.session.userId));
+  ctx.log.info("deadline.created", { deadlineId: created.deadline_id, legalCaseId: input.legalCaseId, processId: input.processId, deduplicated: created.deduplicated });
+  return { id: created.deadline_id, deduplicated: created.deduplicated };
 }
 
-/** Decide se a transição a partir do status atual é permitida (só de OPEN). */
-async function requireOpen(ctx: ServiceContext, id: string): Promise<void> {
-  const status = await repo.getStoredStatus(ctx.db, id);
+/** Edição: só prazo em aberto (prazo encerrado precisa ser reaberto antes). */
+export async function updateDeadline(ctx: ServiceContext, input: UpdateDeadlineInput): Promise<void> {
+  requireWrite(ctx);
+  const status = await repo.getStoredStatus(ctx.db, input.id);
   if (status === null) throw notFound("Prazo não encontrado.");
   if (status !== "OPEN") throw invalidState("Só é possível alterar um prazo em aberto.");
+  // Guarda de corrida: só altera se continua OPEN.
+  if (!(await repo.updateIfStatus(ctx.db, input.id, "OPEN", deadlineUpdatePatch(input.patch)))) {
+    throw invalidState("O prazo foi alterado por outra pessoa. Atualize a página.");
+  }
+  ctx.log.info("deadline.updated", { deadlineId: input.id });
 }
 
-async function transition(ctx: ServiceContext, id: string, patch: Record<string, unknown>, event: string): Promise<void> {
+async function transition(ctx: ServiceContext, id: string, action: repo.DeadlineTransition, event: string, reason?: string): Promise<void> {
   requireWrite(ctx);
-  await requireOpen(ctx, id);
-  // Guarda de corrida: só altera se continua OPEN.
-  if (!(await repo.updateIfStatus(ctx.db, id, "OPEN", patch))) throw invalidState("O prazo foi alterado por outra pessoa. Atualize a página.");
+  await repo.transition(ctx.db, id, action, reason);
   ctx.log.info(event, { deadlineId: id });
 }
 
-export async function updateDeadline(ctx: ServiceContext, input: UpdateDeadlineInput): Promise<void> {
-  await transition(ctx, input.id, deadlineUpdatePatch(input.patch), "deadline.updated");
+/** Cumprido. O banco grava a data, quem cumpriu e a auditoria. */
+export async function completeDeadline(ctx: ServiceContext, id: string): Promise<void> {
+  await transition(ctx, id, "COMPLETE", "deadline.completed");
 }
 
-/** Cumprido. `completed_at` = agora (o trigger também garante). */
-export async function completeDeadline(ctx: ServiceContext, id: string, now = new Date()): Promise<void> {
-  await transition(ctx, id, { status: "COMPLETED", completed_at: now.toISOString() }, "deadline.completed");
-}
-
-export async function cancelDeadline(ctx: ServiceContext, id: string): Promise<void> {
-  await transition(ctx, id, { status: "CANCELLED" }, "deadline.cancelled");
+/** Cancelado, com motivo. */
+export async function cancelDeadline(ctx: ServiceContext, input: CancelDeadlineInput): Promise<void> {
+  await transition(ctx, input.id, "CANCEL", "deadline.cancelled", input.reason);
 }
 
 /** Perda do prazo constatada por humano (MISSED). Diferente de "vencido", que é derivado. */
-export async function markDeadlineMissed(ctx: ServiceContext, id: string): Promise<void> {
-  await transition(ctx, id, { status: "MISSED" }, "deadline.missed");
+export async function markDeadlineMissed(ctx: ServiceContext, input: MissDeadlineInput): Promise<void> {
+  await transition(ctx, input.id, "MISS", "deadline.missed", input.reason);
+}
+
+/** Reabre prazo cumprido, cancelado ou perdido. Motivo obrigatório; fica na auditoria. */
+export async function reopenDeadline(ctx: ServiceContext, input: ReopenDeadlineInput): Promise<void> {
+  await transition(ctx, input.id, "REOPEN", "deadline.reopened", input.reason);
+}
+
+/** "Conferido": uma pessoa conferiu o prazo que o agente lançou. Grava quem e quando. */
+export async function markDeadlineChecked(ctx: ServiceContext, id: string): Promise<void> {
+  requireWrite(ctx);
+  await repo.markChecked(ctx.db, id);
+  ctx.log.info("deadline.checked", { deadlineId: id });
 }
