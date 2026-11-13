@@ -106,9 +106,9 @@ const INVALID_DATA = "Dados inválidos. Confira o que foi enviado.";
 /** O que o computador com conector antigo recebe (o conector mostra a mensagem como veio). */
 export function outdatedClientMessage(header: string | null): string {
   const v = parseExecutorVersion(header);
-  const atual = v ? `versão ${v.join(".")}` : "uma versão que o DG Brasil não reconhece";
+  const atual = v ? `está na versão ${v.join(".")}` : "não informou a versão (ou ela é antiga demais)";
   return (
-    `Este computador está com ${atual} do conector do DG Brasil, e a mínima aceita é a ${MIN_EXECUTOR_VERSION}. ` +
+    `O conector do DG Brasil neste computador ${atual}, e a mínima aceita é a ${MIN_EXECUTOR_VERSION}. ` +
     `Rode o instalador de novo neste computador: abra o PowerShell e cole  irm https://${HOSTS.OWNER}/executor/instalar.ps1 | iex`
   );
 }

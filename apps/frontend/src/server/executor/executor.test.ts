@@ -88,12 +88,14 @@ describe("API do computador do escritório", () => {
     const erro = (antigo.body as { error: { code: string; message: string } }).error;
     expect(erro.code).toBe("CLIENT_OUTDATED");
     expect(erro.message).toBe(
-      "Este computador está com versão 1.3.3 do conector do DG Brasil, e a mínima aceita é a 1.3.4. " +
+      "O conector do DG Brasil neste computador está na versão 1.3.3, e a mínima aceita é a 1.3.4. " +
         "Rode o instalador de novo neste computador: abra o PowerShell e cole  irm https://app.dgbrasil.adv.br/executor/instalar.ps1 | iex",
     );
     // Vale para qualquer rota, não só para a de identificação.
     expect((await send("GET", "jobs", undefined, { "x-dg-client": "dg-executor/1.2.0" })).status).toBe(426);
-    expect((await send("POST", `jobs/${JOB}/claim`, undefined, { "x-dg-client": "" })).status).toBe(426);
+    const semVersao = await send("POST", `jobs/${JOB}/claim`, undefined, { "x-dg-client": "" });
+    expect(semVersao.status).toBe(426);
+    expect((semVersao.body as { error: { message: string } }).error.message).toContain("não informou a versão (ou ela é antiga demais), e a mínima aceita é a 1.3.4.");
     expect(calls).toHaveLength(0);
     expect(log.warn).toHaveBeenCalledWith("executor_api", expect.objectContaining({ status: 426, code: "CLIENT_OUTDATED" }));
     expect((await send("GET", "me")).status).toBe(200);
