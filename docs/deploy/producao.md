@@ -379,8 +379,9 @@ acrescente:
   por vez, começando pela Clara.
 - **Na produção:**
   1. aplicar as migrations 051, 053 (cadastro completo e quem assina), 054
-     (kit básico: os clones já cadastrados no site) e 055 (forma de pagamento
-     do contrato no cadastro do cliente) no projeto de produção, **antes** de
+     (kit básico: os clones já cadastrados no site), 055 (forma de pagamento
+     do contrato no cadastro do cliente) e 056 (sequência automática: análise
+     aprovada chama o Lucas e a Alice) no projeto de produção, **antes** de
      publicar o site;
   2. rodar o instalador do conector de novo na máquina principal (versão 1.3.0);
   3. rodar o instalador dos clones a partir da pasta local `agentes/`

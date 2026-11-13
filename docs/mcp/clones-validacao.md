@@ -1,10 +1,14 @@
 # Agentes clonados: o que falta fazer e como validar
 
-**Para:** Barbara. **Situação em 12/11/2026:** os 13 agentes da esteira bancária
-foram clonados para o DG Brasil ([agentes/clonagem](../agentes/clonagem/README.md)).
-O código está no GitHub (banco, conector, site e agentes da ponte). Os arquivos
-dos clones ficam só no computador do escritório. **Nada foi instalado, aplicado
-no banco nem testado de verdade ainda.**
+**Para:** Barbara. **Situação em 12/11/2026, 22h:** a Parte A foi feita (053, 054
+e 055 aplicadas pela Barbara; instalação, cliente fictício e execução pelo Claude) e
+a Parte B rodou: resultado em [qa/clones/qa-clones.md](../qa/clones/qa-clones.md).
+**Falta:** aplicar a **056** (sequência automática) no DEV e a rodada curta do que
+ficou de fora (seção "O que não foi validado" do relatório).
+
+> **056 (sequência automática):** aplicar no DEV do mesmo jeito das outras. Depois
+> dela, aprovar a análise da Clara em Revisões põe o Lucas e a Alice na fila
+> sozinhos. Não muda nenhuma tela; o site funciona com ou sem ela.
 
 Este guia tem duas partes:
 

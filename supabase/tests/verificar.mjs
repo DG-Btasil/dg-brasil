@@ -129,9 +129,19 @@ await deve('kit básico [054]: rodar de novo não duplica e não mexe no que o e
   igual([r.n, r.clara], [KIT054.length, 'Clara editada no site'], 'sem duplicar, sem sobrescrever')
   igual((await um(db, `select count(*)::int n from agent_versions v join agents a on a.id = v.agent_id where a.slug = 'clara-hiscon-dg'`)).n, 1, 'uma versão')
 })
+await deve('sequência automática [056]: a Análise Bancária já sai com Lucas e depois Alice, cada um com o seu pedido', async () => {
+  const t = await um(db, `select (select array_agg(a.slug order by x.pos) from unnest(t.next_agent_ids) with ordinality x(id, pos)
+                                   join agents a on a.id = x.id) slugs, t.next_agent_requests req
+                            from analysis_templates t where t.name = 'Análise Bancária'`)
+  igual(t.slugs, ['lucas-procuracao-dg', 'alice-inicial-dg'], 'sequência')
+  const lucas = (await um(db, `select id from agents where slug = 'lucas-procuracao-dg'`)).id
+  const alice = (await um(db, `select id from agents where slug = 'alice-inicial-dg'`)).id
+  if (!/procuração, declaração de hipossuficiência e contrato de honorários/.test(t.req[lucas])) throw new Error('pedido do Lucas')
+  if (!/primeira rodada.*segunda rodada não está autorizada/s.test(t.req[alice])) throw new Error('pedido da Alice')
+})
 // Os testes seguintes montam os próprios agentes e supõem o banco sem agentes do kit (modelo sem agente, sem
-// orquestrador): o kit sai de cena, como se tivesse sido arquivado no site.
-await db.query(`update analysis_templates set primary_agent_id = null where name = 'Análise Bancária'`)
+// orquestrador, sem sequência automática): o kit sai de cena, como se tivesse sido arquivado no site.
+await db.query(`update analysis_templates set primary_agent_id = null, next_agent_ids = '{}', next_agent_requests = '{}' where name = 'Análise Bancária'`)
 await db.query(`update agents set slug = slug || '-kit054', status = 'INACTIVE', deleted_at = now() where slug = any($1)`, [KIT054])
 
 // ═════════════════════════════ cenário ═══════════════════════════════════
@@ -5784,6 +5794,152 @@ await deve('parceiro não vê a forma de pagamento: nem nos dados internos, nem 
 })
 await deveFalhar('parceiro não grava a forma de pagamento', () =>
   salvar(ids.almeidaAdm, ids.joao, { contract_payment_method: 'PIX_UPFRONT' }), /só altera contato e endereço/)
+
+// ═════════════════════════════ Sequência automática [056] ════════════════
+
+secao('Sequência automática: análise aprovada → próximos agentes do caso, na ordem [056]')
+// Agentes e modelos próprios (o kit saiu de cena no começo do arquivo).
+const agente056 = async (slug, status = 'ACTIVE') => {
+  const a = await um(db, `insert into agents (slug, name, status) values ($1, $2, 'DRAFT') returning id`, [slug, `Agente ${slug}`])
+  const v = await um(db, `insert into agent_versions (agent_id, instructions, configuration) values ($1, 'Teste 056', '{}') returning id`, [a.id])
+  await db.query(`update agents set current_version_id = $2, status = $3 where id = $1`, [a.id, v.id, status])
+  return a.id
+}
+const modelo056 = async (nome, proximos = [], pedidos = {}) => (await um(db,
+  `insert into analysis_templates (legal_area_id, name, primary_agent_id, next_agent_ids, next_agent_requests)
+   values ($1, $2, $3, $4, $5) returning id`, [ids.banking, nome, ids.clara056, proximos, JSON.stringify(pedidos)])).id
+// Análise enviada, reservada e entregue: a revisão do RESULTADO fica pendente.
+const analise056 = async (modelo) => {
+  const r = await iniciar(ids.lucas, randomUUID(), ids.casoA, modelo, {}, true, 'Analise o HISCON')
+  await reservar039(r.agent_run_id, 'worker-056')
+  const e = await entregarAnalise(r.agent_run_id, 'worker-056', 'Resumo da análise 056', resultado039)
+  return { analise: r.analysis_id, revisao: e.review_id, resultado: e.result_id }
+}
+const sequencia056 = (resultado) => linhas(db, `select r.agent_id, r.requested_by, r.legal_case_id, r.operation, r.status, i.request_text, i.parameters
+    from agent_runs r join agent_run_inputs i on i.agent_run_id = r.id
+   where i.parameters ->> 'legal_analysis_result_id' = $1 order by r.queue_msg_id`, [resultado])
+const atividade056 = (resultado) => linhas(db, `select action, metadata from audit_events
+   where entity_type = 'legal_cases' and entity_id = $1 and action like 'AUTO_SEQUENCE_%'
+     and metadata ->> 'legal_analysis_result_id' = $2 order by created_at, (metadata ->> 'position')::int`, [ids.casoA, resultado])
+ids.clara056 = await agente056('clara-056')
+ids.lucas056 = await agente056('lucas-056')
+ids.alice056 = await agente056('alice-056')
+ids.pausado056 = await agente056('pausado-056', 'INACTIVE')
+const pedidos056 = {
+  [ids.lucas056]: 'Gerar o kit do cliente (procuração, declaração de hipossuficiência e contrato de honorários).',
+  [ids.alice056]: 'Redigir as petições iniciais da primeira rodada a partir do roteiro da Clara na pasta do cliente. A segunda rodada não está autorizada neste pedido.',
+}
+await deve('modelo novo nasce sem sequência (lista e pedidos vazios)', async () => {
+  const t = await um(db, `insert into analysis_templates (legal_area_id, name) values ($1, 'Modelo 056 vazio') returning next_agent_ids, next_agent_requests`, [ids.banking])
+  igual([t.next_agent_ids, t.next_agent_requests], [[], {}], 'padrão')
+})
+await deveFalhar('sequência com agente que não existe é recusada', () =>
+  modelo056('Modelo 056 inválido', [randomUUID()]), /só aceita agentes cadastrados/)
+await deveFalhar('sequência com agente excluído é recusada', async () => {
+  const x = await agente056('excluido-056')
+  await db.query(`update agents set deleted_at = now() where id = $1`, [x])
+  await modelo056('Modelo 056 excluído', [x])
+}, /só aceita agentes cadastrados/)
+await deveFalhar('o mesmo agente duas vezes é recusado', () =>
+  modelo056('Modelo 056 repetido', [ids.lucas056, ids.lucas056]), /duas vezes/)
+await deveFalhar('pedido para agente que não está na lista é recusado', () =>
+  modelo056('Modelo 056 pedido solto', [ids.lucas056], { [ids.alice056]: 'x' }), /não está na lista/)
+await deveFalhar('pedido vazio é recusado', () =>
+  modelo056('Modelo 056 pedido vazio', [ids.lucas056], { [ids.lucas056]: '  ' }), /1 a 4000/)
+await deveFalhar('LAWYER não muda a sequência (só ADMIN edita modelo)', () =>
+  como(ids.lucas, async (tx) => {
+    const r = await tx.query(`update analysis_templates set next_agent_ids = $1 where name = 'Modelo 056 vazio'`, [[ids.lucas056]])
+    if (r.affectedRows === 0) throw new Error('nenhuma linha (RLS)')
+  }), /nenhuma linha|permission denied/)
+
+await deve('aprovar a revisão da análise enfileira Lucas e depois Alice, no mesmo caso, em nome de quem aprovou', async () => {
+  ids.tpl056 = await modelo056('Modelo 056', [ids.lucas056, ids.alice056], pedidos056)
+  const a = await analise056(ids.tpl056)
+  ids.a056 = a
+  igual((await sequencia056(a.resultado)).length, 0, 'nada antes da aprovação')
+  await decidir(ids.lucas, a.revisao, 'APPROVE')
+  igual((await um(db, `select status from reviews where id = $1`, [a.revisao])).status, 'APPROVED', 'aprovada')
+  igual((await um(db, `select status from legal_analyses where id = $1`, [a.analise])).status, 'COMPLETED', 'análise concluída')
+  const s = await sequencia056(a.resultado)
+  igual(s.map((r) => [r.agent_id, r.requested_by, r.legal_case_id, r.operation, r.status]),
+    [[ids.lucas056, ids.lucas, ids.casoA, 'EXECUTE', 'QUEUED'], [ids.alice056, ids.lucas, ids.casoA, 'EXECUTE', 'QUEUED']], 'na ordem')
+  igual(s.map((r) => r.request_text), [
+    'Sequência automática depois da análise aprovada: ' + pedidos056[ids.lucas056],
+    'Sequência automática depois da análise aprovada: ' + pedidos056[ids.alice056]], 'pedidos')
+  igual(s.map((r) => [r.parameters.sequencia_automatica, r.parameters.review_id, r.parameters.posicao]),
+    [['true', a.revisao, '1'], ['true', a.revisao, '2']], 'parâmetros')
+  const f = await um(db, `select count(*)::int n from pgmq.q_agent_execution q join agent_run_inputs i on (i.agent_run_id)::text = q.message ->> 'agent_run_id'
+    where i.parameters ->> 'legal_analysis_result_id' = $1`, [a.resultado])
+  igual(f.n, 2, 'duas mensagens na fila')
+  igual((await atividade056(a.resultado)).map((e) => [e.action, e.metadata.agent_id]),
+    [['AUTO_SEQUENCE_QUEUED', ids.lucas056], ['AUTO_SEQUENCE_QUEUED', ids.alice056]], 'atividade do caso')
+})
+await deve('reabrir e aprovar de novo (outra pessoa) não duplica as execuções', async () => {
+  await decidir(ids.barbara, ids.a056.revisao, 'REOPEN')
+  await decidir(ids.barbara, ids.a056.revisao, 'APPROVE')
+  const s = await sequencia056(ids.a056.resultado)
+  igual(s.map((r) => [r.agent_id, r.requested_by]), [[ids.lucas056, ids.lucas], [ids.alice056, ids.lucas]], 'as mesmas duas')
+  igual((await atividade056(ids.a056.resultado)).length, 2, 'sem registro novo')
+})
+await deve('agente pausado não entra (fica registrado na atividade); os outros seguem e a aprovação vale', async () => {
+  const tpl = await modelo056('Modelo 056 pausado', [ids.pausado056, ids.alice056])
+  const a = await analise056(tpl)
+  await decidir(ids.lucas, a.revisao, 'APPROVE')
+  igual((await um(db, `select status from reviews where id = $1`, [a.revisao])).status, 'APPROVED', 'aprovada')
+  const s = await sequencia056(a.resultado)
+  igual(s.map((r) => r.agent_id), [ids.alice056], 'só a Alice')
+  if (!s[0].request_text.startsWith('Sequência automática depois da análise aprovada: ')) throw new Error('pedido genérico sem o prefixo')
+  igual((await atividade056(a.resultado)).map((e) => [e.action, e.metadata.agent_id, e.metadata.reason ?? null]),
+    [['AUTO_SEQUENCE_SKIPPED', ids.pausado056, 'Agente pausado (INACTIVE)'], ['AUTO_SEQUENCE_QUEUED', ids.alice056, null]], 'atividade')
+})
+await deve('rejeitar ou pedir alterações não enfileira ninguém', async () => {
+  const a = await analise056(ids.tpl056)
+  await decidir(ids.lucas, a.revisao, 'REJECT', 'Extrato de outro cliente.')
+  igual((await sequencia056(a.resultado)).length, 0, 'rejeitada')
+  const b = await analise056(ids.tpl056)
+  await decidir(ids.lucas, b.revisao, 'REQUEST_CHANGES', 'Faltou o bloco D.')
+  igual((await sequencia056(b.resultado)).length, 0, 'alterações pedidas')
+})
+await deve('modelo sem sequência: aprovar funciona como antes, nenhuma execução nova', async () => {
+  const tpl = await modelo056('Modelo 056 sem sequência')
+  const a = await analise056(tpl)
+  const antes = (await um(db, `select count(*)::int n from agent_runs`)).n
+  await decidir(ids.lucas, a.revisao, 'APPROVE')
+  igual((await um(db, `select status from legal_analyses where id = $1`, [a.analise])).status, 'COMPLETED', 'análise concluída')
+  igual((await um(db, `select count(*)::int n from agent_runs`)).n, antes, 'execuções')
+  igual((await atividade056(a.resultado)).length, 0, 'atividade')
+})
+await deve('fila fora do ar: a aprovação vale mesmo assim; a falha fica na atividade do caso e avisa o ADMIN', async () => {
+  const a = await analise056(ids.tpl056)
+  await db.query(`alter table pgmq.q_agent_execution rename to q_agent_execution_fora_056`)
+  try {
+    await decidir(ids.lucas, a.revisao, 'APPROVE')
+  } finally {
+    await db.query(`alter table pgmq.q_agent_execution_fora_056 rename to q_agent_execution`)
+  }
+  igual((await um(db, `select status from reviews where id = $1`, [a.revisao])).status, 'APPROVED', 'aprovada')
+  igual((await um(db, `select status from legal_analyses where id = $1`, [a.analise])).status, 'COMPLETED', 'análise concluída')
+  igual((await sequencia056(a.resultado)).length, 0, 'nenhuma execução pela metade')
+  const ev = await atividade056(a.resultado)
+  igual(ev.map((e) => [e.action, e.metadata.agent_id]), [['AUTO_SEQUENCE_FAILED', ids.lucas056], ['AUTO_SEQUENCE_FAILED', ids.alice056]], 'falhas registradas')
+  if (!ev.every((e) => typeof e.metadata.error === 'string' && e.metadata.error.length > 0)) throw new Error('falha sem o motivo')
+  const n = await linhas(db, `select user_id from notifications where type = 'AGENT_RUN_ATTENTION' and event_key like $1`, [`auto-sequence-failed:${a.resultado}:%`])
+  igual([n.length, n.every((x) => x.user_id === ids.barbara)], [2, true], 'aviso ao ADMIN (quem aprovou não se avisa)')
+  // Com a fila de volta, reabrir e aprovar enfileira o que faltou.
+  await decidir(ids.lucas, a.revisao, 'REOPEN')
+  await decidir(ids.lucas, a.revisao, 'APPROVE')
+  igual((await sequencia056(a.resultado)).map((r) => r.agent_id), [ids.lucas056, ids.alice056], 'recuperado')
+})
+await deve('funções da 056 fixam search_path e ninguém as chama de fora (só o gatilho)', async () => {
+  const r = await linhas(db, `select p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef d,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('authenticated', p.oid, 'execute') usr,
+      has_function_privilege('service_role', p.oid, 'execute') srv, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1)`,
+  [['analysis_templates_validate_sequence', 'analysis_sequence_enqueue', 'reviews_analysis_sequence']])
+  igual(r.length, 3, 'funções')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || !x.d || x.anon || x.usr || x.srv || x.wrk).map((x) => x.f), [], 'permissões')
+})
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
 

@@ -1,43 +1,74 @@
 %PDF-1.4
+%“Œ‹ž ReportLab Generated PDF document (opensource)
 1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
+<<
+/F1 2 0 R /F2 3 0 R
+>>
 endobj
 2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+<<
+/BaseFont /Helvetica /Encoding /WinAnsiEncoding /Name /F1 /Subtype /Type1 /Type /Font
+>>
 endobj
 3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+<<
+/BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding /Name /F2 /Subtype /Type1 /Type /Font
+>>
 endobj
 4 0 obj
-<< /Length 487 >>
-stream
-BT /F1 9 Tf 40 800 Td 13 TL
-(COMPROVANTE DE RESIDÊNCIA \(DOCUMENTO FICTÍCIO DE TESTE\)) Tj T*
-() Tj T*
-(Companhia de Energia Fictícia S.A. - Conta de luz) Tj T*
-(Titular: JOSÉ DA SILVA FICTÍCIO) Tj T*
-(CPF: 999.000.000-01 \(fictício\)) Tj T*
-(Endereço: Rua das Flores Fictícias, 100 - Centro) Tj T*
-(Petrópolis/RJ - CEP 25600-000) Tj T*
-(Referência: 10/2026 - Vencimento: 10/11/2026) Tj T*
-() Tj T*
-(Documento inventado para validar o DG Brasil. Não corresponde a pessoa real.) Tj T*
-ET
-endstream
+<<
+/Contents 8 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 7 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
 endobj
 5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+<<
+/PageMode /UseNone /Pages 7 0 R /Type /Catalog
+>>
+endobj
+6 0 obj
+<<
+/Author (DG Brasil \(teste\)) /CreationDate (D:20261112015141-03'00') /Creator (\(unspecified\)) /Keywords () /ModDate (D:20261112015141-03'00') /Producer (ReportLab PDF Library - \(opensource\)) 
+  /Subject (\(unspecified\)) /Title (comprovante-residencia-ficticio.pdf) /Trapped /False
+>>
+endobj
+7 0 obj
+<<
+/Count 1 /Kids [ 4 0 R ] /Type /Pages
+>>
+endobj
+8 0 obj
+<<
+/Filter [ /ASCII85Decode /FlateDecode ] /Length 719
+>>
+stream
+GatUp6$&ML&;BTK(%7N3)Hd+eCu5N<*G8:1@[[rHNNK!uCd`uJ6[sMcfLb@%1<hYqJ4:'f[r6I:_!)F/FgVCU8dqQu,!^DY&[;W'%C5Qkf@a#XRInqk36rd;^DJWmmbY]$NiS3dMhXhrKG!62`jEZ"kEA%,r\^133Ms-iX?n)Z=cPpK,Ug!1R:27gnc`)`ZCK`)/54Yuh0hakKlO=ScI04FG3.mK(d.#AFf%O^4IB`Yf=#0S'bCi..ZD;oh.VTPPWr#oo'kNbX@L32Z(Y&>67aS(+BE"Xah3s9UYuJAs'Qa1KY:1(].mc"`@;-a0@r0Zo<4&r^J3iSO:4RdS4tEO@%PXV<,Vn8&,)\u(QXrMVp"e`YB,J^nUGLJ#B%[;5GXDs/3WlUC:C<_Iaf9OK<-fqSqb^?[AuVC=#=6hK]*QC-"m04S,Mdh-XUNWli/nB=mu&'mDcZ]QXl2n,QUo^D/s)gTAXfG*FgoMY;l:>-(!]_h%RPO2Y:ii22XTU@+ME=1K8"l*M_8N8\2h3:m$5F8Mr"XpJ+VG3d\YLR%:9E't/9aGD"o/bLlrJ<'D#Ahn^@h+)neFGD6*.ck,0'oKg7pF^Vg=1q=o7gC$@?g,k*cqM7%m_uD#^n-Co<M7D^dL+M=`o>aUpf[[\@Gj]CTg1fI6oiaH0I[b;fX#CH.8jR-qZAtGn/S,)(D81;1)80HSSTXds@jF&2"0`@uMu~>endstream
 endobj
 xref
-0 6
+0 9
 0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000241 00000 n 
-0000000778 00000 n 
+0000000061 00000 n 
+0000000102 00000 n 
+0000000209 00000 n 
+0000000321 00000 n 
+0000000524 00000 n 
+0000000592 00000 n 
+0000000900 00000 n 
+0000000959 00000 n 
 trailer
-<< /Size 6 /Root 1 0 R >>
+<<
+/ID 
+[<e73256ffc8e0ccb3284cc38584e84632><e73256ffc8e0ccb3284cc38584e84632>]
+% ReportLab generated PDF document -- digest (opensource)
+
+/Info 6 0 R
+/Root 5 0 R
+/Size 9
+>>
 startxref
-875
+1768
 %%EOF

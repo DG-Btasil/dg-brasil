@@ -115,6 +115,9 @@ etapas, tags nem funil.
   arquivos intermediários ficam em `C:\DGBrasil\agentes\trabalho\<pasta do
   cliente>\`.
 - **Scripts:** os mesmos, pelo caminho `C:\DGBrasil\agentes\scripts\<arquivo>`.
+- **Leitura de arquivos:** sempre com as ferramentas Read, Grep e Glob. A sessão do DG Brasil
+  bloqueia comando de terminal para ler ou listar arquivo; o terminal só roda os scripts
+  (achado da validação de 12/11/2026: o Murilo tentou abrir as bases pelo terminal).
 - **Modelos e bases de conhecimento do escritório no `G:`** (pastas de modelos,
   Lives, `JURISPRUDENCIAS_VERIFICADAS_*.md`): o clone **lê os mesmos**. Não lê
   pasta de cliente do escritório. Jurisprudência nova conferida é gravada na

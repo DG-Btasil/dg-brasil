@@ -38,6 +38,7 @@ class FakeDg {
   enabled = true
   docBody: Buffer = HISCON
   docTitle = 'HISCON'
+  docSource = 'UPLOAD'
   /** "Verificar agora" (052): pedido pendente e quantas consultas chegaram. */
   wakePendente = false
   wakeConsultas = 0
@@ -94,7 +95,7 @@ class FakeDg {
         case 'heartbeat': return send(200, { ok: true, status: 'RUNNING', cancel_requested: job.cancel })
         case 'config': return send(200, { recorded: true })
         case 'case': return send(200, { id: 'c1', cliente: 'José Fictício' })
-        case 'documents': return send(200, { documents: [{ document_id: 'd1', title: this.docTitle, category: 'BENEFIT_STATEMENT', version_id: v1, version_number: 1, filename: 'hiscon.pdf', mime_type: 'application/pdf', size: this.docBody.length, checksum_sha256: sha(this.docBody) }] })
+        case 'documents': return send(200, { documents: [{ document_id: 'd1', title: this.docTitle, category: 'BENEFIT_STATEMENT', version_id: v1, version_number: 1, filename: 'hiscon.pdf', mime_type: 'application/pdf', size: this.docBody.length, checksum_sha256: sha(this.docBody), source: this.docSource }] })
         case `documents/${v1}/download`: return send(200, { url: `${this.url}/files/${v1}`, filename: '..\\..\\hiscon.pdf', size: this.docBody.length, checksum_sha256: sha(this.docBody), title: this.docTitle, category: 'BENEFIT_STATEMENT', version_number: 1 })
         case 'bridge': return send(200, this.bridge)
         case 'analysis': this.analyses.push(body.result); return send(200, { result_id: 'r1', review_id: 'rv1', created: this.analyses.length === 1 })
@@ -126,7 +127,7 @@ afterAll(() => new Promise<void>((r) => dg.server.close(() => r())))
 beforeEach(async () => {
   pasta = await mkdtemp(join(tmpdir(), 'dg-executor-'))
   dg.enabled = true; dg.corruptDownload = false; dg.analyses = []; dg.proposals = []; dg.finalized = []
-  dg.docBody = HISCON; dg.docTitle = 'HISCON'
+  dg.docBody = HISCON; dg.docTitle = 'HISCON'; dg.docSource = 'UPLOAD'
   dg.bridge = { cliente: { id: 'cli-1', nome: 'José da Silva Fictício', profissao: 'aposentado', estado_civil: 'casado(a)', email: null }, pasta_drive: { id: 'pastaFicticia_0001', nome: 'JOSE DA SILVA FICTICIO' } }
   antivirus = 'limpo'
   trabalhos = new Trabalhos(new DgApi(dg.url, TOKEN, 'dg-executor/test'), pasta, logMudo, 40)
@@ -324,9 +325,13 @@ describe('servidor MCP do DG Brasil', () => {
     expect(await readdir(pasta)).toEqual([])
   })
 
-  it('pastas de sessão anterior são apagadas ao iniciar', async () => {
-    await import('node:fs/promises').then((fs) => fs.mkdir(join(pasta, randomUUID(), 'entrada'), { recursive: true }))
-    expect(await trabalhos.limparSobras()).toBe(1)
+  it('pastas de sessão anterior são apagadas ao iniciar, mas não as recentes (outra sessão pode estar nelas)', async () => {
+    const id = randomUUID()
+    await import('node:fs/promises').then((fs) => fs.mkdir(join(pasta, id, 'entrada'), { recursive: true }))
+    expect(await trabalhos.limparSobras()).toBe(0)
+    expect(await readdir(pasta)).toEqual([id])
+    // Parada há mais de 24 horas: é sobra.
+    expect(await trabalhos.limparSobras(24 * 60 * 60 * 1000, Date.now() + 25 * 60 * 60 * 1000)).toBe(1)
     expect(await readdir(pasta)).toEqual([])
   })
 })
@@ -470,6 +475,20 @@ describe('ponte com os agentes da máquina', () => {
     expect(t.texto).toContain('- COMPLETAR: Data da intimação (lacuna no item 1 da peça)')
     expect(t.texto).toContain('- DECIDIR: Pedir ou não a perícia grafotécnica')
     expect(t.texto).not.toContain('Um aviso que não vira pendência')
+  })
+
+  it('Arquivista não copia de volta o que um agente já entregou (origem AGENT)', async () => {
+    dg.docSource = 'AGENT'; dg.docTitle = 'Roteiro de ações (Clara)'
+    dg.docBody = Buffer.from('PK minuta que o Porteiro não lê')
+    const j = await ate('ver')
+    const v = await chamar('verificar_arquivos', { trabalho_id: j.id })
+    expect(v.texto).toContain('DE AGENTE')
+    // O Porteiro não precisa pôr o arquivo de agente no porteiro.json.
+    await writeFile(join(pasta, j.id, 'saida', 'porteiro.json'), JSON.stringify({ arquivos: [{ arquivo: 'outro.pdf', resultado: 'liberado' }] }))
+    const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+    expect(c.erro, c.texto).toBe(false)
+    expect(c.texto).toContain('não copiado (entregue por um agente')
+    expect((await readdir(join(kit, 'JOSE DA SILVA FICTICIO'))).sort()).toEqual(['DADOS DO CADASTRO.txt', 'DADOS DO ESCRITORIO.txt'])
   })
 
   it('agentes clonados: cliente sem nome válido no cadastro não ganha pasta', async () => {

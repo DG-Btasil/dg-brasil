@@ -78,6 +78,21 @@ Não são do DG Brasil e já acontecem hoje:
 - **Isolamento da sessão:** na FASE 0 do "Verificar agora", o servidor
   `claude-in-chrome` apareceu numa sessão aberta com `--strict-mcp-config`.
   Conferir se ele também carrega na Vigia e, se carregar, bloquear no `deny`.
+- **Tela da sequência automática** (056,
+  [clonagem](../agentes/clonagem/README.md#sequência-automática-decisão-de-12112026)):
+  hoje os agentes que entram depois da análise aprovada (e o pedido de cada
+  um) só se configuram pelo banco. Pôr ao lado de onde já se escolhe o agente
+  da análise (DG Brasil → Agentes → Visão geral).
+- **Disco do banco de teste (Supabase DEV):** em 12/11/2026 o Supabase avisou que o
+  projeto DEV está gastando o orçamento de leitura e gravação de disco. Olhar o
+  consumo por hora no painel e reduzir: o intervalo do comando de espera da Vigia
+  (052), a sincronização do DataJud que tenta de novo os processos com erro (285 no
+  DEV) e as rotinas do `pg_cron`. Na produção, dimensionar a máquina do banco antes
+  de ligar a Vigia o dia todo.
+- **Tela da atividade do caso:** os eventos da sequência automática
+  (`AUTO_SEQUENCE_*`) aparecem com o nome técnico em inglês.
+- **Gênero no cadastro do cliente:** a procuração do Lucas sai "brasileira" para
+  cliente homem quando o cadastro não traz o gênero.
 
 ## 6. Distribuição dos agentes do kit: botão "Setup" no site (PRIORIDADE)
 

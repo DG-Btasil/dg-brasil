@@ -225,7 +225,7 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
         throw e
       }
       t.baixados++
-      t.documentos.set(basename(destino), { categoria: d.category, titulo: d.title, versao_id: d.version_id })
+      t.documentos.set(basename(destino), { categoria: d.category, titulo: d.title, versao_id: d.version_id, origem: d.source ?? null })
       linhas.push(`- ${d.title} (${d.category}, v${d.version_number}) → ${destino}${link.checksum_sha256 ? ' · conferido' : ' · sem checksum registrado'}`)
     }
     return texto(`${alvo.length} documento(s) em ${t.pastas.entrada}:\n${linhas.join('\n')}`)

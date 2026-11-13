@@ -42,6 +42,8 @@ export interface DocumentoDoCaso {
   mime_type: string | null
   size: number | null
   checksum_sha256: string | null
+  /** De onde veio a versão: UPLOAD, AGENT (entregue por um agente), MANUAL_EDIT, IMPORT, EXTERNAL. */
+  source?: string | null
 }
 
 type Metodo = 'GET' | 'POST'

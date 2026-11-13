@@ -26,6 +26,9 @@ Chame `verificar_arquivos` com o id do trabalho. Ela confere o tipo real de cada
 arquivo, PDF com JavaScript ou ação automática, Office com macro, tamanho e o
 antivírus do Windows, e grava `saida\porteiro-script.json`.
 
+- Arquivo marcado **DE AGENTE** (entregue por um agente do DG Brasil: roteiro, kit,
+  minuta): não leia e não ponha no `porteiro.json`. Ele não vai para a pasta do
+  cliente.
 - Algum arquivo saiu **SUSPEITO** ou **RECUSADO**: **pare aqui**. Não precisa ler.
   Grave o `saida\porteiro.json` (passo 3) com esse resultado e responda à sessão
   qual arquivo e o motivo que a ferramenta deu.

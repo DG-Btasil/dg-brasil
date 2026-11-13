@@ -126,7 +126,13 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     if (!t.documentos.size) return erro('Nenhum documento baixado neste trabalho. Chame baixar_documentos antes.')
     const cfg = await lerPonte(arquivoPonte())
     const checagens = new Map<string, ChecagemArquivo>()
-    for (const nome of t.documentos.keys()) {
+    for (const [nome, d] of t.documentos) {
+      // Entregue por um agente do DG Brasil (roteiro, kit, minuta): não vai para a pasta do cliente (o Arquivista
+      // não copia), então não passa pelo Porteiro. Antes, a minuta .docx que o Porteiro não lê parava o trabalho.
+      if (d.origem === 'AGENT') {
+        checagens.set(nome, { arquivo: nome, sha256: '', tamanho: 0, tipo: 'DE AGENTE', resultado: 'liberado', motivos: ['entregue por um agente do DG Brasil: não é lido nem copiado'] })
+        continue
+      }
       checagens.set(nome, await checarArquivo(join(t.pastas.entrada, nome), nome, cfg?.antivirus === false ? null : antivirus))
     }
     p.checagens = checagens
@@ -174,6 +180,7 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     }
     const veredito = new Map(leituraPorteiro.arquivos.map((x) => [x.arquivo, x]))
     for (const [nome, ch] of p.checagens) {
+      if (t.documentos.get(nome)?.origem === 'AGENT') continue
       const v = veredito.get(nome)
       if (ch.resultado !== 'liberado' || !v || v.resultado !== 'liberado') {
         throw new ErroPonte('PORTEIRO', `O Porteiro não liberou ${nome}${v ? ` (${v.resultado}${v.motivo ? `: ${v.motivo}` : ''})` : ' (não está no porteiro.json)'}. ` +
@@ -182,7 +189,12 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     }
 
     // 2. O que copiar, com que nome e onde.
-    const pedidos: Array<{ arquivo: string; nome?: string; subpasta?: string }> = a.arquivos?.length ? a.arquivos : [...t.documentos.keys()].map((arquivo) => ({ arquivo }))
+    // Sem lista: todos os documentos baixados, MENOS os que um agente entregou (roteiro, kit, minutas). Eles
+    // nasceram na pasta do cliente; copiá-los de volta duplicava os arquivos com o título como nome.
+    const deAgente = [...t.documentos].filter(([, d]) => d.origem === 'AGENT').map(([arquivo]) => arquivo)
+    const pedidos: Array<{ arquivo: string; nome?: string; subpasta?: string }> = a.arquivos?.length
+      ? a.arquivos
+      : [...t.documentos.keys()].filter((arquivo) => !deAgente.includes(arquivo)).map((arquivo) => ({ arquivo }))
     const planos: Array<{ origem: string; nome: string; sha256: string; subpasta: string | null }> = []
     for (const x of pedidos) {
       const doc = t.documentos.get(x.arquivo)
@@ -239,6 +251,9 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
       await copyFile(pl.origem, destino, constants.COPYFILE_EXCL)
       const gravado = basename(destino)
       linhas.push(`- ${pl.subpasta ? `${pl.subpasta}\\` : ''}${gravado}${gravado === pl.nome ? '' : `  (já havia ${pl.nome}: os agentes usam o de número maior)`}`)
+    }
+    if (!a.arquivos?.length) {
+      for (const arquivo of deAgente) linhas.push(`- ${arquivo}: não copiado (entregue por um agente; já está na pasta do cliente)`)
     }
     if (c.conf.dados_do_cadastro) {
       // Arquivos GERADOS (não são documento do cliente): são regravados a cada trabalho, com o cadastro de agora.

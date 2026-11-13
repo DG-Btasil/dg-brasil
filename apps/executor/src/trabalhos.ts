@@ -1,9 +1,18 @@
-import { readdir } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DgApi, ErroApi, type Contexto } from './api.js'
 import { apagarPasta, criarPastas, type PastasTrabalho } from './arquivos.js'
 import type { Log } from './log.js'
 import type { ChecagemArquivo, DadosPonte, PastaDoCliente } from './ponte.js'
+
+/** Hora da última mudança na pasta do trabalho (ela e as pastas entrada e saida, onde os arquivos entram). */
+async function ultimaMudanca(raiz: string): Promise<number> {
+  let maior = 0
+  for (const p of [raiz, join(raiz, 'entrada'), join(raiz, 'saida')]) {
+    try { maior = Math.max(maior, (await stat(p)).mtimeMs) } catch { /* não existe */ }
+  }
+  return maior
+}
 
 /**
  * Os trabalhos que ESTA sessão do Claude Code reservou. O token de reserva
@@ -27,7 +36,7 @@ export interface Trabalho {
   entregas: number
   timer: NodeJS.Timeout
   /** Documentos baixados para entrada: nome do arquivo → categoria e título no DG Brasil. */
-  documentos: Map<string, { categoria: string; titulo: string; versao_id: string }>
+  documentos: Map<string, { categoria: string; titulo: string; versao_id: string; origem?: string | null }>
   /** Ponte (docs/ponte.md): definido por ver_ponte quando o agente passa pela ponte. */
   ponte: EstadoPonte | null
 }
@@ -54,15 +63,20 @@ export class Trabalhos {
     private readonly intervaloMs = 60_000,
   ) {}
 
-  /** Pastas que sobraram de sessão anterior (reserva já perdida): apaga. */
-  async limparSobras(): Promise<number> {
+  /**
+   * Pastas que sobraram de sessão anterior (reserva já perdida): apaga, mas só as paradas há mais de
+   * `idadeMinimaMs`. Outra sessão no mesmo computador (a Vigia e a "DG Brasil - Sessão" abertas juntas)
+   * pode estar trabalhando numa pasta recente; apagá-la derrubava o trabalho dela (validação de 12/11/2026).
+   */
+  async limparSobras(idadeMinimaMs = 24 * 60 * 60 * 1000, agora = Date.now()): Promise<number> {
     let n = 0
     try {
       for (const nome of await readdir(this.pastaTrabalhos)) {
-        if (/^[0-9a-f-]{36}$/i.test(nome) && !this.ativos.has(nome)) {
-          await apagarPasta(join(this.pastaTrabalhos, nome))
-          n++
-        }
+        if (!/^[0-9a-f-]{36}$/i.test(nome) || this.ativos.has(nome)) continue
+        const raiz = join(this.pastaTrabalhos, nome)
+        if (agora - (await ultimaMudanca(raiz)) < idadeMinimaMs) continue
+        await apagarPasta(raiz)
+        n++
       }
     } catch { /* pasta ainda não existe */ }
     return n

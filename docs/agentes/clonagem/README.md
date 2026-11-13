@@ -86,6 +86,50 @@ Carlos), e o que se aproveitou deles no Porteiro e no orquestrador:
     (conferência de qualidade dos documentos) e no orquestrador (qual agente
     atende cada despacho).
 
+## Sequência automática (decisão de 12/11/2026)
+
+A dona pediu menos cliques: "concordo com qualquer decisão que deixe a esteira
+mais automática, desde que documentada". Desde a migration 056
+(`supabase/migrations/20261112000056_sequencia_automatica.sql`, **escrita e
+testada, não aplicada**), o caminho fica assim.
+
+**O que acontece sozinho:**
+
+1. **Análise iniciada → Clara.** Quem inicia a Análise Bancária no caso já põe
+   a Clara para trabalhar.
+2. **Tarefa do processo → orquestrador.** A tarefa escrita na lista de afazeres
+   do processo vai para o orquestrador, que escolhe o agente.
+3. **Análise aprovada → Lucas e Alice.** Quando o advogado aprova em Revisões a
+   análise da Clara, o Lucas (kit do cliente: procuração, declaração de
+   hipossuficiência e contrato de honorários) e a Alice (petições iniciais da
+   primeira rodada, a partir do roteiro da Clara) entram na fila do mesmo caso,
+   nessa ordem, em nome de quem aprovou. Um não espera o outro terminar.
+
+**Regras:**
+
+- Dispara mesmo quando a análise conclui que não há ação: o resultado não traz
+  um campo seguro de "sem viabilidade". O Lucas e a Alice registram o "sem
+  ação" na ficha de revisão, e o advogado decide em Revisões, como sempre.
+- Aprovar de novo a mesma análise (reabrir e aprovar) não repete o trabalho.
+- Rejeitar ou pedir alterações não chama ninguém.
+- Agente pausado não recebe o trabalho, e isso fica anotado na aba Atividade
+  do caso.
+- A aprovação nunca falha por causa da sequência. Se der erro ao pôr um agente
+  na fila, a aprovação vale, o erro fica na aba Atividade do caso e os
+  administradores recebem um aviso para pedir à mão em "Executar em um caso".
+  Reabrir e aprovar de novo também tenta outra vez.
+
+**O que continua manual:** iniciar a análise no caso; aprovar, editar ou
+rejeitar tudo em Revisões; a segunda rodada de iniciais da Alice (só sai com
+pedido expresso); escrever as tarefas do processo (réplica, provas, recurso
+etc.); mandar o kit para o cliente assinar e protocolar qualquer peça.
+
+**Como mudar a sequência:** por enquanto, só pelo banco (peça ao suporte
+técnico). Cada modelo de análise guarda a lista de agentes, na ordem, e o
+pedido em texto de cada um (`next_agent_ids` e `next_agent_requests` em
+`analysis_templates`). Lista vazia = nada acontece depois da aprovação. A tela
+para configurar isso está no [pós-MVP](../../deploy/pos-mvp.md), item 5.
+
 ## O que foi feito
 
 | Parte | Onde | Situação |
