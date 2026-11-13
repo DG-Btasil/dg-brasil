@@ -15,7 +15,7 @@ import { createAgreementAction } from "@/server/domain/finance/actions";
 import type { FeeModelDTO } from "@/server/domain/finance/dto";
 import { useToast } from "@/store/ui-store";
 import { searchFinanceProcesses } from "../process-picker";
-import { agreementCreateInput, feeTermsFromModel, type AgreementValues, type FeeTermsValues } from "../server-input";
+import { agreementCreateInput, feeTermsErrors, feeTermsFromModel, type AgreementValues, type FeeTermsValues } from "../server-input";
 
 const TERM_FIELDS: { key: keyof FeeTermsValues; label: string; placeholder: string; numeric?: boolean }[] = [
   { key: "upfrontFee", label: "Entrada (R$)", placeholder: "0,00" },
@@ -30,8 +30,8 @@ const FIELD_MAP: Record<string, string> = { legalProcessId: "legalProcessId" };
 /**
  * Contrato de honorários de um PROCESSO (046; createAgreementAction, chave por
  * intenção). O modelo preenche os termos; "Personalizar" libera a edição. Sem
- * termos e com modelo, o SERVIDOR copia os termos do modelo. As obrigações
- * (parcelas) são registradas depois, na gaveta do contrato.
+ * termos e com modelo, o SERVIDOR copia os termos do modelo. As parcelas são
+ * registradas depois, na gaveta do contrato.
  *
  * Vindo de um caso (`caseProcesses`), pergunta qual processo dele; sem
  * processo pré-escolhido, busca no servidor.
@@ -74,8 +74,11 @@ export function AgreementForm({
   }
 
   async function submit() {
-    if (!process) {
-      setErrors({ legalProcessId: "Selecione o processo." });
+    // Formato primeiro: valor digitado errado ("1500.00") não pode sumir e virar contrato sem valor.
+    const problems: Record<string, string> = { ...feeTermsErrors(values) };
+    if (!process) problems.legalProcessId = "Selecione o processo.";
+    if (!process || Object.keys(problems).length > 0) {
+      setErrors(problems);
       return;
     }
     const payload = agreementCreateInput(process.id, values);
@@ -89,7 +92,7 @@ export function AgreementForm({
       return;
     }
     idempotency.reset();
-    toast({ tone: "success", title: values.activate ? "Contrato criado e ativado" : "Contrato criado em rascunho", description: "Registre as obrigações na gaveta do contrato." });
+    toast({ tone: "success", title: values.activate ? "Contrato criado e ativado" : "Contrato criado em rascunho", description: "Abra o contrato e registre as parcelas." });
     onCreated(process.id);
   }
 

@@ -66,11 +66,13 @@ describe("lista por processo ↔ URL ↔ schema real", () => {
 
 describe("lista de despesas ↔ URL ↔ schema real", () => {
   it("ida e volta; valores inválidos caem no padrão", () => {
-    const q = { category: "HEARING" as const, status: "OPEN" as const, page: 2 };
-    expect(params(expenseQueryToSearchParams(q))).toEqual({ categoria: "HEARING", situacao: "a-pagar", pagina: "2" });
+    const q = { category: "HEARING" as const, status: "OPEN" as const, from: "2026-10-01", to: "2026-10-31", page: 2 };
+    expect(params(expenseQueryToSearchParams(q))).toEqual({ categoria: "HEARING", situacao: "a-pagar", de: "2026-10-01", ate: "2026-10-31", pagina: "2" });
     expect(expenseQueryFromSearchParams(params(expenseQueryToSearchParams(q)))).toEqual(q);
-    expect(expenseQueryFromSearchParams({ categoria: "LUNCH", situacao: "OPEN" })).toEqual(DEFAULT_EXPENSE_QUERY);
-    expect(listExpensesSchema.parse(expenseQueryToInput(q, { processId: UUID }))).toMatchObject({ processId: UUID, category: "HEARING", status: "OPEN", column: "incurred_on" });
+    expect(expenseQueryFromSearchParams({ categoria: "LUNCH", situacao: "OPEN", de: "2026-02-30", ate: "ontem" })).toEqual(DEFAULT_EXPENSE_QUERY);
+    expect(listExpensesSchema.parse(expenseQueryToInput(q, { processId: UUID }))).toMatchObject({ processId: UUID, category: "HEARING", status: "OPEN", from: "2026-10-01", to: "2026-10-31", column: "incurred_on" });
+    // Período ao contrário é recusado no servidor (a tela nem consulta).
+    expect(listExpensesSchema.safeParse({ from: "2026-11-01", to: "2026-10-01" }).success).toBe(false);
   });
 });
 
@@ -79,8 +81,10 @@ describe("formulário de despesa → schemas reais", () => {
     const values = { ...expenseToValues(undefined, "2026-10-10"), category: "COURT_COSTS" as const, description: " Custas ", amount: "1.234,56", supplier: " " };
     const input = expenseCreateInput(UUID, values);
     expect(input).not.toHaveProperty("legalCaseId");
-    expect(createExpenseSchema.parse(input)).toEqual({ processId: UUID, category: "COURT_COSTS", description: "Custas", amount: 1234.56, incurredOn: "2026-10-10", reimbursable: false });
-    expect(createExpenseSchema.parse(expenseCreateInput(UUID, { ...values, paid: true, paidOn: "2026-10-10" })).paidOn).toBe("2026-10-10");
+    // A chave do envio é acrescentada pelo diálogo (uma por intenção de envio).
+    expect(createExpenseSchema.safeParse(input).success).toBe(false);
+    expect(createExpenseSchema.parse({ ...input, idempotencyKey: UUID })).toEqual({ processId: UUID, idempotencyKey: UUID, category: "COURT_COSTS", description: "Custas", amount: 1234.56, incurredOn: "2026-10-10", reimbursable: false });
+    expect(createExpenseSchema.parse({ ...expenseCreateInput(UUID, { ...values, paid: true, paidOn: "2026-10-10" }), idempotencyKey: UUID }).paidOn).toBe("2026-10-10");
   });
 
   it("PATCH: desmarcar 'já paga' volta para a pagar (null); vazio limpa", () => {

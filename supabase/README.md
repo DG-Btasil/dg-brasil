@@ -184,6 +184,16 @@ origem Bárbara continua vendo o caso, sem parceria financeira.
 - `payment_balances` (view) deriva recebido, saldo e status: PENDING, PARTIAL,
   PAID, OVERDUE (vencida com saldo, no fuso de São Paulo), CANCELLED (`cancelled_at`).
 - `financial_agreements` mantém ciclo de vida próprio (DRAFT → ACTIVE → COMPLETED/CANCELLED).
+  Concluído ou cancelado só muda por **reabertura** (064): volta a ACTIVE, com motivo
+  (`reopened_at`, `reopened_by`, `reopen_reason`), só ADMIN, auditado
+  (`FINANCIAL_AGREEMENT_REOPENED`); os termos continuam congelados.
+- **Todo lançamento exige contrato ACTIVE** (064): recebimento, estorno e ajuste. Para
+  estornar depois de concluir, reabre-se o contrato. Assim contrato concluído ou
+  cancelado nunca fica com parcela em aberto.
+- **Ajuste para menos** exige o lançamento que ele corrige (`original_receipt_id`): a
+  parte do parceiro sai da mesma divisão do recebimento corrigido (064).
+- **Cancelar obrigação com recebimento líquido** é recusado pela guarda (064), não só
+  pelo painel.
 - **Snapshot de parceria** (`case_partnership_agreements`) nasce no aceite de
   caso com origem parceiro e é imutável. Troca de origem **cancela** o ativo
   (`cancelled_at`, `cancelled_by`, `cancellation_reason`) e, se a nova origem for
@@ -198,6 +208,16 @@ origem Bárbara continua vendo o caso, sem parceria financeira.
 - **Repasses:** PENDING → PAID → CANCELLED (com motivo) ou PENDING → CANCELLED.
   Repasse cancelado fica no histórico e **não consome** saldo
   (`private.allocation_available_amount`, view `partner_allocation_balances`).
+  `create_partner_transfer` recusa valor acima da soma **líquida** das divisões do
+  parceiro, contando as negativas (repasse de um recebimento depois estornado);
+  restrito a um caso, vale o menor entre o líquido do caso e o do parceiro (064).
+- **Listas e totais no banco** (064, views `security_invoker`): `finance_agreement_list`
+  (contratos com cliente, totais e próximo vencimento), `finance_receipt_statement` +
+  `finance_receipt_statement_totals` (extrato por período, dia de São Paulo),
+  `finance_receivables` + `finance_receivables_totals` (parcelas em aberto) e
+  `finance_summary` (totais da visão geral: a mesma conta de `process_finance_totals`,
+  com o que fica fora dela em `outside`).
+- `process_expenses.idempotency_key`: única por autor, como nas demais tabelas (064).
 - Os triggers financeiros conferem ADMIN **antes** de qualquer regra: trigger
   roda antes do WITH CHECK da RLS, e a mensagem de erro não pode revelar valores
   a quem não é do financeiro.

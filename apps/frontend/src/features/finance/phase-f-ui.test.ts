@@ -1,89 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { agreementListItemFromRows, balanceTotals, lastMonths, monthKey, monthlyNet, type AgreementListRow, type PaymentBalanceRow } from "@/server/domain/finance/mappers";
-import { createAgreementSchema, createFeeModelSchema, listAgreementsSchema, updateFeeModelSchema } from "@/server/domain/finance/schemas";
-import { agreementQueryFromSearchParams, agreementQueryToInput, agreementQueryToSearchParams, DEFAULT_AGREEMENT_QUERY } from "./list-query";
+import { lastMonths, monthKey } from "@/server/domain/finance/mappers";
+import { createAgreementSchema, createFeeModelSchema, listAgreementRowsSchema, updateFeeModelSchema } from "@/server/domain/finance/schemas";
+import { agreementQueryFromSearchParams, agreementQueryIsFiltered, agreementQueryToInput, agreementQueryToSearchParams, DEFAULT_AGREEMENT_QUERY } from "./list-query";
 import { agreementCreateInput, feeModelCreateInput, feeModelPatch, feeModelToValues, feeTermsFromModel, moneyInput, occurredAtInput } from "./server-input";
 
 const UUID = "8f6c1f0e-3b7a-4d2c-9a51-2f4e5d6c7b8a";
 const KEY = "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b";
 
-const balance = (over: Partial<PaymentBalanceRow>): PaymentBalanceRow => ({
-  payment_id: UUID,
-  financial_agreement_id: UUID,
-  legal_case_id: UUID,
-  amount: "100.00",
-  currency: "BRL",
-  due_date: "2026-11-01",
-  received_amount: "0.00",
-  balance: "100.00",
-  last_receipt_at: null,
-  status: "PENDING",
-  ...over,
-});
-
-describe("totais do ledger — somados no servidor em centavos", () => {
-  it("contratado ignora canceladas; em aberto e vencido só de abertas; recebido é líquido", () => {
-    const t = balanceTotals([
-      balance({ amount: "1000.10", received_amount: "400.05", balance: "600.05", status: "PARTIAL" }),
-      balance({ amount: "300.00", received_amount: "0", balance: "300.00", status: "OVERDUE" }),
-      balance({ amount: "200.00", received_amount: "200.00", balance: "0", status: "PAID" }),
-      balance({ amount: "999.00", received_amount: "0", balance: "999.00", status: "CANCELLED" }),
-    ]);
-    expect(t).toEqual({ contracted: 1500.1, received: 600.05, outstanding: 900.05, overdue: 300, openPayments: 2 });
-  });
-  it("0,1 + 0,2 não vira 0,30000000000000004", () => {
-    expect(balanceTotals([balance({ received_amount: "0.10" }), balance({ received_amount: "0.20" })]).received).toBe(0.3);
-  });
-  it("linha da lista: rótulos do caso (embed) e próximo vencimento só de aberta", () => {
-    const row = {
-      id: UUID,
-      legal_case_id: UUID,
-      fee_model_id: null,
-      upfront_fee: null,
-      fixed_fee: "1000",
-      installments: 2,
-      monthly_fee: null,
-      success_fee_percentage: null,
-      currency: "BRL",
-      start_date: null,
-      status: "ACTIVE",
-      notes: null,
-      created_by: null,
-      created_at: "2026-10-01T00:00:00Z",
-      updated_at: "2026-10-01T00:00:00Z",
-      fee_models: { name: "Modelo A" },
-      legal_cases: [{ title: "Caso X", origin_organization_id: UUID, clients: { individual_client_details: { full_name: "Maria Teste" }, company_client_details: null } }],
-    } as AgreementListRow;
-    const item = agreementListItemFromRows(row, [
-      balance({ due_date: "2026-12-01" }),
-      balance({ due_date: "2026-11-01", status: "PAID", balance: "0", received_amount: "100" }),
-      balance({ due_date: "2026-11-15", status: "OVERDUE" }),
-      balance({ financial_agreement_id: "other", due_date: "2026-01-01" }),
-    ]);
-    expect(item).toMatchObject({ caseTitle: "Caso X", clientName: "Maria Teste", feeModelName: "Modelo A", nextDueDate: "2026-11-15" });
-    expect(item.totals.openPayments).toBe(2);
-  });
-});
-
-describe("recebido por mês — fuso de São Paulo", () => {
+describe("meses da visão geral — fuso de São Paulo", () => {
   it("lançamento às 01h UTC do dia 1º ainda é do mês anterior em SP", () => {
     expect(monthKey("2026-11-01T01:00:00Z")).toBe("2026-10");
     expect(monthKey("2026-11-01T04:00:00Z")).toBe("2026-11");
   });
-  it("12 meses do mais antigo ao atual; estorno subtrai; fora da janela é ignorado", () => {
+  it("12 meses do mais antigo ao atual (as despesas usam a mesma janela do recebido por mês, que agora vem somado do banco)", () => {
     const months = lastMonths(new Date("2026-10-13T15:00:00Z"), 12);
     expect(months[0]).toBe("2025-11");
     expect(months[11]).toBe("2026-10");
-    const data = monthlyNet(
-      [
-        { amount: "500.00", occurred_at: "2026-10-05T15:00:00Z" },
-        { amount: "-100.00", occurred_at: "2026-10-06T15:00:00Z" },
-        { amount: "50.00", occurred_at: "2024-01-01T15:00:00Z" },
-      ],
-      months,
-    );
-    expect(data.at(-1)).toEqual({ month: "2026-10", amount: 400 });
-    expect(data.reduce((s, d) => s + d.amount, 0)).toBe(400);
   });
 });
 
@@ -110,10 +42,33 @@ describe("formulários do financeiro → schemas reais", () => {
     expect(feeTermsFromModel({ upfrontFee: undefined, fixedFee: 1000, installments: 2, monthlyFee: undefined, successFeePercent: 12.5 })).toMatchObject({ fixedFee: "1.000,00", installments: "2", successFeePercent: "12,5" });
     expect(occurredAtInput("2026-10-13")).toBe("2026-10-13T12:00:00-03:00");
   });
-  it("lista de contratos: situação e página na URL; entrada no schema real", () => {
-    const q = { status: "ACTIVE" as const, page: 2 };
+});
+
+describe("lista de contratos ↔ URL ↔ schema real (busca, período e vencimento no servidor)", () => {
+  it("ida e volta de todos os filtros; valores inválidos caem no padrão", () => {
+    const q = { status: "ACTIVE" as const, search: "Maria", periodFrom: "2026-01-01", periodTo: "2026-06-30", dueFrom: "2026-11-01", dueTo: "2026-11-30", page: 2 };
     expect(agreementQueryFromSearchParams(Object.fromEntries(agreementQueryToSearchParams(q)))).toEqual(q);
-    expect(agreementQueryFromSearchParams({ situacao: "X" })).toEqual(DEFAULT_AGREEMENT_QUERY);
-    expect(listAgreementsSchema.parse(agreementQueryToInput(q, { legalCaseId: UUID }))).toMatchObject({ status: "ACTIVE", legalCaseId: UUID, column: "created_at" });
+    expect(agreementQueryFromSearchParams({ situacao: "X", de: "2026-02-30", ate: "amanhã", "vence-de": "01/11/2026" })).toEqual(DEFAULT_AGREEMENT_QUERY);
+    expect(agreementQueryIsFiltered(DEFAULT_AGREEMENT_QUERY)).toBe(false);
+    expect(agreementQueryIsFiltered({ ...DEFAULT_AGREEMENT_QUERY, dueTo: "2026-11-30" })).toBe(true);
+  });
+  it("busca com dígitos (CNJ, CPF colado por engano) não vai para a URL, mas vai para o servidor", () => {
+    const q = { ...DEFAULT_AGREEMENT_QUERY, search: "0001234-56.2026" };
+    expect(agreementQueryToSearchParams(q).has("busca")).toBe(false);
+    expect(agreementQueryToInput(q)).toMatchObject({ q: "0001234-56.2026" });
+  });
+  it("entrada no schema real: sem filtro de vencimento, mais recentes primeiro; com ele, pelo próximo vencimento", () => {
+    const plain = listAgreementRowsSchema.parse(agreementQueryToInput({ ...DEFAULT_AGREEMENT_QUERY, status: "ACTIVE", page: 2 }, { legalCaseId: UUID }));
+    expect(plain).toMatchObject({ status: "ACTIVE", legalCaseId: UUID, page: 2, column: "created_at", ascending: false });
+    expect(plain.q).toBeUndefined();
+    const due = listAgreementRowsSchema.parse(agreementQueryToInput({ ...DEFAULT_AGREEMENT_QUERY, search: " Maria ", periodFrom: "2026-01-01", dueFrom: "2026-11-01", dueTo: "2026-11-30" }));
+    expect(due).toMatchObject({ q: "Maria", periodFrom: "2026-01-01", dueFrom: "2026-11-01", dueTo: "2026-11-30", column: "next_due_date", ascending: true });
+  });
+  it("o servidor recusa período ao contrário, data que não existe e ordenação fora da lista", () => {
+    expect(listAgreementRowsSchema.safeParse({ periodFrom: "2026-06-30", periodTo: "2026-01-01" }).success).toBe(false);
+    expect(listAgreementRowsSchema.safeParse({ dueFrom: "2026-12-01", dueTo: "2026-11-01" }).success).toBe(false);
+    expect(listAgreementRowsSchema.safeParse({ dueFrom: "2026-02-30" }).success).toBe(false);
+    expect(listAgreementRowsSchema.safeParse({ sortBy: "contracted; drop table" }).success).toBe(false);
+    expect(listAgreementRowsSchema.safeParse({ q: "x".repeat(201) }).success).toBe(false);
   });
 });

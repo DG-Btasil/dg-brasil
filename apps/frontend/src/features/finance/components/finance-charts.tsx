@@ -17,7 +17,7 @@ export function MonthlyReceiptsChart({ data }: { data: { month: string; amount: 
   const summary = points.map((d) => `${d.label}: ${formatCurrency(d.amount)}`).join("; ");
   return (
     <Panel>
-      <PanelHeader title="Recebido por mês" description="Valor líquido lançado no ledger nos últimos 12 meses." as="h3" />
+      <PanelHeader title="Recebido por mês" description="Valor líquido lançado nos últimos 12 meses (recebimentos menos estornos)." as="h3" />
       <PanelBody>
         <figure>
           <div className="h-[220px]" aria-hidden>
@@ -43,7 +43,7 @@ export function CompositionChart({ data }: { data: ContractedByModelPoint[] }) {
   const summary = data.map((d) => `${d.name}: ${formatCurrency(d.total)} em ${d.count} contrato(s)`).join("; ");
   return (
     <Panel>
-      <PanelHeader title="Contratado por modelo" description="Total contratado (obrigações) por modelo de honorários." as="h3" />
+      <PanelHeader title="Contratado por modelo" description="Total contratado (soma das parcelas) por modelo de honorários." as="h3" />
       <PanelBody>
         {data.length === 0 ? (
           <p className="py-10 text-center text-[13px] text-muted">Sem contratos ativos para compor.</p>
@@ -95,7 +95,7 @@ export function ReceivableAgingChart({ data }: { data: ReceivableAgingDTO }) {
   }));
   const fullByLabel = new Map(points.map((p) => [p.label, p.full]));
   const summary = [
-    ...points.map((p) => `${p.full}: ${formatCurrency(p.amount)} em ${pluralize(p.count, "obrigação", "obrigações")}`),
+    ...points.map((p) => `${p.full}: ${formatCurrency(p.amount)} em ${pluralize(p.count, "parcela", "parcelas")}`),
     `Total em aberto: ${formatCurrency(data.total)}`,
   ].join("; ");
   return (
@@ -103,7 +103,7 @@ export function ReceivableAgingChart({ data }: { data: ReceivableAgingDTO }) {
       <PanelHeader title="A receber por vencimento" description="Saldo em aberto pelo vencimento. Só contratos de processo, como os totais acima." as="h3" />
       <PanelBody>
         {data.total <= 0 ? (
-          <p className="py-10 text-center text-[13px] text-muted">Nenhuma obrigação em aberto para receber.</p>
+          <p className="py-10 text-center text-[13px] text-muted">Nenhuma parcela em aberto para receber.</p>
         ) : (
           <figure>
             <div className="h-[220px]" aria-hidden>

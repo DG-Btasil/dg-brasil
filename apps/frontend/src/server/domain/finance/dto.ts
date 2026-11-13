@@ -64,9 +64,12 @@ export interface FinancialAgreementDTO {
   createdBy?: ID;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+  /** Última reabertura (concluído ou cancelado → ativo; 064), com o motivo informado. */
+  reopenedAt?: ISODateTime;
+  reopenReason?: string;
 }
 
-/** Totais de obrigações, todos derivados do ledger (view payment_balances), somados no servidor. */
+/** Totais de parcelas, todos derivados do ledger (view payment_balances), somados NO BANCO. */
 export interface FinanceTotals {
   /** Soma das obrigações não canceladas. */
   contracted: number;
@@ -90,11 +93,23 @@ export interface AgreementListItemDTO extends FinancialAgreementDTO {
   totals: FinanceTotals;
   /** Próximo vencimento em aberto. */
   nextDueDate?: ISODate;
+  /**
+   * Entra nos totais por processo (046)? Falso em contrato antigo, ligado só
+   * ao caso, e em contrato de processo excluído: a lista mostra, os totais não.
+   */
+  inProcessTotals: boolean;
 }
 
-/** Visão geral do financeiro (ADMIN). Agregado no servidor; `truncated` = passou do teto de leitura. */
+/**
+ * Visão geral do financeiro (ADMIN), somada NO BANCO (public.finance_summary,
+ * 064). `totals` é a MESMA conta dos totais por processo (046): a Home e o
+ * Financeiro mostram o mesmo "em aberto". `outside` é o que fica fora dessa
+ * conta (contrato antigo, só do caso, ou de processo excluído).
+ */
 export interface FinanceSummaryDTO {
   totals: FinanceTotals;
+  /** Fora dos totais por processo. Tudo zero quando não há contrato antigo nem de processo excluído. */
+  outside: FinanceTotals;
   agreementsByStatus: Record<AgreementDbStatus, number>;
   /** Recebido líquido por mês (America/Sao_Paulo), últimos 12 meses, do mais antigo ao atual. */
   monthly: { month: string; amount: number }[];
@@ -104,6 +119,7 @@ export interface FinanceSummaryDTO {
    * Até 4 modelos + "Outros", do maior para o menor.
    */
   byFeeModel: ContractedByModelPoint[];
+  /** Sempre falso desde a 064 (a soma é do banco, sem teto de leitura). Mantido para as telas que já o leem. */
   truncated: boolean;
 }
 
@@ -153,6 +169,86 @@ export interface ReceiptDTO {
   notes?: string;
   createdBy?: ID;
   createdAt: ISODateTime;
+}
+
+/** Linha do extrato de recebimentos (064): o lançamento com o cliente, o processo e a parcela. */
+export interface ReceiptStatementItemDTO {
+  receiptId: ID;
+  sequence: number;
+  kind: ReceiptKind;
+  /** Com sinal: estorno e ajuste para menos são negativos. */
+  amount: number;
+  currency: string;
+  occurredAt: ISODateTime;
+  /** Dia do lançamento em São Paulo (é por ele que o período filtra). */
+  occurredOn: ISODate;
+  method?: string;
+  notes?: string;
+  paymentId: ID;
+  paymentType: PaymentType;
+  paymentDescription?: string;
+  agreementId: ID;
+  legalCaseId: ID;
+  legalProcessId?: ID;
+  clientName: string;
+  caseTitle: string;
+  processTitle?: string;
+  cnjNumber?: string;
+}
+
+/** Total do período do extrato, com os mesmos filtros da lista (somado no banco). */
+export interface ReceiptStatementTotalsDTO {
+  count: number;
+  /** Soma das entradas (recebimentos e ajustes para mais). */
+  received: number;
+  /** Soma dos estornos e ajustes para menos (negativa ou zero). */
+  deducted: number;
+  /** Líquido do período. */
+  net: number;
+}
+
+/** Página do extrato + o total do período inteiro (todas as páginas, mesmos filtros). */
+export interface ReceiptStatementDTO extends Page<ReceiptStatementItemDTO> {
+  totals: ReceiptStatementTotalsDTO;
+}
+
+/** Parcela em aberto com saldo ("A receber", 064). */
+export interface ReceivableItemDTO {
+  paymentId: ID;
+  agreementId: ID;
+  legalCaseId: ID;
+  legalProcessId?: ID;
+  agreementStatus: AgreementDbStatus;
+  amount: number;
+  receivedAmount: number;
+  balance: number;
+  currency: string;
+  dueDate?: ISODate;
+  /** PENDING, PARTIAL ou OVERDUE (as demais não estão em aberto). */
+  status: DbPaymentStatus;
+  /** Dias de atraso; ausente quando não está vencida. */
+  daysOverdue?: number;
+  paymentType: PaymentType;
+  description?: string;
+  clientName: string;
+  caseTitle: string;
+  processTitle?: string;
+  cnjNumber?: string;
+  inProcessTotals: boolean;
+}
+
+export interface ReceivablesTotalsDTO {
+  count: number;
+  total: number;
+  overdue: number;
+  overdueCount: number;
+  /** Parte do total em contrato antigo ou de processo excluído (fora dos totais por processo). */
+  outsideTotals: number;
+}
+
+/** Página do "a receber" + os totais de todas as páginas (mesmos filtros). */
+export interface ReceivablesDTO extends Page<ReceivableItemDTO> {
+  totals: ReceivablesTotalsDTO;
 }
 
 /** Resultado de um lançamento. `deduplicated` = clique repetido; nada novo foi gravado. */

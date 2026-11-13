@@ -1,5 +1,5 @@
 import { BILLING_MOMENTS, type BillingMoment } from "@/lib/constants/status";
-import { parseCurrencyInput } from "@/lib/validation";
+import { readCurrencyInput, readPercentInput, type NumberInputReading } from "@/lib/validation";
 import type { ExpenseCategory, ExpenseDTO, FeeModelDTO } from "@/server/domain/finance/dto";
 
 /**
@@ -22,8 +22,24 @@ export function percentInput(v: number | undefined | null): string {
 }
 
 const filled = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
-const money = (v: string | undefined) => (filled(v) ? parseCurrencyInput(v) : undefined);
+const valueOf = (reading: NumberInputReading) => (reading.kind === "ok" ? reading.value : undefined);
+/** Número do campo já conferido (vazio ou inválido = ausente). Quem envia confere antes com `moneyField`/`feeTermsErrors`. */
+const money = (v: string | undefined) => valueOf(readCurrencyInput(v));
+const percent = (v: string | undefined) => valueOf(readPercentInput(v));
 const integer = (v: string | undefined) => (filled(v) && /^\d+$/.test((v as string).trim()) ? Number((v as string).trim()) : undefined);
+
+/**
+ * Campo de dinheiro de um diálogo: `value` ausente = campo vazio DE PROPÓSITO
+ * (ex.: quitar o saldo). Texto que não é número devolve `error`, nunca vazio.
+ * `required` exige valor maior que zero.
+ */
+export function moneyField(text: string | undefined, options: { required?: boolean; requiredMessage?: string } = {}): { value?: number; error?: string } {
+  const reading = readCurrencyInput(text);
+  if (reading.kind === "invalid") return { error: reading.message };
+  if (reading.kind === "empty") return options.required ? { error: options.requiredMessage ?? "Informe um valor maior que zero." } : {};
+  if (reading.value <= 0) return { error: options.requiredMessage ?? "Informe um valor maior que zero." };
+  return { value: reading.value };
+}
 
 export interface FeeTermsValues {
   upfrontFee: string;
@@ -33,15 +49,30 @@ export interface FeeTermsValues {
   successFeePercent: string;
 }
 
-/** Termos preenchidos (vazio = ausente). */
+/** Termos preenchidos (vazio = ausente). Confira antes com `feeTermsErrors`: formato errado não pode sumir calado. */
 export function feeTermsInput(v: FeeTermsValues) {
   return {
     upfrontFee: money(v.upfrontFee),
     fixedFee: money(v.fixedFee),
     installments: integer(v.installments),
     monthlyFee: money(v.monthlyFee),
-    successFeePercent: money(v.successFeePercent),
+    successFeePercent: percent(v.successFeePercent),
   };
+}
+
+/** Erros de FORMATO dos termos (por campo). Vazio é permitido aqui; obrigatoriedade é de cada formulário. */
+export function feeTermsErrors(v: FeeTermsValues): Partial<Record<keyof FeeTermsValues, string>> {
+  const errors: Partial<Record<keyof FeeTermsValues, string>> = {};
+  for (const key of ["upfrontFee", "fixedFee", "monthlyFee"] as const) {
+    const reading = readCurrencyInput(v[key]);
+    if (reading.kind === "invalid") errors[key] = reading.message;
+    else if (reading.kind === "ok" && reading.value < 0) errors[key] = "O valor não pode ser negativo.";
+  }
+  const pct = readPercentInput(v.successFeePercent);
+  if (pct.kind === "invalid") errors.successFeePercent = pct.message;
+  else if (pct.kind === "ok" && (pct.value < 0 || pct.value > 100)) errors.successFeePercent = "Informe um percentual entre 0 e 100.";
+  if (filled(v.installments) && integer(v.installments) === undefined) errors.installments = "Informe um número inteiro de parcelas.";
+  return errors;
 }
 
 /** PATCH dos termos: vazio = limpar (null). */
@@ -148,7 +179,9 @@ function termsOfType(v: FeeModelValues): FeeTermsValues {
 export function feeModelMissingFields(v: FeeModelValues): Partial<Record<keyof FeeModelValues, string>> {
   const errors: Partial<Record<keyof FeeModelValues, string>> = {};
   if (!v.name.trim()) errors.name = "Informe o nome do modelo.";
-  if (v.billingType === "CUSTOM") return errors;
+  // Formato primeiro: "1500.00" tem de dizer "use vírgula", não "informe o valor".
+  const format = feeTermsErrors(termsOfType(v));
+  if (v.billingType === "CUSTOM") return { ...errors, ...format };
   const t = feeTermsInput(termsOfType(v));
   const need = FEE_BILLING_TYPE_META[v.billingType].fields;
   if (need.includes("successFeePercent") && !(t.successFeePercent && t.successFeePercent > 0)) errors.successFeePercent = "Informe o percentual de êxito.";
@@ -156,7 +189,7 @@ export function feeModelMissingFields(v: FeeModelValues): Partial<Record<keyof F
   if (need.includes("installments") && !(t.installments && t.installments >= 2)) errors.installments = "Parcelado tem 2 parcelas ou mais.";
   if (need.includes("monthlyFee") && !(t.monthlyFee && t.monthlyFee > 0)) errors.monthlyFee = "Informe a mensalidade.";
   if (need.includes("upfrontFee") && !(t.upfrontFee && t.upfrontFee > 0)) errors.upfrontFee = "Informe a entrada.";
-  return errors;
+  return { ...errors, ...format };
 }
 
 export function feeModelCreateInput(v: FeeModelValues): Record<string, unknown> {
@@ -214,7 +247,11 @@ export function agreementCreateInput(legalProcessId: string, v: AgreementValues)
 /* Obrigação e ledger                                                  */
 /* ------------------------------------------------------------------ */
 
-/** "2026-10-13" + hora local → ISO com o fuso de São Paulo (fato financeiro; nunca no futuro — o servidor confere). */
+/**
+ * "2026-10-13" → meio-dia desse dia em São Paulo (ISO com fuso). O formulário
+ * só pergunta o DIA: o servidor confere pela data civil de São Paulo (hoje
+ * vale a qualquer hora) e nunca grava um instante no futuro.
+ */
 export function occurredAtInput(date: string): string | undefined {
   return filled(date) ? `${date}T12:00:00-03:00` : undefined;
 }
@@ -284,11 +321,9 @@ export function expenseMissingFields(v: ExpenseValues): Partial<Record<keyof Exp
   const errors: Partial<Record<keyof ExpenseValues, string>> = {};
   if (!v.category) errors.category = "Escolha a categoria.";
   if (!v.description.trim()) errors.description = "Descreva a despesa.";
-  const amount = money(v.amount);
-  if (!amount || amount <= 0) errors.amount = "Informe um valor maior que zero.";
+  const amount = moneyField(v.amount, { required: true });
+  if (amount.error) errors.amount = amount.error;
   if (!filled(v.incurredOn)) errors.incurredOn = "Informe a data da despesa.";
   if (v.paid && !filled(v.paidOn)) errors.paidOn = "Informe a data do pagamento.";
   return errors;
 }
-
-export { money as parseMoneyField };

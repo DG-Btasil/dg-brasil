@@ -2,18 +2,20 @@
 
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions/result";
-import { formatCurrency } from "@/lib/formatting";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { Callout } from "@/components/feedback/states";
 import type { ExpenseSummaryDTO, FinanceSummaryDTO, ProcessFinanceTotalsDTO, ReceivableAgingDTO } from "@/server/domain/finance/dto";
+import { hasOutsideTotals, outsideTotalsNotice } from "../outside-totals";
 import { CompositionChart, ExpensesByCategoryChart, MonthlyReceiptsChart, ReceivableAgingChart, ReceivedVsExpensesChart } from "./finance-charts";
 import { FinanceStats } from "./finance-stats";
 
 /**
- * Aba "Visão geral" do Financeiro (ADMIN): indicadores por processo (046,
- * somados no banco), recebido por mês (ledger), os gráficos de despesas e o
- * "A receber por vencimento" (agregados no servidor). Nada é somado no
- * navegador além de diferenças entre totais que o servidor já entregou.
+ * Aba "Visão geral" do Financeiro (ADMIN): indicadores por processo (046) e
+ * totais da visão geral (064), somados no banco de dados; recebido por mês,
+ * gráficos de despesas e "A receber por vencimento". Nada é somado no
+ * navegador. O que fica fora dos totais por processo (contrato antigo, só do
+ * caso, ou de processo excluído) vem separado do servidor: o aviso daqui é o
+ * mesmo da Home.
  */
 export function FinanceOverviewTab({
   summary,
@@ -29,10 +31,7 @@ export function FinanceOverviewTab({
 }) {
   if (!summary.ok) return <ActionErrorState error={summary} title="Não foi possível carregar os totais." />;
   const t = totals.ok ? totals.data : undefined;
-  // Contratos antigos (do caso, sem processo) entram no ledger geral mas não na visão por processo.
-  const cents = (v: number) => Math.round(v * 100);
-  const legacyReceived = t ? (cents(summary.data.totals.received) - cents(t.receivedTotal)) / 100 : 0;
-  const legacyOpen = t ? (cents(summary.data.totals.outstanding) - cents(t.openTotal)) / 100 : 0;
+  const outside = summary.data.outside;
   return (
     <>
       {summary.data.truncated && (
@@ -42,10 +41,9 @@ export function FinanceOverviewTab({
       )}
       {!totals.ok && <ActionErrorState error={totals} title="Não foi possível carregar os totais por processo." />}
       <FinanceStats summary={summary.data} totals={t} />
-      {(legacyReceived > 0 || legacyOpen > 0) && (
-        <Callout tone="info" title="Contratos antigos, do caso">
-          {formatCurrency(legacyReceived)} recebidos e {formatCurrency(legacyOpen)} em aberto estão em contratos anteriores ao financeiro por processo (ligados só ao caso) e não entram nos
-          totais acima. Veja-os na aba{" "}
+      {hasOutsideTotals(outside) && (
+        <Callout tone="info" title="Contratos fora dos totais">
+          {outsideTotalsNotice(outside)} Veja-os na aba{" "}
           <Link href="/financeiro?aba=contratos" className="text-navy-700 underline underline-offset-2">
             Contratos
           </Link>
@@ -65,7 +63,7 @@ export function FinanceOverviewTab({
       )}
       {aging.ok && aging.data.truncated && (
         <Callout tone="warning" title="A receber por vencimento parcial">
-          O volume de obrigações em aberto passou do limite de leitura do gráfico.
+          O volume de parcelas em aberto passou do limite de leitura do gráfico.
         </Callout>
       )}
     </>

@@ -12,7 +12,7 @@ import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/res
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
-import { isCnjFormat, msg } from "@/lib/validation";
+import { isCnjFormat, msg, readCurrencyInput } from "@/lib/validation";
 import { Can, PageContainer } from "@/components/layout/guards";
 import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
 import { StatusBadge } from "@/components/ui/badge";
@@ -215,6 +215,12 @@ export function PortalProcessForm({ initialCase }: { initialCase?: PickerOption 
   const onSubmit = handleSubmit(async (v) => {
     if (!legalCase) {
       setCaseError("Selecione o caso.");
+      return;
+    }
+    // Valor digitado errado ("1500.00") tem de avisar: sem isto ele seria enviado em branco, calado.
+    const caseValue = readCurrencyInput(v.caseValue);
+    if (caseValue.kind === "invalid" || (caseValue.kind === "ok" && caseValue.value < 0)) {
+      setError("caseValue", { message: caseValue.kind === "invalid" ? caseValue.message : msg.positive });
       return;
     }
     const input = partnerProcessInput(legalCase.id, v);

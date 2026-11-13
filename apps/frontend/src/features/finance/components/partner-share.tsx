@@ -19,17 +19,18 @@ import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
 import type { Page } from "@/server/core/pagination";
 import type { PartnerAgreementShareDTO, PartnerFinanceDTO, TransferListItemDTO } from "@/server/domain/finance/dto";
 import { TRANSFER_STATUS_LABEL, TRANSFER_STATUS_TONE } from "../labels";
-import { parseMoneyField } from "../server-input";
+import { moneyField, moneyInput } from "../server-input";
 import { useFinanceActions } from "../use-finance-actions";
-import { ReasonDialog } from "./finance-dialogs";
+import { ConfirmDialog, ReasonDialog } from "./finance-dialogs";
 import { PartnershipValuesDialog } from "./partnership-values-dialog";
 
 /**
  * Participação de UM parceiro: totais (acumulado, em repasse, repassado,
- * disponível) e participação por caso — TODOS derivados no banco (view
- * partner_allocation_balances), sem conta no navegador — e os repasses.
+ * disponível) e participação por caso — TODOS derivados no banco de dados
+ * (view partner_allocation_balances), sem conta no navegador — e os repasses.
  * Portal (PARTNER_ADMIN): só leitura, só o próprio escritório. ADMIN: também
- * registra repasse (o banco escolhe as divisões) e marca pago/cancela.
+ * registra repasse (o banco de dados escolhe as divisões e recusa acima do
+ * saldo líquido, 064) e marca pago/cancela, sempre com confirmação.
  */
 export function PartnerShareView({
   summary,
@@ -46,6 +47,9 @@ export function PartnerShareView({
   const actions = useFinanceActions();
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [paying, setPaying] = useState<TransferListItemDTO | null>(null);
+  // Disponível REAL: já desconta o que foi repassado de recebimentos depois estornados (pode ser negativo).
+  const available = summary.ok ? summary.data.totals.availableAmount : undefined;
   const [values, setValues] = useState<{ agreementId: string; caseTitle?: string } | null>(null);
   const caseHref = (id: string) => (manage ? `/casos/${id}?aba=financeiro` : `/casos/${id}`);
 
@@ -58,7 +62,12 @@ export function PartnerShareView({
           <Stat label="Participação acumulada" value={formatCurrency(summary.data.totals.accruedAmount)} icon={Banknote} hint={`${summary.data.activeAgreementCount} de ${summary.data.agreementCount} parcerias ativas`} />
           <Stat label="Repassado" value={formatCurrency(summary.data.totals.paidOutAmount)} tone="success" />
           <Stat label="Em repasse" value={formatCurrency(summary.data.totals.pendingTransferAmount)} hint="Registrado, ainda não pago" />
-          <Stat label="Disponível" value={formatCurrency(summary.data.totals.availableAmount)} tone={summary.data.totals.availableAmount > 0 ? "gold" : "neutral"} hint="Ainda sem repasse" />
+          <Stat
+            label="Disponível"
+            value={formatCurrency(summary.data.totals.availableAmount)}
+            tone={summary.data.totals.availableAmount > 0 ? "gold" : summary.data.totals.availableAmount < 0 ? "danger" : "neutral"}
+            hint={summary.data.totals.availableAmount < 0 ? "Repassado a mais: recebimento estornado depois do repasse" : "Ainda sem repasse"}
+          />
         </div>
       )}
 
@@ -114,10 +123,20 @@ export function PartnerShareView({
       <Panel>
         <PanelHeader
           title="Repasses"
-          description={manage ? "Registro interno: nenhuma transferência é feita pelo sistema. O banco escolhe as divisões com saldo, das mais antigas." : "Registros informados pela Bárbara Cardoso Advocacia."}
+          description={
+            manage
+              ? "É só um registro: o sistema não faz a transferência. O repasse sai dos recebimentos mais antigos e nunca passa do saldo disponível."
+              : "Registros informados pela Barbara Cardoso Advocacia."
+          }
           actions={
             manage ? (
-              <Button size="sm" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => setCreating(true)}>
+              <Button
+                size="sm"
+                icon={<Plus className="size-3.5" aria-hidden />}
+                onClick={() => setCreating(true)}
+                disabled={available !== undefined && available <= 0}
+                title={available !== undefined && available <= 0 ? "Sem saldo disponível para repasse." : undefined}
+              >
                 Registrar repasse
               </Button>
             ) : undefined
@@ -161,8 +180,8 @@ export function PartnerShareView({
                           label="Ações do repasse"
                           icon={<MoreHorizontal className="size-4" aria-hidden />}
                           items={[
-                            ...(t.status === "PENDING" ? [{ key: "paid", label: "Marcar como pago", onSelect: () => void actions.markTransferPaid(t.id) }] : []),
-                            { key: "cancel", label: "Cancelar repasse", description: "Deixa de consumir saldo; fica no histórico.", onSelect: () => setCancelling(t.id) },
+                            ...(t.status === "PENDING" ? [{ key: "paid", label: "Marcar como pago", onSelect: () => setPaying(t) }] : []),
+                            { key: "cancel", label: "Cancelar repasse", description: "O valor volta para o disponível. O repasse fica no histórico.", onSelect: () => setCancelling(t.id) },
                           ]}
                         />
                       )}
@@ -179,14 +198,23 @@ export function PartnerShareView({
       {creating && manage && (
         <TransferDialog
           partnerOrganizationId={manage.partnerOrganizationId}
-          available={summary.ok ? summary.data.totals.availableAmount : undefined}
+          available={available}
           onClose={() => setCreating(false)}
+        />
+      )}
+      {paying && (
+        <ConfirmDialog
+          title="Marcar repasse como pago"
+          description={`Confirma que o repasse de ${formatCurrency(paying.amount)}${paying.reference ? ` (${paying.reference})` : ""}, registrado em ${formatDate(paying.createdAt)}, já foi pago ao parceiro? O sistema só registra: não faz a transferência. Depois de pago, o repasse só sai do histórico se for cancelado, com motivo.`}
+          confirmLabel="Sim, foi pago"
+          onConfirm={() => actions.markTransferPaid(paying.id)}
+          onClose={() => setPaying(null)}
         />
       )}
       {cancelling && (
         <ReasonDialog
           title="Cancelar repasse"
-          description="O repasse fica no histórico com o motivo e deixa de consumir o saldo do parceiro."
+          description="O repasse fica no histórico com o motivo, e o valor volta para o disponível do parceiro."
           confirmLabel="Cancelar repasse"
           onConfirm={(reason) => actions.cancelTransfer(cancelling, reason)}
           onClose={() => setCancelling(null)}
@@ -197,7 +225,11 @@ export function PartnerShareView({
   );
 }
 
-/** Novo repasse: só o VALOR (e a referência). Quais divisões ele consome, o banco decide (026). */
+/**
+ * Novo repasse: só o VALOR (e a referência). Quais divisões ele consome, o
+ * banco de dados decide (026). O valor é limitado ao disponível REAL já na
+ * tela (o banco de dados recusa de novo, 064): nunca se repassa acima do saldo.
+ */
 function TransferDialog({ partnerOrganizationId, available, onClose }: { partnerOrganizationId: string; available?: number; onClose: () => void }) {
   const actions = useFinanceActions();
   const idempotency = useIdempotencyKey();
@@ -210,7 +242,7 @@ function TransferDialog({ partnerOrganizationId, available, onClose }: { partner
       open
       onOpenChange={(o) => !o && !saving && onClose()}
       title="Registrar repasse"
-      description={available !== undefined ? `Disponível para repasse: ${formatCurrency(available)}.` : undefined}
+      description={available !== undefined ? `Disponível para repasse: ${formatCurrency(Math.max(available, 0))}. O repasse não pode passar desse valor.` : undefined}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={saving}>
@@ -219,11 +251,17 @@ function TransferDialog({ partnerOrganizationId, available, onClose }: { partner
           <Button
             loading={saving}
             onClick={async () => {
-              const value = parseMoneyField(amount);
-              if (!value || value <= 0) {
-                setError("Informe um valor maior que zero.");
+              const parsed = moneyField(amount, { required: true });
+              if (parsed.value === undefined) {
+                setError(parsed.error ?? "Informe um valor maior que zero.");
                 return;
               }
+              const value = parsed.value;
+              if (available !== undefined && Math.round(value * 100) > Math.round(Math.max(available, 0) * 100)) {
+                setError(`O valor passa do disponível (${formatCurrency(Math.max(available, 0))}).`);
+                return;
+              }
+              setError(undefined);
               const input = { partnerOrganizationId, amount: value, reference: reference.trim() || undefined };
               setSaving(true);
               const r = await actions.createTransfer({ ...input, idempotencyKey: idempotency.keyFor(input) });
@@ -241,7 +279,7 @@ function TransferDialog({ partnerOrganizationId, available, onClose }: { partner
     >
       <div className="grid grid-cols-2 gap-4">
         <Field label="Valor (R$)" requirement="required" error={error}>
-          {(p) => <Input {...p} inputMode="decimal" placeholder="0,00" value={amount} onChange={(e) => setAmount(e.target.value)} />}
+          {(p) => <Input {...p} inputMode="decimal" placeholder={available !== undefined && available > 0 ? moneyInput(available) : "0,00"} value={amount} onChange={(e) => setAmount(e.target.value)} />}
         </Field>
         <Field label="Referência" requirement="optional" hint="Ex.: comprovante, número da transferência">
           {(p) => <Input {...p} maxLength={200} value={reference} onChange={(e) => setReference(e.target.value)} />}

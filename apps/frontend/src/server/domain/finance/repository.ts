@@ -9,6 +9,7 @@ import type {
   AllocationRow,
   ExpenseRow,
   FeeModelRow,
+  FinanceSummaryRaw,
   PartnershipPartnerRow,
   PartnershipRow,
   PaymentBalanceRow,
@@ -16,6 +17,8 @@ import type {
   ProcessFinanceRow,
   ProcessFinanceTotalsRow,
   ReceiptRow,
+  ReceiptStatementRow,
+  ReceivableRow,
   TransferItemRow,
   TransferPartnerRow,
   TransferRow,
@@ -39,7 +42,7 @@ import type {
 const FEE_MODEL_COLUMNS =
   "id, name, description, legal_area_id, upfront_fee, fixed_fee, installments, monthly_fee, success_fee_percentage, billing_moment, notes, active, created_at, updated_at";
 const AGREEMENT_COLUMNS =
-  "id, legal_case_id, legal_process_id, fee_model_id, upfront_fee, fixed_fee, installments, monthly_fee, success_fee_percentage, currency, start_date, status, notes, created_by, created_at, updated_at";
+  "id, legal_case_id, legal_process_id, fee_model_id, upfront_fee, fixed_fee, installments, monthly_fee, success_fee_percentage, currency, start_date, status, notes, created_by, created_at, updated_at, reopened_at, reopen_reason";
 const BALANCE_COLUMNS = "payment_id, financial_agreement_id, legal_case_id, amount, currency, due_date, received_amount, balance, last_receipt_at, status";
 const PAYMENT_COLUMNS = "id, payment_type, description, cancelled_at, cancellation_reason, created_at";
 const RECEIPT_COLUMNS = "id, sequence, payment_id, kind, amount, currency, occurred_at, original_receipt_id, method, notes, created_by, created_at";
@@ -56,7 +59,7 @@ const ALLOCATION_BALANCE_COLUMNS = "allocation_id, case_partnership_agreement_id
 
 /** Lote de leitura para agregações (limite do PostgREST por requisição). */
 const CHUNK = 1000;
-/** Teto de segurança das agregações em memória (ver relatório: RPC de totais proposta). */
+/** Teto de segurança das agregações que ainda são lidas em lotes (os totais da visão geral e das listas são somados no banco, 064). */
 const MAX_AGGREGATE_ROWS = 20_000;
 
 /* ------------------------------------------------------------------ */
@@ -65,8 +68,8 @@ const MAX_AGGREGATE_ROWS = 20_000;
 
 /** Índices únicos do financeiro → mensagem de domínio (o core não conhece estes nomes). */
 const FINANCE_UNIQUE: Record<string, string> = {
-  financial_agreements_one_active_per_process: "Este processo já tem um acordo financeiro ativo.",
-  financial_agreements_one_active_per_case: "Este caso já tem um acordo financeiro ativo.",
+  financial_agreements_one_active_per_process: "Este processo já tem um contrato de honorários ativo.",
+  financial_agreements_one_active_per_case: "Este caso já tem um contrato de honorários ativo.",
   fee_models_name_key: "Já existe um modelo de honorários com este nome.",
 };
 
@@ -104,6 +107,7 @@ const IDEMPOTENCY_INDEX = {
   payment_receipts: "payment_receipts_idempotency",
   payments: "payments_idempotency",
   financial_agreements: "financial_agreements_idempotency",
+  process_expenses: "process_expenses_idempotency",
 } as const;
 export type IdempotentTable = keyof typeof IDEMPOTENCY_INDEX;
 
@@ -189,52 +193,54 @@ export async function listAgreements(
   return { rows: (data ?? []) as AgreementRow[], total: count ?? 0 };
 }
 
-/** Acordos com rótulos do caso (título, cliente, origem), do processo e do modelo — embeds de leitura sob RLS. */
-const AGREEMENT_LIST_COLUMNS = `${AGREEMENT_COLUMNS}, fee_models(name),
-  legal_processes!financial_agreements_process_fkey(title, cnj_number),
-  legal_cases(title, origin_organization_id, clients!legal_cases_client_id_fkey(individual_client_details(full_name), company_client_details(legal_name)))`;
+/** Colunas da view finance_agreement_list (064): contrato + rótulos + totais do livro, somados no banco. */
+const AGREEMENT_LIST_COLUMNS = `${AGREEMENT_COLUMNS}, fee_model_name, case_title, case_origin_organization_id, client_name, process_title, cnj_number, in_process_totals, contracted, received, outstanding, overdue, open_payments, next_due_date`;
 
+export interface AgreementListFilters {
+  legalCaseId?: string;
+  legalProcessId?: string;
+  status?: string;
+  /** Cliente, título do processo ou do caso; só dígitos = prefixo do CNJ. */
+  q?: string;
+  /** Período pela data do contrato (início ou, sem início, o dia da criação). */
+  periodFrom?: string;
+  periodTo?: string;
+  /** Período pelo próximo vencimento em aberto. */
+  dueFrom?: string;
+  dueTo?: string;
+}
+
+/** Contratos com busca, período e vencimento filtrados e paginados NO BANCO. */
 export async function listAgreementRows(
   db: SupabaseClient,
-  filters: { legalCaseId?: string; legalProcessId?: string; status?: string },
+  filters: AgreementListFilters,
   page: PageInput,
   sort: { column: string; ascending: boolean },
 ): Promise<{ rows: AgreementListRow[]; total: number }> {
-  let query = db.from("financial_agreements").select(AGREEMENT_LIST_COLUMNS, { count: "exact" });
+  let query = db.from("finance_agreement_list").select(AGREEMENT_LIST_COLUMNS, { count: "exact" });
   if (filters.legalCaseId) query = query.eq("legal_case_id", filters.legalCaseId);
   if (filters.legalProcessId) query = query.eq("legal_process_id", filters.legalProcessId);
   if (filters.status) query = query.eq("status", filters.status);
+  const target = filters.q ? financeSearch(filters.q, "process_title") : null;
+  if (target?.kind === "cnj") query = query.like("cnj_number", `${target.digits}%`);
+  if (target?.kind === "text") query = query.or(target.or);
+  if (filters.periodFrom) query = query.gte("contract_date", filters.periodFrom);
+  if (filters.periodTo) query = query.lte("contract_date", filters.periodTo);
+  if (filters.dueFrom) query = query.gte("next_due_date", filters.dueFrom);
+  if (filters.dueTo) query = query.lte("next_due_date", filters.dueTo);
   const { from, to } = toRange(page);
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("id").range(from, to);
   if (error) throw financeError(error);
   return { rows: (data ?? []) as unknown as AgreementListRow[], total: count ?? 0 };
 }
 
-/** Saldos (view payment_balances) das obrigações destes acordos — uma página de acordos por vez. */
-export async function balancesOfAgreements(db: SupabaseClient, agreementIds: string[]): Promise<PaymentBalanceRow[]> {
-  if (agreementIds.length === 0) return [];
-  const rows: PaymentBalanceRow[] = [];
-  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
-    const data = check(
-      await db.from("payment_balances").select(BALANCE_COLUMNS).in("financial_agreement_id", agreementIds).order("payment_id").range(from, from + CHUNK - 1),
-    ) as PaymentBalanceRow[] | null;
-    rows.push(...(data ?? []));
-    if (!data || data.length < CHUNK) break;
-  }
-  return rows;
-}
-
-type BalanceTotalsRow = Pick<PaymentBalanceRow, "amount" | "received_amount" | "balance" | "status">;
-
-/** Todos os saldos (para a visão geral), em lotes, até o teto. `truncated` = passou do teto. */
-export async function allBalances(db: SupabaseClient): Promise<{ rows: BalanceTotalsRow[]; truncated: boolean }> {
-  const rows: BalanceTotalsRow[] = [];
-  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
-    const data = check(await db.from("payment_balances").select("amount, received_amount, balance, status").order("payment_id").range(from, from + CHUNK - 1)) as BalanceTotalsRow[] | null;
-    rows.push(...(data ?? []));
-    if (!data || data.length < CHUNK) return { rows, truncated: false };
-  }
-  return { rows, truncated: true };
+/**
+ * Totais da visão geral, somados NO BANCO numa chamada (public.finance_summary,
+ * 064): a mesma conta dos totais por processo, o que fica fora dela, contratos
+ * por situação e o líquido por mês.
+ */
+export async function getFinanceSummary(db: SupabaseClient, months = 12): Promise<FinanceSummaryRaw> {
+  return check(await db.rpc("finance_summary", { p_months: months })) as FinanceSummaryRaw;
 }
 
 type OpenBalanceRow = Pick<PaymentBalanceRow, "financial_agreement_id" | "due_date" | "balance" | "status">;
@@ -279,35 +285,6 @@ export async function processAgreementIds(db: SupabaseClient): Promise<{ ids: st
     if (!data || data.length < CHUNK) return { ids, truncated: false };
   }
   return { ids, truncated: true };
-}
-
-type ReceiptMonthRow = { amount: number | string; occurred_at: string };
-
-/** Lançamentos do ledger desde `fromIso` (valor com sinal e data), em lotes, até o teto. */
-export async function receiptsSince(db: SupabaseClient, fromIso: string): Promise<{ rows: ReceiptMonthRow[]; truncated: boolean }> {
-  const rows: ReceiptMonthRow[] = [];
-  for (let from = 0; from < MAX_AGGREGATE_ROWS; from += CHUNK) {
-    const data = check(
-      await db.from("payment_receipts").select("amount, occurred_at").gte("occurred_at", fromIso).order("sequence").range(from, from + CHUNK - 1),
-    ) as ReceiptMonthRow[] | null;
-    rows.push(...(data ?? []));
-    if (!data || data.length < CHUNK) return { rows, truncated: false };
-  }
-  return { rows, truncated: true };
-}
-
-const AGREEMENT_STATUS_LIST = ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"] as const;
-
-/** Quantidade de acordos por situação (contagens no banco). */
-export async function countAgreementsByStatus(db: SupabaseClient): Promise<Record<(typeof AGREEMENT_STATUS_LIST)[number], number>> {
-  const counts = await Promise.all(
-    AGREEMENT_STATUS_LIST.map(async (status) => {
-      const { error, count } = await db.from("financial_agreements").select("id", { count: "exact", head: true }).eq("status", status);
-      if (error) throw financeError(error);
-      return count ?? 0;
-    }),
-  );
-  return { DRAFT: counts[0], ACTIVE: counts[1], COMPLETED: counts[2], CANCELLED: counts[3] };
 }
 
 export async function getAgreement(db: SupabaseClient, id: string): Promise<AgreementRow | null> {
@@ -383,6 +360,100 @@ export async function listReceipts(db: SupabaseClient, paymentId: string, page: 
 
 export async function getReceipt(db: SupabaseClient, id: string): Promise<ReceiptRow | null> {
   return check(await db.from("payment_receipts").select(RECEIPT_COLUMNS).eq("id", id).maybeSingle()) as ReceiptRow | null;
+}
+
+const RECEIPT_STATEMENT_COLUMNS =
+  "receipt_id, sequence, kind, amount, currency, occurred_at, occurred_on, method, notes, payment_id, payment_type, payment_description, financial_agreement_id, legal_case_id, legal_process_id, client_name, case_title, process_title, cnj_number";
+
+export interface ReceiptStatementFilters {
+  from?: string;
+  to?: string;
+  method?: string;
+  kind?: string;
+  q?: string;
+}
+
+/** Extrato do livro por período (view finance_receipt_statement, 064): filtros e páginas no banco. */
+export async function listReceiptStatement(
+  db: SupabaseClient,
+  filters: ReceiptStatementFilters,
+  page: PageInput,
+  sort: { column: string; ascending: boolean },
+): Promise<{ rows: ReceiptStatementRow[]; total: number }> {
+  let query = db.from("finance_receipt_statement").select(RECEIPT_STATEMENT_COLUMNS, { count: "exact" });
+  if (filters.from) query = query.gte("occurred_on", filters.from);
+  if (filters.to) query = query.lte("occurred_on", filters.to);
+  if (filters.method) query = query.eq("method", filters.method);
+  if (filters.kind) query = query.eq("kind", filters.kind);
+  const target = filters.q ? financeSearch(filters.q, "process_title") : null;
+  if (target?.kind === "cnj") query = query.like("cnj_number", `${target.digits}%`);
+  if (target?.kind === "text") query = query.or(target.or);
+  const { from, to } = toRange(page);
+  const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending }).order("sequence", { ascending: sort.ascending }).range(from, to);
+  if (error) throw financeError(error);
+  return { rows: (data ?? []) as unknown as ReceiptStatementRow[], total: count ?? 0 };
+}
+
+/** Total do período do extrato, com os MESMOS filtros da lista, somado no banco. */
+export async function receiptStatementTotals(db: SupabaseClient, filters: ReceiptStatementFilters): Promise<{ count: number; received: number | string; deducted: number | string; net: number | string } | null> {
+  const search = financeSearchArgs(filters.q);
+  return check(
+    await db.rpc("finance_receipt_statement_totals", {
+      p_from: filters.from ?? null,
+      p_to: filters.to ?? null,
+      p_method: filters.method ?? null,
+      p_kind: filters.kind ?? null,
+      p_search: search.pattern,
+      p_cnj_prefix: search.cnjPrefix,
+    }),
+  ) as { count: number; received: number | string; deducted: number | string; net: number | string } | null;
+}
+
+const RECEIVABLE_COLUMNS =
+  "payment_id, financial_agreement_id, legal_case_id, legal_process_id, agreement_status, amount, received_amount, balance, currency, due_date, status, days_overdue, payment_type, description, client_name, case_title, process_title, cnj_number, in_process_totals";
+
+export interface ReceivableFilters {
+  from?: string;
+  to?: string;
+  overdueOnly?: boolean;
+  q?: string;
+}
+
+/** Parcelas em aberto com saldo (view finance_receivables, 064), por vencimento: filtros e páginas no banco. */
+export async function listReceivables(
+  db: SupabaseClient,
+  filters: ReceivableFilters,
+  page: PageInput,
+  sort: { column: string; ascending: boolean },
+): Promise<{ rows: ReceivableRow[]; total: number }> {
+  let query = db.from("finance_receivables").select(RECEIVABLE_COLUMNS, { count: "exact" });
+  if (filters.from) query = query.gte("due_date", filters.from);
+  if (filters.to) query = query.lte("due_date", filters.to);
+  if (filters.overdueOnly) query = query.eq("status", "OVERDUE");
+  const target = filters.q ? financeSearch(filters.q, "process_title") : null;
+  if (target?.kind === "cnj") query = query.like("cnj_number", `${target.digits}%`);
+  if (target?.kind === "text") query = query.or(target.or);
+  const { from, to } = toRange(page);
+  const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("payment_id").range(from, to);
+  if (error) throw financeError(error);
+  return { rows: (data ?? []) as unknown as ReceivableRow[], total: count ?? 0 };
+}
+
+/** Totais do "a receber" com os MESMOS filtros da lista, somados no banco. */
+export async function receivablesTotals(
+  db: SupabaseClient,
+  filters: ReceivableFilters,
+): Promise<{ count: number; total: number | string; overdue: number | string; overdue_count: number; outside_totals: number | string } | null> {
+  const search = financeSearchArgs(filters.q);
+  return check(
+    await db.rpc("finance_receivables_totals", {
+      p_from: filters.from ?? null,
+      p_to: filters.to ?? null,
+      p_overdue_only: filters.overdueOnly ?? false,
+      p_search: search.pattern,
+      p_cnj_prefix: search.cnjPrefix,
+    }),
+  ) as { count: number; total: number | string; overdue: number | string; overdue_count: number; outside_totals: number | string } | null;
 }
 
 /** Quanto já foi estornado (soma negativa) de um lançamento de entrada. */
@@ -665,14 +736,32 @@ function orQuoted(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-/** Busca: só dígitos (≥ 3, com ou sem máscara CNJ) → prefixo do CNJ; texto → cliente, título do processo ou do caso. */
-export function processFinanceSearch(q: string): { kind: "cnj"; digits: string } | { kind: "text"; or: string } | null {
+type FinanceSearch = { kind: "cnj"; digits: string } | { kind: "text"; or: string; pattern: string } | null;
+
+/**
+ * Busca das listas do financeiro: só dígitos (≥ 3, com ou sem máscara CNJ) →
+ * prefixo do CNJ; texto → cliente, título do processo ou do caso.
+ * `titleColumn` = nome da coluna do título do processo na view consultada.
+ */
+export function financeSearch(q: string, titleColumn: "display_title" | "process_title"): FinanceSearch {
   const text = q.trim();
   if (!text) return null;
   const digits = text.replace(/\D/g, "");
   if (digits.length >= 3 && digits.length === text.replace(/[\s.-]/g, "").length) return { kind: "cnj", digits };
-  const pattern = orQuoted(likePattern(text));
-  return { kind: "text", or: `client_name.ilike.${pattern},display_title.ilike.${pattern},case_title.ilike.${pattern}` };
+  const like = likePattern(text);
+  const pattern = orQuoted(like);
+  return { kind: "text", pattern: like, or: `client_name.ilike.${pattern},${titleColumn}.ilike.${pattern},case_title.ilike.${pattern}` };
+}
+
+/** A mesma busca para as funções de total (064): padrão do ILIKE já escapado, ou prefixo do CNJ. */
+function financeSearchArgs(q: string | undefined): { pattern: string | null; cnjPrefix: string | null } {
+  const target = q ? financeSearch(q, "process_title") : null;
+  return { pattern: target?.kind === "text" ? target.pattern : null, cnjPrefix: target?.kind === "cnj" ? target.digits : null };
+}
+
+/** Busca da visão por processo (view process_finance_overview). */
+export function processFinanceSearch(q: string): FinanceSearch {
+  return financeSearch(q, "display_title");
 }
 
 export interface ProcessFinanceFilters {
@@ -723,7 +812,7 @@ export async function getProcessRef(db: SupabaseClient, id: string): Promise<{ i
 
 export async function listExpenses(
   db: SupabaseClient,
-  filters: { processId?: string; category?: string; status?: "OPEN" | "PAID" | "CANCELLED" },
+  filters: { processId?: string; category?: string; status?: "OPEN" | "PAID" | "CANCELLED"; from?: string; to?: string },
   page: PageInput,
   sort: { column: string; ascending: boolean },
   withLabels: boolean,
@@ -734,6 +823,8 @@ export async function listExpenses(
   if (filters.status === "CANCELLED") query = query.not("cancelled_at", "is", null);
   if (filters.status === "PAID") query = query.is("cancelled_at", null).not("paid_on", "is", null);
   if (filters.status === "OPEN") query = query.is("cancelled_at", null).is("paid_on", null);
+  if (filters.from) query = query.gte("incurred_on", filters.from);
+  if (filters.to) query = query.lte("incurred_on", filters.to);
   const { from, to } = toRange(page);
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("created_at", { ascending: false }).order("id").range(from, to);
   if (error) throw financeError(error);
@@ -742,10 +833,6 @@ export async function listExpenses(
 
 export async function getExpense(db: SupabaseClient, id: string): Promise<ExpenseRow | null> {
   return check(await db.from("process_expenses").select(EXPENSE_COLUMNS).eq("id", id).maybeSingle()) as ExpenseRow | null;
-}
-
-export async function insertExpense(db: SupabaseClient, values: Record<string, unknown>): Promise<string> {
-  return (check(await db.from("process_expenses").insert(values).select("id").single()) as { id: string }).id;
 }
 
 /** Só despesa ativa muda (a guarda do banco também recusa mexer em cancelada). */

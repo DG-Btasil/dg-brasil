@@ -132,7 +132,7 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Revisões | listar, ficha (conteúdo do alvo), atribuir, decidir, reabrir | `decide_review` (nunca `UPDATE reviews.status`) |
 | Análises | listar, ficha, iniciar, documentos que faltam, enviar ao agente | `legal_analyses` + `request_agent_run_once` |
 | Execuções de agente | pedir (idempotente), resumos, cancelar (ADMIN) | `request_agent_run_once` (026), `get_agent_run_summaries` |
-| Financeiro | modelos, acordos, obrigações, lançamentos (recebimento, ajuste, estorno — append-only), divisões (leitura), parcerias, repasses, visão do parceiro | ledger + views; chaves de idempotência e `create_partner_transfer` (026) |
+| Financeiro | modelos, contratos (com reabertura), parcelas, lançamentos (recebimento, ajuste, estorno — append-only), extrato de recebimentos por período, "a receber", despesas, divisões (leitura), parcerias, repasses, visão do parceiro | ledger + views; chaves de idempotência e `create_partner_transfer` (026, 064); listas e totais somados no banco (`finance_agreement_list`, `finance_receipt_statement`, `finance_receivables`, `finance_summary`, 064) |
 | Organizações | escritório proprietário, parceiros (listar, cadastrar atômico, editar, status, divisão padrão), usuários (leitura), divisão do próprio escritório (administrador do parceiro) | `create_partner_office` (026), `get_my_partner_settings` (027); gestão de equipe segue em `server/auth/team-actions.ts` |
 | Notificações | listar, contar não lidas, marcar lida(s) | RLS do próprio usuário (aal2) |
 | Integração judicial (043) | visão e configuração; OABs (ADMIN e administrador do parceiro); cobertura; publicações (listar, abrir, criar prazo, sem prazo, reabrir); prévia da contagem; calendário; situação e pausa do processo; buscar agora | RPCs `*_judicial_*` (invoker → definer, papel conferido no banco); busca no DJEN/DataJud pelo servidor com `dg_worker` (`docs/judicial.md`) |
@@ -188,6 +188,7 @@ API (schema `private`, sem grant para ninguém; só as funções
 | Enviar caso (portal) | `partner_submit_case_once` | envolve `partner_submit_case` (025, inalterada); repete cliente + caso |
 | Criar processo (interno e portal) | `create_legal_process_once` | processo + dados internos + prazo inicial atômicos; não depende do CNJ; parceiro não grava campo interno nem chamando direto |
 | Lançamentos, obrigações, acordos, repasses, execução de agente | índices únicos por autor (026) | mesmo contrato da tela |
+| Despesa do processo | índice único por autor (064) | `createExpense` devolve a despesa já lançada no reenvio |
 
 Outros: upload (id da versão gerado no servidor é a chave natural da
 confirmação), resposta a solicitação (id da mensagem), aceite de caso (update
@@ -242,9 +243,30 @@ agente/Claude: tornar atômico** (função que trava a análise, chama
 `legal_analyses` também não tem trigger de transição de status.
 
 ### Finance
-Acordo financeiro sem `cancelled_at/by/reason` nem máquina de estados no banco
-(hoje no service). Revisar ciclo de vida/cancelamento antes de considerar o
-financeiro pronto para produção. Totais do parceiro ainda somados no service.
+Fechado na revisão final (migration 064, testes `[064]` do verificador):
+
+- Máquina de estados do contrato no banco (030/046) e **reabertura** com motivo
+  (064): todo lançamento exige contrato ativo; estornar depois de concluir passa
+  por "Reabrir contrato" (ADMIN, auditado). Não há mais saldo "em aberto" preso em
+  contrato concluído.
+- Ajuste para menos exige o recebimento corrigido; cancelar parcela com
+  recebimento é recusado no banco (não só no service).
+- Repasse limitado ao saldo **líquido** do parceiro (divisões negativas contam).
+- Totais da visão geral e das listas somados no banco (`finance_summary` e as
+  funções `*_totals`): a Home e o Financeiro leem a mesma conta. Listas de
+  contratos, recebimentos e parcelas a receber filtram e paginam no banco.
+- Despesa com chave de idempotência.
+- Valor digitado: `readCurrencyInput`/`readPercentInput` (`lib/validation`) aceitam
+  só o formato brasileiro e distinguem vazio de inválido; data de lançamento é
+  validada pelo dia civil de São Paulo (`zPastDateTime`), e o instante gravado
+  nunca fica no futuro (`pastInstant`).
+
+Pendente: acordo financeiro continua sem `cancelled_at/by/reason` próprios (o
+motivo do cancelamento do contrato não é pedido; só o das parcelas e o da
+reabertura). Totais do parceiro (`shareTotals`) e o "a receber por vencimento"
+do gráfico (`getReceivableAging`) ainda são somados no service, com teto de
+leitura. Exportação das listas: há um lugar reservado no cabeçalho de cada uma
+(`exportAction`), sem implementação.
 
 ### Agent Runs
 `get_agent_run_summaries` sem paginação (limite até 50). Paginar antes de

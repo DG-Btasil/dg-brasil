@@ -1,13 +1,13 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { CalendarRange, MoreHorizontal, Plus } from "lucide-react";
+import { CalendarRange, MoreHorizontal, Plus, RotateCcw } from "lucide-react";
 import { formatCNJ, formatCurrency, formatDate, formatDateTime, formatPercent } from "@/lib/formatting";
 import { loadAllPages } from "@/lib/actions/all-pages";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { usePermission } from "@/features/auth/hooks";
 import { ActionErrorState } from "@/components/feedback/action-error";
-import { EmptyState, SkeletonRows } from "@/components/feedback/states";
+import { Callout, EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/dialog";
@@ -28,18 +28,35 @@ type Modal =
   | { kind: "receipt"; payment: PaymentDTO }
   | { kind: "adjustment"; payment: PaymentDTO }
   | { kind: "reversal"; receipt: ReceiptDTO }
-  | { kind: "status"; to: "ACTIVE" | "COMPLETED" | "CANCELLED" };
+  | { kind: "status"; to: "ACTIVE" | "COMPLETED" | "CANCELLED" }
+  | { kind: "reopen" };
 
 const STATUS_COPY = {
-  ACTIVE: { title: "Ativar acordo", confirm: "Ativar", text: "Com o acordo ativo, recebimentos podem ser registrados. Os termos ficam congelados (só o rascunho muda)." },
-  COMPLETED: { title: "Concluir acordo", confirm: "Concluir", text: "O banco confere que não há obrigação em aberto. Acordo concluído é histórico: não muda nem recebe obrigação nova." },
-  CANCELLED: { title: "Cancelar acordo", confirm: "Cancelar acordo", text: "O banco confere que não há obrigação em aberto. Acordo cancelado é histórico e não volta." },
+  ACTIVE: { title: "Ativar contrato", confirm: "Ativar", text: "Com o contrato ativo, os recebimentos podem ser registrados. Os valores combinados ficam congelados (só o rascunho muda)." },
+  COMPLETED: {
+    title: "Concluir contrato",
+    confirm: "Concluir",
+    text: "O sistema confere que não há parcela em aberto. Contrato concluído não recebe parcela nem lançamento novo. Se precisar estornar depois, reabra o contrato.",
+  },
+  CANCELLED: {
+    title: "Cancelar contrato",
+    confirm: "Cancelar contrato",
+    text: "O sistema confere que não há parcela em aberto. Se houver valor a devolver ao cliente, registre o estorno antes de cancelar. Contrato cancelado só volta se for reaberto, com motivo.",
+  },
+} as const;
+
+/** Por que estorno e ajuste não aparecem: todo lançamento exige contrato ativo (064). */
+const CLOSED_COPY = {
+  COMPLETED: "Este contrato está concluído. Para estornar ou ajustar um recebimento, reabra o contrato.",
+  CANCELLED: "Este contrato está cancelado. Para estornar ou ajustar um recebimento, reabra o contrato.",
 } as const;
 
 /**
- * Acordo de honorários: termos, obrigações (com situação derivada do ledger)
- * e lançamentos. Toda mudança passa pelo servidor e pelas guardas do banco
- * (030); a gaveta recarrega depois de cada resposta.
+ * Contrato de honorários: valores combinados, parcelas (com situação derivada
+ * do livro de lançamentos) e lançamentos. Toda mudança passa pelo servidor e
+ * pelas guardas do banco de dados (030, 064); a gaveta recarrega depois de
+ * cada resposta. Lançamento (recebimento, estorno, ajuste) só em contrato
+ * ATIVO: concluído ou cancelado precisa ser reaberto, com motivo.
  */
 export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementListItemDTO; onClose: () => void }) {
   const canManage = usePermission("finance.manage");
@@ -69,16 +86,35 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
   }, [expanded, version]);
 
   const open = agreement.status === "DRAFT" || agreement.status === "ACTIVE";
-  const ledgerItems = (paymentId: string): ReceiptDTO[] => {
-    const entries = ledger[paymentId];
-    return entries?.ok ? entries.data.items : [];
-  };
+  const active = agreement.status === "ACTIVE";
+  const closed = agreement.status === "COMPLETED" || agreement.status === "CANCELLED" ? agreement.status : null;
   const terms = [
     agreement.upfrontFee ? `Entrada ${formatCurrency(agreement.upfrontFee)}` : null,
     agreement.fixedFee ? `Fixo ${formatCurrency(agreement.fixedFee)}${agreement.installments && agreement.installments > 1 ? ` em ${agreement.installments}x` : ""}` : null,
     agreement.monthlyFee ? `Mensal ${formatCurrency(agreement.monthlyFee)}` : null,
     agreement.successFeePercent ? `Êxito ${formatPercent(agreement.successFeePercent)}` : null,
   ].filter(Boolean);
+
+  const footer = !canManage ? undefined : open ? (
+    <div className="flex w-full justify-between gap-2">
+      <Button variant="ghost" onClick={() => setModal({ kind: "status", to: "CANCELLED" })}>
+        Cancelar contrato
+      </Button>
+      {agreement.status === "DRAFT" ? (
+        <Button onClick={() => setModal({ kind: "status", to: "ACTIVE" })}>Ativar contrato</Button>
+      ) : (
+        <Button variant="secondary" onClick={() => setModal({ kind: "status", to: "COMPLETED" })}>
+          Concluir contrato
+        </Button>
+      )}
+    </div>
+  ) : (
+    <div className="flex w-full justify-end">
+      <Button variant="secondary" icon={<RotateCcw className="size-4" aria-hidden />} onClick={() => setModal({ kind: "reopen" })}>
+        Reabrir contrato
+      </Button>
+    </div>
+  );
 
   return (
     <Drawer
@@ -87,22 +123,7 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
       width={880}
       title={agreement.processTitle || agreement.caseTitle || "Contrato de honorários"}
       description={[agreement.clientName, agreement.cnjNumber ? formatCNJ(agreement.cnjNumber) : undefined].filter(Boolean).join(" · ") || undefined}
-      footer={
-        canManage && open ? (
-          <div className="flex w-full justify-between gap-2">
-            <Button variant="ghost" onClick={() => setModal({ kind: "status", to: "CANCELLED" })}>
-              Cancelar acordo
-            </Button>
-            {agreement.status === "DRAFT" ? (
-              <Button onClick={() => setModal({ kind: "status", to: "ACTIVE" })}>Ativar acordo</Button>
-            ) : (
-              <Button variant="secondary" onClick={() => setModal({ kind: "status", to: "COMPLETED" })}>
-                Concluir acordo
-              </Button>
-            )}
-          </div>
-        ) : undefined
-      }
+      footer={footer}
     >
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-2">
@@ -110,28 +131,35 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
           <Badge tone="neutral">{agreement.currency}</Badge>
           {agreement.feeModelName && <Badge tone="navy">{agreement.feeModelName}</Badge>}
         </div>
+        {closed && (
+          <Callout tone="info" title={closed === "COMPLETED" ? "Contrato concluído" : "Contrato cancelado"}>
+            {CLOSED_COPY[closed]}
+            {canManage ? " Use “Reabrir contrato”, no rodapé, e informe o motivo." : " Só o administrador pode reabrir."}
+          </Callout>
+        )}
         <DefinitionGrid
           columns={3}
           items={[
             { label: "Contratado", value: formatCurrency(agreement.totals.contracted) },
             { label: "Recebido", value: formatCurrency(agreement.totals.received) },
             { label: "Em aberto", value: formatCurrency(agreement.totals.outstanding) },
-            { label: "Termos", value: terms.join(" · ") || "Sem valores definidos", wide: true },
+            { label: "Valores combinados", value: terms.join(" · ") || "Sem valores definidos", wide: true },
             { label: "Início", value: agreement.startDate ? formatDate(agreement.startDate) : undefined },
             { label: "Observações", value: agreement.notes, wide: true },
+            ...(agreement.reopenedAt ? [{ label: "Última reabertura", value: `${formatDateTime(agreement.reopenedAt)}${agreement.reopenReason ? `: ${agreement.reopenReason}` : ""}`, wide: true }] : []),
           ]}
         />
 
         <section>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-[13.5px] font-semibold text-foreground">Obrigações</h3>
+            <h3 className="text-[13.5px] font-semibold text-foreground">Parcelas</h3>
             {canManage && open && (
               <div className="flex gap-2">
                 <Button size="sm" variant="ghost" icon={<CalendarRange className="size-3.5" aria-hidden />} onClick={() => setModal({ kind: "schedule" })}>
                   Gerar cronograma
                 </Button>
                 <Button size="sm" variant="secondary" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => setModal({ kind: "payment" })}>
-                  Nova obrigação
+                  Nova parcela
                 </Button>
               </div>
             )}
@@ -139,14 +167,14 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
           {!payments ? (
             <SkeletonRows rows={3} />
           ) : !payments.ok ? (
-            <ActionErrorState error={payments} onRetry={reload} title="Não foi possível carregar as obrigações." />
+            <ActionErrorState error={payments} onRetry={reload} title="Não foi possível carregar as parcelas." />
           ) : payments.data.items.length === 0 ? (
-            <EmptyState compact title="Nenhuma obrigação neste acordo." />
+            <EmptyState compact title="Nenhuma parcela neste contrato." />
           ) : (
-            <Table caption="Obrigações do acordo">
+            <Table caption="Parcelas do contrato">
               <THead>
                 <tr>
-                  <Th>Obrigação</Th>
+                  <Th>Parcela</Th>
                   <Th>Vencimento</Th>
                   <Th className="text-right">Valor</Th>
                   <Th className="text-right">Recebido</Th>
@@ -161,17 +189,16 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
                   const cancelled = p.status === "CANCELLED";
                   const items = [
                     { key: "ledger", label: expanded === p.id ? "Ocultar lançamentos" : "Ver lançamentos", onSelect: () => setExpanded(expanded === p.id ? null : p.id) },
-                    ...(canManage && !cancelled && agreement.status === "ACTIVE" && p.balance > 0
-                      ? [{ key: "receipt", label: "Registrar recebimento", onSelect: () => setModal({ kind: "receipt", payment: p }) }]
-                      : []),
-                    ...(canManage ? [{ key: "adjust", label: "Registrar ajuste", onSelect: () => setModal({ kind: "adjustment", payment: p }) }] : []),
-                    ...(canManage && !cancelled && open ? [{ key: "edit", label: "Corrigir obrigação", onSelect: () => setModal({ kind: "payment", payment: p }) }] : []),
+                    ...(canManage && !cancelled && active && p.balance > 0 ? [{ key: "receipt", label: "Registrar recebimento", onSelect: () => setModal({ kind: "receipt", payment: p }) }] : []),
+                    // Ajuste é lançamento: só em contrato ativo (064). Concluído ou cancelado: reabrir antes.
+                    ...(canManage && active ? [{ key: "adjust", label: "Registrar ajuste", onSelect: () => setModal({ kind: "adjustment", payment: p }) }] : []),
+                    ...(canManage && !cancelled && open ? [{ key: "edit", label: "Corrigir parcela", onSelect: () => setModal({ kind: "payment", payment: p }) }] : []),
                     ...(canManage && !cancelled && open
                       ? [
                           p.receivedAmount === 0
-                            ? { key: "cancel", label: "Cancelar obrigação", onSelect: () => setModal({ kind: "cancelPayment", payment: p }) }
+                            ? { key: "cancel", label: "Cancelar parcela", onSelect: () => setModal({ kind: "cancelPayment", payment: p }) }
                             : // Visível, mas explicado (QA 4.3.1, OBS-10): com recebimento, estorne antes.
-                              { key: "cancel", label: "Cancelar obrigação", description: "Há recebimento registrado: estorne os lançamentos antes de cancelar.", disabled: true, onSelect: () => undefined },
+                              { key: "cancel", label: "Cancelar parcela", description: "Há recebimento registrado: estorne os lançamentos antes de cancelar.", disabled: true, onSelect: () => undefined },
                         ]
                       : []),
                   ];
@@ -190,7 +217,7 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
                           <StatusBadge status={p.status} labels={PAYMENT_DB_STATUS_LABEL} tones={PAYMENT_DB_STATUS_TONE} />
                         </Td>
                         <Td className="text-right">
-                          <MenuButton label="Ações da obrigação" icon={<MoreHorizontal className="size-4" aria-hidden />} items={items} />
+                          <MenuButton label="Ações da parcela" icon={<MoreHorizontal className="size-4" aria-hidden />} items={items} />
                         </Td>
                       </Tr>
                       {expanded === p.id && (
@@ -209,11 +236,11 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
                                     <span>
                                       <span className="tabular text-subtle">#{r.sequence}</span> {RECEIPT_KIND_LABEL[r.kind]}
                                       {r.method && ` · ${RECEIPT_METHOD_LABEL[r.method as keyof typeof RECEIPT_METHOD_LABEL] ?? r.method}`} · {formatDateTime(r.occurredAt)}
-                                      {r.notes && <span className="text-muted"> — {r.notes}</span>}
+                                      {r.notes && <span className="text-muted"> ({r.notes})</span>}
                                     </span>
                                     <span className="flex items-center gap-3">
                                       <span className={r.amount < 0 ? "tabular text-danger" : "tabular text-foreground"}>{formatCurrency(r.amount)}</span>
-                                      {canManage && r.amount > 0 && (
+                                      {canManage && active && r.amount > 0 && (
                                         <Button size="sm" variant="ghost" onClick={() => setModal({ kind: "reversal", receipt: r })}>
                                           Estornar
                                         </Button>
@@ -233,24 +260,22 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
             </Table>
           )}
         </section>
-        <p className="text-[12px] text-subtle">Valores em reais. Recebido, saldo e situação vêm do ledger do banco; a divisão com parceiros é gerada pelo banco a cada lançamento.</p>
+        <p className="text-[12px] text-subtle">Valores em reais. Recebido, saldo e situação são calculados pelo sistema a partir dos lançamentos. A divisão com parceiros também, a cada lançamento.</p>
       </div>
 
       {modal?.kind === "payment" && <PaymentDialog agreementId={agreement.id} payment={modal.payment} onClose={() => setModal(null)} onSaved={reload} />}
       {modal?.kind === "schedule" && <ScheduleDialog agreement={agreement} onClose={() => setModal(null)} onSaved={reload} />}
       {modal?.kind === "cancelPayment" && (
         <ReasonDialog
-          title="Cancelar obrigação"
-          description="A obrigação cancelada fica no histórico e não volta. Com recebimento, estorne antes."
-          confirmLabel="Cancelar obrigação"
+          title="Cancelar parcela"
+          description="A parcela cancelada fica no histórico e não volta. Com recebimento, estorne antes."
+          confirmLabel="Cancelar parcela"
           onConfirm={(reason) => actions.cancelPayment(modal.payment.id, reason)}
           onClose={() => setModal(null)}
         />
       )}
       {modal?.kind === "receipt" && <ReceiptDialog payment={modal.payment} onClose={() => setModal(null)} onSaved={reload} />}
-      {modal?.kind === "adjustment" && (
-        <AdjustmentDialog payment={modal.payment} receipts={ledgerItems(modal.payment.id)} onClose={() => setModal(null)} onSaved={reload} />
-      )}
+      {modal?.kind === "adjustment" && <AdjustmentDialog payment={modal.payment} onClose={() => setModal(null)} onSaved={reload} />}
       {modal?.kind === "reversal" && <ReversalDialog receipt={modal.receipt} onClose={() => setModal(null)} onSaved={reload} />}
       {modal?.kind === "status" && (
         <ConfirmDialog
@@ -263,6 +288,16 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
             if (r.ok) onClose();
             return r;
           }}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.kind === "reopen" && (
+        <ReasonDialog
+          title="Reabrir contrato"
+          description="O contrato volta a ficar ativo: dá para estornar ou ajustar um recebimento, receber de novo, cancelar parcela e concluir outra vez. Os valores combinados não mudam. A reabertura fica registrada com o seu nome e o motivo."
+          confirmLabel="Reabrir contrato"
+          variant="primary"
+          onConfirm={(reason) => actions.reopenAgreement(agreement.id, reason)}
           onClose={() => setModal(null)}
         />
       )}

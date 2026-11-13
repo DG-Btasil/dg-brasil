@@ -4,6 +4,7 @@ import { useState } from "react";
 import { todayISO } from "@/lib/clock";
 import { formatCurrency, formatDate } from "@/lib/formatting";
 import { mapFieldErrors } from "@/lib/actions/result";
+import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import type { ExpenseCategory, ExpenseDTO } from "@/server/domain/finance/dto";
@@ -34,6 +35,7 @@ export function ExpenseDialog({
   onSaved: () => void;
 }) {
   const actions = useFinanceActions(onSaved);
+  const idempotency = useIdempotencyKey();
   const [values, setValues] = useState<ExpenseValues>(() => expenseToValues(expense, todayISO()));
   const [process, setProcess] = useState<PickerOption | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -50,10 +52,14 @@ export function ExpenseDialog({
       return;
     }
     setSaving(true);
-    const r = expense ? await actions.updateExpense(expense.id, expensePatch(values)) : await actions.createExpense(expenseCreateInput(fixedProcess ?? process!.id, values));
+    // Despesa nova vai com a chave do envio: clique duplo ou reenvio não lança duas.
+    const input = expense ? undefined : expenseCreateInput(fixedProcess ?? process!.id, values);
+    const r = expense ? await actions.updateExpense(expense.id, expensePatch(values)) : await actions.createExpense({ ...input, idempotencyKey: idempotency.keyFor(input) });
     setSaving(false);
-    if (r.ok) onClose();
-    else setErrors(mapFieldErrors(r.error.fieldErrors, {}, expense ? "patch." : undefined));
+    if (r.ok) {
+      idempotency.reset();
+      onClose();
+    } else setErrors(mapFieldErrors(r.error.fieldErrors, {}, expense ? "patch." : undefined));
   }
 
   return (

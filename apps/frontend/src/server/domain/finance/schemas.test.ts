@@ -150,7 +150,7 @@ describe("financeiro por processo (046)", () => {
 });
 
 describe("despesas do processo (046)", () => {
-  const base = { processId: ID, category: "COURT_COSTS", description: "Custas iniciais", amount: 150.35, incurredOn: "2026-10-01" };
+  const base = { processId: ID, idempotencyKey: KEY, category: "COURT_COSTS", description: "Custas iniciais", amount: 150.35, incurredOn: "2026-10-01" };
 
   it("nova despesa: categoria do check do banco, valor > 0 com 2 casas, descrição obrigatória; sem pagamento = a pagar", () => {
     expect(createExpenseSchema.parse(base)).toEqual({ ...base, reimbursable: false });

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   agreementInsert,
-  agreementListItemFromRows,
+  agreementListItemFromRow,
+  financeSummaryFromRaw,
+  receiptStatementItemFromRow,
+  receiptStatementTotalsFromRaw,
+  receivableFromRow,
+  receivablesTotalsFromRaw,
   agreementShareFromRows,
   agreementUpdate,
   allocationFromRow,
@@ -29,7 +34,7 @@ import {
   type ProcessFinanceRow,
   type TransferRow,
 } from "./mappers";
-import { processFinanceSearch } from "./repository";
+import { financeSearch, processFinanceSearch } from "./repository";
 import { createAgreementSchema, createExpenseSchema } from "./schemas";
 
 const partnershipRow: PartnershipRow = {
@@ -352,15 +357,15 @@ describe("visão por processo (view process_finance_overview)", () => {
   });
 });
 
-describe("contrato na lista: rótulo do processo", () => {
-  const base = {
+describe("contrato na lista (view finance_agreement_list, 064): nada é somado no servidor do painel", () => {
+  const base: AgreementListRow = {
     id: "fa-1",
     legal_case_id: "case-1",
     legal_process_id: "proc-1",
     fee_model_id: null,
     upfront_fee: null,
-    fixed_fee: null,
-    installments: null,
+    fixed_fee: "1000.00",
+    installments: 2,
     monthly_fee: null,
     success_fee_percentage: null,
     currency: "BRL",
@@ -370,15 +375,147 @@ describe("contrato na lista: rótulo do processo", () => {
     created_by: null,
     created_at: "2026-10-01T00:00:00Z",
     updated_at: "2026-10-01T00:00:00Z",
-    legal_cases: { title: "Caso X", origin_organization_id: "org", clients: null },
-  } as AgreementListRow;
+    reopened_at: null,
+    reopen_reason: null,
+    fee_model_name: "Modelo A",
+    case_title: "Caso X",
+    case_origin_organization_id: "org",
+    client_name: "Maria Teste",
+    process_title: "Caso X",
+    cnj_number: "123",
+    in_process_totals: true,
+    contracted: "1500.10",
+    received: "600.05",
+    outstanding: "900.05",
+    overdue: "300.00",
+    open_payments: 2,
+    next_due_date: "2026-11-15",
+  };
 
-  it("processo sem título usa o título do caso; contrato antigo (sem processo) não tem rótulo de processo", () => {
-    expect(agreementListItemFromRows({ ...base, legal_processes: { title: null, cnj_number: "123" } }, [])).toMatchObject({ legalProcessId: "proc-1", processTitle: "Caso X", cnjNumber: "123" });
-    expect(agreementListItemFromRows({ ...base, legal_processes: [{ title: "Processo A", cnj_number: null }] }, []).processTitle).toBe("Processo A");
-    const legacy = agreementListItemFromRows({ ...base, legal_process_id: null, legal_processes: null }, []);
+  it("rótulos, totais e próximo vencimento vêm prontos do banco", () => {
+    expect(agreementListItemFromRow(base)).toMatchObject({
+      legalProcessId: "proc-1",
+      processTitle: "Caso X",
+      cnjNumber: "123",
+      caseTitle: "Caso X",
+      clientName: "Maria Teste",
+      feeModelName: "Modelo A",
+      nextDueDate: "2026-11-15",
+      inProcessTotals: true,
+      totals: { contracted: 1500.1, received: 600.05, outstanding: 900.05, overdue: 300, openPayments: 2 },
+    });
+  });
+
+  it("contrato antigo (sem processo) não tem rótulo de processo e fica fora dos totais por processo", () => {
+    const legacy = agreementListItemFromRow({ ...base, legal_process_id: null, process_title: null, cnj_number: null, in_process_totals: false, next_due_date: null, fee_model_name: null });
     expect(legacy.legalProcessId).toBeUndefined();
     expect(legacy.processTitle).toBeUndefined();
+    expect(legacy.nextDueDate).toBeUndefined();
+    expect(legacy.feeModelName).toBeUndefined();
+    expect(legacy.inProcessTotals).toBe(false);
+  });
+
+  it("reabertura: data e motivo chegam à tela; sem reabertura, ausentes", () => {
+    expect(agreementListItemFromRow(base).reopenedAt).toBeUndefined();
+    expect(agreementListItemFromRow({ ...base, reopened_at: "2026-11-13T12:00:00Z", reopen_reason: "Pix devolvido" })).toMatchObject({ reopenedAt: "2026-11-13T12:00:00Z", reopenReason: "Pix devolvido" });
+  });
+});
+
+describe("visão geral (public.finance_summary, 064)", () => {
+  const raw = {
+    totals: { contracted: 1500.1, received: "600.05", outstanding: 900.05, overdue: 300, open_payments: 2 },
+    outside: { contracted: 201, received: 0, outstanding: 201, overdue: 0, open_payments: 5 },
+    agreements_by_status: { DRAFT: 1, ACTIVE: 3, COMPLETED: 2, CANCELLED: 0 },
+    monthly: [
+      { month: "2026-10", amount: "0.00" },
+      { month: "2026-11", amount: 400 },
+    ],
+  };
+
+  it("totais por processo e o que fica fora chegam separados (a Home e o Financeiro leem os mesmos)", () => {
+    const dto = financeSummaryFromRaw(raw, []);
+    expect(dto.totals).toEqual({ contracted: 1500.1, received: 600.05, outstanding: 900.05, overdue: 300, openPayments: 2 });
+    expect(dto.outside).toEqual({ contracted: 201, received: 0, outstanding: 201, overdue: 0, openPayments: 5 });
+    expect(dto.agreementsByStatus).toEqual({ DRAFT: 1, ACTIVE: 3, COMPLETED: 2, CANCELLED: 0 });
+    expect(dto.monthly).toEqual([
+      { month: "2026-10", amount: 0 },
+      { month: "2026-11", amount: 400 },
+    ]);
+    expect(dto.truncated).toBe(false);
+  });
+});
+
+describe("extrato de recebimentos e a receber (064)", () => {
+  it("linha do extrato: valor com sinal, dia de São Paulo, cliente e processo", () => {
+    const item = receiptStatementItemFromRow({
+      receipt_id: "r-1",
+      sequence: 7,
+      kind: "REVERSAL",
+      amount: "-300.00",
+      currency: "BRL",
+      occurred_at: "2025-11-01T02:30:00Z",
+      occurred_on: "2025-10-31",
+      method: null,
+      notes: "Pix devolvido",
+      payment_id: "p-1",
+      payment_type: "FIXED",
+      payment_description: "Parcela 1/3",
+      financial_agreement_id: "fa-1",
+      legal_case_id: "case-1",
+      legal_process_id: null,
+      client_name: "Maria Teste",
+      case_title: "Caso X",
+      process_title: null,
+      cnj_number: null,
+    });
+    expect(item).toMatchObject({ receiptId: "r-1", sequence: 7, kind: "REVERSAL", amount: -300, occurredOn: "2025-10-31", clientName: "Maria Teste", caseTitle: "Caso X", paymentDescription: "Parcela 1/3" });
+    expect(item.method).toBeUndefined();
+    expect(item.processTitle).toBeUndefined();
+    expect(item.legalProcessId).toBeUndefined();
+  });
+
+  it("total do período: função sem linhas (ou falha de leitura tratada) vale zero", () => {
+    expect(receiptStatementTotalsFromRaw({ count: 3, received: "1300.00", deducted: "-300.00", net: 1000 })).toEqual({ count: 3, received: 1300, deducted: -300, net: 1000 });
+    expect(receiptStatementTotalsFromRaw(null)).toEqual({ count: 0, received: 0, deducted: 0, net: 0 });
+  });
+
+  it("a receber: dias de atraso só na vencida; marca do que fica fora dos totais", () => {
+    const row = {
+      payment_id: "p-1",
+      financial_agreement_id: "fa-1",
+      legal_case_id: "case-1",
+      legal_process_id: "proc-1",
+      agreement_status: "ACTIVE" as const,
+      amount: "1000.00",
+      received_amount: "400.00",
+      balance: "600.00",
+      currency: "BRL",
+      due_date: "2026-01-10",
+      status: "OVERDUE" as const,
+      days_overdue: 12,
+      payment_type: "FIXED" as const,
+      description: null,
+      client_name: "Maria Teste",
+      case_title: "Caso X",
+      process_title: "Processo A",
+      cnj_number: null,
+      in_process_totals: true,
+    };
+    expect(receivableFromRow(row)).toMatchObject({ paymentId: "p-1", balance: 600, receivedAmount: 400, daysOverdue: 12, status: "OVERDUE", processTitle: "Processo A", inProcessTotals: true });
+    const pending = receivableFromRow({ ...row, status: "PENDING", days_overdue: null, due_date: null, in_process_totals: false });
+    expect(pending.daysOverdue).toBeUndefined();
+    expect(pending.dueDate).toBeUndefined();
+    expect(pending.inProcessTotals).toBe(false);
+    expect(receivablesTotalsFromRaw({ count: 3, total: "770.00", overdue: "270.00", overdue_count: 2, outside_totals: "70.00" })).toEqual({ count: 3, total: 770, overdue: 270, overdueCount: 2, outsideTotals: 70 });
+    expect(receivablesTotalsFromRaw(undefined)).toEqual({ count: 0, total: 0, overdue: 0, overdueCount: 0, outsideTotals: 0 });
+  });
+
+  it("busca das listas novas: mesma regra da visão por processo, na coluna da view; o padrão das funções de total vai escapado", () => {
+    expect(financeSearch("0001234-56.2026", "process_title")).toEqual({ kind: "cnj", digits: "0001234562026" });
+    const text = financeSearch("Maria 50%_", "process_title");
+    expect(text).toMatchObject({ kind: "text", pattern: String.raw`%Maria 50\%\_%` });
+    expect(text && text.kind === "text" ? text.or : "").toContain("process_title.ilike.");
+    expect(text && text.kind === "text" ? text.or : "").not.toContain("display_title");
   });
 });
 
@@ -401,7 +538,7 @@ describe("despesas do processo", () => {
   });
 
   it("insert: caso do processo (servidor), autor da sessão; nada de cancelamento", () => {
-    const input = createExpenseSchema.parse({ processId: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01", category: "EXPERT_FEE", description: "Perito", amount: 800, incurredOn: "2026-10-05" });
+    const input = createExpenseSchema.parse({ processId: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01", idempotencyKey: "9b2d4c6e-1a3f-4e5b-8c7d-0f1e2d3c4b5a", category: "EXPERT_FEE", description: "Perito", amount: 800, incurredOn: "2026-10-05" });
     expect(expenseInsert(input, "case-1", "actor-1")).toEqual({
       legal_process_id: "5f0c7a52-3c2b-4c1e-9d1a-2b0f2f6f9a01",
       legal_case_id: "case-1",

@@ -1,19 +1,22 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { todayISO } from "@/lib/clock";
 import { formatCurrency, formatDate } from "@/lib/formatting";
-import { mapFieldErrors, type ActionResult } from "@/lib/actions/result";
+import { loadAllPages } from "@/lib/actions/all-pages";
+import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/result";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { Button, type ButtonVariant } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
+import type { Page } from "@/server/core/pagination";
+import { listReceiptsAction } from "@/server/domain/finance/actions";
 import type { AgreementListItemDTO, PaymentDTO, ReceiptDTO } from "@/server/domain/finance/dto";
 import { PAYMENT_TYPES, RECEIPT_METHODS, SCHEDULE_FREQUENCIES, SCHEDULE_MAX_INSTALLMENTS, SCHEDULE_PAYMENT_TYPES, type ScheduleFrequency } from "@/server/domain/finance/schemas";
 import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
 import { FREQUENCY_LABEL, previewSchedule } from "../schedule";
 import { PAYMENT_TYPE_LABEL, RECEIPT_METHOD_LABEL } from "../labels";
-import { moneyInput, occurredAtInput, parseMoneyField } from "../server-input";
+import { moneyField, moneyInput, occurredAtInput } from "../server-input";
 import { useFinanceActions } from "../use-finance-actions";
 
 const TYPE_OPTIONS = PAYMENT_TYPES.map((t) => ({ value: t, label: PAYMENT_TYPE_LABEL[t] }));
@@ -78,7 +81,7 @@ function useFieldErrors() {
   return { errors, setErrors, absorb };
 }
 
-/** Nova obrigação ou correção de uma obrigação (valor, vencimento, descrição). O recebido nunca se edita. */
+/** Nova parcela ou correção de uma parcela (valor, vencimento, descrição). O recebido nunca se edita. */
 export function PaymentDialog({ agreementId, payment, onClose, onSaved }: { agreementId: string; payment?: PaymentDTO; onClose: () => void; onSaved: () => void }) {
   const actions = useFinanceActions(onSaved);
   const idempotency = useIdempotencyKey();
@@ -90,11 +93,12 @@ export function PaymentDialog({ agreementId, payment, onClose, onSaved }: { agre
   const [saving, setSaving] = useState(false);
 
   async function confirm() {
-    const value = parseMoneyField(amount);
-    if (!value || value <= 0) {
-      setErrors({ amount: "Informe um valor maior que zero." });
+    const parsed = moneyField(amount, { required: true });
+    if (parsed.value === undefined) {
+      setErrors({ amount: parsed.error ?? "Informe um valor maior que zero." });
       return;
     }
+    const value = parsed.value;
     setSaving(true);
     if (payment) {
       const r = await actions.updatePayment(payment.id, { amount: value, dueDate: dueDate || null, description: description.trim() || null });
@@ -113,9 +117,9 @@ export function PaymentDialog({ agreementId, payment, onClose, onSaved }: { agre
 
   return (
     <FinanceDialog
-      title={payment ? "Corrigir obrigação" : "Nova obrigação"}
-      description={payment ? "O valor não pode ficar abaixo do que já foi recebido. Recebimentos são corrigidos por estorno ou ajuste." : "O que se espera receber neste acordo. A moeda é a do acordo."}
-      confirmLabel={payment ? "Salvar" : "Registrar obrigação"}
+      title={payment ? "Corrigir parcela" : "Nova parcela"}
+      description={payment ? "O valor não pode ficar abaixo do que já foi recebido. Recebimentos são corrigidos por estorno ou ajuste." : "O que se espera receber neste contrato. A moeda é a do contrato."}
+      confirmLabel={payment ? "Salvar" : "Registrar parcela"}
       saving={saving}
       onConfirm={confirm}
       onClose={onClose}
@@ -140,17 +144,20 @@ export function PaymentDialog({ agreementId, payment, onClose, onSaved }: { agre
   );
 }
 
-/** Motivo obrigatório (cancelar obrigação, cancelar repasse). */
+/** Motivo obrigatório (cancelar parcela, cancelar repasse, reabrir contrato). */
 export function ReasonDialog({
   title,
   description,
   confirmLabel,
+  variant = "danger",
   onConfirm,
   onClose,
 }: {
   title: string;
   description: ReactNode;
   confirmLabel: string;
+  /** Padrão "danger" (cancelamentos). Reabrir contrato usa "primary". */
+  variant?: ButtonVariant;
   onConfirm: (reason: string) => Promise<ActionResult<unknown>>;
   onClose: () => void;
 }) {
@@ -162,7 +169,7 @@ export function ReasonDialog({
       title={title}
       description={description}
       confirmLabel={confirmLabel}
-      variant="danger"
+      variant={variant}
       saving={saving}
       onClose={onClose}
       onConfirm={async () => {
@@ -184,11 +191,11 @@ export function ReasonDialog({
   );
 }
 
-/** Entrada no ledger. Sem valor, quita o saldo (lido no servidor). */
+/** Recebimento. Campo de valor VAZIO quita o saldo (lido no servidor); texto que não é número é erro, nunca "vazio". */
 export function ReceiptDialog({ payment, onClose, onSaved }: { payment: PaymentDTO; onClose: () => void; onSaved: () => void }) {
   const actions = useFinanceActions(onSaved);
   const idempotency = useIdempotencyKey();
-  const { errors, absorb } = useFieldErrors();
+  const { errors, setErrors, absorb } = useFieldErrors();
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
   const [method, setMethod] = useState<string>("PIX");
@@ -197,12 +204,17 @@ export function ReceiptDialog({ payment, onClose, onSaved }: { payment: PaymentD
   return (
     <FinanceDialog
       title="Registrar recebimento"
-      description={`Saldo da obrigação: ${formatCurrency(payment.balance)}. Deixe o valor em branco para quitar o saldo. A divisão com o parceiro, quando houver, é gerada pelo banco.`}
+      description={`Saldo da parcela: ${formatCurrency(payment.balance)}. Deixe o valor em branco para quitar o saldo. A divisão com o parceiro, quando houver, é calculada pelo sistema.`}
       confirmLabel="Registrar recebimento"
       saving={saving}
       onClose={onClose}
       onConfirm={async () => {
-        const input = { paymentId: payment.id, amount: parseMoneyField(amount), occurredAt: occurredAtInput(date), method, notes: notes.trim() || undefined };
+        const parsed = moneyField(amount);
+        if (parsed.error || !date) {
+          setErrors({ ...(parsed.error ? { amount: parsed.error } : {}), ...(date ? {} : { occurredAt: "Informe a data do recebimento." }) });
+          return;
+        }
+        const input = { paymentId: payment.id, amount: parsed.value, occurredAt: occurredAtInput(date), method, notes: notes.trim() || undefined };
         setSaving(true);
         const r = await actions.registerReceipt({ ...input, idempotencyKey: idempotency.keyFor(input) });
         setSaving(false);
@@ -230,32 +242,61 @@ export function ReceiptDialog({ payment, onClose, onSaved }: { payment: PaymentD
   );
 }
 
-/** Ajuste com justificativa (para mais ou para menos). Pode apontar o lançamento que corrige. */
-export function AdjustmentDialog({ payment, receipts, onClose, onSaved }: { payment: PaymentDTO; receipts: ReceiptDTO[]; onClose: () => void; onSaved: () => void }) {
+/**
+ * Ajuste com justificativa. Para MENOS é sempre a correção de um recebimento:
+ * o recebimento corrigido é obrigatório (a parte do parceiro sai da mesma
+ * divisão do original; o sistema recusa sem ele). O diálogo lê os lançamentos
+ * da parcela no servidor: não depende de a linha estar aberta na gaveta.
+ */
+export function AdjustmentDialog({ payment, onClose, onSaved }: { payment: PaymentDTO; onClose: () => void; onSaved: () => void }) {
   const actions = useFinanceActions(onSaved);
   const idempotency = useIdempotencyKey();
   const { errors, setErrors, absorb } = useFieldErrors();
+  const [receipts, setReceipts] = useState<ActionResult<Page<ReceiptDTO>> | null>(null);
   const [direction, setDirection] = useState<"INCREASE" | "DECREASE">("DECREASE");
   const [amount, setAmount] = useState("");
   const [justification, setJustification] = useState("");
   const [original, setOriginal] = useState("");
   const [date, setDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
-  const entries = receipts.filter((r) => r.amount > 0);
+
+  useEffect(() => {
+    let alive = true;
+    callAction(() => loadAllPages((page, pageSize) => listReceiptsAction({ paymentId: payment.id, page, pageSize }))).then((r) => {
+      if (!alive) return;
+      setReceipts(r);
+      // Um recebimento só: já vem escolhido. Nenhum: só cabe ajuste para mais.
+      const found = r.ok ? r.data.items.filter((x) => x.amount > 0) : [];
+      if (found.length === 1) setOriginal(found[0].id);
+      if (r.ok && found.length === 0) setDirection("INCREASE");
+    });
+    return () => {
+      alive = false;
+    };
+  }, [payment.id]);
+
+  const entries = receipts?.ok ? receipts.data.items.filter((r) => r.amount > 0) : [];
+  const decrease = direction === "DECREASE";
+  const noEntries = !!receipts?.ok && entries.length === 0;
   return (
     <FinanceDialog
       title="Registrar ajuste"
-      description="Ajustes ficam no ledger com a justificativa. Para mais exige acordo ativo; para menos é correção e vale sempre."
+      description="O ajuste fica no histórico com a justificativa. Para menos, escolha o recebimento que está sendo corrigido. O contrato precisa estar ativo."
       confirmLabel="Registrar ajuste"
       saving={saving}
       onClose={onClose}
       onConfirm={async () => {
-        const value = parseMoneyField(amount);
-        if (!value || value <= 0 || !justification.trim()) {
-          setErrors({ amount: !value || value <= 0 ? "Informe um valor maior que zero." : "", justification: justification.trim() ? "" : "Informe a justificativa." });
+        const parsed = moneyField(amount, { required: true });
+        const problems: Record<string, string> = {};
+        if (parsed.value === undefined) problems.amount = parsed.error ?? "Informe um valor maior que zero.";
+        if (!justification.trim()) problems.justification = "Informe a justificativa.";
+        if (decrease && !original) problems.originalReceiptId = noEntries ? "Esta parcela não tem recebimento para corrigir." : "Escolha o recebimento que este ajuste corrige.";
+        if (!date) problems.occurredAt = "Informe a data.";
+        if (Object.keys(problems).length > 0) {
+          setErrors(problems);
           return;
         }
-        const input = { paymentId: payment.id, direction, amount: value, justification: justification.trim(), originalReceiptId: original || undefined, occurredAt: occurredAtInput(date) };
+        const input = { paymentId: payment.id, direction, amount: parsed.value, justification: justification.trim(), originalReceiptId: original || undefined, occurredAt: occurredAtInput(date) };
         setSaving(true);
         const r = await actions.registerAdjustment({ ...input, idempotencyKey: idempotency.keyFor(input) });
         setSaving(false);
@@ -282,12 +323,18 @@ export function AdjustmentDialog({ payment, receipts, onClose, onSaved }: { paym
         <Field label="Valor (R$)" requirement="required" error={errors.amount || undefined}>
           {(p) => <Input {...p} inputMode="decimal" placeholder="0,00" value={amount} onChange={(e) => setAmount(e.target.value)} />}
         </Field>
-        <Field label="Lançamento corrigido" requirement="optional" error={errors.originalReceiptId}>
+        <Field
+          label="Recebimento corrigido"
+          requirement={decrease ? "required" : "optional"}
+          hint={!receipts ? "Carregando os recebimentos…" : !receipts.ok ? "Não foi possível carregar os recebimentos. Feche e tente de novo." : noEntries ? "Esta parcela ainda não tem recebimento." : undefined}
+          error={errors.originalReceiptId || undefined}
+        >
           {(p) => (
             <Select
               {...p}
-              placeholder="Nenhum"
-              options={entries.map((r) => ({ value: r.id, label: `#${r.sequence} · ${formatCurrency(r.amount)}` }))}
+              placeholder={decrease ? "Escolha o recebimento" : "Nenhum"}
+              disabled={!receipts?.ok || noEntries}
+              options={entries.map((r) => ({ value: r.id, label: `#${r.sequence} · ${formatDate(r.occurredAt)} · ${formatCurrency(r.amount)}` }))}
               value={original}
               onChange={(e) => setOriginal(e.target.value)}
             />
@@ -304,11 +351,11 @@ export function AdjustmentDialog({ payment, receipts, onClose, onSaved }: { paym
   );
 }
 
-/** Estorno de um lançamento de entrada. Sem valor, estorna o que resta dele. */
+/** Estorno de um recebimento. Campo de valor VAZIO estorna o que resta dele; texto que não é número é erro, nunca "vazio". */
 export function ReversalDialog({ receipt, onClose, onSaved }: { receipt: ReceiptDTO; onClose: () => void; onSaved: () => void }) {
   const actions = useFinanceActions(onSaved);
   const idempotency = useIdempotencyKey();
-  const { errors, absorb } = useFieldErrors();
+  const { errors, setErrors, absorb } = useFieldErrors();
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [date, setDate] = useState(todayISO());
@@ -316,13 +363,18 @@ export function ReversalDialog({ receipt, onClose, onSaved }: { receipt: Receipt
   return (
     <FinanceDialog
       title="Estornar lançamento"
-      description={`Lançamento #${receipt.sequence} de ${formatCurrency(receipt.amount)}. O estorno é um novo lançamento; o original continua no histórico. A divisão inversa, quando houver, é gerada pelo banco.`}
+      description={`Lançamento #${receipt.sequence} de ${formatCurrency(receipt.amount)}. O estorno é um novo lançamento; o original continua no histórico. A parte do parceiro, quando houver, é descontada pelo sistema.`}
       confirmLabel="Registrar estorno"
       variant="danger"
       saving={saving}
       onClose={onClose}
       onConfirm={async () => {
-        const input = { originalReceiptId: receipt.id, amount: parseMoneyField(amount), notes: notes.trim() || undefined, occurredAt: occurredAtInput(date) };
+        const parsed = moneyField(amount);
+        if (parsed.error || !date) {
+          setErrors({ ...(parsed.error ? { amount: parsed.error } : {}), ...(date ? {} : { occurredAt: "Informe a data." }) });
+          return;
+        }
+        const input = { originalReceiptId: receipt.id, amount: parsed.value, notes: notes.trim() || undefined, occurredAt: occurredAtInput(date) };
         setSaving(true);
         const r = await actions.registerReversal({ ...input, idempotencyKey: idempotency.keyFor(input) });
         setSaving(false);
@@ -347,7 +399,7 @@ export function ReversalDialog({ receipt, onClose, onSaved }: { receipt: Receipt
   );
 }
 
-/** Confirmação de mudança de situação do acordo. */
+/** Confirmação simples (mudança de situação do contrato, repasse pago). */
 export function ConfirmDialog({
   title,
   description,
@@ -389,8 +441,8 @@ const SCHEDULE_TYPE_OPTIONS = SCHEDULE_PAYMENT_TYPES.map((t) => ({ value: t, lab
 
 /**
  * Gerar cronograma (4.3.1): total + quantidade + 1º vencimento + periodicidade
- * → prévia (mesma regra do banco) → o BANCO cria as N obrigações numa
- * transação, com centavos exatos. Só obrigações: o ledger não muda.
+ * → prévia (mesma regra do banco de dados) → o banco de dados cria as N
+ * parcelas numa transação, com centavos exatos. Só parcelas: o ledger não muda.
  */
 export function ScheduleDialog({ agreement, onClose, onSaved }: { agreement: AgreementListItemDTO; onClose: () => void; onSaved: () => void }) {
   const actions = useFinanceActions(onSaved);
@@ -404,13 +456,14 @@ export function ScheduleDialog({ agreement, onClose, onSaved }: { agreement: Agr
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const totalValue = parseMoneyField(total) ?? 0;
+  const totalField = moneyField(total, { required: true, requiredMessage: "Informe um total maior que zero." });
+  const totalValue = totalField.value ?? 0;
   const n = Number(count);
   const preview = previewSchedule({ total: totalValue, count: n, firstDueDate: firstDue, frequency, description });
   const tooMany = Number.isInteger(n) && n > SCHEDULE_MAX_INSTALLMENTS;
 
   async function confirm() {
-    if (!(totalValue > 0)) return setErrors({ total: "Informe um total maior que zero." });
+    if (totalField.value === undefined) return setErrors({ total: totalField.error ?? "Informe um total maior que zero." });
     if (!Number.isInteger(n) || n < 1 || tooMany) return setErrors({ installments: `De 1 a ${SCHEDULE_MAX_INSTALLMENTS} parcelas.` });
     if (!preview) return setErrors({ total: "Cada parcela precisa de pelo menos R$ 0,01." });
     const input = {
@@ -434,7 +487,7 @@ export function ScheduleDialog({ agreement, onClose, onSaved }: { agreement: Agr
   return (
     <FinanceDialog
       title="Gerar cronograma de parcelas"
-      description="Cria várias obrigações de uma vez. O sistema divide o total em centavos exatos: o resto vai para as primeiras parcelas. Todas são criadas juntas — ou nenhuma."
+      description="Cria várias parcelas de uma vez. O sistema divide o total em centavos exatos: o resto vai para as primeiras parcelas. Todas são criadas juntas, ou nenhuma."
       confirmLabel={preview ? `Gerar ${preview.length} ${preview.length === 1 ? "parcela" : "parcelas"}` : "Gerar cronograma"}
       saving={saving}
       onConfirm={confirm}
@@ -495,7 +548,7 @@ export function ScheduleDialog({ agreement, onClose, onSaved }: { agreement: Agr
             </Table>
           </div>
         )}
-        <p className="border-t border-line px-4 py-2 text-[12px] text-muted">Prévia com a mesma regra do servidor. As parcelas definitivas são criadas pelo banco ao confirmar.</p>
+        <p className="border-t border-line px-4 py-2 text-[12px] text-muted">Esta é a prévia. O sistema cria as parcelas com estes mesmos valores quando você confirmar.</p>
       </section>
     </FinanceDialog>
   );
