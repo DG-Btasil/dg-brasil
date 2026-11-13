@@ -66,6 +66,7 @@ export async function saveSettings(ctx: ServiceContext, v: z.infer<typeof settin
   if (v.lookbackDays !== undefined) p.lookback_days = v.lookbackDays;
   if (v.deadlineAgentId !== undefined) p.deadline_agent_id = v.deadlineAgentId;
   if (v.deadlineAutoApply !== undefined) p.deadline_auto_apply = v.deadlineAutoApply;
+  if (v.deadlineAutoTask !== undefined) p.deadline_auto_task = v.deadlineAutoTask;
   return rpc<{ ok: boolean }>(ctx.db, "save_judicial_settings", { p_settings: p });
 }
 

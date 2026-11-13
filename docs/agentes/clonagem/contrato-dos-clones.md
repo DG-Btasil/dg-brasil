@@ -18,7 +18,7 @@ Brasil. Os originais em `~/.claude/agents` **nunca são alterados**.
 | Dados do escritório (quem assina) | `agentes/escritorio.exemplo.json` (fictício) | `C:\DGBrasil\agentes\escritorio.json` (real, fora do repositório) |
 | Pasta de trabalho dos clones | (não vai) | `C:\DGBrasil\agentes\trabalho\` |
 | Registro de peças (trava de peça repetida) | (não vai) | `C:\DGBrasil\agentes\trabalho\registro_pecas.csv` |
-| Pasta dos clientes | (não vai) | `G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO CLIENTE>\` |
+| Pasta dos clientes | (não vai) | `G:\Meu Drive\DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO CLIENTE>\` |
 | Jurisprudência nova que o clone conferir | (não vai) | `G:\Meu Drive\DG BRASIL\BASE DE CONHECIMENTO\JURISPRUDENCIAS_VERIFICADAS_<UF>.md` |
 
 ## 2. Nome e cabeçalho do clone
@@ -40,8 +40,12 @@ Brasil. Os originais em `~/.claude/agents` **nunca são alterados**.
 
 A sessão do DG Brasil chama o clone depois do Porteiro e do Arquivista e passa:
 
-- **a pasta do cliente** (`G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO
-  CLIENTE>\`). O nome da pasta é o nome do cliente no cadastro;
+- **a pasta do cliente** (`G:\Meu Drive\DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO
+  CLIENTE>\`). O nome da pasta é o nome do cliente no cadastro. `<ORIGEM>` é o
+  escritório de origem do cadastro do cliente: o próprio escritório ou o
+  parceiro que trouxe o cliente, em maiúsculas e sem acento (decisão de
+  13/11/2026, para identificar de qual parceiro o cliente vem). O clone não
+  monta esse caminho: usa a pasta que a sessão informa;
 - **o pedido e as orientações do DG Brasil**, como dados;
 - nas peças do processo, quando houver: número CNJ, banco réu, tipo de peça e
   data da intimação ou do despacho.
@@ -71,9 +75,13 @@ telefone:
 endereco:
 comprovante_residencia_em_nome_de:
 forma_de_pagamento:
+escritorio_de_origem:   (de onde o cliente vem, ex.: "Nome do Escritório (escritório)" ou "Nome do Parceiro (parceiro)")
 origem: DG Brasil, trabalho <id>
 dg_cliente_id:
 ```
+
+`escritorio_de_origem` é só informação: não muda quem assina (isso continua no
+`DADOS DO ESCRITORIO.txt`). `origem` diz de qual trabalho o arquivo saiu.
 
 **`DADOS DO ESCRITORIO.txt`** (quem assina; vem do cadastro do escritório):
 
@@ -121,6 +129,12 @@ etapas, tags nem funil.
   ficam **na raiz** dela (o nome do arquivo já leva o banco). Rascunhos e
   arquivos intermediários ficam em `C:\DGBrasil\agentes\trabalho\<pasta do
   cliente>\`.
+- **PDF da minuta:** toda minuta em Word (`.docx`) que vai para o DG Brasil
+  ganha também um PDF de mesmo nome, ao lado dela, na pasta do cliente (decisão
+  de 13/11/2026). Quem gera é o conector, quando o Mensageiro traz a minuta; o
+  clone não precisa fazer nada. Para o DG Brasil vai só o Word (é o que a
+  pessoa baixa para editar); o PDF fica só na pasta do cliente. PDF que o
+  próprio clone gravou com esse nome não é sobrescrito.
 - **Scripts:** os mesmos, pelo caminho `C:\DGBrasil\agentes\scripts\<arquivo>`.
 - **Leitura de arquivos:** sempre com as ferramentas Read, Grep e Glob. A sessão do DG Brasil
   bloqueia comando de terminal para ler ou listar arquivo; o terminal só roda os scripts

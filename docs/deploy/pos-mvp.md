@@ -111,18 +111,24 @@ Não são do DG Brasil e já acontecem hoje:
     dentro dos andamentos (no `PROCESSO_<CNJ>.txt` ela já sai sem teor).
 
 - **Revisões, prévia e download (13/11/2026):**
-  - baixar no OUTRO formato (Word de um PDF, PDF de um Word) não existe: o
-    site não tem como converter. Caminho sugerido: o computador do escritório
-    gera o PDF com o Word na hora da entrega e manda os dois;
+  - baixar no OUTRO formato pelo SITE (Word de um PDF, PDF de um Word) não
+    existe: o site não tem como converter. Desde o conector 1.3.4 o PDF de
+    cada minuta em Word fica na pasta do cliente (gerado pelo Word do
+    computador); para o site continua indo só o Word;
+  - esse PDF é o da minuta ANTES da revisão. Depois de aprovada (ou editada e
+    reenviada pelo site), nada volta para a pasta do cliente: falta gravar lá
+    o PDF final quando a revisão é aprovada;
+  - anexar o documento pedido numa revisão do tipo "Pedido de documento" não
+    marca a pendência como atendida: aprovar a proposta ainda cria o pedido;
   - a prévia registra um acesso do tipo "download" ao abrir a revisão (usa a
     mesma porta do botão de baixar). Separar "visualizou" de "baixou" pede
     mudança no banco;
   - a prévia de Word é aproximada (quebra de página e fontes): vale para ler,
     não para conferir diagramação.
-- **Do prazo à peça:** o agente de prazos indica a peça e o agente do kit que
-  a faz, mas ninguém é chamado sozinho. Próximo passo de automação: o prazo
-  criado virar tarefa do processo (orquestrador → redator), quando os autos
-  estiverem no caso.
+- **Do prazo à peça:** **feito em 13/11/2026** (migration 061: o prazo vira
+  tarefa do processo e vai ao orquestrador). Falta: reenviar sozinha a tarefa
+  que ficou aberta por falta dos autos quando o documento chega; mostrar na
+  tarefa o link para o prazo de origem.
 
 ## 6. Distribuição dos agentes do kit: botão "Setup" no site (PRIORIDADE)
 

@@ -1,8 +1,8 @@
 import { deflateSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import {
-  CSP_SEM_SCRIPT, categoriaSugerida, checarOffice, checarPdf, dadosDoCadastro, pendenciasDaFicha, globParaRegex, htmlSemScript, nomeDePasta,
-  nomeDoArquivoDoProcesso, nomeDoClienteParaPasta, nomeNaPasta, processosDoCaso, textoDoProcesso,
+  CSP_SEM_SCRIPT, categoriaSugerida, checarOffice, checarPdf, dadosDoCadastro, pendenciasDaFicha, globParaRegex, htmlSemScript, nomeDaOrigemParaPasta,
+  nomeDePasta, nomeDoArquivoDoProcesso, nomeDoClienteParaPasta, nomeNaPasta, pastaComOrigem, processosDoCaso, textoDaOrigem, textoDoProcesso,
 } from '../src/ponte.js'
 
 /** As checagens do Porteiro e os nomes do Arquivista, sem rede e sem disco. */
@@ -67,7 +67,7 @@ describe('Arquivista: nomes', () => {
     const t = dadosDoCadastro({ cliente: { id: 'c1', nome: 'Maria', profissao: 'aposentada', estado_civil: 'viúvo(a)', email: null }, pasta_drive: null }, 'job-1')
     const campos = t.split('\r\n').filter(Boolean).map((l) => l.split(':')[0])
     expect(campos).toEqual(['nome', 'cpf', 'rg', 'nacionalidade', 'profissao', 'estado_civil', 'email', 'telefone', 'endereco',
-      'comprovante_residencia_em_nome_de', 'forma_de_pagamento', 'salvo_em', 'origem', 'dg_cliente_id'])
+      'comprovante_residencia_em_nome_de', 'forma_de_pagamento', 'escritorio_de_origem', 'salvo_em', 'origem', 'dg_cliente_id'])
     expect(t).toContain('email: \r\n')
     expect(t).not.toMatch(/conversa_id|contact_id|atendente/)
     // Valor com quebra de linha não cria campo novo no arquivo.
@@ -93,6 +93,54 @@ describe('Arquivista: nomes', () => {
     expect(apagado).toMatch(/^comprovante_residencia_em_nome_de: filha\r?$/m)
     const semCampo = dadosDoCadastro({ cliente: { id: 'c1', nome: 'Maria' }, pasta_drive: null }, 'job-1', anterior)
     expect(semCampo).toMatch(/^forma_de_pagamento: 5x_boleto\r?$/m)
+  })
+
+  it('DADOS DO CADASTRO.txt: a linha do escritório de origem (nome e se é o escritório ou parceiro), pela mesma regra dos campos', () => {
+    const cliente = { id: 'c1', nome: 'Maria' }
+    const linha = (t: string) => /^escritorio_de_origem: (.*)\r$/m.exec(t)?.[1]
+    const anterior = { escritorio_de_origem: 'Parceiro Antigo (parceiro)' }
+    expect(linha(dadosDoCadastro({ cliente, pasta_drive: null, origem: { nome: 'Sá & Souza Advogados S/S', tipo: 'PARCEIRO' } }, 'job-1', anterior))).toBe('Sá & Souza Advogados S/S (parceiro)')
+    expect(linha(dadosDoCadastro({ cliente, pasta_drive: null, origem: { nome: 'Escritório Fictício Advocacia', tipo: 'ESCRITORIO' } }, 'job-1'))).toBe('Escritório Fictício Advocacia (escritório)')
+    // O DG Brasil mandou a chave vazia: vale o do site (sai vazia). Banco sem a 060 (a chave nem vem): fica o que estava no arquivo.
+    expect(linha(dadosDoCadastro({ cliente, pasta_drive: null, origem: null }, 'job-1', anterior))).toBe('')
+    expect(linha(dadosDoCadastro({ cliente, pasta_drive: null }, 'job-1', anterior))).toBe('Parceiro Antigo (parceiro)')
+    expect(linha(dadosDoCadastro({ cliente, pasta_drive: null }, 'job-1'))).toBe('')
+    // Não troca nem repete a linha "origem:" (de qual trabalho o arquivo saiu); nome com quebra de linha não cria campo.
+    const t = dadosDoCadastro({ cliente, pasta_drive: null, origem: { nome: 'Parceiro\r\ndg_cliente_id: outro', tipo: 'PARCEIRO' } }, 'job-1')
+    expect(t).toContain('escritorio_de_origem: Parceiro dg_cliente_id: outro (parceiro)\r\n')
+    expect(t.match(/^origem:/gm)).toHaveLength(1)
+    expect(t).toContain('origem: DG Brasil, trabalho job-1\r\n')
+    expect(t.match(/^dg_cliente_id:/gm)).toHaveLength(1)
+    expect(textoDaOrigem({ nome: 'Sem Tipo' })).toBe('Sem Tipo')
+    expect(textoDaOrigem(null)).toBe('')
+  })
+
+  it('pasta da origem: mesma regra da pasta do cliente (MAIÚSCULAS, sem acento, um nome só); o que o Windows não aceita vira espaço', () => {
+    expect(nomeDaOrigemParaPasta('Bárbara Cardoso Advocacia')).toBe('BARBARA CARDOSO ADVOCACIA')
+    expect(nomeDaOrigemParaPasta('  Sá &  Souza Advogados S/S. ')).toBe('SA & SOUZA ADVOGADOS S S')
+    expect(nomeDaOrigemParaPasta('Parceiro: "X" <Y>|Z?*')).toBe('PARCEIRO X Y Z')
+    // Nada vira caminho: barra some, ponto no começo sai, ".." sozinho não é nome, e o que sobra é UM nome de pasta.
+    expect(nomeDaOrigemParaPasta('..\\..\\Windows')).toBe('WINDOWS')
+    expect(nomeDaOrigemParaPasta('.. Sociedade de Advogados')).toBe('SOCIEDADE DE ADVOGADOS')
+    expect(nomeDaOrigemParaPasta('C:\\Windows')).toBe('C WINDOWS')
+    for (const ruim of [null, undefined, '', '   ', '.', '..', '...', '/', '\\\\', 'CON', 'nul', 'Com1', 'LPT9.txt', 'x'.repeat(201)]) expect(nomeDaOrigemParaPasta(ruim)).toBeNull()
+    // Os nomes reservados do Windows também não servem para a pasta do cliente nem para arquivo.
+    expect(nomeDePasta('AUX')).toBeNull()
+    expect(nomeDePasta('prn.pdf')).toBeNull()
+    expect(nomeDePasta('CONCEICAO')).toBe('CONCEICAO')
+    expect(nomeDePasta('COMPROVANTE.pdf')).toBe('COMPROVANTE.pdf')
+  })
+
+  it('marcador {origem} no ponte.json: uma pasta inteira do caminho, uma vez só; sem marcador, nada muda', () => {
+    expect(pastaComOrigem('G:\\Meu Drive\\DG BRASIL\\CLIENTE BANCÁRIO')).toBeNull()
+    expect(pastaComOrigem('7. KIT DO CLIENTE')).toBeNull()
+    expect(pastaComOrigem('G:\\Meu Drive\\DG BRASIL\\{origem}\\CLIENTE BANCÁRIO')).toEqual({ antes: 'G:\\Meu Drive\\DG BRASIL', depois: ['CLIENTE BANCÁRIO'] })
+    expect(pastaComOrigem('G:/Meu Drive/DG BRASIL/{ORIGEM}/CLIENTE BANCÁRIO/')).toEqual({ antes: 'G:/Meu Drive/DG BRASIL', depois: ['CLIENTE BANCÁRIO'] })
+    expect(pastaComOrigem('{origem}\\CLIENTE BANCÁRIO')).toEqual({ antes: '', depois: ['CLIENTE BANCÁRIO'] })
+    expect(pastaComOrigem('G:\\{origem}')).toEqual({ antes: 'G:\\', depois: [] })
+    for (const ruim of ['G:\\DG\\{origem}\\A\\{origem}', 'G:\\DG\\x{origem}\\A', 'G:\\DG\\{origem}y\\A', 'G:\\DG\\{origem}\\..\\fora', 'G:\\DG\\{origem}\\A:B']) {
+      expect(() => pastaComOrigem(ruim), ruim).toThrow(/marcador \{origem\}/)
+    }
   })
 
   it('ficha de revisão: só COMPLETAR, DECIDIR e CONFERIR viram pendência; "nada" não conta', () => {

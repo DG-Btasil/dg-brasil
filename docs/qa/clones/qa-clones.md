@@ -170,6 +170,22 @@ primeira tentativa o caso 17 não tinha documento; com um documento fictício
 anexado, passou. Na prática todo caso tem documento, mas a mensagem ao
 advogado deveria dizer "anexe os documentos do caso" (pós-MVP, item 5).
 
+**Mudanças de 13/11/2026, manhã (migrations 060 e 061, conector 1.3.4):**
+
+- **Pasta do cliente com a origem (060):** `G:\Meu Drive\DG BRASIL\<ORIGEM>\
+  CLIENTE BANCÁRIO\<CLIENTE>`, onde a origem é o escritório de origem do
+  cadastro do cliente (o escritório ou o parceiro). Testes: 951 verificações
+  no banco e 83 no conector. **Ao vivo, depende de aplicar a 060.**
+- **Word + PDF na pasta do cliente:** ao trazer uma minuta em Word, o conector
+  gera o PDF com o Word do computador e grava ao lado, só na pasta do cliente
+  (para o site vai o Word). Conversão real testada neste computador: 14 s, sem
+  Word aberto no fim.
+- **Anexar documento na revisão:** botão na tela da revisão que abre o mesmo
+  envio da aba Documentos do caso. Testes do site: 688, build ok.
+- **O prazo vira tarefa (061):** prazo do agente de prazos cria a tarefa do
+  processo e a manda ao orquestrador; sem os autos, a tarefa fica aberta.
+  Testado em memória; **ao vivo, depende de aplicar a 061**.
+
 **Mudanças de 13/11/2026, madrugada (pedidas pela dona depois da rodada):**
 
 - **Prazo direto (migration 059, conector 1.3.3):** o prazo do agente de prazos

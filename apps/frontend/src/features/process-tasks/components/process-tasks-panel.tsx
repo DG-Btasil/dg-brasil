@@ -167,13 +167,14 @@ function TaskRow({ task, canWork, canSeeRuns, onAct }: { task: ProcessTaskDTO; c
           </div>
           <p className="mt-0.5 text-[12px] text-muted">
             Criada {formatDateTime(task.createdAt)}
-            {author ? ` por ${author.name}` : ""}
+            {author ? ` por ${author.name}` : !task.createdBy ? " pelo agente de prazos" : ""}
             {task.dueAt ? ` · prazo interno ${formatDateTime(task.dueAt)}` : ""}
           </p>
           {open && (
             <div className="mt-2 space-y-2">
               <p className="whitespace-pre-line rounded-md border border-line bg-surface-muted px-3 py-2 text-[13px] text-foreground">{task.instructions}</p>
-              {task.lastError && task.status === "OPEN" && <p className="text-[12.5px] text-danger">{task.lastError}</p>}
+              {/* Na tarefa automática (sem autor, 061) isto é um aviso do que falta, não um erro. */}
+              {task.lastError && task.status === "OPEN" && <p className={cn("text-[12.5px]", task.createdBy ? "text-danger" : "text-warning")}>{task.lastError}</p>}
               {task.status === "IN_REVIEW" && (
                 <p className="text-[12.5px] text-muted">
                   O agente entregou. Confira o que ele fez em{" "}

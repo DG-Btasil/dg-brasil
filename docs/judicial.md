@@ -133,6 +133,25 @@ agente de prazos (abaixo). Na tela:
 6. Opção desligada (Integrações → "Prazo entra direto na agenda"): todo prazo do agente vira proposta em Revisões e só a aprovação cria o prazo.
 7. A equipe também pode criar o prazo na tela da publicação; se o agente já lançou o dele, confira para não ficarem dois.
 
+**O prazo vira tarefa** (migration 061, decisão da dona em 13/11/2026). Todo
+prazo que nasce de uma proposta do agente de prazos (direto ou aprovado em
+Revisões) cria sozinho uma tarefa na lista do processo, "Preparar: <título do
+prazo>", com o vencimento, os dados da publicação e a análise do agente. A
+tarefa vai para o orquestrador, que chama o agente da peça; a minuta chega em
+Revisões como qualquer outra (aqui a regra geral vale: nada sai sem aprovação).
+A tarefa nasce **aberta**, esperando uma pessoa enviar, quando:
+
+- o caso não tem nenhum documento próprio (só material de agente não conta):
+  "Anexe os autos do processo e envie a tarefa.";
+- a descrição do prazo começa com "CONFERIR:" (prazo duvidoso);
+- não há orquestrador em vigor, o vencimento já passou ou não há advogado
+  ativo no processo.
+
+Prazo criado à mão pela equipe não gera tarefa. Uma tarefa por prazo. Para
+desligar: Integrações → "Prazo vira tarefa para os agentes". A tarefa aberta
+não é reenviada sozinha quando os autos chegam: alguém clica em "Enviar aos
+agentes".
+
 Risco assumido no prazo direto: ninguém confere a conta antes de o prazo
 aparecer. As proteções são a lista de dias úteis do banco (a data nunca cai em
 fim de semana, feriado nacional ou recesso), a regra do agente de, na dúvida,

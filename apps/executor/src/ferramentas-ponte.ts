@@ -5,10 +5,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { nomeLivre } from './arquivos.js'
 import {
-  type Antivirus, type ChecagemArquivo, type HtmlParaPdf, ErroPonte, LeituraPorteiro, caminhoPonte, checarArquivo,
-  conferirCadastroExistente, dadosDoCadastro, dadosDoEscritorio, defender, dentro, edgeHtmlParaPdf, lerEscritorio, lerPonte,
+  type Antivirus, type ChecagemArquivo, type DocxParaPdf, type HtmlParaPdf, ErroPonte, LeituraPorteiro, caminhoPonte, caminhoRegistroPdf,
+  checarArquivo, conferirCadastroExistente, dadosDoCadastro, dadosDoEscritorio, defender, dentro, edgeHtmlParaPdf, lerEscritorio, lerPonte,
   mesmoConteudoNaPasta, nomeDePasta, nomeDoClienteParaPasta, nomeLivreDaPasta, nomeNaPasta, processosDoCaso, resolverPasta,
-  textoDoProcesso, trazer,
+  textoDaOrigem, textoDoProcesso, trazer, wordDocxParaPdf,
 } from './ponte.js'
 import { createHash } from 'node:crypto'
 import { ErroApi } from './api.js'
@@ -32,6 +32,10 @@ export interface OpcoesPonte {
   escritorio?: string
   antivirus?: Antivirus
   htmlParaPdf?: HtmlParaPdf
+  /** Word → PDF (padrão: o Microsoft Word deste computador). Em teste, uma função de mentira. */
+  docxParaPdf?: DocxParaPdf
+  /** Registro dos PDFs que o conector gerou (padrão: pdfs-do-word.json, ao lado do ponte.json). */
+  registroPdf?: string
   agora?: () => number
 }
 
@@ -44,6 +48,8 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
   const arquivoPonte = () => o.arquivo ?? caminhoPonte()
   const antivirus = o.antivirus ?? defender
   const htmlParaPdf = o.htmlParaPdf ?? edgeHtmlParaPdf
+  const docxParaPdf = o.docxParaPdf ?? wordDocxParaPdf
+  const registroPdf = () => o.registroPdf ?? caminhoRegistroPdf(arquivoPonte())
   const agora = o.agora ?? Date.now
   const leitura = { readOnlyHint: true, openWorldHint: false }
   const escrita = { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
@@ -127,7 +133,12 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
       return erro('O cliente deste trabalho não tem pasta do Google Drive ligada no DG Brasil. A ponte não roda sem ela. ' +
         'Chame informar_falha com codigo SEM_PASTA_NO_DRIVE e a mensagem "Ligar a pasta em Cliente → Documentos → Pasta no Google Drive".')
     }
-    const pasta = await resolverPasta(c.cfg, c.agente, nome, origem)
+    const pasta = await resolverPasta(c.cfg, c.agente, nome, origem, { id: dados.cliente?.id, origem: dados.origem })
+    if (!pasta.existe && pasta.emOutraOrigem) {
+      return erro(`A pasta deste cliente já existe na origem "${pasta.emOutraOrigem}", e o cadastro do DG Brasil diz que a origem dele é ` +
+        `"${pasta.origem?.pasta ?? ''}". A ponte não move pastas nem cria uma segunda. ` +
+        'Chame informar_falha com codigo MISSING_INPUT e a mensagem "Pasta do cliente em outra origem do Drive: mover a pasta ou corrigir a origem no cadastro".')
+    }
     if (!pasta.existe && pasta.emOutraEtapa) {
       return erro(`A pasta do cliente está em "${pasta.emOutraEtapa}", não na etapa em que o agente ${c.agente} trabalha. ` +
         'A ponte não move pastas. Chame informar_falha com codigo MISSING_INPUT e a mensagem "Pasta do cliente em outra etapa do Drive".')
@@ -139,7 +150,8 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     t.ponte = { agente: c.agente, pasta, dados, checagens: null, inicioAgente: null }
     return texto([
       `Este trabalho PASSA PELA PONTE. Agente da máquina: ${c.agente}.`,
-      `Pasta do cliente: ${pasta.pasta}${pasta.existe ? '' : '  (ainda não existe: o Arquivista cria)'}`,
+      pasta.origem ? `Origem do cliente: ${textoDaOrigem(pasta.origem)}. Pasta da origem: ${pasta.origem.pasta}` : '',
+      `Pasta do cliente: ${pasta.pasta}${pasta.existe ? '' : pasta.criar.length ? '  (ainda não existe: o Arquivista cria, com a pasta da origem)' : '  (ainda não existe: o Arquivista cria)'}`,
       peloCliente ? 'A pasta leva o nome do cliente no cadastro do DG Brasil.'
         : origem === 'NOME_DO_CLIENTE' ? 'Atenção: sem pasta ligada no DG Brasil, o nome da pasta saiu do nome do cliente (ponte.json "pasta_pelo_nome").' : '',
       '',
@@ -262,7 +274,23 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     const pasta = p.pasta
     if (!pasta.existe) {
       // Alguém pode ter criado a pasta depois do ver_ponte: as conferências abaixo valem do mesmo jeito.
-      await mkdir(pasta.pasta).catch((e: NodeJS.ErrnoException) => { if (e?.code !== 'EEXIST') throw e })
+      const jaExiste = (e: NodeJS.ErrnoException) => { if (e?.code !== 'EEXIST') throw e }
+      if (pasta.criar.length) {
+        // Primeiro cliente desta origem: cria a pasta da origem e as seguintes, uma a uma, cada uma conferida
+        // (pasta de verdade, sem atalho, dentro da raiz permitida). Depois a etapa passa a ser o caminho real.
+        for (const nova of pasta.criar) {
+          if (!dentro(pasta.raiz, nova)) throw new ErroPonte('FORA_DA_RAIZ', `${nova} fica fora da raiz permitida. Nada foi criado nem copiado.`)
+          await mkdir(nova).catch(jaExiste)
+          const info = await lstat(nova)
+          if (info.isSymbolicLink() || !info.isDirectory() || !dentro(pasta.raiz, await realpath(nova))) {
+            throw new ErroPonte('FORA_DA_RAIZ', `${nova} é um atalho ou fica fora da raiz permitida. Nada foi copiado.`)
+          }
+        }
+        pasta.etapa = await realpath(pasta.etapa)
+        pasta.pasta = join(pasta.etapa, pasta.nome)
+        pasta.criar = []
+      }
+      await mkdir(pasta.pasta).catch(jaExiste)
       pasta.existe = true
     }
     const pastaReal = await realpath(pasta.pasta)
@@ -315,6 +343,7 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     title: 'Mensageiro: trazer o que o agente gerou',
     description: 'Copia para a pasta saida o que o agente da máquina criou ou alterou na pasta do cliente DEPOIS da cópia do ' +
       'Arquivista, pelos padrões de nome do agente no ponte.json (inclui subpastas, como a do banco). HTML e Markdown viram PDF. ' +
+      'Cada minuta em Word (.docx) trazida ganha um PDF ao lado dela, SÓ na pasta do cliente (não vai para saida nem para o DG Brasil). ' +
       'Devolve a categoria sugerida de cada arquivo para entregar_minuta.',
     inputSchema: { trabalho_id: idTrabalho },
     annotations: escrita,
@@ -326,7 +355,8 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     if (!c || c.agente !== p.agente) throw new ErroPonte('CONFIG', 'O ponte.json mudou durante o trabalho.')
     const pastaReal = await realpath(p.pasta.pasta)
     if (!dentro(p.pasta.etapa, pastaReal)) throw new ErroPonte('FORA_DA_RAIZ', 'A pasta do cliente saiu da etapa do agente.')
-    const r = await trazer(pastaReal, c.conf.trazer, p.inicioAgente, t.pastas.saida, htmlParaPdf, nomeLivre, c.conf.profundidade)
+    const r = await trazer(pastaReal, c.conf.trazer, p.inicioAgente, t.pastas.saida, htmlParaPdf, nomeLivre, c.conf.profundidade,
+      { converter: docxParaPdf, registro: registroPdf(), trabalho: t.id })
     if (!r.trazidos.length) {
       return erro(['O agente não gerou nenhum arquivo novo com os nomes esperados na pasta do cliente.',
         ...(r.ignorados.length ? ['Ignorados:', ...r.ignorados.map((i) => `- ${i}`)] : []),
@@ -337,6 +367,12 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
       `Trazido(s) para ${t.pastas.saida}:`,
       ...r.trazidos.map((x) => `- ${x.arquivo} ← ${x.origem}${x.convertido ? ' (convertido em PDF)' : ''} · categoria sugerida ${x.categoria}${x.titulo ? ` · título "${x.titulo}"` : ''}`),
       ...(r.ignorados.length ? ['', 'Ignorados:', ...r.ignorados.map((i) => `- ${i}`)] : []),
+      ...(r.pdfs.gerados.length || r.pdfs.naoGerados.length ? [
+        '', 'PDF das minutas em Word (fica SÓ na pasta do cliente, ao lado do Word; não está em saida e NÃO é para entregar: no DG Brasil vai só o Word):',
+        ...r.pdfs.gerados.map((x) => `- PDF gerado: ${x}`),
+        ...r.pdfs.naoGerados.map((x) => `- PDF não gerado: ${x}`),
+        ...(r.pdfs.naoGerados.length ? ['"PDF não gerado" é só um aviso: a entrega segue normalmente. Repita o aviso na sua resposta à sessão.'] : []),
+      ] : []),
       '', 'Entregue cada um com entregar_minuta (arquivo, título claro, categoria).',
       ...(r.pendencias.length ? [
         '', `A ficha de revisão do agente traz ${r.pendencias.length} item(ns) para o advogado. Registre CADA um com propor (OTHER), sem juntar e sem mudar o sentido:`,

@@ -23,6 +23,7 @@ import type { DocumentListItem } from "@/server/domain/documents/dto";
 import { usePermission, useRole } from "@/features/auth/hooks";
 import { VerificationLabel } from "@/features/clients/components/detail/documents/document-status-icon";
 import { DOCUMENT_PAGE_SIZE, documentListInput, FILE_ACCEPT, formatBytes, type DocumentQuery as Query, type DocumentScope } from "../constants";
+import { useCanUploadDocuments } from "../use-can-upload";
 import { useDocumentActions } from "../use-document-actions";
 import { DocumentVersionsDialog } from "./document-versions-dialog";
 import { UploadDialog, type UploadTarget } from "./upload-dialog";
@@ -60,8 +61,7 @@ export function DocumentsPanel({
   });
   const canManage = usePermission("documents.manage");
   // Parceiro envia arquivo para caso/processo do próprio escritório (o banco confere); nunca só para o cliente.
-  const partnerSubmit = usePermission("partnerPortal.documents.submit") && !("clientId" in scope);
-  const canUpload = !readOnly && (canManage || partnerSubmit);
+  const canUpload = useCanUploadDocuments(scope, readOnly);
   // Exclusão de documento: só ADMIN (o service exige o papel; o banco confere).
   const canDelete = useRole() === "ADMIN";
   const actions = useDocumentActions();

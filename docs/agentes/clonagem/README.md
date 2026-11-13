@@ -30,7 +30,7 @@ DG Brasil (site)                 Computador do escritório (sessão do DG Brasil
 Cliente, caso, documentos
 Trabalho na fila  ────────────►  1. PORTEIRO     segurança e qualidade dos arquivos
                                  2. ARQUIVISTA   copia para a pasta do cliente:
-                                                 G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO CLIENTE>
+                                                 G:\Meu Drive\DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO CLIENTE>
                                                  + DADOS DO CADASTRO.txt + DADOS DO ESCRITORIO.txt
                                  3. CLONE        (clara-hiscon-dg, alice-inicial-dg...)
                                                  trabalha na pasta e grava a ficha de revisão
@@ -93,6 +93,10 @@ escolhe (ver "Publicações e andamentos para os agentes", abaixo).
 1. **Pasta:** `G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO CLIENTE>`. O
    nome da pasta é o nome do cliente no cadastro (maiúsculas, sem acento). Outras
    áreas, no futuro, ganham outra subpasta de `DG BRASIL`.
+   **Desde 13/11/2026** a pasta leva antes a origem do cliente, o próprio
+   escritório ou o parceiro que o trouxe:
+   `G:\Meu Drive\DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO CLIENTE>`
+   ([ponte.md, seção 9](../../ponte.md#9-origem-do-cliente-e-pdf-da-minuta-13112026)).
 2. **O que vai para a pasta:** os documentos do cadastro do cliente e os dois
    arquivos de dados (cadastro do cliente e quem assina).
 3. **Conector DJEN:** fica nos clones. O DG Brasil terá esse conector.

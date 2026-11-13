@@ -189,13 +189,15 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
   // Banco anterior à 059 não devolve a opção: a tela não a mostra e nada muda.
   const hasAuto = s.deadlineAutoApply !== undefined;
   const [auto, setAuto] = useState(s.deadlineAutoApply ?? false);
+  const hasTask = s.deadlineAutoTask !== undefined;
+  const [task, setTask] = useState(s.deadlineAutoTask ?? false);
   const [saving, setSaving] = useState(false);
   const dirty = djen !== s.djenEnabled || datajud !== s.datajudEnabled || Number(lookback) !== s.lookbackDays || agent !== (s.deadlineAgentId ?? "")
-    || (hasAuto && auto !== s.deadlineAutoApply);
+    || (hasAuto && auto !== s.deadlineAutoApply) || (hasTask && task !== s.deadlineAutoTask);
 
   async function save() {
     setSaving(true);
-    const r = await callAction(() => saveJudicialSettingsAction({ djenEnabled: djen, datajudEnabled: datajud, lookbackDays: Number(lookback), deadlineAgentId: agent || null, ...(hasAuto ? { deadlineAutoApply: auto } : {}) }));
+    const r = await callAction(() => saveJudicialSettingsAction({ djenEnabled: djen, datajudEnabled: datajud, lookbackDays: Number(lookback), deadlineAgentId: agent || null, ...(hasAuto ? { deadlineAutoApply: auto } : {}), ...(hasTask ? { deadlineAutoTask: task } : {}) }));
     setSaving(false);
     if (!r.ok) return failed(r, "Não foi possível salvar.");
     toast({ tone: "success", title: "Configuração salva" });
@@ -233,6 +235,19 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
               checked={auto}
               disabled={!agent}
               onChange={(e) => setAuto(e.target.checked)}
+            />
+          )}
+          {hasTask && (
+            <Checkbox
+              label="Prazo vira tarefa para os agentes"
+              description={
+                task
+                  ? "Cada prazo lançado pelo agente cria uma tarefa no processo; o orquestrador chama o agente da peça e a minuta chega em Revisões. Sem os autos no caso, a tarefa fica aberta, esperando."
+                  : "Desligado: o prazo é lançado e ninguém é chamado para a peça."
+              }
+              checked={task}
+              disabled={!agent}
+              onChange={(e) => setTask(e.target.checked)}
             />
           )}
         </div>

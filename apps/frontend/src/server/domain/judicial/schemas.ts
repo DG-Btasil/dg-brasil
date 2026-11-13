@@ -29,6 +29,7 @@ export const settingsSchema = z.object({
   lookbackDays: z.number().int().min(1).max(7).optional(),
   deadlineAgentId: zUuid().nullable().optional(),
   deadlineAutoApply: z.boolean().optional(),
+  deadlineAutoTask: z.boolean().optional(),
 });
 
 export const calendarDaySchema = z.object({

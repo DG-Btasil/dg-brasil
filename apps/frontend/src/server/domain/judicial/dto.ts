@@ -50,6 +50,8 @@ export interface JudicialOverviewDTO {
     deadlineAgentName?: string;
     /** Prazo do agente entra direto na agenda, sem Revisões (059). Ausente em banco anterior à 059. */
     deadlineAutoApply?: boolean;
+    /** Prazo do agente vira tarefa do processo para o orquestrador (061). Ausente em banco anterior à 061. */
+    deadlineAutoTask?: boolean;
     updatedAt: ISODateTime;
   };
   monitors: JudicialMonitorDTO[];

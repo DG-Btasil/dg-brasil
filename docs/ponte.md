@@ -14,13 +14,18 @@ ponte. Pode ser seguido por uma pessoa ou pelo Claude Code em outra máquina.
 > reais do escritório dentro da esteira dele. Os agentes da esteira bancária
 > foram **clonados** (nomes com o sufixo `-dg`; os arquivos ficam só no
 > computador do escritório, fora do GitHub) e trabalham
-> numa pasta só do DG Brasil: `G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO
+> numa pasta só do DG Brasil: `G:\Meu Drive\DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO
 > CLIENTE>`. Porteiro, Arquivista, Mensageiro, a ordem fixa e as travas deste
 > documento continuam valendo. O que mudou (pasta pelo nome do cliente, cadastro
 > completo, quem assina, ficha de revisão) está em
 > [agentes/clonagem/](agentes/clonagem/README.md). Onde este documento disser
 > "agente da máquina (Clara, Lucas...)", leia "o clone (`clara-hiscon-dg`,
 > `lucas-procuracao-dg`...)".
+
+> **Mudanças de 13/11/2026 (decisões de Barbara).** A pasta do cliente ganhou o
+> nível da **origem** (`<ORIGEM>`: o próprio escritório ou o parceiro que trouxe
+> o cliente), e toda minuta em Word fica também em **PDF** na pasta do cliente.
+> Está na [seção 9](#9-origem-do-cliente-e-pdf-da-minuta-13112026).
 
 ---
 
@@ -524,3 +529,73 @@ Além do que o plano listou, o levantamento mostrou que os agentes precisam:
 - **Não entram na ponte:** Luísa, Bruno, Carlos, Helena, Sofia e Otávio
   (ChatJurídico, ADVBOX, e-mail). O Otávio serve de modelo de como passar o
   trabalho a um redator.
+
+## 9. Origem do cliente e PDF da minuta (13/11/2026)
+
+Conector 1.3.4 e migration 060.
+
+### 9.1 A pasta do cliente ganha o nível da origem
+
+"Antes de CLIENTE BANCÁRIO eu preciso que tenha a origem: se é do escritório ou
+do parceiro X ou Y, para identificar de qual parceiro o cliente vem."
+
+```
+G:\Meu Drive\DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO CLIENTE>
+```
+
+- **De onde vem a origem:** do cadastro do cliente no DG Brasil
+  (`clients.origin_organization_id`, a origem histórica do cadastro). Vale a
+  origem do **cliente**, mesmo que o caso do trabalho tenha outra: a pasta é do
+  cliente, uma só. O nome é o que o site mostra na coluna "Origem"
+  (`organizations.name`).
+- **O banco entrega** (migration 060, em `executor_bridge_data`):
+  `"origem": { "nome": "<nome do escritório>", "tipo": "ESCRITORIO" | "PARCEIRO" }`.
+  `ESCRITORIO` é o escritório dono do sistema; `PARCEIRO`, os demais.
+- **No disco:** MAIÚSCULAS, sem acento, pela mesma regra do nome da pasta do
+  cliente. Caractere que o Windows não aceita (a barra de "S/S", dois-pontos)
+  vira espaço; `..`, nome reservado do Windows e nome vazio são recusados.
+- **No `ponte.json`:** a `pasta` do agente leva o marcador `{origem}`, uma pasta
+  inteira do caminho: `G:\Meu Drive\DG BRASIL\{origem}\CLIENTE BANCÁRIO`. Sem o
+  marcador, tudo como antes (os agentes de `nome_da_pasta: "drive"`).
+- **Sem a origem** (banco sem a 060): a ponte **não cria pasta**. `ver_ponte`
+  responde "o DG Brasil não informou o escritório de origem do cliente; aplique
+  a migration 060" e o trabalho falha com `CONFIGURATION_ERROR`.
+- **Quem cria a pasta da origem:** o Arquivista (`copiar_para_pasta_do_cliente`),
+  no primeiro cliente de cada origem, depois de o Porteiro liberar. As travas
+  são as mesmas: tudo dentro de uma raiz permitida (conferido com `realpath`),
+  sem atalho, sem sobrescrever, sem apagar, sem mover.
+- **A ponte não move pasta.** Se a pasta deste cliente (mesmo `dg_cliente_id` no
+  `DADOS DO CADASTRO.txt`) já existe em outra origem (o parceiro mudou de nome,
+  ou a origem do cadastro foi trocada), `ver_ponte` para e manda mover a pasta
+  ou corrigir a origem. Homônimo de outra origem não atrapalha.
+- **`ver_ponte` mostra** a origem e o caminho final:
+  `Origem do cliente: <nome> (escritório|parceiro). Pasta da origem: <NOME SANEADO>`.
+- **`DADOS DO CADASTRO.txt`** ganha a linha
+  `escritorio_de_origem: <nome> (escritório)` ou `(parceiro)`, com a regra dos
+  outros campos: o que o site manda vale; o que ele não manda fica do arquivo.
+
+### 9.2 Toda minuta em Word fica também em PDF na pasta do cliente
+
+Como o agente grava na pasta do cliente antes da aprovação, "ele pode guardar
+nos dois, um em PDF e um em Word". No site continua indo só o Word (é o que a
+pessoa baixa para editar).
+
+- Em `trazer_da_pasta_do_cliente`, para cada `.docx` trazido, o conector gera o
+  PDF com o Microsoft Word do computador e grava **ao lado do `.docx`**, com o
+  mesmo nome e a extensão `.pdf`. O PDF **não** vai para `saida` nem para o
+  site.
+- O Word abre uma **cópia** do documento, numa pasta temporária, só para
+  leitura, com macro desligada, uma instância por documento e tempo limite de
+  90 segundos (instância travada é encerrada). O nome do arquivo não entra no
+  comando: os caminhos vão como argumentos.
+- **Nunca sobrescreve:** se já existe um PDF com esse nome, pula e diz.
+- **Falha não bloqueia a entrega** (sem Word, tempo esgotado, erro): vira o
+  aviso `PDF não gerado: <arquivo> — <motivo>` na resposta da ferramenta.
+- **O PDF gerado nunca volta como entrega.** Os padrões de alguns agentes
+  incluem PDF (`MINUTA_*.pdf`). O conector anota cada PDF que ele gera (caminho
+  e SHA-256) em `%APPDATA%\DGBrasil\pdfs-do-word.json`, antes de gravá-lo, e só
+  converte depois de terminar de varrer a pasta. PDF que está nessa lista com o
+  mesmo conteúdo não é trazido: nem na mesma chamada, nem numa repetição, nem
+  em outro trabalho do mesmo cliente. PDF que o próprio agente gerou (a Teresa,
+  o "PDF, se pedido" dos redatores) continua sendo trazido, como antes.
+- `doctor` avisa se o Word não foi encontrado.

@@ -30,6 +30,7 @@ import { useDirectoryUserMap, useLawyerOptions } from "@/features/directory/dire
 import { REVIEW_KIND_LABEL } from "../list-query";
 import { useReviewActions } from "../use-review-actions";
 import { canEditReview, isEditableMime } from "../manual-revision";
+import { AttachDocumentPanel } from "./attach-document-panel";
 import { DecisionDialog } from "./decision-dialog";
 import { DocumentContentPanel } from "./document-content";
 import { DocumentPreviewPanel } from "./document-preview-panel";
@@ -136,8 +137,10 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
         <div className="col-span-12 space-y-5 xl:col-span-8">
           <TargetPanel target={review.target} reviewId={review.id} reviewStatus={review.dbStatus} canEdit={allowed && canEditReview(review.dbStatus)} />
         </div>
-        <aside className="col-span-12 space-y-5 xl:col-span-4" aria-label="Atribuição e histórico">
+        <aside className="col-span-12 space-y-5 xl:col-span-4" aria-label="Atribuição, documentos e histórico">
           <Assignment review={review} editable={open && allowed} />
+          {/* Só para revisão ligada a um caso e para quem pode enviar documento no caso (o painel decide). */}
+          <AttachDocumentPanel review={review} pending={!open ? "NONE" : allowed ? "MINE" : "OTHERS"} />
           <Panel>
             <PanelHeader title="Histórico de decisões" />
             <PanelBody>

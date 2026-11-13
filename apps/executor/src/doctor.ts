@@ -6,7 +6,7 @@ import { isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import { DgApi, ErroApi } from './api.js'
 import { caminhoConfig, ErroConfig, lerConfig, VERSAO } from './config.js'
-import { caminhoPonte, ErroPonte, lerPonte } from './ponte.js'
+import { caminhoPonte, ErroPonte, lerPonte, pastaComOrigem } from './ponte.js'
 
 /**
  * dg-executor doctor: confere, sem mexer em nada do DG Brasil, se este
@@ -62,9 +62,11 @@ export async function diagnostico(escrever: (l: string) => void = (l) => console
       const instalados = await agentesInstalados()
       for (const [agente, a] of Object.entries(ponte.agentes)) {
         const pastas = (Array.isArray(a.pasta) ? a.pasta : [a.pasta]).map((p) => (isAbsolute(p) ? p : join(ponte.raizes[0], p)))
-        const faltam = pastas.filter((p) => !existsSync(p))
-        if (faltam.length) falha(`Ponte: ${agente} → pasta não encontrada: ${faltam.join('; ')}`)
-        else ok(`Ponte: ${agente} → ${pastas.join(' | ')}`)
+        // Com {origem}, só a parte antes do marcador precisa existir: a pasta de cada origem nasce com o primeiro cliente dela.
+        const fixa = (p: string) => { const m = pastaComOrigem(p); return m ? (m.antes ? m.antes : ponte.raizes[0]) : p }
+        const faltam = pastas.filter((p) => !existsSync(fixa(p)))
+        if (faltam.length) falha(`Ponte: ${agente} → pasta não encontrada: ${faltam.map(fixa).join('; ')}`)
+        else ok(`Ponte: ${agente} → ${pastas.join(' | ')}${pastas.some((p) => pastaComOrigem(p)) ? '  ({origem} = escritório de origem do cliente)' : ''}`)
         if (!instalados.has(agente)) escrever(`  AVISO Ponte: nenhum agente com name: ${agente} em ${join(homedir(), '.claude', 'agents')}`)
       }
       for (const a of ['porteiro-dg', 'arquivista-dg', 'mensageiro-dg']) {
@@ -79,6 +81,9 @@ export async function diagnostico(escrever: (l: string) => void = (l) => console
         const edge = ['ProgramFiles(x86)', 'ProgramFiles'].map((v) => join(process.env[v] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe')).find((c) => existsSync(c))
         if (edge) ok('Ponte: Microsoft Edge encontrado (HTML e Markdown viram PDF)')
         else escrever('  AVISO Ponte: Microsoft Edge não encontrado: HTML e Markdown não viram PDF')
+        const word = await promisify(execFile)('reg.exe', ['query', 'HKCR\\Word.Application\\CLSID'], { timeout: 15_000, windowsHide: true }).then(() => true, () => false)
+        if (word) ok('Ponte: Microsoft Word encontrado (a minuta em Word ganha um PDF na pasta do cliente)')
+        else escrever('  AVISO Ponte: Microsoft Word não encontrado: a minuta em Word fica sem o PDF na pasta do cliente (a entrega não para)')
       }
     }
   } catch (e) {

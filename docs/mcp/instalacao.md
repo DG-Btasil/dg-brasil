@@ -218,12 +218,22 @@ Para ver o que ele faria sem gravar nada, acrescente `-Simular`. Ele:
   `%USERPROFILE%\.claude\agents\`. Não toca em nenhum outro arquivo dessa pasta;
 - copia os scripts dos clones (`agentes/scripts/`) para `C:\DGBrasil\agentes\scripts\`
   e cria a pasta de trabalho `C:\DGBrasil\agentes\trabalho\`;
-- cria, no Drive, `DG BRASIL\CLIENTE BANCÁRIO` (a pasta dos clientes) e
-  `DG BRASIL\BASE DE CONHECIMENTO`;
+- cria, no Drive, `DG BRASIL` e `DG BRASIL\BASE DE CONHECIMENTO`. A pasta dos
+  clientes é `DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO CLIENTE>` (desde
+  13/11/2026): `<ORIGEM>` é o escritório de origem do cliente, o próprio
+  escritório ou o parceiro. Quem cria a pasta de cada origem é o conector, no
+  primeiro cliente dela; o instalador não cria nem move pasta de cliente;
 - cria `C:\DGBrasil\agentes\escritorio.json` (quem assina) a partir de um
   exemplo fictício, se ainda não existir. **Preencha com os dados reais**;
-- acrescenta os clones ao `ponte.json` e libera as pastas deles na sessão do DG
-  Brasil, guardando o arquivo anterior com o final `.anterior`.
+- acrescenta os clones ao `ponte.json` (com a pasta
+  `G:\Meu Drive\DG BRASIL\{origem}\CLIENTE BANCÁRIO`) e libera as pastas deles
+  na sessão do DG Brasil, guardando o arquivo anterior com o final `.anterior`.
+
+A pasta com a origem exige o **conector 1.3.4 ou mais novo** e a **migration
+060** no banco (é ela que entrega a origem do cliente). Faltando a migration, o
+trabalho para com o aviso "o DG Brasil não informou o escritório de origem do
+cliente", sem criar pasta. Atualize o conector **antes** de rodar este
+instalador: o conector antigo não entende `{origem}`.
 
 No site, os clones já aparecem em **DG Brasil → Agentes** (migration 054, o
 "kit básico"). Depois de instalar, feche e abra de novo a janela "DG Brasil -
@@ -260,12 +270,17 @@ Campos do `ponte.json`:
 | `raizes_permitidas` | As árvores do Drive onde a ponte pode ler e gravar. Fora delas, as ferramentas recusam. |
 | `pasta_pelo_nome` | `false` (padrão): sem pasta do Drive ligada ao cliente no DG Brasil, a ponte para com `SEM_PASTA_NO_DRIVE`. `true`: usa o nome do cliente em MAIÚSCULAS, sem acento. |
 | `antivirus` | `true` (padrão): o Porteiro passa o antivírus do Windows em cada arquivo. |
-| `agentes.<nome>.pasta` | A etapa (ou etapas, em ordem) onde ficam as pastas dos clientes desse agente. |
+| `agentes.<nome>.pasta` | A etapa (ou etapas, em ordem) onde ficam as pastas dos clientes desse agente. Pode levar o marcador `{origem}` como uma pasta inteira do caminho (`G:\Meu Drive\DG BRASIL\{origem}\CLIENTE BANCÁRIO`): o conector troca pelo nome do escritório de origem do cliente, em MAIÚSCULAS e sem acento, e cria a pasta da origem quando ela não existe. Sem o marcador, nada muda. |
 | `agentes.<nome>.trazer` | Os nomes dos arquivos que o Mensageiro traz (`*` vale qualquer coisa; maiúsculas e acentos não importam). |
 | `agentes.<nome>.dados_do_cadastro` | Gravar o `DADOS DO CADASTRO.txt` quando faltar (padrão `true`; os redatores não usam). |
 | `agentes.<nome>.criar_pasta` | Criar a pasta do cliente quando ela não existe em nenhuma etapa (padrão `true`; para os redatores, `false`). |
 | `agentes.<nome>.profundidade` | Até quantas subpastas o Mensageiro procura (padrão 3: subpasta do banco, `PEÇAS GERADAS`; nos clones, 1). |
-| `agentes.<nome>.nome_da_pasta` | `drive` (padrão): a pasta do Drive ligada ao cliente no DG Brasil. `cliente`: sempre o nome do cliente no cadastro (os clones, em `DG BRASIL\CLIENTE BANCÁRIO`). |
+| `agentes.<nome>.nome_da_pasta` | `drive` (padrão): a pasta do Drive ligada ao cliente no DG Brasil. `cliente`: sempre o nome do cliente no cadastro (os clones, em `DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO`). |
+
+Ao lado do `ponte.json` o conector mantém o `pdfs-do-word.json`: a lista dos
+PDFs que ele mesmo gerou a partir das minutas em Word (um PDF por `.docx`
+trazido, gravado só na pasta do cliente). É por essa lista que o Mensageiro não
+traz esses PDFs como se fossem arquivo novo do agente. Não precisa mexer nele.
 
 Depois de mexer no arquivo, rode `node C:\DGBrasil\executor\dg-executor.mjs doctor`:
 ele lista cada agente da ponte e avisa o que falta.

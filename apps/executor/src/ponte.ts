@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { constants, existsSync } from 'node:fs'
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { inflateSync } from 'node:zlib'
 import { z } from 'zod'
@@ -13,13 +13,14 @@ import { LIMITE_MINUTA } from './arquivos.js'
  * A PONTE (docs/ponte.md): os agentes do computador do escritório fazem o
  * trabalho do DG Brasil na pasta do cliente no Drive (G:\). Desde 11/11/2026 os
  * agentes são os CLONES do DG Brasil (agentes/bancario, sufixo -dg), na pasta
- * G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO CLIENTE>
- * (docs/agentes/clonagem). O conector faz por CÓDIGO tudo o que não pode
- * depender de uma IA:
+ * G:\Meu Drive\DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO CLIENTE>
+ * (docs/agentes/clonagem; <ORIGEM> é o escritório de origem do cliente, desde
+ * 13/11/2026). O conector faz por CÓDIGO tudo o que não pode depender de uma IA:
  *
  *   verificar_arquivos            checagens por script (tipo real, PDF ativo, macro, antivírus)
  *   copiar_para_pasta_do_cliente  entrada → pasta do cliente, com os nomes que os agentes esperam
- *   trazer_da_pasta_do_cliente    o que o agente gerou depois do início → saida (HTML vira PDF)
+ *   trazer_da_pasta_do_cliente    o que o agente gerou depois do início → saida (HTML vira PDF);
+ *                                 a minuta em Word ganha um PDF ao lado dela, só na pasta do cliente
  *
  * Travas: a pasta do cliente fica SEMPRE dentro de uma raiz permitida do
  * ponte.json (conferido com realpath, sem atalho/junção); nunca sobrescreve,
@@ -45,6 +46,10 @@ const AgentePonte = z.object({
    * Pasta(s) da etapa onde ficam as pastas dos clientes (relativas à primeira
    * raiz, ou absolutas dentro de uma raiz). Várias: a pasta do cliente é
    * procurada em todas, na ordem; se não existir, é criada na primeira.
+   * Com o marcador {origem} (uma pasta inteira do caminho, ex.:
+   * "G:\\Meu Drive\\DG BRASIL\\{origem}\\CLIENTE BANCÁRIO"), o marcador vira o
+   * nome do escritório de origem do cliente (MAIÚSCULAS, sem acento) e as pastas
+   * do marcador em diante são criadas pelo Arquivista quando não existem.
    */
   pasta: z.union([z.string().min(1).max(400), z.array(z.string().min(1).max(400)).min(1).max(10)]),
   trazer: z.array(Trazer).min(1).max(30),
@@ -81,7 +86,7 @@ export interface ConfigPonte {
 }
 
 export class ErroPonte extends Error {
-  constructor(readonly codigo: 'CONFIG' | 'SEM_PASTA' | 'FORA_DA_RAIZ' | 'PORTEIRO' | 'ORDEM' | 'CONFLITO' | 'NADA', message: string) {
+  constructor(readonly codigo: 'CONFIG' | 'SEM_PASTA' | 'SEM_ORIGEM' | 'FORA_DA_RAIZ' | 'PORTEIRO' | 'ORDEM' | 'CONFLITO' | 'NADA', message: string) {
     super(message)
   }
 }
@@ -122,10 +127,13 @@ export function dentro(base: string, alvo: string): boolean {
 
 const PROIBIDO_NO_NOME = /[\\/:*?"<>|\u0000-\u001f]/
 
-/** Nome de pasta de cliente vindo do DG Brasil: um nome só, sem caminho. */
+/** Nomes que o Windows reserva (CON, NUL, COM1...), com ou sem extensão. */
+const RESERVADO_DO_WINDOWS = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.|$)/i
+
+/** Nome de pasta vindo do DG Brasil (a do cliente, a da origem): um nome só, sem caminho. */
 export function nomeDePasta(nome: string | null | undefined): string | null {
   const n = String(nome ?? '').normalize('NFC').trim().replace(/[. ]+$/, '')
-  if (!n || n === '.' || n === '..' || n.length > 200 || PROIBIDO_NO_NOME.test(n)) return null
+  if (!n || n === '.' || n === '..' || n.length > 200 || PROIBIDO_NO_NOME.test(n) || RESERVADO_DO_WINDOWS.test(n)) return null
   return n
 }
 
@@ -135,6 +143,50 @@ export function nomeDoClienteParaPasta(nome: string): string | null {
 }
 
 const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+// ── escritório de origem do cliente (o nível <ORIGEM> da pasta) ─────────────
+
+/** Marcador da pasta do escritório de origem, na "pasta" de um agente do ponte.json. */
+export const MARCADOR_ORIGEM = '{origem}'
+
+/** O que o DG Brasil manda sobre a origem do cadastro do cliente (migration 060). */
+export interface OrigemDoCliente { nome?: string | null; tipo?: string | null }
+
+/**
+ * Nome da pasta da origem: o nome do escritório como está no DG Brasil, pela
+ * MESMA regra da pasta do cliente (MAIÚSCULAS, sem acento, um nome só). Nome de
+ * escritório costuma ter barra ou dois-pontos ("Silva Advogados S/S"): o
+ * caractere que o Windows não aceita vira espaço antes da conferência, para a
+ * ponte não parar por causa dele. Ponto e espaço no começo saem: a pasta da
+ * origem nunca começa com ponto.
+ */
+export function nomeDaOrigemParaPasta(nome: string | null | undefined): string | null {
+  return nomeDoClienteParaPasta(String(nome ?? '').replace(new RegExp(PROIBIDO_NO_NOME.source, 'g'), ' ').replace(/^[. ]+/, ''))
+}
+
+/** "Nome do escritório (escritório)" ou "Nome do parceiro (parceiro)": a linha da origem no cadastro e em ver_ponte. */
+export function textoDaOrigem(o: OrigemDoCliente | null | undefined): string {
+  const nome = String(o?.nome ?? '').replace(/[\r\n\t]+/g, ' ').trim()
+  if (!nome) return ''
+  const tipo = o?.tipo === 'ESCRITORIO' ? ' (escritório)' : o?.tipo === 'PARCEIRO' ? ' (parceiro)' : ''
+  return `${nome}${tipo}`
+}
+
+/**
+ * Separa a "pasta" de um agente no marcador {origem}: o que vem antes (já tem
+ * de existir) e as pastas que vêm depois (o Arquivista cria). Sem marcador: null.
+ */
+export function pastaComOrigem(p: string): { antes: string; depois: string[] } | null {
+  if (!/\{origem\}/i.test(p)) return null
+  const m = /^(?:(.*?)[\\/]+)?\{origem\}(?:[\\/]+(.*?))?[\\/]*$/i.exec(p)
+  const antes = m?.[1] ?? ''
+  const depois = (m?.[2] ?? '').split(/[\\/]+/).filter(Boolean)
+  if (!m || /\{origem\}/i.test(antes + (m[2] ?? '')) || depois.some((x) => nomeDePasta(x) !== x)) {
+    throw new ErroPonte('CONFIG', `ponte.json: em "${p}", o marcador {origem} tem de ser UMA pasta inteira do caminho, uma vez só ` +
+      '(ex.: G:\\Meu Drive\\DG BRASIL\\{origem}\\CLIENTE BANCÁRIO).')
+  }
+  return { antes: /^[A-Za-z]:$/.test(antes) ? `${antes}\\` : antes, depois }
+}
 
 export function globParaRegex(padrao: string): RegExp {
   const corpo = semAcento(padrao).replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')
@@ -151,14 +203,41 @@ export interface PastaDoCliente {
   /** Outra etapa da raiz onde já existe uma pasta com o mesmo nome (a ponte não move pasta). */
   emOutraEtapa: string | null
   origemDoNome: 'DG_BRASIL' | 'NOME_DO_CLIENTE'
+  /**
+   * Escritório de origem do cliente, quando a pasta do agente usa o marcador
+   * {origem}: o nome no DG Brasil, o tipo e o nome da pasta (saneado).
+   */
+  origem: null | { nome: string; tipo: string | null; pasta: string }
+  /**
+   * Pastas que ainda não existem entre a parte fixa do caminho e a pasta do
+   * cliente (a da origem e as seguintes), na ordem: o Arquivista cria.
+   */
+  criar: string[]
+  /** Outra origem onde já existe a pasta DESTE cliente (mesmo dg_cliente_id no cadastro): a ponte não move pasta. */
+  emOutraOrigem: string | null
+}
+
+/** Etapa já resolvida: a pasta onde ficam as pastas dos clientes. */
+interface EtapaResolvida {
+  etapa: string
+  raiz: string
+  criar: string[]
+  origem: PastaDoCliente['origem']
+  /** Só com o marcador {origem}: onde ficam as pastas das origens e o que vem depois delas. */
+  marcada: null | { base: string; depois: string[] }
 }
 
 /**
  * Onde o agente trabalha para este cliente. Confere, com realpath, que a etapa
  * e a pasta do cliente ficam dentro de uma raiz permitida e que nenhuma das
- * duas é atalho para outro lugar.
+ * duas é atalho para outro lugar. Com o marcador {origem} na pasta do agente,
+ * a origem do cliente (do DG Brasil) entra no caminho; sem a origem, não há
+ * pasta: a ponte para em vez de gravar no lugar errado.
  */
-export async function resolverPasta(cfg: ConfigPonte, agente: string, nomeInformado: string, origem: PastaDoCliente['origemDoNome']): Promise<PastaDoCliente> {
+export async function resolverPasta(
+  cfg: ConfigPonte, agente: string, nomeInformado: string, origem: PastaDoCliente['origemDoNome'],
+  cliente: { id?: string | null; origem?: OrigemDoCliente | null } = {},
+): Promise<PastaDoCliente> {
   const a = cfg.agentes[agente]
   if (!a) throw new ErroPonte('CONFIG', `O agente ${agente} não está no ponte.json.`)
   const nome = nomeDePasta(nomeInformado)
@@ -168,31 +247,67 @@ export async function resolverPasta(cfg: ConfigPonte, agente: string, nomeInform
   for (const r of cfg.raizes) {
     try { raizesReais.push(await realpath(r)) } catch { /* raiz ausente neste computador */ }
   }
-  const etapas: Array<{ etapa: string; raiz: string }> = []
+  /** A origem do cliente como pasta. Só é exigida quando a pasta do agente tem o marcador. */
+  const origemDoCliente = (): NonNullable<PastaDoCliente['origem']> => {
+    const nomeDaOrigem = String(cliente.origem?.nome ?? '').trim()
+    if (!nomeDaOrigem) {
+      throw new ErroPonte('SEM_ORIGEM', 'O DG Brasil não informou o escritório de origem do cliente; aplique a migration 060 ' +
+        `(supabase/migrations/20261113000060_ponte_origem_do_cliente.sql). A pasta do agente ${agente} leva a origem ({origem} no ponte.json): ` +
+        'sem ela, nenhuma pasta é criada. Chame informar_falha com codigo CONFIGURATION_ERROR e a mensagem ' +
+        '"O DG Brasil não informou o escritório de origem do cliente (falta a migration 060)".')
+    }
+    const pasta = nomeDaOrigemParaPasta(nomeDaOrigem)
+    if (!pasta) {
+      throw new ErroPonte('SEM_ORIGEM', 'O nome do escritório de origem do cliente no DG Brasil não serve como nome de pasta. Nenhuma pasta foi criada. ' +
+        'Chame informar_falha com codigo MISSING_INPUT e a mensagem "Escritório de origem do cliente sem nome válido para a pasta do Drive".')
+    }
+    return { nome: nomeDaOrigem, tipo: cliente.origem?.tipo ?? null, pasta }
+  }
+
+  const etapas: EtapaResolvida[] = []
   for (const p of Array.isArray(a.pasta) ? a.pasta : [a.pasta]) {
-    const informada = isAbsolute(p) ? resolve(p) : resolve(cfg.raizes[0], p)
+    const marcador = pastaComOrigem(p)
+    const fixa = marcador ? marcador.antes : p
+    const informada = !fixa ? resolve(cfg.raizes[0]) : isAbsolute(fixa) ? resolve(fixa) : resolve(cfg.raizes[0], fixa)
     let real: string
     try {
       real = await realpath(informada)
     } catch {
       throw new ErroPonte('CONFIG', `A pasta da etapa do agente ${agente} não foi encontrada: ${informada}. O Google Drive para computador está aberto?`)
     }
-    const raiz = raizesReais.find((r) => dentro(r, real))
+    // Sem marcador, a etapa fica DENTRO de uma raiz. Com marcador, a parte fixa pode ser a própria raiz (as origens ficam dentro dela).
+    const raiz = raizesReais.find((r) => dentro(r, real) || (!!marcador && relative(r, real) === ''))
     if (!raiz) throw new ErroPonte('FORA_DA_RAIZ', `A pasta ${informada} do agente ${agente} fica fora das raízes permitidas do ponte.json.`)
-    etapas.push({ etapa: real, raiz })
+    if (!marcador) { etapas.push({ etapa: real, raiz, criar: [], origem: null, marcada: null }); continue }
+
+    // <parte fixa>\<ORIGEM>\<resto>: cada pasta que já existe é conferida (pasta de verdade, sem atalho, dentro da anterior).
+    const daOrigem = origemDoCliente()
+    const criar: string[] = []
+    let atual = real
+    for (const parte of [daOrigem.pasta, ...marcador.depois]) {
+      const proxima = join(atual, parte)
+      const info = criar.length ? null : await lstat(proxima).catch(() => null)
+      if (!info) { criar.push(proxima); atual = proxima; continue }
+      if (info.isSymbolicLink() || !info.isDirectory()) throw new ErroPonte('FORA_DA_RAIZ', `${proxima} é um atalho ou não é uma pasta. A ponte não usa atalhos.`)
+      const proximaReal = await realpath(proxima)
+      if (!dentro(atual, proximaReal)) throw new ErroPonte('FORA_DA_RAIZ', `${proxima} aponta para fora da pasta onde está.`)
+      atual = proximaReal
+    }
+    etapas.push({ etapa: atual, raiz, criar, origem: daOrigem, marcada: { base: real, depois: marcador.depois } })
   }
 
-  for (const { etapa, raiz } of etapas) {
+  for (const { etapa, raiz, criar, origem: daOrigem } of etapas) {
+    if (criar.length) continue // a etapa ainda nem existe: a pasta do cliente também não
     const pasta = join(etapa, nome)
     let info
     try { info = await lstat(pasta) } catch { continue }
     if (info.isSymbolicLink() || !info.isDirectory()) throw new ErroPonte('FORA_DA_RAIZ', 'A pasta do cliente é um atalho ou não é uma pasta. A ponte não usa atalhos.')
     const real = await realpath(pasta)
     if (!dentro(etapa, real)) throw new ErroPonte('FORA_DA_RAIZ', 'A pasta do cliente aponta para fora da etapa do agente.')
-    return { agente, raiz, etapa, pasta: real, nome, existe: true, emOutraEtapa: null, origemDoNome: origem }
+    return { agente, raiz, etapa, pasta: real, nome, existe: true, emOutraEtapa: null, origemDoNome: origem, origem: daOrigem, criar: [], emOutraOrigem: null }
   }
 
-  const { etapa, raiz } = etapas[0]
+  const { etapa, raiz, criar, origem: daOrigem } = etapas[0]
   let emOutraEtapa: string | null = null
   try {
     for (const item of await readdir(raiz, { withFileTypes: true })) {
@@ -202,7 +317,22 @@ export async function resolverPasta(cfg: ConfigPonte, agente: string, nomeInform
       if (existsSync(join(outra, nome))) { emOutraEtapa = item.name; break }
     }
   } catch { /* raiz ilegível: segue sem a conferência */ }
-  return { agente, raiz, etapa, pasta: join(etapa, nome), nome, existe: false, emOutraEtapa, origemDoNome: origem }
+
+  // A pasta DESTE cliente já existe em outra origem (o parceiro mudou de nome, ou a origem do cadastro foi trocada)?
+  // Homônimo de outra origem não conta: só vale o cadastro com o mesmo dg_cliente_id.
+  let emOutraOrigem: string | null = null
+  for (const e of etapas) {
+    if (!e.marcada || !e.origem || !cliente.id || emOutraOrigem) continue
+    try {
+      for (const item of await readdir(e.marcada.base, { withFileTypes: true })) {
+        if (!item.isDirectory() || item.name.toLowerCase() === e.origem.pasta.toLowerCase()) continue
+        const cadastro = join(e.marcada.base, item.name, ...e.marcada.depois, nome, 'DADOS DO CADASTRO.txt')
+        const campos = await readFile(cadastro, 'utf8').then(lerCampos, () => null)
+        if (campos?.dg_cliente_id === cliente.id) { emOutraOrigem = item.name; break }
+      }
+    } catch { /* pasta ilegível: segue sem a conferência */ }
+  }
+  return { agente, raiz, etapa, pasta: join(etapa, nome), nome, existe: false, emOutraEtapa, origemDoNome: origem, origem: daOrigem, criar, emOutraOrigem }
 }
 
 // ── Porteiro: checagens por script ────────────────────────────────────────
@@ -423,6 +553,11 @@ export interface DadosPonte {
     nome?: string | null; advogado?: string | null; oab?: string | null
     endereco?: string | null; cidade?: string | null; email?: string | null; telefone?: string | null
   }
+  /**
+   * Escritório de origem do CADASTRO do cliente (migration 060): o nome como está no
+   * DG Brasil e o tipo, ESCRITORIO (o dono do sistema) ou PARCEIRO. Banco sem a 060: a chave não vem.
+   */
+  origem?: OrigemDoCliente | null
 }
 
 const agora = () => new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', '')
@@ -432,7 +567,7 @@ const umaLinha = (v: unknown) => String(v ?? '').replace(/[\r\n\t]+/g, ' ').trim
 /** Campos do DADOS DO CADASTRO.txt, na ordem do contrato dos clones (docs/agentes/clonagem/contrato-dos-clones.md). */
 export const CAMPOS_DO_CADASTRO = [
   'nome', 'cpf', 'rg', 'nacionalidade', 'profissao', 'estado_civil', 'email', 'telefone', 'endereco',
-  'comprovante_residencia_em_nome_de', 'forma_de_pagamento',
+  'comprovante_residencia_em_nome_de', 'forma_de_pagamento', 'escritorio_de_origem',
 ] as const
 
 /** Lê um arquivo "campo: valor" (um por linha). */
@@ -452,6 +587,9 @@ export function lerCampos(texto: string): Record<string, string> {
  * Campo que o DG Brasil não manda (conector mais novo que o banco, ou campo que o
  * site ainda não tem) fica com o que já estava no arquivo: a equipe pode ter
  * completado à mão.
+ * escritorio_de_origem (migration 060) segue a mesma regra: "Nome (escritório)" ou
+ * "Nome (parceiro)", de onde o cliente vem. Não é "origem:", que já existia e diz
+ * de qual trabalho o arquivo saiu.
  */
 export function dadosDoCadastro(d: DadosPonte, trabalhoId: string, anterior: Record<string, string> = {}): string {
   const c = d.cliente
@@ -462,6 +600,7 @@ export function dadosDoCadastro(d: DadosPonte, trabalhoId: string, anterior: Rec
   }
   return [
     ...CAMPOS_DO_CADASTRO.map((k) => {
+      if (k === 'escritorio_de_origem') return `${k}: ${d.origem !== undefined ? textoDaOrigem(d.origem) : umaLinha(anterior[k])}`
       const veioDoSite = c != null && k in doSite && (k === 'nome' || k in c)
       return `${k}: ${veioDoSite ? umaLinha(doSite[k]) : umaLinha(doSite[k]) || umaLinha(anterior[k])}`
     }),
@@ -733,6 +872,152 @@ export const edgeHtmlParaPdf: HtmlParaPdf = async (html, pdf) => {
   if (!info || info.size === 0) throw new ErroPonte('NADA', 'O Edge não gerou o PDF.')
 }
 
+// ── Mensageiro: a minuta em Word ganha um PDF na pasta do cliente ───────────
+
+/**
+ * Converte um .docx em PDF. `pdf` é um caminho novo numa pasta temporária do
+ * conector (nunca na pasta do cliente). Falhou: lança ErroWord com o motivo.
+ */
+export type DocxParaPdf = (docx: string, pdf: string) => Promise<void>
+
+export class ErroWord extends Error {
+  /** semWord: o Word não existe neste computador, não adianta tentar os outros arquivos. */
+  constructor(message: string, readonly semWord = false) {
+    super(message)
+  }
+}
+
+/** Tempo limite do Word por documento, em segundos. */
+export const TEMPO_WORD_S = 90
+
+/**
+ * O script do Word, fixo. Os caminhos chegam como ARGUMENTOS (-Docx, -Pdf), nunca
+ * dentro do texto do script. Uma instância do Word por documento, só leitura,
+ * macro desligada, com tempo limite; instância travada é encerrada (só as que
+ * nasceram aqui e não têm janela). Responde "OK|", "SEMWORD|...", "TEMPO|..." ou "ERRO|...".
+ */
+const SCRIPT_WORD = [
+  'param(',
+  '  [Parameter(Mandatory)][string]$Docx,',
+  '  [Parameter(Mandatory)][string]$Pdf,',
+  '  [int]$TempoLimite = 90',
+  ')',
+  'try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }',
+  '$trabalho = {',
+  '  param($cam, $destino)',
+  "  try { $word = New-Object -ComObject Word.Application } catch { return 'SEMWORD|' + $_.Exception.Message }",
+  '  try {',
+  '    $word.Visible = $false',
+  '    $word.DisplayAlerts = 0',
+  '    try { $word.AutomationSecurity = 3 } catch { }   # msoAutomationSecurityForceDisable: nenhuma macro roda',
+  '    $doc = $word.Documents.Open($cam, $false, $true, $false)   # sem conversão, SOMENTE LEITURA, fora dos recentes',
+  '    # wdExportFormatPDF com todos os parâmetros posicionais',
+  '    $doc.ExportAsFixedFormat($destino, 17, $false, 0, 0, 1, 1, 0, $true, $true, 0, $true, $true, $false)',
+  '    $doc.Close(0)',
+  "    'OK|'",
+  '  } catch {',
+  "    'ERRO|' + $_.Exception.Message",
+  '  } finally {',
+  '    # Sem salvar nada. No PowerShell o argumento do Quit tem de ir por [ref]; se falhar, o Quit simples (nada foi alterado).',
+  '    $semSalvar = 0',
+  '    try { $word.Quit([ref]$semSalvar) } catch { try { $word.Quit() } catch { } }',
+  '    # Solta o documento e o Word: com referência presa, o WINWORD.EXE continua aberto depois do Quit.',
+  '    if ($doc) { try { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($doc) } catch { } }',
+  '    try { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($word) } catch { }',
+  '    $doc = $null; $word = $null',
+  '    [GC]::Collect(); [GC]::WaitForPendingFinalizers()',
+  '  }',
+  '}',
+  '$antes = @(Get-Process WINWORD -ErrorAction SilentlyContinue | ForEach-Object Id)',
+  '$job = Start-Job -ScriptBlock $trabalho -ArgumentList $Docx, $Pdf',
+  'if (Wait-Job $job -Timeout $TempoLimite) {',
+  '  $r = [string](Receive-Job $job | Select-Object -Last 1)',
+  '} else {',
+  '  $r = "TEMPO|tempo limite de $TempoLimite s excedido"',
+  '  Stop-Job $job',
+  '  Get-Process WINWORD -ErrorAction SilentlyContinue | Where-Object { $antes -notcontains $_.Id -and -not $_.MainWindowTitle } | ForEach-Object { Stop-Process -Id $_.Id -Force }',
+  '}',
+  'Remove-Job $job -Force',
+  '[Console]::Out.Write($r)',
+  "if ($r -like 'OK|*') { exit 0 } else { exit 1 }",
+  '',
+].join('\r\n')
+
+/**
+ * .docx → PDF pelo Microsoft Word deste computador (automação COM, via Windows
+ * PowerShell). O Word abre uma CÓPIA do documento numa pasta temporária, com nome
+ * fixo: o arquivo da pasta do cliente não é aberto nem travado, e o nome dele
+ * (que vem de fora) não chega ao PowerShell.
+ */
+export const wordDocxParaPdf: DocxParaPdf = async (docx, pdf) => {
+  if (process.platform !== 'win32') throw new ErroWord('o Microsoft Word só existe no Windows', true)
+  const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  if (!existsSync(powershell)) throw new ErroWord('Windows PowerShell não encontrado neste computador', true)
+  const temporaria = await mkdtemp(join(tmpdir(), 'dg-word-'))
+  try {
+    const script = join(temporaria, 'word-para-pdf.ps1')
+    const copia = join(temporaria, 'documento.docx')
+    const gerado = join(temporaria, 'documento.pdf')
+    await writeFile(script, `\uFEFF${SCRIPT_WORD}`, 'utf8')
+    await copyFile(docx, copia)
+    const r = await new Promise<{ saida: string; tempo: boolean }>((ok) => {
+      execFile(powershell, [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
+        '-Docx', copia, '-Pdf', gerado, '-TempoLimite', String(TEMPO_WORD_S),
+      ], { timeout: (TEMPO_WORD_S + 45) * 1000, windowsHide: true, encoding: 'utf8' },
+      (e, stdout) => ok({ saida: String(stdout ?? '').trim(), tempo: !!(e as { killed?: boolean } | null)?.killed }))
+    })
+    const [codigo, ...resto] = r.saida.split('|')
+    const detalhe = resto.join('|').replace(/\s+/g, ' ').trim().slice(0, 200)
+    if (codigo === 'SEMWORD') throw new ErroWord('Microsoft Word não encontrado neste computador', true)
+    if (codigo === 'TEMPO' || r.tempo) throw new ErroWord(`o Word não terminou em ${TEMPO_WORD_S} segundos (tempo esgotado)`)
+    if (codigo !== 'OK') throw new ErroWord(`o Word não conseguiu converter${detalhe ? ` (${detalhe})` : ''}`)
+    const info = await stat(gerado).catch(() => null)
+    if (!info || info.size === 0) throw new ErroWord('o Word não gerou o PDF')
+    await copyFile(gerado, pdf, constants.COPYFILE_EXCL)
+  } finally {
+    await rm(temporaria, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined)
+  }
+}
+
+/**
+ * Registro dos PDFs que o CONECTOR gerou a partir de um Word (caminho e SHA-256),
+ * num arquivo deste computador, ao lado do ponte.json. É por ele que o Mensageiro
+ * sabe que um PDF da pasta do cliente não é "arquivo novo do agente": PDF que
+ * está aqui com o mesmo conteúdo NUNCA é trazido, nem nesta chamada, nem numa
+ * repetição, nem em outro trabalho do mesmo cliente, nem depois de fechar a sessão.
+ * Se o agente gravar outro PDF no lugar (outro conteúdo), esse é dele e é trazido.
+ */
+export function caminhoRegistroPdf(arquivoPonte = caminhoPonte()): string {
+  return join(dirname(arquivoPonte), 'pdfs-do-word.json')
+}
+
+interface PdfDoWord { caminho: string; sha256: string; gerado_em: string; trabalho?: string }
+
+const LIMITE_REGISTRO_PDF = 5000
+const chaveDoCaminho = (c: string) => (process.platform === 'win32' ? resolve(c).toLowerCase() : resolve(c))
+const sha256De = (b: Buffer) => createHash('sha256').update(b).digest('hex')
+
+async function lerRegistroPdf(arquivo: string): Promise<PdfDoWord[]> {
+  try {
+    const bruto = JSON.parse((await readFile(arquivo, 'utf8')).replace(/^\uFEFF/, '')) as { pdfs?: unknown }
+    return (Array.isArray(bruto.pdfs) ? bruto.pdfs : [])
+      .filter((x): x is PdfDoWord => !!x && typeof x.caminho === 'string' && typeof x.sha256 === 'string')
+  } catch {
+    return []
+  }
+}
+
+async function gravarRegistroPdf(arquivo: string, pdfs: PdfDoWord[]): Promise<void> {
+  await mkdir(dirname(arquivo), { recursive: true })
+  const novo = `${arquivo}.novo`
+  await writeFile(novo, JSON.stringify({ versao: 1, pdfs: pdfs.slice(-LIMITE_REGISTRO_PDF) }, null, 2), 'utf8')
+  await rename(novo, arquivo)
+}
+
+/** Como o Mensageiro gera o PDF do Word: quem converte e onde fica o registro. */
+export interface OpcoesWord { converter: DocxParaPdf; registro: string; trabalho?: string }
+
 /** Categoria sugerida pelo nome do arquivo que o agente gerou. */
 export function categoriaSugerida(nome: string): string {
   const n = semAcento(nome)
@@ -797,14 +1082,66 @@ async function* arquivosAte(pasta: string, profundidade: number, prefixo = ''): 
   }
 }
 
+/**
+ * O PDF de cada Word trazido, gravado AO LADO do .docx, só na pasta do cliente
+ * (no DG Brasil vai só o Word). Nunca sobrescreve, e nenhuma falha aqui para a
+ * entrega: o que não deu certo volta em `naoGerados`, com o motivo.
+ */
+async function pdfsDosWord(
+  docx: Array<{ caminho: string; relativo: string; mtimeMs: number }>, word: OpcoesWord, registro: PdfDoWord[], temporaria: string,
+): Promise<{ gerados: string[]; naoGerados: string[] }> {
+  const gerados: string[] = []
+  const naoGerados: string[] = []
+  let semWord: string | null = null
+  for (const [i, d] of docx.entries()) {
+    const destino = join(dirname(d.caminho), `${basename(d.caminho, extname(d.caminho))}.pdf`)
+    const falhou = (motivo: string) => naoGerados.push(`${d.relativo} — ${motivo}`)
+    const existente = await lstat(destino).catch(() => null)
+    if (existente) {
+      falhou(`já existe ${basename(destino)} na pasta do cliente (nunca sobrescrevo)` +
+        (existente.mtimeMs < d.mtimeMs ? '; ele é mais antigo que o Word: confira se está atualizado' : ''))
+      continue
+    }
+    if (semWord) { falhou(semWord); continue }
+    try {
+      const provisorio = join(temporaria, `word-${i}.pdf`)
+      await word.converter(d.caminho, provisorio)
+      const b = await readFile(provisorio).catch(() => Buffer.alloc(0))
+      if (!b.subarray(0, 1024).includes('%PDF-')) throw new ErroWord('o Word não gerou o PDF')
+      // Primeiro o registro, depois o arquivo: PDF do conector na pasta do cliente está SEMPRE registrado.
+      registro.push({ caminho: destino, sha256: sha256De(b), gerado_em: new Date().toISOString(), trabalho: word.trabalho })
+      try {
+        await gravarRegistroPdf(word.registro, registro)
+      } catch {
+        registro.pop()
+        throw new ErroWord('não consegui anotar o PDF no registro do conector (pdfs-do-word.json); nada foi gravado na pasta do cliente')
+      }
+      await copyFile(provisorio, destino, constants.COPYFILE_EXCL)
+      gerados.push(d.relativo.replace(/\.[^./]+$/, '.pdf'))
+    } catch (e) {
+      if (e instanceof ErroWord && e.semWord) semWord = e.message
+      falhou(e instanceof ErroWord ? e.message
+        : (e as NodeJS.ErrnoException)?.code === 'EEXIST' ? `já existe ${basename(destino)} na pasta do cliente (nunca sobrescrevo)`
+          : 'não consegui gravar o PDF na pasta do cliente')
+    }
+  }
+  return { gerados, naoGerados }
+}
+
 export async function trazer(
   pasta: string, padroes: z.infer<typeof Trazer>[], desde: number, saida: string, htmlParaPdf: HtmlParaPdf,
-  nomeLivre: (pasta: string, nome: string) => Promise<string>, profundidade = 3,
-): Promise<{ trazidos: Trazido[]; ignorados: string[]; pendencias: PendenciaDaFicha[] }> {
+  nomeLivre: (pasta: string, nome: string) => Promise<string>, profundidade = 3, word?: OpcoesWord,
+): Promise<{ trazidos: Trazido[]; ignorados: string[]; pendencias: PendenciaDaFicha[]; pdfs: { gerados: string[]; naoGerados: string[] } }> {
   const regras = padroes.map((p) => (typeof p === 'string' ? { padrao: p } : p)).map((p) => ({ ...p, re: globParaRegex(p.padrao) }))
   const trazidos: Trazido[] = []
   const ignorados: string[] = []
   const pendencias: PendenciaDaFicha[] = []
+  let pdfs: { gerados: string[]; naoGerados: string[] } = { gerados: [], naoGerados: [] }
+  // Os PDFs que o próprio conector gerou a partir de um Word (caminho → conteúdos): ficam só na pasta do cliente.
+  const registro = word ? await lerRegistroPdf(word.registro) : []
+  const doConector = new Map<string, Set<string>>()
+  for (const x of registro) doConector.set(chaveDoCaminho(x.caminho), (doConector.get(chaveDoCaminho(x.caminho)) ?? new Set()).add(x.sha256))
+  const docxTrazidos: Array<{ caminho: string; relativo: string; mtimeMs: number }> = []
   const temporaria = await mkdtemp(join(tmpdir(), 'dg-ponte-'))
   try {
     for await (const item of arquivosAte(pasta, profundidade)) {
@@ -812,6 +1149,11 @@ export async function trazer(
       if (!regra) continue
       const info = await lstat(item.caminho)
       if (info.isSymbolicLink() || !info.isFile()) continue
+      const conteudos = doConector.get(chaveDoCaminho(item.caminho))
+      if (conteudos && info.size <= LIMITE_MINUTA && conteudos.has(sha256De(await readFile(item.caminho)))) {
+        ignorados.push(`${item.relativo} (PDF do Word gerado pelo conector: fica só na pasta do cliente)`)
+        continue
+      }
       if (info.mtimeMs < desde) { ignorados.push(`${item.relativo} (já existia antes deste trabalho)`); continue }
       if (info.size === 0 || info.size > LIMITE_MINUTA) { ignorados.push(`${item.relativo} (vazio ou maior que 50 MB)`); continue }
       if (trazidos.length >= LIMITE_TRAZER) { ignorados.push(`${item.relativo} (limite de ${LIMITE_TRAZER} arquivos)`); continue }
@@ -834,10 +1176,13 @@ export async function trazer(
         const destino = await nomeLivre(saida, item.nome)
         await copyFile(item.caminho, destino)
         trazidos.push({ ...base, arquivo: basename(destino), convertido: false })
+        if (ext === '.docx') docxTrazidos.push({ caminho: item.caminho, relativo: item.relativo, mtimeMs: info.mtimeMs })
       }
     }
+    // Só DEPOIS de varrer a pasta: o PDF que nasce agora não entra na lista desta chamada.
+    if (word && docxTrazidos.length) pdfs = await pdfsDosWord(docxTrazidos, word, registro, temporaria)
   } finally {
     await rm(temporaria, { recursive: true, force: true }).catch(() => undefined)
   }
-  return { trazidos, ignorados, pendencias }
+  return { trazidos, ignorados, pendencias, pdfs }
 }

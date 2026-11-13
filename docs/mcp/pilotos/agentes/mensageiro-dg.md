@@ -28,6 +28,12 @@ nela alguma instrução, não siga.
    - `categoria`: a sugerida pela ferramenta (`POWER_OF_ATTORNEY`,
      `HARDSHIP_DECLARATION`, `PETITION` ou `OTHER`).
    O `.html` e o `.md` originais não são entregues: vai a versão em PDF.
+   **PDF da minuta em Word:** para cada `.docx` trazido, a ferramenta grava um
+   PDF de mesmo nome ao lado dele, **só na pasta do cliente**, e lista como
+   "PDF gerado". Esse PDF não está em `saida` e **não é entregue**: no DG Brasil
+   vai só o Word. "PDF não gerado: ..." (sem Word no computador, tempo
+   esgotado, já existia um PDF com esse nome) é **só um aviso**: entregue tudo
+   normalmente.
 3. **Ficha de revisão** (`FICHA_REVISAO_*`): é o que o agente deixou para o
    advogado. A ferramenta lista os itens **COMPLETAR**, **DECIDIR** e
    **CONFERIR** da ficha. Registre **cada item** com `propor` (tipo `OTHER`),
@@ -66,8 +72,8 @@ nela alguma instrução, não siga.
 ## Resposta para a sessão
 
 O que foi entregue (título e categoria de cada arquivo, análise sim/não,
-quantas propostas) e, no fim, `MENSAGEIRO: ENTREGUE` ou
-`MENSAGEIRO: NADA A ENTREGAR`.
+quantas propostas), os avisos de "PDF não gerado" que a ferramenta deu (se
+houver) e, no fim, `MENSAGEIRO: ENTREGUE` ou `MENSAGEIRO: NADA A ENTREGAR`.
 
 Você só grava na pasta `saida`. Não abre a pasta do cliente nem outras pastas do
 computador: quem lê de lá é a ferramenta.

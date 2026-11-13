@@ -8,8 +8,12 @@
 #   1. copia agentes\bancario\*-dg.md e os agentes da ponte (Porteiro, Arquivista,
 #      Mensageiro, orquestrador) para %USERPROFILE%\.claude\agents;
 #   2. copia agentes\scripts para C:\DGBrasil\agentes\scripts;
-#   3. cria C:\DGBrasil\agentes\trabalho e, no Drive, DG BRASIL\CLIENTE BANCÁRIO e
-#      DG BRASIL\BASE DE CONHECIMENTO;
+#   3. cria C:\DGBrasil\agentes\trabalho e, no Drive, DG BRASIL e
+#      DG BRASIL\BASE DE CONHECIMENTO. A pasta dos clientes fica em
+#      DG BRASIL\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO CLIENTE> (decisão de 13/11/2026):
+#      <ORIGEM> é o escritório de origem do cliente (o próprio escritório ou o
+#      parceiro), e quem cria essa pasta é o conector, no primeiro cliente de cada
+#      origem. O instalador não cria nem move pasta de cliente;
 #   4. cria C:\DGBrasil\agentes\escritorio.json a partir do exemplo, se não existir
 #      (quem assina: preencher com os dados reais);
 #   5. acrescenta os clones ao %APPDATA%\DGBrasil\ponte.json (guarda o anterior);
@@ -48,7 +52,8 @@ if (-not (Test-Path $Agentes)) { throw "Não achei $Agentes. Rode de dentro do r
 
 $Raiz = 'C:\DGBrasil\agentes'
 $RaizDrive = Join-Path $Drive 'DG BRASIL'
-$Clientes = Join-Path $RaizDrive 'CLIENTE BANCÁRIO'
+# {origem}: o conector (1.3.4 em diante) troca pelo nome do escritório de origem do cliente, em MAIÚSCULAS e sem acento.
+$Clientes = Join-Path (Join-Path $RaizDrive '{origem}') 'CLIENTE BANCÁRIO'
 $Base = Join-Path $RaizDrive 'BASE DE CONHECIMENTO'
 
 # ── 1. agentes ───────────────────────────────────────────────────────────────
@@ -107,8 +112,8 @@ if (Test-Path $Scripts) {
 # ── 3. pastas do Drive ───────────────────────────────────────────────────────
 Passo 'Pastas no Drive'
 if (Test-Path -LiteralPath $Drive) {
-  CriarPasta $RaizDrive; CriarPasta $Clientes; CriarPasta $Base
-  Ok "Clientes em: $Clientes"
+  CriarPasta $RaizDrive; CriarPasta $Base
+  Ok "Clientes em: $Clientes ({origem} = escritório de origem do cliente; o conector cria no primeiro cliente de cada origem)"
 } else { Aviso "O Drive ($Drive) não está acessível. Abra o Google Drive para computador e rode de novo." }
 
 # ── 4. quem assina ───────────────────────────────────────────────────────────
@@ -152,6 +157,7 @@ foreach ($nome in $nomes) {
 if ((Test-Path $Ponte) -and -not $Simular) { Copy-Item -LiteralPath $Ponte -Destination "$Ponte.anterior" -Force }
 GravarTexto $Ponte ($cfg | ConvertTo-Json -Depth 8)
 Ok "$($nomes.Count) clones no ponte.json, na pasta $Clientes (o anterior ficou em ponte.json.anterior)"
+Aviso 'A pasta dos clientes leva a origem: o DG Brasil precisa da migration 060 e o conector, da versão 1.3.4 ou mais nova. Sem isso, o trabalho para com o aviso, sem criar pasta.'
 
 # ── 6. permissões da sessão do DG Brasil ─────────────────────────────────────
 Passo 'Sessão do DG Brasil'

@@ -6494,6 +6494,401 @@ await deve('catálogo [059]: funções com search_path fixo; nenhuma nova porta 
   await db.query(`update judicial_settings set deadline_agent_id = null where id`)
 })
 
+// ═════════════════════════════ Origem do cliente na ponte [060] ══════════
+
+secao('Ponte: escritório de origem do cliente, para o nível da origem na pasta do Drive [060]')
+const p060 = {}
+const ponte060 = (run, reserva) => ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, run, reserva])
+const trabalho060 = async (caso, pedido) => {
+  const run = (await como(ids.lucas, (tx) => um(tx, `select public.request_agent_run_once($1, $2, $3, null, $4, '{}', 'EXECUTE') r`, [randomUUID(), ids.agente, caso, pedido]))).r.run_id
+  const reserva = lease()
+  igual((await reservar040(hA, run, reserva)).claimed, true, 'trabalho reservado pelo computador do escritório')
+  return { run, reserva }
+}
+await deve('cenário: um cliente cadastrado por um parceiro (com caso de origem no escritório) e um cliente do próprio escritório', async () => {
+  // O parceiro tem nome fantasia e razão social diferentes do nome: a origem usa o NOME (o que o site mostra em "Origem").
+  p060.parceiro = await parceiro('Sá & Souza Advocacia 060', 50)
+  await db.query(`update organizations set trade_name = 'Fantasia 060', legal_name = 'Razão Social 060 Ltda' where id = $1`, [p060.parceiro])
+  p060.dono = (await um(db, `select name from organizations where id = $1`, [ids.owner])).name
+  const cliente = async (cpf, nome, origem) => {
+    const id = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', $1, $2) returning id`, [cpf, origem])).id
+    await db.query(`insert into individual_client_details (client_id, full_name) values ($1, $2)`, [id, nome])
+    return id
+  }
+  const caso = async (cli, titulo) => (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, $3, 'IN_PROGRESS', $4, $4, $5) returning id`, [cli, ids.banking, titulo, ids.owner, ids.lucas])).id
+  p060.cliParceiro = await cliente('99906000001', 'Cliente Fictício do Parceiro 060', p060.parceiro)
+  p060.cliDono = await cliente('99906000002', 'Cliente Fictício do Escritório 060', ids.owner)
+  // O caso do cliente do parceiro tem origem no ESCRITÓRIO: para a pasta vale a origem do cliente.
+  p060.casoParceiro = await caso(p060.cliParceiro, 'Caso fictício 060 (cliente do parceiro)')
+  p060.casoDono = await caso(p060.cliDono, 'Caso fictício 060 (cliente do escritório)')
+  igual((await um(db, `select origin_organization_id o from legal_cases where id = $1`, [p060.casoParceiro])).o, ids.owner, 'caso com origem diferente da do cliente')
+  p060.tParceiro = await trabalho060(p060.casoParceiro, 'Ponte 060: cliente do parceiro')
+  p060.tDono = await trabalho060(p060.casoDono, 'Ponte 060: cliente do escritório')
+})
+await deve('cliente de parceiro: origem com o nome do parceiro e tipo PARCEIRO, mesmo com o caso de origem no escritório', async () => {
+  const b = await ponte060(p060.tParceiro.run, p060.tParceiro.reserva)
+  igual(b.origem, { nome: 'Sá & Souza Advocacia 060', tipo: 'PARCEIRO' }, 'origem do cadastro do cliente, com o nome como está no site')
+  igual(b.cliente.id, p060.cliParceiro, 'do cliente do trabalho')
+})
+await deve('cliente do próprio escritório: origem com o nome do escritório e tipo ESCRITORIO', async () => {
+  const b = await ponte060(p060.tDono.run, p060.tDono.reserva)
+  igual(b.origem, { nome: p060.dono, tipo: 'ESCRITORIO' }, 'origem')
+  igual(b.cliente.id, p060.cliDono, 'do cliente do trabalho')
+})
+await deve('só amplia: as chaves e o cadastro saem como na 055; o acesso continua preso à reserva', async () => {
+  const b = await ponte060(p060.tParceiro.run, p060.tParceiro.reserva)
+  igual(Object.keys(b).sort(), ['cliente', 'escritorio', 'origem', 'pasta_drive'], 'as três chaves de antes e a origem')
+  igual(Object.keys(b.cliente).sort(), ['cpf', 'email', 'endereco', 'estado_civil', 'forma_de_pagamento', 'id', 'nacionalidade', 'nome', 'profissao', 'rg', 'telefone', 'tipo'], 'cliente')
+  igual([b.cliente.nome, b.cliente.cpf, b.pasta_drive], ['Cliente Fictício do Parceiro 060', '999.060.000-01', null], 'cadastro e pasta do Drive')
+  igual(Object.keys(b.escritorio).sort(), ['advogado', 'cidade', 'email', 'endereco', 'nome', 'oab', 'telefone'], 'quem assina')
+  await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hB, p060.tParceiro.run, p060.tParceiro.reserva]).then(
+    () => { throw new Error('outro computador leu') }, (e) => { if (!/não está reservado|inválido ou revogado/.test(e.message)) throw e })
+  // A reserva de um trabalho não lê a origem do cliente de outro.
+  await ex(`select private.executor_bridge_data($1, $2, $3) r`, [hA, p060.tParceiro.run, p060.tDono.reserva]).then(
+    () => { throw new Error('reserva de outro trabalho leu') }, (e) => { if (!/não está reservado/.test(e.message)) throw e })
+})
+await deve('a origem é a do cadastro: parceiro renomeado ou arquivado continua sendo a origem; rodar a migration de novo não muda nada', async () => {
+  await db.query(`update organizations set name = '  Souza & Sá Advogados 060  ' where id = $1`, [p060.parceiro])
+  igual((await ponte060(p060.tParceiro.run, p060.tParceiro.reserva)).origem, { nome: 'Souza & Sá Advogados 060', tipo: 'PARCEIRO' }, 'nome novo, sem espaço sobrando')
+  await db.query(`update organizations set status = 'INACTIVE', deleted_at = now() where id = $1`, [p060.parceiro])
+  igual((await ponte060(p060.tParceiro.run, p060.tParceiro.reserva)).origem, { nome: 'Souza & Sá Advogados 060', tipo: 'PARCEIRO' }, 'parceiro arquivado: a pasta do cliente não muda de lugar')
+  await db.exec(await readFile(new URL('migrations/20261113000060_ponte_origem_do_cliente.sql', raiz), 'utf8'))
+  igual((await ponte060(p060.tDono.run, p060.tDono.reserva)).origem, { nome: p060.dono, tipo: 'ESCRITORIO' }, 'depois de rodar de novo')
+})
+await deve('catálogo [060]: uma versão só da função, search_path fixo, definer; só o dg_worker executa', async () => {
+  const r = await linhas(db, `select p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'executor_bridge_data'`)
+  igual(r.length, 1, 'uma versão')
+  igual(r.map((x) => [x.cfg.includes('search_path='), x.def, x.anon, x.srv, x.usr, x.wrk]), [[true, true, false, false, false, true]], 'permissões como na 055')
+  // Os dois trabalhos do cenário saem da fila do computador do escritório.
+  for (const t of [p060.tParceiro, p060.tDono]) await ex(`select private.executor_fail($1, $2, $3, 'INTERNAL_ERROR', 'fim do cenário 060', false) r`, [hA, t.run, t.reserva])
+})
+
+// ═════════════════════════════ O prazo vira tarefa [061] ═════════════════
+
+secao('O prazo do agente de prazos vira tarefa para os agentes: vai ao orquestrador quando o caso tem os autos; sem eles, fica aberta com o aviso [061]')
+const t061 = { trabalhos: [] }
+// CNJs fictícios (TJRJ, 8.19, origem 0999) para os cenários da 061.
+const cnj061 = (n) => cnj(6100 + n, '2026', '8', '19', '0999')
+const mascara061 = (c) => `${c.slice(0, 7)}-${c.slice(7, 9)}.${c.slice(9, 13)}.${c.slice(13, 14)}.${c.slice(14, 16)}.${c.slice(16)}`
+// As verificações da 058 e da 059 rodaram aquelas migrations de novo (a 059 redefine as funções da tela): a 061 vem depois delas, como no banco de verdade.
+const rodar061 = async () => db.exec(await readFile(new URL('migrations/20261113000061_prazo_vira_tarefa.sql', raiz), 'utf8'))
+const AVISO061 = {
+  autos: 'Anexe os autos do processo e envie a tarefa.',
+  conferir: 'Prazo marcado para conferir: confira e envie a tarefa.',
+  orquestrador: 'Orquestrador não configurado.',
+  vencido: 'O vencimento do prazo já passou: confira e, se ainda couber, envie a tarefa.',
+}
+// Documento do caso; a origem é a da PRIMEIRA versão (UPLOAD = da equipe ou do parceiro; AGENT = gerado por agente).
+async function documento061(caso, titulo, origem) {
+  const cli = (await um(db, `select client_id from legal_cases where id = $1`, [caso])).client_id
+  const doc = randomUUID(), v = randomUUID()
+  await db.query(`insert into documents (id, client_id, category, title) values ($1, $2, 'OTHER', $3)`, [doc, cli, titulo])
+  await db.query(`insert into case_documents (legal_case_id, document_id) values ($1, $2)`, [caso, doc])
+  await db.query(`insert into document_versions (id, document_id, storage_object_name, source) values ($1, $2, $3, $4)`, [v, doc, `clients/${cli}/documents/${doc}/${v}/arquivo.pdf`, origem])
+  return doc
+}
+const temAutos061 = async (caso) => (await um(db, `select private.case_has_own_document($1) r`, [caso])).r
+const tarefas061 = (prazo) => linhas(db, `select t.id, t.status, t.title, t.instructions, t.priority, t.agent_id, t.agent_run_id, t.attempts, t.last_error, t.created_by,
+    t.legal_process_id, t.legal_case_id, t.due_at = d.due_at mesmo_venc
+  from process_tasks t join deadlines d on d.id = t.source_deadline_id where t.source_deadline_id = $1`, [prazo])
+const tarefa061 = async (prazo) => {
+  const ts = await tarefas061(prazo)
+  igual(ts.length, 1, 'uma tarefa do prazo')
+  return ts[0]
+}
+const automaticas061 = async () => (await um(db, `select count(*)::int n from process_tasks where source_deadline_id is not null`)).n
+const execucao061 = (run) => um(db, `select r.operation, r.agent_id, r.status, r.requested_by, r.legal_case_id, r.legal_process_id, i.request_text txt, i.parameters par
+  from agent_runs r join agent_run_inputs i on i.agent_run_id = r.id where r.id = $1`, [run])
+const movimentacao061 = (tarefa) => um(db, `select source, event_type, title, description, important, raw_data ->> 'status' st from process_events where raw_data ->> 'process_task_id' = $1 and title like 'Tarefa criada pelo agente de prazos: %'`, [tarefa])
+const erros061 = async (run) => (await linhas(db, `select message m from agent_run_events where agent_run_id = $1 and kind = 'ERROR' order by id`, [run])).map((x) => x.m)
+// Publicação nova → trabalho do agente de prazos → proposta de prazo (os ajudantes da 059).
+async function lancar061(proc, n, chave, extra = {}, o = {}) {
+  const t = await trabalho059(proc, cnj061(n), o.disponibilizadaEm ?? t061.hoje)
+  t061.trabalhos.push(t)
+  const venc = t.dias[o.dia ?? 14]
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(venc, extra), chave)
+  return { t, r, venc, p: await proposta059(r.proposal_id) }
+}
+// Aprovação em Revisões: o trabalho termina aguardando a pessoa, o advogado aprova e a manutenção aplica (018).
+async function aprovar061(x) {
+  igual([x.r.applied, x.p.status, x.p.revisao, x.p.prazo], [false, 'PENDING', 'PENDING', null], 'proposta esperando em Revisões')
+  if (x.t.reserva) igual((await ex(`select private.executor_complete($1, $2, $3) r`, [hA, x.t.run, x.t.reserva])).status, 'WAITING_HUMAN', 'aguardando revisão')
+  await decidir(ids.lucas, x.p.revisao_id, 'APPROVE')
+  await db.query(`select private.maintenance_tick()`)
+  const p = await proposta059(x.r.proposal_id)
+  igual([p.status, p.ent, !!p.prazo], ['APPLIED', 'deadlines', true], 'aprovada e aplicada: o prazo existe')
+  return p
+}
+
+await deve('cenário: a 061 roda de novo sem quebrar; caso COM os autos (processo A com responsável, B sem, C com assistente) e caso SEM documento; orquestrador escolhido; opção ligada por padrão', async () => {
+  await rodar061()
+  igual((await um(db, `select deadline_auto_task v from judicial_settings where id`)).v, true, 'ligada por padrão')
+  igual((await um(db, `select count(*)::int n from pg_trigger where tgname = 'agent_proposals_deadline_task' and not tgisinternal`)).n, 1, 'um gatilho só')
+  const cli = (await um(db, `select client_id from legal_cases where id = $1`, [j043.caso])).client_id
+  const caso = async (titulo) => (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, $3, 'IN_PROGRESS', $4, $4, $5) returning id`, [cli, ids.banking, titulo, ids.owner, ids.lucas])).id
+  const processo = async (c, n, titulo, resp) => (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court, responsible_user_id) values ($1, $2, $3, 'TJRJ', $4) returning id`,
+    [c, cnj061(n), titulo, resp])).id
+  t061.caso = await caso('Caso fictício 061 (com os autos)')
+  t061.procA = await processo(t061.caso, 1, 'Fictícia x Banco 061 A', ids.barbara)
+  t061.procB = await processo(t061.caso, 2, 'Fictícia x Banco 061 B', null)
+  t061.procC = await processo(t061.caso, 3, 'Fictícia x Banco 061 C', ids.ana)
+  t061.casoSem = await caso('Caso fictício 061 (sem documento)')
+  t061.procSem = await processo(t061.casoSem, 4, 'Fictícia x Banco 061 D', ids.barbara)
+  await documento061(t061.caso, 'Autos do processo (cópia integral)', 'UPLOAD')
+  igual([await temAutos061(t061.caso), await temAutos061(t061.casoSem)], [true, false], 'quem tem os autos')
+  // Orquestrador próprio do cenário, escolhido pelo ADMIN (047).
+  t061.orqAntes = (await um(db, `select orchestrator_agent_id o from process_task_settings where id`)).o
+  t061.orq = (await um(db, `insert into agents (slug, name, description, purpose, status) values ('orquestrador-061', 'Orquestrador fictício 061', 'Agente fictício 061', 'Teste', 'DRAFT') returning id`)).id
+  const v = (await um(db, `insert into agent_versions (agent_id, instructions, configuration) values ($1, 'Distribuir a tarefa.', '{}') returning id`, [t061.orq])).id
+  await db.query(`update agents set current_version_id = $2, status = 'ACTIVE' where id = $1`, [t061.orq, v])
+  await como(ids.barbara, (tx) => tx.query(`select public.save_process_task_settings($1)`, [t061.orq]))
+  await db.query(`update judicial_settings set deadline_agent_id = $1, deadline_auto_apply = true where id`, [ids.agente])
+  t061.hoje = await dia059()
+})
+await deve('prazo direto em caso COM os autos: a tarefa nasce sozinha na lista do processo — "Preparar: <título do prazo>", prioridade e vencimento do prazo, sem agente escolhido e sem autor, ligada ao prazo — e já está na fila', async () => {
+  t061.desc = 'CPC, art. 350: 15 dias úteis contados da publicação. Peça: réplica à contestação (agente murilo-replica-dg).'
+  const x = t061.a = await lancar061(t061.procA, 1, 'k-061-direto', { description: t061.desc })
+  igual([x.r.created, x.r.applied, x.p.status, x.p.rev, x.p.ent], [true, true, 'APPLIED', false, 'deadlines'], 'prazo direto aplicado')
+  const t = t061.tarefaA = await tarefa061(x.p.prazo)
+  igual([t.status, t.title, t.priority, t.mesmo_venc, t.agent_id, t.created_by, t.attempts, t.last_error, t.legal_process_id, t.legal_case_id, !!t.agent_run_id],
+    ['QUEUED', 'Preparar: Réplica à contestação', 'HIGH', true, null, null, 1, null, t061.procA, t061.caso, true], 'tarefa')
+  igual(t.instructions, [
+    'Tarefa criada sozinha pelo DG Brasil: este prazo nasceu de uma publicação do DJEN e foi lançado na agenda pelo agente de prazos.',
+    `Prazo: Réplica à contestação\nVencimento: ${br059(x.venc)} (horário de Brasília)`,
+    `Publicação do DJEN: disponibilizada em ${br059(t061.hoje)}\nTipo: Intimação\nÓrgão: TJRJ — 1ª Vara Cível Fictícia`,
+    `O que fazer: redigir a peça indicada abaixo para este prazo, com os autos e os documentos do caso. O arquivo PROCESSO_${mascara061(cnj061(1))}.txt da pasta do cliente traz a publicação inteira. Se a peça indicada não couber, dizer por quê na entrega.`,
+    `Análise do agente de prazos (descrição do prazo):\n${t061.desc}`].join('\n\n'), 'o que fazer')
+  igual(t.instructions.includes('Fica a parte autora intimada'), false, 'o teor da publicação não é copiado')
+})
+await deve('a execução é do ORQUESTRADOR, pedida em nome do responsável do prazo, com o pedido da tarefa; a linha do tempo do processo registra (interno); o prazo direto segue igual (publicação tratada, um aviso para cada pessoa)', async () => {
+  const x = t061.a, t = t061.tarefaA
+  const run = await execucao061(t.agent_run_id)
+  igual([run.operation, run.agent_id, run.status, run.requested_by, run.legal_case_id, run.legal_process_id, run.par],
+    ['PROCESS_TASK', t061.orq, 'QUEUED', ids.barbara, t061.caso, t061.procA, { process_task_id: t.id }], 'execução')
+  for (const trecho of ['TAREFA DO PROCESSO (lista de afazeres do DG Brasil)', 'Título: Preparar: Réplica à contestação', `O que fazer:\n${t.instructions}`,
+    `Prazo interno: ${br059(x.venc)} 23:59`, 'Tudo vai para revisão humana']) {
+    if (!run.txt.includes(trecho)) throw new Error(`pedido sem "${trecho}"`)
+  }
+  const ev = await movimentacao061(t.id)
+  igual([ev.source, ev.event_type, ev.title, ev.description, ev.important, ev.st],
+    ['AGENT', 'TASK', 'Tarefa criada pelo agente de prazos: Preparar: Réplica à contestação',
+      `Criada sozinha a partir do prazo "Réplica à contestação" (vence ${br059(x.venc)}). Enviada ao orquestrador.`, false, 'QUEUED'], 'movimentação do agente')
+  const pub = await publicacao059(x.t)
+  igual([pub.st, pub.res, pub.prazo], ['DONE', 'DEADLINE', x.p.prazo], 'a publicação fica tratada com o prazo, como na 059')
+  // Pedir a execução fixa o ator da transação; o gatilho devolve o que havia, senão o responsável ficaria sem o aviso do próprio prazo.
+  const av = await linhas(db, `select user_id from notifications where related_id = $1 and event_key = $2`, [x.p.prazo, 'prazo-direto:' + x.p.prazo])
+  igual(av.map((a) => a.user_id).sort(), [ids.barbara, ids.lucas].sort(), 'aviso do prazo para o responsável e para o advogado do caso')
+  igual((await um(db, `select coalesce(current_setting('dg.actor_user_id', true), '') v`)).v, '', 'o ator não vaza da transação')
+  igual(await erros061(x.t.run), [], 'nenhum erro na linha do tempo do trabalho')
+  const au = await um(db, `select count(*)::int n from audit_events where entity_type = 'process_tasks' and entity_id = $1`, [t.id])
+  if (!(au.n >= 1)) throw new Error('sem auditoria da tarefa')
+})
+await deve('repetição não duplica: a mesma proposta de novo, o criador chamado de novo e a migration rodada de novo deixam UMA tarefa por prazo; o banco recusa uma segunda', async () => {
+  const x = t061.a, antes = await automaticas061()
+  const r = await propor059(x.t, 'CREATE_DEADLINE', prazo059(x.venc, { description: t061.desc }), 'k-061-direto')
+  igual([r.created, r.applied, r.proposal_id], [false, true, x.r.proposal_id], 'a mesma proposta, já aplicada')
+  igual((await um(db, `select private.deadline_task_create($1) r`, [x.r.proposal_id])).r, null, 'o criador não cria outra')
+  await db.query(`update agent_proposals set status = status where id = $1`, [x.r.proposal_id])
+  await rodar061()
+  const t = await tarefa061(x.p.prazo)
+  igual([t.id, t.status, t.attempts, t.agent_run_id], [t061.tarefaA.id, 'QUEUED', 1, t061.tarefaA.agent_run_id], 'a mesma tarefa, a mesma execução')
+  igual(await automaticas061(), antes, 'nenhuma tarefa automática a mais')
+  igual((await um(db, `select count(*)::int n from process_events where raw_data ->> 'process_task_id' = $1`, [t.id])).n, 1, 'uma movimentação só')
+  await db.query(`insert into process_tasks (legal_process_id, legal_case_id, title, instructions, source_deadline_id) values ($1, $2, 'Segunda', 'Não pode', $3)`,
+    [t061.procA, t061.caso, x.p.prazo]).then(() => { throw new Error('segunda tarefa do mesmo prazo foi aceita') },
+    (e) => { if (!/process_tasks_source_deadline_key/.test(e.message)) throw e })
+})
+await deve('caso SEM documento: a tarefa é criada de qualquer jeito, mas fica ABERTA com o aviso "anexe os autos" e nada vai para o orquestrador; documento gerado por agente, arquivado ou excluído não conta', async () => {
+  const x = t061.sem = await lancar061(t061.procSem, 4, 'k-061-sem-autos')
+  igual([x.r.applied, x.p.status], [true, 'APPLIED'], 'o prazo entra na agenda do mesmo jeito')
+  const t = t061.tarefaSem = await tarefa061(x.p.prazo)
+  igual([t.status, t.title, t.agent_run_id, t.attempts, t.last_error, t.legal_process_id], ['OPEN', 'Preparar: Réplica à contestação', null, 0, AVISO061.autos, t061.procSem], 'aberta com o aviso')
+  const ev = await movimentacao061(t.id)
+  igual([ev.source, ev.description, ev.st], ['AGENT', `Criada sozinha a partir do prazo "Réplica à contestação" (vence ${br059(x.venc)}). Ficou aberta: ${AVISO061.autos}`, 'OPEN'], 'movimentação')
+  igual((await um(db, `select count(*)::int n from agent_runs where legal_case_id = $1 and operation = 'PROCESS_TASK'`, [t061.casoSem])).n, 0, 'nenhuma execução para o orquestrador')
+  // Minuta de agente (mesmo editada depois pela equipe), documento arquivado e documento excluído: o caso continua sem os autos.
+  const minuta = await documento061(t061.casoSem, 'Minuta gerada pelo agente', 'AGENT')
+  const v2 = randomUUID(), cliSem = (await um(db, `select client_id from legal_cases where id = $1`, [t061.casoSem])).client_id
+  await db.query(`insert into document_versions (id, document_id, storage_object_name, source) values ($1, $2, $3, 'MANUAL_EDIT')`, [v2, minuta, `clients/${cliSem}/documents/${minuta}/${v2}/editada.docx`])
+  await db.query(`update documents set status = 'ARCHIVED' where id = $1`, [await documento061(t061.casoSem, 'Autos antigos (arquivado)', 'UPLOAD')])
+  await db.query(`update documents set deleted_at = now() where id = $1`, [await documento061(t061.casoSem, 'Enviado por engano (excluído)', 'UPLOAD')])
+  igual(await temAutos061(t061.casoSem), false, 'só documento de agente, arquivado ou excluído')
+  const y = await lancar061(t061.procSem, 4, 'k-061-so-agente', { title: 'Manifestação sobre documentos' })
+  const t2 = await tarefa061(y.p.prazo)
+  igual([t2.status, t2.title, t2.agent_run_id, t2.last_error], ['OPEN', 'Preparar: Manifestação sobre documentos', null, AVISO061.autos], 'aberta com o aviso')
+})
+await deve('descrição que começa com "CONFERIR:" (sem diferenciar maiúsculas, ignorando espaços): prazo duvidoso espera uma pessoa — tarefa ABERTA com o aviso, mesmo com os autos no caso', async () => {
+  const x = await lancar061(t061.procA, 1, 'k-061-conferir', { title: 'Embargos de declaração', description: '  conferir : não ficou claro se a intimação é para o nosso cliente. Peça: embargos (gabriel-embargos-dg).' })
+  igual([x.r.applied, x.p.status], [true, 'APPLIED'], 'o prazo entra na agenda')
+  const t = await tarefa061(x.p.prazo)
+  igual([t.status, t.title, t.agent_run_id, t.last_error], ['OPEN', 'Preparar: Embargos de declaração', null, AVISO061.conferir], 'aberta para conferir')
+  // "Conferir" no meio do texto não segura a tarefa.
+  const y = await lancar061(t061.procA, 1, 'k-061-conferir-no-meio', { title: 'Alegações finais', description: 'Prazo comum de 15 dias. Vale conferir: há litisconsorte.' })
+  igual((await tarefa061(y.p.prazo)).status, 'QUEUED', 'vai para a fila')
+})
+await deve('sem orquestrador em vigor: tarefa ABERTA com o motivo; mais de um motivo aparece junto (conferir, autos e orquestrador)', async () => {
+  await db.query(`update process_task_settings set orchestrator_agent_id = null where id`)
+  await db.query(`update agents set slug = 'orquestrador-fora-061' where slug = 'orquestrador'`)
+  try {
+    igual((await um(db, `select private.process_task_orchestrator() o`)).o, null, 'sem orquestrador')
+    const x = await lancar061(t061.procA, 1, 'k-061-sem-orquestrador', { title: 'Contrarrazões' })
+    const t = await tarefa061(x.p.prazo)
+    igual([x.p.status, t.status, t.agent_run_id, t.last_error], ['APPLIED', 'OPEN', null, AVISO061.orquestrador], 'aberta: orquestrador não configurado')
+    const y = await lancar061(t061.procSem, 4, 'k-061-tudo-junto', { title: 'Impugnação', description: 'CONFERIR: prazo em dobro?' })
+    igual((await tarefa061(y.p.prazo)).last_error, [AVISO061.conferir, AVISO061.autos, AVISO061.orquestrador].join(' '), 'todos os motivos')
+  } finally {
+    await db.query(`update agents set slug = 'orquestrador' where slug = 'orquestrador-fora-061'`)
+    await db.query(`update process_task_settings set orchestrator_agent_id = $1 where id`, [t061.orq])
+  }
+})
+await deve('depois de anexar os autos, "Enviar aos agentes" (047) manda a tarefa aberta ao orquestrador e limpa o aviso', async () => {
+  await documento061(t061.casoSem, 'Autos do processo', 'UPLOAD')
+  igual(await temAutos061(t061.casoSem), true, 'agora o caso tem os autos')
+  const s = await como(ids.lucas, async (tx) => (await um(tx, `select public.send_process_task($1) r`, [t061.tarefaSem.id])).r)
+  const t = (await tarefas061(t061.sem.p.prazo))[0]
+  igual([s.status, t.status, t.attempts, t.last_error, t.agent_run_id], ['QUEUED', 'QUEUED', 1, null, s.agent_run_id], 'na fila')
+  const run = await execucao061(t.agent_run_id)
+  igual([run.operation, run.agent_id, run.requested_by], ['PROCESS_TASK', t061.orq, ids.lucas], 'execução do orquestrador, pedida por quem enviou')
+})
+await deve('título e descrição compridos cabem na tarefa (200 e 10 mil, cortados); responsável que não é advogado: quem pede a execução é o advogado do caso', async () => {
+  const titulo = 'Manifestação sobre o laudo ' + 'x'.repeat(230)
+  const x = await lancar061(t061.procC, 3, 'k-061-comprido', { title: titulo, description: 'Fundamento. ' + 'y'.repeat(12000), priority: 'LOW' })
+  igual([x.r.applied, x.p.status], [true, 'APPLIED'], 'prazo direto aplicado')
+  igual((await um(db, `select responsible_user_id r from deadlines where id = $1`, [x.p.prazo])).r, ids.ana, 'prazo com a assistente (responsável do processo)')
+  const t = await tarefa061(x.p.prazo)
+  igual([t.status, t.title, t.priority, t.instructions.length, t.instructions.endsWith('y […cortado]')],
+    ['QUEUED', ('Preparar: ' + titulo).slice(0, 199) + '…', 'LOW', 10000, true], 'cortados no limite')
+  if (!t.instructions.includes(`\n\nPrazo: ${titulo}\nVencimento: `)) throw new Error('o título inteiro do prazo fica no texto')
+  const run = await execucao061(t.agent_run_id)
+  igual([run.requested_by, run.txt.length <= 20000], [ids.lucas, true], 'pedida em nome do advogado do caso')
+})
+await deve('configuração: a tela lê e salva deadline_auto_task; quem não manda a chave não muda nada; só ADMIN. Desligada: o prazo entra na agenda e NENHUMA tarefa é criada', async () => {
+  const antes = (await rpc043(ids.lucas, `select public.get_judicial_overview() r`)).settings
+  igual([antes.deadline_auto_task, antes.deadline_auto_apply, antes.deadline_agent_id], [true, true, ids.agente], 'lê (ligada)')
+  await como(ids.lucas, (tx) => tx.query(`select public.save_judicial_settings('{"deadline_auto_task":false}')`)).then(
+    () => { throw new Error('advogado desligou a opção') }, (e) => { if (!/Somente ADMIN/.test(e.message)) throw e })
+  igual((await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_task":false}') r`)).ok, true, 'ADMIN salva')
+  const s = (await rpc043(ids.barbara, `select public.get_judicial_overview() r`)).settings
+  igual([s.deadline_auto_task, s.deadline_auto_apply, s.deadline_agent_id, s.djen_enabled, s.datajud_enabled, s.lookback_days],
+    [false, true, antes.deadline_agent_id, antes.djen_enabled, antes.datajud_enabled, antes.lookback_days], 'desligada; o resto como estava')
+  await rpc043(ids.barbara, `select public.save_judicial_settings($1) r`, [JSON.stringify({ lookback_days: antes.lookback_days, deadline_auto_apply: true })])
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_task":null}') r`)
+  igual((await rpc043(ids.barbara, `select public.get_judicial_overview() r`)).settings.deadline_auto_task, false, 'sem a chave (ou nula): continua desligada')
+  const n = await automaticas061()
+  const x = await lancar061(t061.procA, 1, 'k-061-desligada', { title: 'Réplica com a opção desligada' })
+  igual([x.r.applied, x.p.status, (await tarefas061(x.p.prazo)).length, await automaticas061()], [true, 'APPLIED', 0, n], 'prazo criado, nenhuma tarefa')
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_task":true}') r`)
+  igual((await rpc043(ids.barbara, `select public.get_judicial_overview() r`)).settings.deadline_auto_task, true, 'religada')
+})
+await deve('prazo aprovado em Revisões (prazo direto desligado) também gera a tarefa — só depois da aprovação; processo sem responsável: a execução é pedida em nome do advogado do caso', async () => {
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_apply":false}') r`)
+  try {
+    const n = await automaticas061()
+    const x = await lancar061(t061.procB, 2, 'k-061-revisoes', { title: 'Contrarrazões ao recurso', priority: 'URGENT' })
+    igual(await automaticas061(), n, 'enquanto a proposta espera em Revisões, nenhuma tarefa')
+    const p = await aprovar061(x)
+    const t = await tarefa061(p.prazo)
+    igual([t.status, t.title, t.priority, t.mesmo_venc, t.legal_process_id, t.created_by, t.last_error],
+      ['QUEUED', 'Preparar: Contrarrazões ao recurso', 'URGENT', true, t061.procB, null, null], 'tarefa na fila')
+    const run = await execucao061(t.agent_run_id)
+    igual([run.operation, run.agent_id, run.requested_by, run.legal_process_id], ['PROCESS_TASK', t061.orq, ids.lucas, t061.procB], 'execução do orquestrador')
+    const pub = await publicacao059(x.t)
+    igual([pub.st, pub.res, pub.prazo, pub.por], ['DONE', 'DEADLINE', p.prazo, ids.lucas], 'a publicação fica tratada por quem aprovou, como na 043')
+    igual(await automaticas061(), n + 1, 'uma tarefa a mais')
+  } finally {
+    await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_apply":true}') r`)
+  }
+})
+await deve('prazo aprovado em Revisões depois de vencido: a tarefa fica ABERTA com o motivo', async () => {
+  // Publicação disponibilizada há 60 dias: o dia 1 da lista já passou, e por isso a proposta vai para Revisões (059).
+  const x = await lancar061(t061.procA, 1, 'k-061-vencido', { title: 'Prazo que já venceu' }, { disponibilizadaEm: await dia059(-60), dia: 0 })
+  igual(x.venc < t061.hoje, true, 'vencimento no passado')
+  const p = await aprovar061(x)
+  const t = await tarefa061(p.prazo)
+  igual([t.status, t.agent_run_id, t.last_error], ['OPEN', null, AVISO061.vencido], 'aberta: vencimento passou')
+})
+await deve('NÃO geram tarefa: prazo criado à mão pela equipe na tela da publicação; CREATE_DEADLINE de trabalho que não nasceu de publicação (aprovado em Revisões)', async () => {
+  const n = await automaticas061()
+  const t = await trabalho059(t061.procA, cnj061(1), t061.hoje)
+  t061.trabalhos.push(t)
+  const h = await rpc043(ids.lucas, `select public.create_deadline_from_publication($1, $2) r`, [t.pub, JSON.stringify({ title: 'Réplica (criado pela equipe)', due_on: t.dias[14] })])
+  igual([(await publicacao059(t)).prazo, (await tarefas061(h.deadline_id)).length, await automaticas061()], [h.deadline_id, 0, n], 'prazo da equipe: nenhuma tarefa')
+  // Trabalho avulso, pedido por um advogado ao mesmo agente, no mesmo processo.
+  const run = (await como(ids.lucas, (tx) => um(tx, `select public.request_agent_run_once($1, $2, $3, $4, 'Conferir o prazo', '{}', 'EXECUTE') r`,
+    [randomUUID(), ids.agente, t061.caso, t061.procA]))).r.run_id
+  const a = { run, reserva: lease(), proc: t061.procA }
+  igual((await reservar040(hA, a.run, a.reserva)).claimed, true, 'trabalho avulso reservado')
+  const r = await propor059(a, 'CREATE_DEADLINE', prazo059(t.dias[14], { title: 'Prazo de trabalho avulso' }), 'k-061-avulso')
+  const p = await aprovar061({ t: a, r, p: await proposta059(r.proposal_id) })
+  igual([(await tarefas061(p.prazo)).length, await automaticas061()], [0, n], 'prazo de trabalho avulso: nenhuma tarefa')
+})
+await deve('falha ao CRIAR a tarefa não desfaz o prazo nem a proposta: o erro fica na linha do tempo do trabalho; falha ao ENVIAR deixa a tarefa aberta com o motivo', async () => {
+  const n = await automaticas061()
+  await db.exec(`create function public.falha061() returns trigger language plpgsql as $f$ begin raise exception 'falha simulada 061'; end $f$;
+    create trigger falha061 before insert on public.process_tasks for each row when (new.source_deadline_id is not null) execute function public.falha061();`)
+  let x
+  try {
+    x = await lancar061(t061.procA, 1, 'k-061-falha-criar', { title: 'Réplica com falha na tarefa' })
+  } finally {
+    await db.exec(`drop trigger falha061 on public.process_tasks`)
+  }
+  igual([x.r.created, x.r.applied, x.p.status, x.p.rev, x.p.revisao], [true, true, 'APPLIED', false, null], 'a proposta continua aplicada, sem ir para Revisões')
+  const d = await um(db, `select title, status, legal_process_id from deadlines where id = $1`, [x.p.prazo])
+  igual([d.title, d.status, d.legal_process_id], ['Réplica com falha na tarefa', 'OPEN', t061.procA], 'o prazo existe')
+  const pub = await publicacao059(x.t)
+  igual([pub.st, pub.res, pub.prazo], ['DONE', 'DEADLINE', x.p.prazo], 'a publicação fica tratada com o prazo')
+  igual((await linhas(db, `select user_id from notifications where related_id = $1`, [x.p.prazo])).length, 2, 'os avisos do prazo saem')
+  igual([(await tarefas061(x.p.prazo)).length, await automaticas061()], [0, n], 'nenhuma tarefa')
+  igual(await erros061(x.t.run), ['O prazo foi lançado, mas a tarefa do processo não foi criada: falha simulada 061'], 'erro registrado no trabalho da publicação')
+  // Agora a tarefa nasce, mas a fila recusa a execução do orquestrador.
+  await db.exec(`create trigger falha061 before insert on public.agent_runs for each row when (new.operation = 'PROCESS_TASK') execute function public.falha061()`)
+  let y
+  try {
+    y = await lancar061(t061.procA, 1, 'k-061-falha-enviar', { title: 'Réplica com falha no envio' })
+  } finally {
+    await db.exec(`drop trigger falha061 on public.agent_runs; drop function public.falha061();`)
+  }
+  const t = await tarefa061(y.p.prazo)
+  igual([y.p.status, t.status, t.agent_run_id, t.attempts, t.last_error],
+    ['APPLIED', 'OPEN', null, 0, 'Não foi possível enviar ao orquestrador (falha simulada 061). Envie a tarefa.'], 'prazo criado; tarefa aberta com o motivo')
+  igual(await erros061(y.t.run), [], 'sem erro de criação')
+})
+await deve('catálogo [061]: funções com search_path fixo e sem porta nova (as duas da tela continuam só para usuário logado); parceiro não lê tarefas nem o vínculo com o prazo', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1) order by 1`,
+    [['case_has_own_document', 'deadline_task_create', 'agent_proposals_deadline_task', 'get_judicial_overview', 'save_judicial_settings']])
+  igual(r.length, 5, 'uma versão de cada função')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || !x.def || x.anon || x.srv || x.wrk).map((x) => x.f), [], 'search_path, definer, sem anon, service_role nem dg_worker')
+  igual(r.filter((x) => x.usr).map((x) => x.f), ['private.get_judicial_overview', 'private.save_judicial_settings'], 'usuário logado: só as duas da tela, como na 043')
+  await como(ids.barbara, (tx) => tx.query(`select private.deadline_task_create($1)`, [t061.a.r.proposal_id])).then(
+    () => { throw new Error('usuário logado chamou o criador da tarefa') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  igual((await como(ids.almeidaAdm, (tx) => linhas(tx, `select id, source_deadline_id from process_tasks`))).length, 0, 'parceiro não lê')
+  igual((await como(ids.lucas, (tx) => linhas(tx, `select id from process_tasks where source_deadline_id = $1`, [t061.a.p.prazo]))).length, 1, 'a equipe lê a tarefa pelo prazo')
+  await como(ids.barbara, (tx) => tx.query(`update process_tasks set source_deadline_id = null where id = $1`, [t061.tarefaA.id])).then(
+    () => { throw new Error('usuário logado mexeu no vínculo') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  // Fim do cenário: as tarefas automáticas em aberto ou na fila são canceladas (a execução do orquestrador sai da fila), os trabalhos
+  // de publicação ainda reservados terminam e a configuração volta a ser a de antes.
+  for (const t of await linhas(db, `select t.id from process_tasks t where t.source_deadline_id is not null and t.status in ('OPEN', 'QUEUED') and t.legal_case_id = any ($1)`, [[t061.caso, t061.casoSem]])) {
+    await como(ids.lucas, (tx) => tx.query(`select public.cancel_process_task($1, 'Fim do cenário 061')`, [t.id]))
+  }
+  igual((await um(db, `select count(*)::int n from agent_runs where operation = 'PROCESS_TASK' and status = 'QUEUED' and legal_case_id = any ($1)`, [[t061.caso, t061.casoSem]])).n, 0, 'nada do cenário fica na fila')
+  for (const t of t061.trabalhos) {
+    if ((await um(db, `select status from agent_runs where id = $1`, [t.run])).status === 'RUNNING') await ex(`select private.executor_complete($1, $2, $3) r`, [hA, t.run, t.reserva])
+  }
+  await db.query(`update process_task_settings set orchestrator_agent_id = $1 where id`, [t061.orqAntes])
+  await db.query(`update agents set slug = 'orquestrador-fim061', status = 'INACTIVE', deleted_at = now() where id = $1`, [t061.orq])
+  await db.query(`update judicial_settings set deadline_agent_id = null where id`)
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

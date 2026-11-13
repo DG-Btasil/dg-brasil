@@ -1,16 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { DgApi } from '../src/api.js'
 import { lerConfig } from '../src/config.js'
 import { logMudo } from '../src/log.js'
+import { ErroWord } from '../src/ponte.js'
 import { criarServidor } from '../src/servidor.js'
 import { Trabalhos } from '../src/trabalhos.js'
 
@@ -128,6 +129,9 @@ let pasta: string
 let trabalhos: Trabalhos
 let client: Client
 let antivirus: 'limpo' | 'ameaca' | 'indisponivel' = 'limpo'
+/** Como o Word de mentira se comporta e quais .docx ele foi chamado a converter. */
+let word: 'ok' | 'falha' | 'sem-word' = 'ok'
+let conversoes: string[] = []
 
 beforeAll(() => dg.start())
 afterAll(() => new Promise<void>((r) => dg.server.close(() => r())))
@@ -138,13 +142,20 @@ beforeEach(async () => {
   dg.docBody = HISCON; dg.docTitle = 'HISCON'; dg.docSource = 'UPLOAD'
   dg.bridge = { cliente: { id: 'cli-1', nome: 'José da Silva Fictício', profissao: 'aposentado', estado_civil: 'casado(a)', email: null }, pasta_drive: { id: 'pastaFicticia_0001', nome: 'JOSE DA SILVA FICTICIO' } }
   dg.caso = { id: 'c1', cliente: 'José Fictício' }; dg.processos = new Map(); dg.casoFora = false
-  antivirus = 'limpo'
+  antivirus = 'limpo'; word = 'ok'; conversoes = []
   trabalhos = new Trabalhos(new DgApi(dg.url, TOKEN, 'dg-executor/test'), pasta, logMudo, 40)
   const servidor = criarServidor(trabalhos, 'dg-executor/test', logMudo, undefined, {
     arquivo: join(pasta, 'ponte.json'),
     escritorio: join(pasta, 'escritorio.json'),
     antivirus: async () => antivirus,
     htmlParaPdf: async (_html, pdf) => { await writeFile(pdf, '%PDF-1.4 convertido do HTML') },
+    // O Word de mentira: nenhum teste abre o Microsoft Word de verdade (o de verdade está em word.test.ts).
+    docxParaPdf: async (docx, pdf) => {
+      conversoes.push(basename(docx))
+      if (word === 'sem-word') throw new ErroWord('Microsoft Word não encontrado neste computador', true)
+      if (word === 'falha') throw new ErroWord('o Word não terminou em 90 segundos (tempo esgotado)')
+      await writeFile(pdf, basename(docx).includes('VAZIA') ? '' : `%PDF-1.7 PDF do Word de ${basename(docx)}`)
+    },
   })
   const [ct, st] = InMemoryTransport.createLinkedPair()
   await servidor.connect(st)
@@ -626,6 +637,289 @@ describe('ponte com os agentes da máquina', () => {
     const v = await chamar('ver_ponte', { trabalho_id: j.id })
     expect(v.erro).toBe(true)
     expect(v.texto).toContain('Cliente sem nome válido no cadastro')
+  })
+
+  describe('pasta com o escritório de origem do cliente ({origem} no ponte.json)', () => {
+    let raizDg: string
+    const TRAZER = ['MINUTA_*.docx', 'MINUTA_*.pdf', 'FICHA_REVISAO_*.md']
+    const clientes = (over: Record<string, unknown> = {}) => ponte({
+      raizes_permitidas: [raizDg],
+      agentes: { 'kit-cliente-teste': { pasta: [join(raizDg, '{origem}', 'CLIENTE BANCÁRIO')], nome_da_pasta: 'cliente', trazer: TRAZER, ...over } },
+    })
+    /** O que o DG Brasil devolve: com a origem (migration 060) ou, com `undefined`, sem a chave (banco antigo). */
+    const comOrigem = (origem: unknown, cliente: Record<string, unknown> = {}) => {
+      dg.bridge = { cliente: { id: 'cli-1', nome: 'José da Silva Fictício', email: null, ...cliente }, pasta_drive: null, ...(origem === undefined ? {} : { origem }) }
+    }
+    const reservado = async () => {
+      const j = dg.add()
+      await chamar('reservar_trabalho', { trabalho_id: j.id })
+      await chamar('baixar_documentos', { trabalho_id: j.id })
+      return j
+    }
+    const ver = (j: { id: string }) => chamar('ver_ponte', { trabalho_id: j.id })
+
+    beforeEach(async () => {
+      raizDg = join(pasta, 'G', 'DG BRASIL')
+      await mkdir(raizDg, { recursive: true })
+      await clientes()
+    })
+
+    it('a pasta ganha o nível da origem (MAIÚSCULAS, sem acento); ver_ponte mostra a origem e o caminho final; o Arquivista cria; o cadastro ganha a linha', async () => {
+      comOrigem({ nome: 'Sá & Souza Advogados S/S', tipo: 'PARCEIRO' })
+      const j = await reservado()
+      const v = await ver(j)
+      expect(v.erro, v.texto).toBe(false)
+      const daOrigem = join(raizDg, 'SA & SOUZA ADVOGADOS S S')
+      const cliente = join(daOrigem, 'CLIENTE BANCÁRIO', 'JOSE DA SILVA FICTICIO')
+      expect(v.texto).toContain('Origem do cliente: Sá & Souza Advogados S/S (parceiro). Pasta da origem: SA & SOUZA ADVOGADOS S S\n')
+      expect(v.texto).toContain(`Pasta do cliente: ${cliente}  (ainda não existe: o Arquivista cria, com a pasta da origem)\n`)
+      // ver_ponte só olha: nada é criado antes de o Porteiro liberar.
+      expect(await readdir(raizDg)).toEqual([])
+      await chamar('verificar_arquivos', { trabalho_id: j.id })
+      await liberarTudo(j)
+      const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+      expect(c.erro, c.texto).toBe(false)
+      expect(c.texto).toContain(`Copiado para ${cliente}:`)
+      expect(await readdir(raizDg)).toEqual(['SA & SOUZA ADVOGADOS S S'])
+      expect(await readdir(daOrigem)).toEqual(['CLIENTE BANCÁRIO'])
+      expect((await readdir(cliente)).sort()).toEqual(['DADOS DO CADASTRO.txt', 'DADOS DO ESCRITORIO.txt', 'HISCON.pdf'])
+      const cadastro = await readFile(join(cliente, 'DADOS DO CADASTRO.txt'), 'utf8')
+      expect(cadastro).toContain('escritorio_de_origem: Sá & Souza Advogados S/S (parceiro)\r\n')
+      expect(cadastro).toContain(`origem: DG Brasil, trabalho ${j.id}\r\n`)
+      // O agente trabalha lá e o Mensageiro traz de lá.
+      await writeFile(join(cliente, 'MINUTA_REPLICA_SILVA.docx'), 'PK minuta')
+      const t = await chamar('trazer_da_pasta_do_cliente', { trabalho_id: j.id })
+      expect(t.erro, t.texto).toBe(false)
+      expect(existsSync(join(pasta, j.id, 'saida', 'MINUTA_REPLICA_SILVA.docx'))).toBe(true)
+
+      // Outro trabalho do mesmo cliente acha a pasta que já existe.
+      const j2 = await reservado()
+      expect((await ver(j2)).texto).toContain(`Pasta do cliente: ${cliente}\n`)
+      // Cliente do próprio escritório: a pasta fica na origem do escritório.
+      comOrigem({ nome: 'Escritório Fictício Advocacia', tipo: 'ESCRITORIO' }, { id: 'cli-2', nome: 'Maria Fictícia' })
+      const v3 = await ver(j2)
+      expect(v3.texto).toContain('Origem do cliente: Escritório Fictício Advocacia (escritório). Pasta da origem: ESCRITORIO FICTICIO ADVOCACIA\n')
+      expect(v3.texto).toContain(`Pasta do cliente: ${join(raizDg, 'ESCRITORIO FICTICIO ADVOCACIA', 'CLIENTE BANCÁRIO', 'MARIA FICTICIA')}  (ainda não existe`)
+    })
+
+    it('banco sem a 060 (a origem não veio): erro claro e NENHUMA pasta criada; nome que não serve como pasta também para', async () => {
+      const j = await reservado()
+      for (const semOrigem of [undefined, null, { nome: null, tipo: null }, { nome: '   ', tipo: 'PARCEIRO' }]) {
+        comOrigem(semOrigem)
+        const v = await ver(j)
+        expect(v.erro, JSON.stringify(semOrigem)).toBe(true)
+        expect(v.texto).toContain('O DG Brasil não informou o escritório de origem do cliente; aplique a migration 060')
+        expect(v.texto).toContain('CONFIGURATION_ERROR')
+      }
+      for (const ruim of ['..', '.', 'CON', '///']) {
+        comOrigem({ nome: ruim, tipo: 'PARCEIRO' })
+        const v = await ver(j)
+        expect(v.erro, ruim).toBe(true)
+        expect(v.texto).toContain('não serve como nome de pasta')
+      }
+      // Sem um ver_ponte aceito, os passos seguintes não andam, e nada foi criado no Drive.
+      expect((await chamar('verificar_arquivos', { trabalho_id: j.id })).texto).toContain('ver_ponte')
+      expect(await readdir(raizDg)).toEqual([])
+    })
+
+    it('saneamento: o nome da origem nunca vira caminho (barra, "..", dois-pontos); a pasta fica dentro da raiz permitida', async () => {
+      comOrigem({ nome: '..\\..\\Windows/System32: x', tipo: 'PARCEIRO' })
+      await ate('copiar')
+      const daOrigem = 'WINDOWS SYSTEM32 X'
+      expect(await readdir(raizDg)).toEqual([daOrigem])
+      expect(existsSync(join(raizDg, daOrigem, 'CLIENTE BANCÁRIO', 'JOSE DA SILVA FICTICIO', 'HISCON.pdf'))).toBe(true)
+      expect((await readdir(join(pasta, 'G'))).sort()).toEqual(['000. PASTA CLIENTES NOVOS', 'DG BRASIL'])
+    })
+
+    it('sem marcador: tudo como antes, com a origem vindo do banco ou não (só a linha do cadastro é nova)', async () => {
+      const bancario = join(raizDg, 'CLIENTE BANCÁRIO')
+      await mkdir(bancario)
+      await ponte({ raizes_permitidas: [raizDg], agentes: { 'kit-cliente-teste': { pasta: [bancario], nome_da_pasta: 'cliente', trazer: TRAZER } } })
+      comOrigem({ nome: 'Parceiro Fictício', tipo: 'PARCEIRO' })
+      const j = await reservado()
+      const v = await ver(j)
+      const cliente = join(bancario, 'JOSE DA SILVA FICTICIO')
+      expect(v.texto).toContain(`Pasta do cliente: ${cliente}  (ainda não existe: o Arquivista cria)\n`)
+      expect(v.texto).not.toContain('Origem do cliente')
+      await chamar('verificar_arquivos', { trabalho_id: j.id })
+      await liberarTudo(j)
+      expect((await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })).erro).toBe(false)
+      expect(await readdir(raizDg)).toEqual(['CLIENTE BANCÁRIO'])
+      expect(await readFile(join(cliente, 'DADOS DO CADASTRO.txt'), 'utf8')).toContain('escritorio_de_origem: Parceiro Fictício (parceiro)\r\n')
+      // Banco antigo (a chave não vem): o agente sem marcador segue normalmente, e a linha fica com o que já estava no arquivo.
+      comOrigem(undefined)
+      await ate('copiar')
+      expect(await readdir(raizDg)).toEqual(['CLIENTE BANCÁRIO'])
+      expect(await readFile(join(cliente, 'DADOS DO CADASTRO.txt'), 'utf8')).toContain('escritorio_de_origem: Parceiro Fictício (parceiro)\r\n')
+    })
+
+    it('pasta antiga, sem a origem (DG BRASIL\\CLIENTE BANCÁRIO\\<CLIENTE>), ainda no lugar: a ponte para em vez de criar a segunda; movida para a origem, segue', async () => {
+      const antiga = join(raizDg, 'CLIENTE BANCÁRIO', 'JOSE DA SILVA FICTICIO')
+      await mkdir(antiga, { recursive: true })
+      comOrigem({ nome: 'Escritório Fictício Advocacia', tipo: 'ESCRITORIO' })
+      const j = await reservado()
+      const v = await ver(j)
+      expect(v.erro).toBe(true)
+      expect(v.texto).toContain('A pasta do cliente está em "CLIENTE BANCÁRIO"')
+      expect(v.texto).toContain('A ponte não move pastas')
+      expect((await readdir(raizDg)).sort()).toEqual(['CLIENTE BANCÁRIO'])
+      // A equipe move a pasta para dentro da origem (o nome é o que ver_ponte mostra em "Pasta da origem").
+      const nova = join(raizDg, 'ESCRITORIO FICTICIO ADVOCACIA', 'CLIENTE BANCÁRIO')
+      await mkdir(nova, { recursive: true })
+      await rename(antiga, join(nova, 'JOSE DA SILVA FICTICIO'))
+      const v2 = await ver(j)
+      expect(v2.erro, v2.texto).toBe(false)
+      expect(v2.texto).toContain(`Pasta do cliente: ${join(nova, 'JOSE DA SILVA FICTICIO')}\n`)
+    })
+
+    it('travas: pasta DESTE cliente em outra origem para (a ponte não move); homônimo não; marcador mal escrito; atalho na pasta da origem', async () => {
+      const antiga = join(raizDg, 'PARCEIRO ANTIGO', 'CLIENTE BANCÁRIO', 'JOSE DA SILVA FICTICIO')
+      await mkdir(antiga, { recursive: true })
+      await writeFile(join(antiga, 'DADOS DO CADASTRO.txt'), 'nome: José da Silva Fictício\r\ndg_cliente_id: cli-1\r\n')
+      comOrigem({ nome: 'Parceiro Novo', tipo: 'PARCEIRO' })
+      const j = await reservado()
+      const v = await ver(j)
+      expect(v.erro).toBe(true)
+      expect(v.texto).toContain('já existe na origem "PARCEIRO ANTIGO"')
+      expect(v.texto).toContain('MISSING_INPUT')
+      expect(existsSync(join(raizDg, 'PARCEIRO NOVO'))).toBe(false)
+      // Homônimo: a pasta da outra origem é de OUTRO cliente do DG Brasil. Segue.
+      await writeFile(join(antiga, 'DADOS DO CADASTRO.txt'), 'nome: José da Silva Fictício\r\ndg_cliente_id: outro-cliente\r\n')
+      expect((await ver(j)).erro).toBe(false)
+
+      await clientes({ pasta: [join(raizDg, 'x{origem}', 'CLIENTE BANCÁRIO')] })
+      const m = await ver(j)
+      expect(m.erro).toBe(true)
+      expect(m.texto).toContain('o marcador {origem} tem de ser UMA pasta inteira do caminho')
+      await clientes()
+
+      await mkdir(join(pasta, 'fora'))
+      try {
+        await symlink(join(pasta, 'fora'), join(raizDg, 'PARCEIRO NOVO'), 'junction')
+        const r = await ver(j)
+        expect(r.erro).toBe(true)
+        expect(r.texto).toContain('atalho')
+        expect(await readdir(join(pasta, 'fora'))).toEqual([])
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EPERM') throw e
+      }
+    })
+  })
+
+  describe('a minuta em Word ganha um PDF na pasta do cliente', () => {
+    let cliente: string
+    const trazer = (j: { id: string }) => chamar('trazer_da_pasta_do_cliente', { trabalho_id: j.id })
+    const haUmaHora = () => new Date(Date.now() - 3_600_000)
+
+    beforeEach(async () => {
+      // Padrões dos redatores: o Word E o PDF de mesmo começo de nome (a Teresa entrega PDF).
+      await ponte({ agentes: { 'kit-cliente-teste': { pasta: ['7. KIT DO CLIENTE'], trazer: ['MINUTA_*.docx', 'MINUTA_*.pdf', 'FICHA_REVISAO_*.md'] } } })
+      cliente = join(kit, 'JOSE DA SILVA FICTICIO')
+    })
+
+    it('cada .docx trazido ganha o PDF ao lado, só na pasta do cliente; o PDF gerado não é trazido nesta chamada, na repetição nem no próximo trabalho', async () => {
+      const j = await ate('copiar')
+      const saida = join(pasta, j.id, 'saida')
+      await mkdir(join(cliente, 'BANCO FICTICIO'))
+      await writeFile(join(cliente, 'MINUTA_REPLICA_SILVA.docx'), 'PK réplica')
+      await writeFile(join(cliente, 'BANCO FICTICIO', 'MINUTA_INICIAL_SILVA.docx'), 'PK inicial')
+      await writeFile(join(cliente, 'MINUTA_AIJ_CLIENTE_SILVA.pdf'), '%PDF-1.4 PDF que o próprio agente gerou')
+      const t = await trazer(j)
+      expect(t.erro, t.texto).toBe(false)
+      // Em saida (o que vai para o DG Brasil): os dois Word e o PDF do agente. Nenhum PDF do Word.
+      expect((await readdir(saida)).sort()).toEqual(['MINUTA_AIJ_CLIENTE_SILVA.pdf', 'MINUTA_INICIAL_SILVA.docx', 'MINUTA_REPLICA_SILVA.docx', 'porteiro-script.json', 'porteiro.json'])
+      expect(await readFile(join(cliente, 'MINUTA_REPLICA_SILVA.pdf'), 'utf8')).toBe('%PDF-1.7 PDF do Word de MINUTA_REPLICA_SILVA.docx')
+      expect(await readFile(join(cliente, 'BANCO FICTICIO', 'MINUTA_INICIAL_SILVA.pdf'), 'utf8')).toBe('%PDF-1.7 PDF do Word de MINUTA_INICIAL_SILVA.docx')
+      expect(t.texto).toContain('- PDF gerado: MINUTA_REPLICA_SILVA.pdf\n')
+      expect(t.texto).toContain('- PDF gerado: BANCO FICTICIO/MINUTA_INICIAL_SILVA.pdf\n')
+      expect(t.texto).toContain('NÃO é para entregar')
+      expect(t.texto).not.toContain('PDF não gerado')
+      expect([...conversoes].sort()).toEqual(['MINUTA_INICIAL_SILVA.docx', 'MINUTA_REPLICA_SILVA.docx'])
+
+      // Repetição da chamada no mesmo trabalho: os PDFs do Word continuam fora; nenhum é gerado de novo nem sobrescrito.
+      const t2 = await trazer(j)
+      expect(t2.erro, t2.texto).toBe(false)
+      expect((await readdir(saida)).filter((f) => /^MINUTA_(REPLICA|INICIAL)_.*\.pdf$/.test(f))).toEqual([])
+      expect(t2.texto).toContain('MINUTA_REPLICA_SILVA.pdf (PDF do Word gerado pelo conector: fica só na pasta do cliente)')
+      expect(t2.texto).toContain('BANCO FICTICIO/MINUTA_INICIAL_SILVA.pdf (PDF do Word gerado pelo conector: fica só na pasta do cliente)')
+      expect(t2.texto).toContain('- PDF não gerado: MINUTA_REPLICA_SILVA.docx — já existe MINUTA_REPLICA_SILVA.pdf na pasta do cliente (nunca sobrescrevo)')
+      expect(conversoes).toHaveLength(2)
+
+      // Próximo trabalho do mesmo cliente. O que é do trabalho anterior ficou para trás; a data dos PDFs do Word foi
+      // mexida para DEPOIS do início (sincronização do Drive, relógio): mesmo assim eles não são trazidos.
+      for (const antigo of ['MINUTA_REPLICA_SILVA.docx', join('BANCO FICTICIO', 'MINUTA_INICIAL_SILVA.docx'), 'MINUTA_AIJ_CLIENTE_SILVA.pdf']) {
+        await utimes(join(cliente, antigo), haUmaHora(), haUmaHora())
+      }
+      const j2 = await ate('copiar')
+      const futuro = new Date(Date.now() + 60_000)
+      await utimes(join(cliente, 'MINUTA_REPLICA_SILVA.pdf'), futuro, futuro)
+      await utimes(join(cliente, 'BANCO FICTICIO', 'MINUTA_INICIAL_SILVA.pdf'), futuro, futuro)
+      await writeFile(join(cliente, 'MINUTA_EMENDA_SILVA.docx'), 'PK emenda')
+      const t3 = await trazer(j2)
+      expect(t3.erro, t3.texto).toBe(false)
+      expect((await readdir(join(pasta, j2.id, 'saida'))).sort()).toEqual(['MINUTA_EMENDA_SILVA.docx', 'porteiro-script.json', 'porteiro.json'])
+      expect(t3.texto).toContain('- PDF gerado: MINUTA_EMENDA_SILVA.pdf\n')
+
+      // O registro fica neste computador, ao lado do ponte.json: caminho e SHA-256 de cada PDF que o conector gerou.
+      const registro = JSON.parse(await readFile(join(pasta, 'pdfs-do-word.json'), 'utf8')) as { pdfs: Array<{ caminho: string; sha256: string; trabalho: string }> }
+      expect(registro.pdfs.map((x) => basename(x.caminho)).sort()).toEqual(['MINUTA_EMENDA_SILVA.pdf', 'MINUTA_INICIAL_SILVA.pdf', 'MINUTA_REPLICA_SILVA.pdf'])
+      expect(registro.pdfs.map((x) => x.sha256)).toContain(sha('%PDF-1.7 PDF do Word de MINUTA_EMENDA_SILVA.docx'))
+      expect(registro.pdfs.map((x) => x.trabalho)).toEqual([j.id, j.id, j2.id])
+
+      // Se o agente gravar OUTRO PDF no lugar (outro conteúdo), esse é dele: é trazido.
+      await writeFile(join(cliente, 'MINUTA_EMENDA_SILVA.pdf'), '%PDF-1.4 PDF que o agente gravou por cima')
+      await trazer(j2)
+      expect(await readdir(join(pasta, j2.id, 'saida'))).toContain('MINUTA_EMENDA_SILVA.pdf')
+    })
+
+    it('PDF que já existe não é sobrescrito (e diz); falha do Word e computador sem Word viram aviso, sem bloquear a entrega', async () => {
+      const j = await ate('copiar')
+      const saida = join(pasta, j.id, 'saida')
+      await writeFile(join(cliente, 'MINUTA_REPLICA_SILVA.docx'), 'PK réplica')
+      await writeFile(join(cliente, 'MINUTA_REPLICA_SILVA.pdf'), '%PDF-1.4 PDF que o agente já tinha gerado')
+      const t = await trazer(j)
+      expect(t.erro, t.texto).toBe(false)
+      expect(t.texto).toContain('- PDF não gerado: MINUTA_REPLICA_SILVA.docx — já existe MINUTA_REPLICA_SILVA.pdf na pasta do cliente (nunca sobrescrevo)')
+      expect(await readFile(join(cliente, 'MINUTA_REPLICA_SILVA.pdf'), 'utf8')).toBe('%PDF-1.4 PDF que o agente já tinha gerado')
+      expect(conversoes).toEqual([])
+      // O PDF do próprio agente continua sendo trazido, como antes.
+      expect((await readdir(saida)).sort()).toEqual(['MINUTA_REPLICA_SILVA.docx', 'MINUTA_REPLICA_SILVA.pdf', 'porteiro-script.json', 'porteiro.json'])
+
+      // O Word travou: vira aviso, e a minuta é trazida do mesmo jeito.
+      word = 'falha'
+      await writeFile(join(cliente, 'MINUTA_EMENDA_SILVA.docx'), 'PK emenda')
+      const f = await trazer(j)
+      expect(f.erro, f.texto).toBe(false)
+      expect(f.texto).toContain('- PDF não gerado: MINUTA_EMENDA_SILVA.docx — o Word não terminou em 90 segundos (tempo esgotado)')
+      expect(f.texto).toContain('"PDF não gerado" é só um aviso: a entrega segue normalmente.')
+      expect(f.texto).toContain('Entregue cada um com entregar_minuta')
+      expect(existsSync(join(saida, 'MINUTA_EMENDA_SILVA.docx'))).toBe(true)
+      expect(existsSync(join(cliente, 'MINUTA_EMENDA_SILVA.pdf'))).toBe(false)
+      expect(existsSync(join(pasta, 'pdfs-do-word.json'))).toBe(false)
+
+      // Computador sem Word: avisa em cada minuta, tentando abrir o Word uma vez só.
+      word = 'sem-word'; conversoes = []
+      await writeFile(join(cliente, 'MINUTA_RECURSO_SILVA.docx'), 'PK recurso')
+      const s = await trazer(j)
+      expect(s.erro, s.texto).toBe(false)
+      expect(s.texto).toContain('- PDF não gerado: MINUTA_EMENDA_SILVA.docx — Microsoft Word não encontrado neste computador')
+      expect(s.texto).toContain('- PDF não gerado: MINUTA_RECURSO_SILVA.docx — Microsoft Word não encontrado neste computador')
+      expect(conversoes).toHaveLength(1)
+      expect((await readdir(cliente)).filter((f2) => f2.endsWith('.pdf')).sort()).toEqual(['HISCON.pdf', 'MINUTA_REPLICA_SILVA.pdf'])
+    })
+
+    it('o que o Word devolveu não é PDF: nada é gravado na pasta do cliente, só o aviso', async () => {
+      const j = await ate('copiar')
+      await writeFile(join(cliente, 'MINUTA_REPLICA_SILVA.docx'), 'PK réplica')
+      word = 'ok'
+      // O conversor de mentira grava a partir do nome: um .docx com este nome devolve um arquivo vazio.
+      await writeFile(join(cliente, 'MINUTA_VAZIA.docx'), 'PK vazia')
+      const t = await trazer(j)
+      expect(t.erro, t.texto).toBe(false)
+      expect(t.texto).toContain('- PDF gerado: MINUTA_REPLICA_SILVA.pdf')
+      expect(t.texto).toContain('- PDF não gerado: MINUTA_VAZIA.docx — o Word não gerou o PDF')
+      expect(existsSync(join(cliente, 'MINUTA_VAZIA.pdf'))).toBe(false)
+    })
   })
 
   it('Porteiro por script: PDF com JavaScript (mesmo disfarçado em hexadecimal) para tudo; nada vai para o Drive', async () => {
