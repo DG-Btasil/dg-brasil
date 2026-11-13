@@ -186,6 +186,24 @@ advogado deveria dizer "anexe os documentos do caso" (pós-MVP, item 5).
   processo e a manda ao orquestrador; sem os autos, a tarefa fica aberta.
   Testado em memória; **ao vivo, depende de aplicar a 061**.
 
+**Validação ao vivo depois das migrations 060 e 061 (13/11/2026, 02:27 a 02:40):**
+um trabalho de verdade da Laura (refazer a emenda fictícia, caso de teste 17),
+pela ponte inteira.
+
+| O que | Resultado |
+|---|---|
+| Origem informada pelo banco (060) | **Passou.** `ver_ponte`: "Origem do cliente: Bárbara Cardoso Advocacia (escritório)" |
+| Pasta com a origem | **Passou.** Trabalho feito em `G:\Meu Drive\DG BRASIL\BARBARA CARDOSO ADVOCACIA\CLIENTE BANCÁRIO\DG TESTE - JOSE DA SILVA FICTICIO`. A pasta de teste antiga foi movida para lá antes; a pasta `DG BRASIL\CLIENTE BANCÁRIO` ficou vazia e foi removida |
+| Linha da origem no cadastro | **Passou.** `DADOS DO CADASTRO.txt` com `escritorio_de_origem: Bárbara Cardoso Advocacia (escritório)` |
+| Refazer na pasta nova | **Passou.** Minuta e ficha `_v2` geradas; a versão anterior ficou intacta |
+| PDF da minuta em Word | **Passou.** PDF válido ao lado do Word, com o mesmo nome; não foi para o site |
+| Entrega em Revisões | **Passou.** Minuta em Word, ficha em PDF e as propostas dos itens da ficha |
+| Opções na tela de Integrações (059 e 061) | **Passou.** "Prazo entra direto na agenda" e "Prazo vira tarefa para os agentes" aparecem ligadas |
+| Anexar documento na revisão | **Passou.** Documento fictício anexado pela tela da revisão; apareceu na lista e nos documentos do caso |
+
+Ainda só em memória (dependem de uma publicação nova de processo real
+cadastrado): o prazo direto e a tarefa criada a partir do prazo.
+
 **Mudanças de 13/11/2026, madrugada (pedidas pela dona depois da rodada):**
 
 - **Prazo direto (migration 059, conector 1.3.3):** o prazo do agente de prazos
