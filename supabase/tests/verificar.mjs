@@ -6889,6 +6889,228 @@ await deve('catálogo [061]: funções com search_path fixo e sem porta nova (as
   await db.query(`update judicial_settings set deadline_agent_id = null where id`)
 })
 
+// ═════════════════════════════ Lixeira, CNJ de excluído e exportação [066] ═
+
+secao('Lixeira: restaurar cliente, processo e documento; o processo excluído solta o número CNJ para outro cadastro; registro de exportação [066]')
+const l066 = {}
+const cnj066 = (n) => cnj(6600 + n, '2026', '8', '19', '0666')
+const lixeira066 = (uid, tipo, busca = null, limite = 25, pula = 0) =>
+  como(uid, async (tx) => (await um(tx, `select public.trash_list($1, $2, $3, $4) r`, [tipo, busca, limite, pula])).r)
+const restaurar066 = (uid, tipo, id) => como(uid, async (tx) => (await um(tx, `select public.restore_${tipo}($1) r`, [id])).r)
+const excluir066 = (uid, tabela, id) => como(uid, (tx) => tx.query(`update ${tabela} set deleted_at = now() where id = $1`, [id]))
+const proc066 = (id) => um(db, `select cnj_number cnj, released_cnj_number solto, deleted_at is not null excluido from legal_processes where id = $1`, [id])
+const ref066 = (cnjN) => um(db, `select id, legal_process_id p, baseline_at from process_external_refs where provider = 'DATAJUD' and external_id = $1`, [cnjN])
+const exportar066 = (uid, tipo, filtros, n, cortou = false) =>
+  como(uid, async (tx) => (await um(tx, `select public.record_data_export($1, $2, $3, $4) r`, [tipo, filtros === null ? null : JSON.stringify(filtros), n, cortou])).r)
+
+await deve('cenário: a 066 roda de novo sem quebrar (um gatilho só, coluna e restrições no lugar); cliente com dois casos', async () => {
+  await db.exec(await readFile(new URL('migrations/20261113000066_lixeira_exportacao.sql', raiz), 'utf8'))
+  igual((await um(db, `select count(*)::int n from pg_trigger where tgname = 'legal_processes_cnj_release' and not tgisinternal`)).n, 1, 'um gatilho só')
+  igual((await linhas(db, `select conname from pg_constraint where conrelid = 'public.legal_processes'::regclass
+    and conname in ('legal_processes_official_has_cnj', 'legal_processes_released_cnj_only_deleted') order by 1`)).map((x) => x.conname),
+    ['legal_processes_official_has_cnj', 'legal_processes_released_cnj_only_deleted'], 'restrições')
+  // Os índices únicos continuam os da 004 e da 008 (não viraram parciais por excluído): a importação e o portal dependem disso.
+  const idx = await linhas(db, `select indexname i, indexdef d from pg_indexes where indexname in ('clients_cpf_key', 'clients_cnpj_key', 'legal_processes_cnj_key') order by 1`)
+  igual(idx.map((x) => [x.i, /deleted_at/.test(x.d)]), [['clients_cnpj_key', false], ['clients_cpf_key', false], ['legal_processes_cnj_key', false]], 'índices únicos')
+  l066.cli = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99906600001', $1) returning id`, [ids.owner])).id
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Cliente Fictício 066')`, [l066.cli])
+  const caso = async (titulo) => (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, $3, 'IN_PROGRESS', $4, $4, $5) returning id`, [l066.cli, ids.banking, titulo, ids.owner, ids.lucas])).id
+  l066.casoErrado = await caso('Caso fictício 066 (errado)')
+  l066.casoCerto = await caso('Caso fictício 066 (certo)')
+})
+await deve('processo cadastrado no caso errado e excluído pelo ADMIN: enquanto ninguém recadastra, ele continua com o número e com o acompanhamento', async () => {
+  l066.p1 = (await como(ids.lucas, (tx) => um(tx, `insert into legal_processes (legal_case_id, cnj_number, title, court) values ($1, $2, 'Fictícia x Banco 066', 'TJRJ') returning id`,
+    [l066.casoErrado, cnj066(1)]))).id
+  l066.ref1 = (await ref066(cnj066(1))).id
+  await db.query(`update process_external_refs set baseline_at = now() where id = $1`, [l066.ref1])
+  await deveFalhar('advogado não exclui processo', () => excluir066(ids.lucas, 'legal_processes', l066.p1), /Somente ADMIN/)
+  await excluir066(ids.barbara, 'legal_processes', l066.p1)
+  igual(await proc066(l066.p1), { cnj: cnj066(1), solto: null, excluido: true }, 'excluído, ainda com o número')
+  igual((await ref066(cnj066(1))).p, l066.p1, 'referência do DataJud intacta')
+})
+await deve('recadastrar o mesmo CNJ no caso certo funciona: o excluído solta o número (guardado à parte), o DataJud passa para o novo e fica o registro na auditoria', async () => {
+  l066.p2 = (await como(ids.lucas, (tx) => um(tx, `insert into legal_processes (legal_case_id, cnj_number, title, court) values ($1, $2, 'Fictícia x Banco 066 (caso certo)', 'TJRJ') returning id`,
+    [l066.casoCerto, cnj066(1)]))).id
+  igual(await proc066(l066.p1), { cnj: null, solto: cnj066(1), excluido: true }, 'o excluído soltou o número')
+  igual(await proc066(l066.p2), { cnj: cnj066(1), solto: null, excluido: false }, 'o novo ficou com o número')
+  const r = await ref066(cnj066(1))
+  igual([r.p, r.baseline_at, r.id === l066.ref1], [l066.p2, null, false], 'acompanhamento novo, com a linha de base por fazer')
+  igual((await um(db, `select count(*)::int n from legal_processes where cnj_number = $1`, [cnj066(1)])).n, 1, 'uma linha só com o número')
+  const a = await um(db, `select actor_user_id, metadata ->> 'legal_process_id' novo from audit_events where action = 'PROCESS_CNJ_RELEASED' and entity_id = $1`, [l066.p1])
+  igual([a.actor_user_id, a.novo], [ids.lucas, l066.p2], 'auditoria: quem recadastrou e para qual processo o número foi')
+  const fila = await worker043(`select private.judicial_datajud_queue(500) r`)
+  igual(fila.filter((x) => x.cnj === cnj066(1)).map((x) => x.legal_process_id), [l066.p2], 'fila do DataJud: só o processo novo')
+})
+await deve('a publicação desse CNJ deixa de ser "fora do DG Brasil": entra no processo novo', async () => {
+  const r = await worker043(`select private.judicial_ingest_djen(null, '660001', 'RJ', '2026-11-12', '2026-11-12', true, null, $1) r`,
+    [JSON.stringify([pub043(966001, cnj066(1), '2026-11-12', { court: 'TJRJ' })])])
+  igual([r.found, r.matched, r.new, r.unmatched], [1, 1, 1, 0], 'contagem')
+  igual((await um(db, `select legal_process_id p from judicial_publications where external_id = '966001'`)).p, l066.p2, 'publicação no processo novo')
+})
+await deve('o número guardado não é editável pela tela, nem por ADMIN', async () => {
+  await como(ids.barbara, (tx) => tx.query(`update legal_processes set released_cnj_number = null where id = $1`, [l066.p1])).then(
+    () => { throw new Error('ADMIN apagou o número guardado') }, (e) => { if (!/não é editável/.test(e.message)) throw e })
+  await como(ids.lucas, (tx) => tx.query(`insert into legal_processes (legal_case_id, title, released_cnj_number) values ($1, 'x', $2)`, [l066.casoCerto, cnj066(9)])).then(
+    () => { throw new Error('cadastro com número guardado') }, (e) => { if (!/não é editável|released_cnj_only_deleted/.test(e.message)) throw e })
+})
+await deve('Lixeira: só ADMIN abre; o processo excluído aparece com o número que tinha, quem excluiu, quando, e o motivo de não dar para restaurar; busca por trecho do CNJ (com máscara) e por título; página no servidor', async () => {
+  for (const u of [ids.lucas, ids.ana, ids.almeidaAdm]) {
+    await lixeira066(u, 'PROCESS').then(() => { throw new Error('abriu a Lixeira sem ser ADMIN') }, (e) => { if (!/administrador/.test(e.message)) throw e })
+  }
+  const todos = await lixeira066(ids.barbara, 'PROCESS')
+  const x = todos.items.find((i) => i.id === l066.p1)
+  igual([x.kind, x.title, x.cnj, x.cnj_released, x.case_title, x.client_name, x.deleted_by, x.deleted_by_name, x.blocked, !!x.deleted_at],
+    ['PROCESS', 'Fictícia x Banco 066', cnj066(1), true, 'Caso fictício 066 (errado)', 'Cliente Fictício 066', ids.barbara, 'Bárbara Cardoso', 'CNJ_IN_USE', true], 'linha da Lixeira')
+  igual(todos.total >= 1 && todos.total === (await um(db, `select count(*)::int n from legal_processes where deleted_at is not null`)).n, true, 'total = todos os excluídos')
+  const c = cnj066(1)
+  const trecho = `${c.slice(2, 7)}-${c.slice(7, 9)}.${c.slice(9, 13)}`
+  igual((await lixeira066(ids.barbara, 'PROCESS', trecho)).items.map((i) => i.id), [l066.p1], 'busca por trecho do número, com máscara')
+  igual((await lixeira066(ids.barbara, 'PROCESS', 'banco 066')).items.map((i) => i.id), [l066.p1], 'busca por título')
+  igual((await lixeira066(ids.barbara, 'PROCESS', '100%_066')).items.length, 0, 'curinga digitado não vira padrão')
+  const pagina = await lixeira066(ids.barbara, 'PROCESS', null, 1, todos.total)
+  igual([pagina.items.length, pagina.total], [0, todos.total], 'página além do fim: vazia, com o total')
+  await deveFalhar('tipo desconhecido é recusado', () => lixeira066(ids.barbara, 'CASE'), /Tipo de registro inválido/)
+})
+await deve('restaurar com outro processo ATIVO usando o número é recusado com frase clara; só ADMIN restaura', async () => {
+  await deveFalhar('advogado não restaura', () => restaurar066(ids.lucas, 'process', l066.p1), /Somente o administrador restaura/)
+  await deveFalhar('número em uso', () => restaurar066(ids.barbara, 'process', l066.p1), /Já existe outro processo ativo com este número CNJ/)
+  igual(await proc066(l066.p1), { cnj: null, solto: cnj066(1), excluido: true }, 'nada mudou')
+  await deveFalhar('processo que não está excluído', () => restaurar066(ids.barbara, 'process', l066.p2), /não está excluído/)
+  await deveFalhar('processo que não existe', () => restaurar066(ids.barbara, 'process', randomUUID()), /não encontrado/)
+})
+await deve('excluído o processo novo, restaurar o primeiro devolve o número a ele (o outro excluído solta), refaz o acompanhamento e grava PROCESS_RESTORED', async () => {
+  await excluir066(ids.barbara, 'legal_processes', l066.p2)
+  const r = await restaurar066(ids.barbara, 'process', l066.p1)
+  igual([r.id, r.legal_case_id, r.cnj_returned], [l066.p1, l066.casoErrado, true], 'retorno')
+  igual(await proc066(l066.p1), { cnj: cnj066(1), solto: null, excluido: false }, 'restaurado com o número')
+  igual(await proc066(l066.p2), { cnj: null, solto: cnj066(1), excluido: true }, 'o outro excluído soltou o número')
+  igual((await ref066(cnj066(1))).p, l066.p1, 'DataJud de volta ao restaurado')
+  const a = await um(db, `select actor_type, actor_user_id, metadata ->> 'legal_case_id' caso from audit_events where action = 'PROCESS_RESTORED' and entity_id = $1`, [l066.p1])
+  igual([a.actor_type, a.actor_user_id, a.caso], ['USER', ids.barbara, l066.casoErrado], 'auditoria')
+  igual((await lixeira066(ids.barbara, 'PROCESS', cnj066(1))).items.map((i) => [i.id, i.blocked]), [[l066.p2, 'CNJ_IN_USE']], 'na Lixeira fica só o outro')
+})
+await deve('processo excluído que ninguém recadastrou: restaurar não mexe no número nem no acompanhamento, e os prazos voltam às listas', async () => {
+  l066.p3 = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, technical_origin) values ($1, $2, 'Importado 066', 'IMPORT') returning id`, [l066.casoCerto, cnj066(3)])).id
+  const ref = await ref066(cnj066(3))
+  await db.query(`update process_external_refs set baseline_at = now() where id = $1`, [ref.id])
+  const prazo = (await um(db, `insert into deadlines (legal_case_id, legal_process_id, title, due_at, responsible_user_id) values ($1, $2, 'Prazo 066', now() + interval '5 days', $3) returning id`,
+    [l066.casoCerto, l066.p3, ids.lucas])).id
+  await excluir066(ids.barbara, 'legal_processes', l066.p3)
+  igual((await um(db, `select scope_deleted s from deadline_status where deadline_id = $1`, [prazo])).s, true, 'prazo some das listas com o processo excluído')
+  igual((await lixeira066(ids.barbara, 'PROCESS', 'importado 066')).items.map((i) => [i.cnj, i.cnj_released, i.blocked]), [[cnj066(3), false, null]], 'Lixeira: dá para restaurar')
+  const r = await restaurar066(ids.barbara, 'process', l066.p3)
+  igual([r.cnj_returned, r.open_deadlines], [false, 1], 'retorno')
+  igual(await proc066(l066.p3), { cnj: cnj066(3), solto: null, excluido: false }, 'restaurado')
+  const depois = await ref066(cnj066(3))
+  igual([depois.id, depois.baseline_at !== null], [ref.id, true], 'mesma referência, com a linha de base')
+  igual((await um(db, `select scope_deleted s from deadline_status where deadline_id = $1`, [prazo])).s, false, 'prazo de volta')
+  // Processo importado (fonte oficial) também pode soltar o número: a restrição da 008 aceita o excluído com o número guardado.
+  await excluir066(ids.barbara, 'legal_processes', l066.p3)
+  l066.p3b = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, 'Recadastro 066') returning id`, [l066.casoCerto, cnj066(3)])).id
+  igual(await proc066(l066.p3), { cnj: null, solto: cnj066(3), excluido: true }, 'importado excluído soltou o número')
+})
+await deve('importação de planilhas (042) continua coerente: CNJ de excluído que ainda segura o número pede para restaurar; recadastrado, vira conflito com o processo ativo', async () => {
+  l066.p4 = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, 'Excluído 066') returning id`, [l066.casoCerto, cnj066(4)])).id
+  await excluir066(ids.barbara, 'legal_processes', l066.p4)
+  const linha = (n) => [{ row_number: 2, status: 'VALID', payload: { client: pf042(660 + n, `Importado Fictício 066 ${n}`), process: { cnj: cnj066(4), legal_class: 'Revisional' } } }]
+  let job = await fluxo042('lixeira-066-a.csv', linha(1))
+  let r = await um(db, `select status, errors from import_row_results where import_job_id = $1`, [job])
+  igual([r.status, /Restaure o processo/.test(r.errors.at(-1))], ['ERROR', true], 'excluído com o número: restaure antes')
+  await como(ids.barbara, (tx) => tx.query(`select public.import_cancel($1)`, [job]))
+  l066.p5 = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, 'Recadastrado 066') returning id`, [l066.casoCerto, cnj066(4)])).id
+  job = await fluxo042('lixeira-066-b.csv', linha(2))
+  r = await um(db, `select status from import_row_results where import_job_id = $1`, [job])
+  if (r.status === 'ERROR') throw new Error('a importação recusou o processo ativo por causa do excluído')
+  igual((await linhas(db, `select conflict_kind k, existing_entity_id e from import_conflicts where import_job_id = $1 and conflict_kind = 'PROCESS_CNJ'`, [job])).map((x) => [x.k, x.e]),
+    [['PROCESS_CNJ', l066.p5]], 'conflito com o processo ATIVO')
+  await como(ids.barbara, (tx) => tx.query(`select public.import_cancel($1)`, [job]))
+})
+await deve('cliente: excluído aparece na Lixeira com CPF e quem excluiu; o CPF continua único (o caminho é restaurar); restaurar grava CLIENT_RESTORED e devolve o que voltou a aparecer', async () => {
+  l066.doc = randomUUID()
+  await db.query(`insert into documents (id, client_id, category, title) values ($1, $2, 'OTHER', 'Documento fictício 066')`, [l066.doc, l066.cli])
+  await deveFalhar('advogado não exclui cliente', () => excluir066(ids.lucas, 'clients', l066.cli), /Somente ADMIN/)
+  await excluir066(ids.barbara, 'clients', l066.cli)
+  const x = (await lixeira066(ids.barbara, 'CLIENT', '999.066')).items
+  igual(x.map((i) => [i.id, i.kind, i.title, i.client_kind, i.document, i.deleted_by, i.deleted_by_name, i.blocked]),
+    [[l066.cli, 'CLIENT', 'Cliente Fictício 066', 'INDIVIDUAL', '99906600001', ids.barbara, 'Bárbara Cardoso', null]], 'linha da Lixeira, achada pelo começo do CPF com máscara')
+  igual((await lixeira066(ids.barbara, 'CLIENT', 'fictício 066')).items.map((i) => i.id), [l066.cli], 'busca por nome')
+  await db.query(`insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99906600001', $1)`, [ids.owner]).then(
+    () => { throw new Error('CPF de cliente excluído foi recadastrado') }, (e) => { if (!/clients_cpf_key/.test(e.message)) throw e })
+  // Com o cliente na Lixeira, processo e documento dele não voltam sozinhos.
+  igual((await lixeira066(ids.barbara, 'PROCESS', cnj066(1))).items.map((i) => i.blocked), ['CLIENT_DELETED'], 'processo excluído de cliente excluído')
+  await deveFalhar('processo de cliente na Lixeira', () => restaurar066(ids.barbara, 'process', l066.p2), /Restaure primeiro o cliente/)
+  await deveFalhar('advogado não restaura cliente', () => restaurar066(ids.lucas, 'client', l066.cli), /Somente o administrador restaura/)
+  await deveFalhar('parceiro não restaura cliente', () => restaurar066(ids.almeidaAdm, 'client', l066.cli), /Somente o administrador restaura/)
+  const r = await restaurar066(ids.barbara, 'client', l066.cli)
+  igual([r.id, r.cases, r.documents, r.processes > 0, r.trashed_processes > 0, r.trashed_documents], [l066.cli, 2, 1, true, true, 0], 'retorno: casos, processos e documentos que voltam a aparecer; o que segue na Lixeira')
+  igual((await um(db, `select deleted_at from clients where id = $1`, [l066.cli])).deleted_at, null, 'restaurado')
+  const a = await linhas(db, `select action, actor_user_id from audit_events where entity_type = 'clients' and entity_id = $1 and action in ('CLIENT_DELETED', 'CLIENT_RESTORED') order by created_at, action`, [l066.cli])
+  igual(a.map((e) => [e.action, e.actor_user_id]), [['CLIENT_DELETED', ids.barbara], ['CLIENT_RESTORED', ids.barbara]], 'auditoria')
+  await deveFalhar('cliente que não está excluído', () => restaurar066(ids.barbara, 'client', l066.cli), /não está excluído/)
+  await deveFalhar('cliente que não existe', () => restaurar066(ids.barbara, 'client', randomUUID()), /não encontrado/)
+})
+await deve('documento: excluído aparece na Lixeira com o cliente e quem excluiu; com o cliente na Lixeira, pede para restaurar o cliente antes; restaurar grava DOCUMENT_RESTORED', async () => {
+  await excluir066(ids.barbara, 'documents', l066.doc)
+  let x = (await lixeira066(ids.barbara, 'DOCUMENT', 'documento fictício 066')).items
+  igual(x.map((i) => [i.id, i.kind, i.title, i.category, i.client_id, i.client_name, i.deleted_by, i.deleted_by_name, i.blocked]),
+    [[l066.doc, 'DOCUMENT', 'Documento fictício 066', 'OTHER', l066.cli, 'Cliente Fictício 066', ids.barbara, 'Bárbara Cardoso', null]], 'linha da Lixeira')
+  igual(typeof x[0].category_label, 'string', 'nome da categoria')
+  igual((await lixeira066(ids.barbara, 'DOCUMENT', 'cliente fictício 066')).items.map((i) => i.id), [l066.doc], 'busca pelo nome do cliente')
+  await excluir066(ids.barbara, 'clients', l066.cli)
+  igual((await lixeira066(ids.barbara, 'DOCUMENT', 'documento fictício 066')).items.map((i) => i.blocked), ['CLIENT_DELETED'], 'cliente na Lixeira')
+  await deveFalhar('documento de cliente na Lixeira', () => restaurar066(ids.barbara, 'document', l066.doc), /Restaure primeiro o cliente/)
+  await restaurar066(ids.barbara, 'client', l066.cli)
+  await deveFalhar('advogado não restaura documento', () => restaurar066(ids.lucas, 'document', l066.doc), /Somente o administrador restaura/)
+  const r = await restaurar066(ids.barbara, 'document', l066.doc)
+  igual([r.id, r.client_id], [l066.doc, l066.cli], 'retorno')
+  igual((await um(db, `select deleted_at from documents where id = $1`, [l066.doc])).deleted_at, null, 'restaurado')
+  const a = await um(db, `select actor_user_id, metadata ->> 'client_id' cli from audit_events where action = 'DOCUMENT_RESTORED' and entity_id = $1`, [l066.doc])
+  igual([a.actor_user_id, a.cli], [ids.barbara, l066.cli], 'auditoria')
+  igual((await lixeira066(ids.barbara, 'DOCUMENT', 'documento fictício 066')).total, 0, 'saiu da Lixeira')
+  await deveFalhar('documento que não está excluído', () => restaurar066(ids.barbara, 'document', l066.doc), /não está excluído/)
+})
+await deve('exportação: só ADMIN registra; fica na auditoria o tipo, os filtros e a quantidade de linhas, sem conteúdo; filtro com dado pessoal é recusado', async () => {
+  const id = await exportar066(ids.barbara, 'clients', { status: 'ACTIVE', kind: 'INDIVIDUAL', search: true, originOrganizationId: ids.owner }, 137, true)
+  const a = await um(db, `select action, entity_type, entity_id, actor_type, actor_user_id, metadata from audit_events where id = $1`, [id])
+  igual([a.action, a.entity_type, a.entity_id, a.actor_type, a.actor_user_id], ['DATA_EXPORTED', 'exports', null, 'USER', ids.barbara], 'evento')
+  igual(a.metadata, { kind: 'clients', filters: { kind: 'INDIVIDUAL', search: true, status: 'ACTIVE', originOrganizationId: ids.owner }, truncated: true, total_rows: 137 }, 'metadata')
+  igual((await um(db, `select metadata from audit_events where id = $1`, [await exportar066(ids.barbara, 'processes', null, 0)])).metadata,
+    { kind: 'processes', filters: {}, truncated: false, total_rows: 0 }, 'sem filtros e sem linhas também fica registrado')
+  for (const u of [ids.lucas, ids.ana, ids.almeidaAdm]) await deveFalhar('quem não é ADMIN não exporta', () => exportar066(u, 'clients', {}, 1), /Somente o administrador exporta/)
+  const n = (await um(db, `select count(*)::int n from audit_events where action = 'DATA_EXPORTED'`)).n
+  await deveFalhar('CPF no filtro', () => exportar066(ids.barbara, 'clients', { q: '529.982.247-25' }, 1), /dado pessoal/)
+  await deveFalhar('CNPJ no filtro', () => exportar066(ids.barbara, 'clients', { q: '11222333000181' }, 1), /dado pessoal/)
+  await deveFalhar('e-mail no filtro', () => exportar066(ids.barbara, 'clients', { q: 'fulana@exemplo.com.br' }, 1), /dado pessoal/)
+  await deveFalhar('texto longo no filtro', () => exportar066(ids.barbara, 'clients', { q: 'x'.repeat(81) }, 1), /dado pessoal/)
+  await deveFalhar('filtro com objeto dentro', () => exportar066(ids.barbara, 'clients', { a: { b: 1 } }, 1), /Filtros inválidos/)
+  await deveFalhar('filtros que não são objeto', () => exportar066(ids.barbara, 'clients', [1, 2], 1), /Filtros inválidos/)
+  await deveFalhar('tipo fora do padrão', () => exportar066(ids.barbara, 'Clientes do mês', {}, 1), /Tipo de exportação inválido/)
+  await deveFalhar('quantidade negativa', () => exportar066(ids.barbara, 'clients', {}, -1), /Quantidade de linhas inválida/)
+  igual((await um(db, `select count(*)::int n from audit_events where action = 'DATA_EXPORTED'`)).n, n, 'recusa não deixa registro')
+})
+await deve('catálogo [066]: funções com search_path fixo; as internas são definer; só usuário logado executa as cinco da tela (o banco confere o ADMIN); o gatilho não tem porta', async () => {
+  const nomes = ['restore_client', 'restore_process', 'restore_document', 'trash_list', 'record_data_export']
+  const r = await linhas(db, `select n.nspname s, p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('private', 'public') and p.proname = any ($1) order by 1, 2`, [[...nomes, 'legal_processes_cnj_release']])
+  igual(r.length, 11, 'uma versão de cada função (5 internas, 5 portas e o gatilho)')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv || x.wrk).map((x) => x.f), [], 'search_path fixo; sem anon, service_role nem dg_worker')
+  igual(r.filter((x) => x.s === 'private' && !x.def).map((x) => x.f), [], 'internas: definer')
+  igual(r.filter((x) => x.s === 'public' && x.def).map((x) => x.f), [], 'portas: invoker')
+  igual(r.filter((x) => !x.usr).map((x) => x.f), ['legal_processes_cnj_release'], 'usuário logado: tudo menos o gatilho')
+  // Sessão sem MFA (aal1) não passa: private.is_admin() exige a sessão liberada (022).
+  await db.transaction(async (tx) => {
+    await tx.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: ids.barbara, role: 'authenticated', aal: 'aal1' })])
+    await tx.query('set local role authenticated')
+    await tx.query(`select public.trash_list('CLIENT')`)
+  }).then(() => { throw new Error('abriu a Lixeira sem MFA') }, (e) => { if (!/administrador/.test(e.message)) throw e })
+  // Fim do cenário: o que foi criado aqui sai de cena (excluído), para não sobrar processo ativo fictício com CNJ.
+  for (const p of [l066.p1, l066.p3b, l066.p5]) await excluir066(ids.barbara, 'legal_processes', p)
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

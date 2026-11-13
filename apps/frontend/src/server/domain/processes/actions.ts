@@ -27,6 +27,11 @@ export async function listProcessesAction(input: unknown) {
   return runAction({ name: "processes.list", permission: "processes.view", schema: listProcessesSchema, input, handler: service.listProcesses });
 }
 
+/** Planilha de processos com os filtros da lista (só ADMIN; fica na auditoria). */
+export async function exportProcessesAction(input: unknown) {
+  return runAction({ name: "processes.export", permission: "data.export", schema: listProcessesSchema, input, handler: service.exportProcesses });
+}
+
 /** Processos por status numa consulta só (Início e menu), com a RLS de quem pede. */
 export async function getProcessStatusCountsAction(input?: unknown) {
   return runAction({ name: "processes.status_counts", permission: "processes.view", schema: z.unknown(), input, handler: (ctx) => service.getProcessStatusCounts(ctx) });

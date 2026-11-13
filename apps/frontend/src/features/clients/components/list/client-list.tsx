@@ -13,9 +13,10 @@ import { cn } from "@/lib/cn";
 import type { ActionResult } from "@/lib/actions/result";
 import { useServerList } from "@/lib/hooks/use-server-list";
 import type { Page } from "@/server/core/pagination";
-import { listClientsAction } from "@/server/domain/clients/actions";
+import { exportClientsAction, listClientsAction } from "@/server/domain/clients/actions";
 import type { ClientListItem } from "@/server/domain/clients/dto";
 import { usePermission } from "@/features/auth/hooks";
+import { ExportButton } from "@/features/export/export-button";
 import { useOrganizationNames, useOrgDirectory } from "@/features/directory/directory-context";
 import { CLIENT_PAGE_SIZE, DEFAULT_CLIENT_QUERY, clientQueryToInput, clientQueryToSearchParams, hasClientFilters, type ClientListQuery, type ClientSortField } from "../../list-query";
 import { ClientFilters } from "./client-filters";
@@ -64,7 +65,13 @@ export function ClientList({ insights, initialQuery, initialResult }: {
       <PageHeader
         title="Clientes"
         description="Pessoas físicas e jurídicas atendidas pelo escritório, com o responsável, a origem e a situação de cada cadastro."
-        actions={createCta("Cadastrar cliente")}
+        actions={
+          <>
+            {/* Exporta o que os filtros mostram (só ADMIN; o botão some para os demais). */}
+            <ExportButton action={exportClientsAction} input={clientQueryToInput(query)} />
+            {createCta("Cadastrar cliente")}
+          </>
+        }
       />
       {insights}
       {page && page.total === 0 && !filtered && query.page === 1 ? (

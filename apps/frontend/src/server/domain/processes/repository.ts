@@ -56,13 +56,22 @@ export function titleSearchFilter(pattern: string, caseIds: readonly string[]): 
   return caseIds.length ? `${byTitle},legal_case_id.in.(${caseIds.join(",")})` : byTitle;
 }
 
-/** Busca: só dígitos (≥ 3, com ou sem máscara CNJ) → prefixo do CNJ; texto → título do processo ou do caso. */
+/**
+ * Busca: só dígitos (≥ 3, com ou sem máscara CNJ) → número CNJ; texto → título
+ * do processo ou do caso. O número casa por QUALQUER trecho (`cnjPattern`):
+ * quem tem só o fim do número, ou o ano e o tribunal, também acha.
+ */
 export function searchTarget(q: string): { kind: "cnj"; digits: string } | { kind: "title"; text: string } | null {
   const text = q.trim();
   if (!text) return null;
   const digits = text.replace(/\D/g, "");
   if (digits.length >= 3 && digits.length === text.replace(/[\s.-]/g, "").length) return { kind: "cnj", digits };
   return { kind: "title", text };
+}
+
+/** Padrão LIKE do número CNJ: os dígitos digitados em qualquer posição dos 20. */
+export function cnjPattern(digits: string): string {
+  return `%${digits.replace(/\D/g, "")}%`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -99,7 +108,7 @@ export async function listProcesses(
     .is("deleted_at", null);
   if (filters.openDeadlineBefore) query = query.eq("deadlines.status", "OPEN").lt("deadlines.due_at", filters.openDeadlineBefore);
   const target = filters.q ? searchTarget(filters.q) : null;
-  if (target?.kind === "cnj") query = query.like("cnj_number", `${target.digits}%`);
+  if (target?.kind === "cnj") query = query.like("cnj_number", cnjPattern(target.digits));
   if (target?.kind === "title") {
     const pattern = likePattern(target.text);
     query = query.or(titleSearchFilter(pattern, await caseIdsByTitle(db, pattern)));
@@ -150,6 +159,12 @@ export async function listOpenDeadlines(db: SupabaseClient, processIds: string[]
   return (unwrap(
     await db.from("deadlines").select("id, legal_process_id, title, due_at").in("legal_process_id", processIds).eq("status", "OPEN").order("due_at"),
   ) ?? []) as { id: string; legal_process_id: string; title: string; due_at: string }[];
+}
+
+/** Nomes de pessoas da equipe (responsáveis), para a exportação. Até 100 ids por chamada. */
+export async function listProfileNames(db: SupabaseClient, ids: string[]): Promise<{ id: string; full_name: string | null }[]> {
+  if (ids.length === 0) return [];
+  return (unwrap(await db.from("profiles").select("id, full_name").in("id", ids)) ?? []) as { id: string; full_name: string | null }[];
 }
 
 export async function getProcess(db: SupabaseClient, id: string, columns: string): Promise<ProcessRow | null> {

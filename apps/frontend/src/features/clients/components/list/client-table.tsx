@@ -37,7 +37,7 @@ export function ClientTable({
           <Th>CPF/CNPJ</Th>
           <Th>Canal</Th>
           {originNames && <Th>Origem</Th>}
-          <Th>Status</Th>
+          <Th>Situação</Th>
           <SortableTh label="Cadastrado" sortKey="createdAt" {...sortProps} />
           <SortableTh label="Atualizado" sortKey="updatedAt" {...sortProps} />
         </tr>

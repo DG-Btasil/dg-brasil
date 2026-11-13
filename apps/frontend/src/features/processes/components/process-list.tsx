@@ -19,9 +19,10 @@ import { SearchInput, Select } from "@/components/ui/form";
 import { Pagination } from "@/components/ui/pagination";
 import { Panel } from "@/components/ui/panel";
 import type { Page } from "@/server/core/pagination";
-import { listProcessesAction } from "@/server/domain/processes/actions";
+import { exportProcessesAction, listProcessesAction } from "@/server/domain/processes/actions";
 import type { ProcessListItem } from "@/server/domain/processes/dto";
 import { usePermission } from "@/features/auth/hooks";
+import { ExportButton } from "@/features/export/export-button";
 import { searchActiveClients } from "@/features/clients/picker";
 import { useLawyerOptions, useOrgDirectory } from "@/features/directory/directory-context";
 import { countProcessFilters, DEFAULT_PROCESS_QUERY, PROCESS_PAGE_SIZE, processQueryToInput, processQueryToSearchParams, type ProcessListQuery } from "../list-query";
@@ -89,7 +90,17 @@ export function ProcessList({
 
   return (
     <PageContainer>
-      <PageHeader title="Processos" description="Carteira processual do escritório: prazos, fases e origem de cada processo." actions={cta} />
+      <PageHeader
+        title="Processos"
+        description="Carteira processual do escritório: prazos, fases e origem de cada processo."
+        actions={
+          <>
+            {/* Exporta o que os filtros mostram (só ADMIN; o botão some para os demais). */}
+            <ExportButton action={exportProcessesAction} input={processQueryToInput(query)} />
+            {cta}
+          </>
+        }
+      />
       {insights}
       {summary?.ok && <ProcessSummaryStrip summary={summary.data} onDueSoon={() => setQuery({ ...query, deadline: "NEXT_5_DAYS", page: 1 })} />}
       {page && page.total === 0 && active === 0 && query.page === 1 ? (
@@ -106,7 +117,7 @@ export function ProcessList({
           <div className="border-b border-line px-5 py-3" role="search" aria-label="Filtrar processos">
             <div className="flex items-center gap-3">
               <SearchInput
-                aria-label="Buscar processos por número CNJ ou nome do caso"
+                aria-label="Buscar processos por número CNJ (qualquer trecho) ou nome do caso"
                 placeholder="Buscar por número CNJ ou nome do caso"
                 value={search}
                 maxLength={120}
@@ -140,7 +151,7 @@ export function ProcessList({
               />
               <FilterSelect label="Responsável" value={query.responsible} options={lawyers} onChange={(v) => set("responsible", v)} />
               <FilterSelect label="Tribunal" value={query.court} options={opts(COURTS)} onChange={(v) => set("court", v)} />
-              <FilterSelect label="Status" value={query.status} options={opts(PROCESS_STATUSES, PROCESS_STATUS_LABEL)} onChange={(v) => set("status", v as ProcessListQuery["status"])} />
+              <FilterSelect label="Situação" value={query.status} options={opts(PROCESS_STATUSES, PROCESS_STATUS_LABEL)} onChange={(v) => set("status", v as ProcessListQuery["status"])} />
               <FilterSelect label="Fase" value={query.phase} options={opts(PROCESS_PHASES, PROCESS_PHASE_LABEL)} onChange={(v) => set("phase", v as ProcessListQuery["phase"])} />
               <FilterSelect
                 label="Prazo"

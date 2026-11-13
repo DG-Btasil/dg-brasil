@@ -56,7 +56,10 @@ export function ProcessActionsMenu({ processId, onDelete }: { processId: string;
   );
 }
 
-/** Confirmação de exclusão (lógica, auditada). O caso e o cliente nunca são excluídos. */
+/**
+ * Confirmação de exclusão (lógica, auditada). O caso e o cliente nunca são
+ * excluídos; o ADMIN restaura o processo pela Lixeira (migration 066).
+ */
 export function DeleteProcessDialog({ process, openDeadlines, onClose }: { process: ProcessInternalDTO; openDeadlines: number; onClose: () => void }) {
   const router = useRouter();
   const { removeProcess } = useProcessActions();
@@ -97,6 +100,12 @@ export function DeleteProcessDialog({ process, openDeadlines, onClose }: { proce
         <p className="text-muted">
           O caso <strong className="text-foreground">{process.caseTitle || "vinculado"}</strong> e o cliente{" "}
           <strong className="text-foreground">{process.clientName || "do caso"}</strong> não serão excluídos.
+        </p>
+        <p className="text-muted">
+          Dá para desfazer em <strong className="text-foreground">Configurações</strong>, na <strong className="text-foreground">Lixeira</strong>.
+          {process.cnj
+            ? " Enquanto o processo estiver excluído, publicações e andamentos novos deste número não são capturados. Se foi cadastrado no caso errado, o número pode ser cadastrado de novo no caso certo."
+            : ""}
         </p>
       </div>
     </Dialog>

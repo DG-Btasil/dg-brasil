@@ -13,7 +13,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   CLIENT_UPDATED: "Cadastro do cliente atualizado",
   CLIENT_INTERNAL_DETAILS_UPDATED: "Dados internos do cliente atualizados",
   CLIENT_INACTIVATED: "Cliente inativado",
-  CLIENT_RESTORED: "Cliente reativado",
+  CLIENT_RESTORED: "Cliente restaurado (voltou da Lixeira)",
   CLIENT_DELETED: "Cliente excluído",
   CLIENT_ORIGIN_CHANGED: "Origem do cliente alterada",
   CLIENT_PARTNER_LINKED: "Cliente vinculado a parceiro",
@@ -37,6 +37,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   PROCESS_UPDATED: "Processo atualizado",
   PROCESS_INTERNAL_DETAILS_UPDATED: "Dados internos do processo atualizados",
   PROCESS_DELETED: "Processo excluído",
+  PROCESS_RESTORED: "Processo restaurado (voltou da Lixeira)",
+  PROCESS_CNJ_RELEASED: "Número CNJ do processo excluído usado em novo cadastro",
   PROCESS_EVENT_CREATED: "Andamento registrado",
   PROCESS_EVENT_UPDATED: "Andamento atualizado",
   DEADLINE_CREATED: "Prazo criado",
@@ -45,6 +47,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   DEADLINE_STATUS_CHANGED: "Situação do prazo alterada",
   DOCUMENT_CREATED: "Documento criado",
   DOCUMENT_UPDATED: "Documento atualizado",
+  DOCUMENT_RESTORED: "Documento restaurado (voltou da Lixeira)",
   DOCUMENT_UPLOADED: "Arquivo enviado",
   DOCUMENT_VERSION_CREATED: "Nova versão de documento",
   DOCUMENT_DOWNLOADED: "Documento baixado",
@@ -121,6 +124,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   IMPORT_JOB_CREATED: "Importação iniciada",
   IMPORT_JOB_SUMMARY: "Importação concluída (resumo)",
   IMPORT_CONFLICT_RESOLVED: "Conflito de importação resolvido",
+  DATA_EXPORTED: "Planilha exportada",
 };
 
 /** Ações com prefixo dinâmico (ex.: AGENT_RUN_COMPLETED, IMPORT_JOB_FINISHED). */

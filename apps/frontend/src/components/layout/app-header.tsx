@@ -5,6 +5,7 @@ import { Settings } from "lucide-react";
 import { usePermission } from "@/features/auth/hooks";
 import { useClientSession } from "@/features/auth/session-context";
 import { HomeMenu } from "@/components/navigation/home-menu";
+import { GlobalSearch } from "@/features/search/global-search";
 import { NotificationCenter } from "./notification-center";
 import { DEMO_MODE, UserMenu } from "./user-menu";
 import { Wordmark } from "./wordmark";
@@ -37,6 +38,8 @@ export function AppHeader() {
         <HomeMenu />
 
         <div className="flex items-center justify-end gap-1">
+          {/* Busca global (Ctrl+K): clientes, casos e processos, com a permissão de cada papel. */}
+          <GlobalSearch />
           <NotificationCenter />
           {canSettings && (
             <Link

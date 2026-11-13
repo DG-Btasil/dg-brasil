@@ -1,7 +1,9 @@
 import { isPartner, requireAnyPermission, requireInternal, requirePermission, requireRole, type ServiceContext } from "@/server/core/context";
-import { duplicateClient, notFound } from "@/server/core/errors";
+import { conflict, duplicateClient, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
+import { collectForExport, exportCsv, mapChunks, type ExportFileDTO } from "@/server/domain/exports/service";
 import type { ClientDetailDTO, ClientListItem, ClientLookupDTO, ClientRelationshipDTO, CompanyPeopleResultDTO } from "./dto";
+import { CLIENT_EXPORT_COLUMNS, exportExtrasById, type ClientExportRow } from "./export";
 import {
   basicsPayload,
   companyPeoplePayload,
@@ -22,22 +24,25 @@ import type { CreateClientInput, ListClientsInput, ListRelatedClientsInput, Repl
  * continuam NO BANCO, não reimplementadas aqui.
  */
 
+/** Filtros da lista como o repositório espera (os mesmos na tela e na exportação). */
+function directoryFilters(ctx: ServiceContext, input: ListClientsInput): repo.DirectoryFilters {
+  return {
+    q: input.q,
+    status: input.status,
+    kind: input.kind,
+    // A RLS já limita o parceiro aos próprios clientes; canal é informação interna.
+    originOrganizationId: input.originOrganizationId,
+    acquisitionChannel: isPartner(ctx) ? undefined : input.acquisitionChannel,
+  };
+}
+
+/** Mensagem de quem tenta cadastrar o CPF/CNPJ de um cliente que está na Lixeira. */
+export const DELETED_CLIENT_MESSAGE = "Este CPF/CNPJ é de um cliente excluído. Um administrador pode restaurar o cadastro em Configurações, na Lixeira.";
+
 export async function listClients(ctx: ServiceContext, input: ListClientsInput): Promise<Page<ClientListItem>> {
   requirePermission(ctx, "clients.view");
   const partner = isPartner(ctx);
-  const { rows, total } = await repo.listDirectory(
-    ctx.db,
-    {
-      q: input.q,
-      status: input.status,
-      kind: input.kind,
-      // A RLS já limita o parceiro aos próprios clientes; canal é informação interna.
-      originOrganizationId: input.originOrganizationId,
-      acquisitionChannel: partner ? undefined : input.acquisitionChannel,
-    },
-    input,
-    { column: input.column, ascending: input.ascending },
-  );
+  const { rows, total } = await repo.listDirectory(ctx.db, directoryFilters(ctx, input), input, { column: input.column, ascending: input.ascending });
   const items = rows.map((r) => listItemFromRow(r, ctx.session));
   if (partner && items.length > 0) {
     // Contagens do escopo do escritório (036): uma consulta para a página inteira.
@@ -48,6 +53,43 @@ export async function listClients(ctx: ServiceContext, input: ListClientsInput):
     for (const item of items) item.partnerCounts = counts.get(item.id) ?? { cases: 0, processes: 0, openRequests: 0, requestedDocuments: 0 };
   }
   return toPage(items, total, input);
+}
+
+/**
+ * Planilha de clientes (ADMIN, `data.export`): os MESMOS filtros e ordem da
+ * lista, com contato e município principais. O CPF/CNPJ sai completo no
+ * arquivo; não vai para a URL, para o log nem para a auditoria (que guarda só
+ * o tipo, os filtros e a quantidade de linhas).
+ */
+export async function exportClients(ctx: ServiceContext, input: ListClientsInput): Promise<ExportFileDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "data.export");
+  const sort = { column: input.column, ascending: input.ascending };
+  const filters = directoryFilters(ctx, input);
+  const { rows, total, truncated } = await collectForExport((page) => repo.listDirectory(ctx.db, filters, page, sort));
+  // Contato e município em blocos de 100 clientes (os ids vão na URL da consulta).
+  const [origins, extras] = await Promise.all([
+    repo.listOrganizationNames(ctx.db),
+    mapChunks(
+      rows.map((r) => r.id),
+      100,
+      (ids) => repo.listExportExtras(ctx.db, ids),
+    ),
+  ]);
+  const extraById = exportExtrasById(extras);
+  const items: ClientExportRow[] = rows.map((r) => {
+    const item = listItemFromRow(r, ctx.session);
+    return { ...item, ...extraById.get(r.id), originName: origins.get(r.origin_organization_id) };
+  });
+  return exportCsv(ctx, {
+    kind: "clients",
+    fileName: "clientes",
+    columns: CLIENT_EXPORT_COLUMNS,
+    rows: items,
+    filters: { q: input.q, status: input.status, kind: input.kind, originOrganizationId: input.originOrganizationId, acquisitionChannel: input.acquisitionChannel },
+    total,
+    truncated,
+  });
 }
 
 /** Clientes relacionados a um escritório parceiro (equipe interna com partners.view). */
@@ -88,7 +130,9 @@ export async function lookupClientDocument(ctx: ServiceContext, digits: string):
   }
   requirePermission(ctx, "clients.view");
   const found = await repo.findIdByDocument(ctx.db, digits);
-  return found ? { status: "FOUND", clientId: found.id } : { status: "NOT_FOUND" };
+  if (!found) return { status: "NOT_FOUND" };
+  // Cliente na Lixeira: não há ficha para abrir; o cadastro volta pela Lixeira (ADMIN).
+  return found.deleted ? { status: "DELETED" } : { status: "FOUND", clientId: found.id };
 }
 
 /** Cadastro interno. Parceiro cadastra cliente pelo envio de caso (partner_submit_case). */
@@ -97,7 +141,10 @@ export async function createClient(ctx: ServiceContext, input: CreateClientInput
   requirePermission(ctx, "clients.edit");
   const digits = input.kind === "INDIVIDUAL" ? input.cpf : input.cnpj;
   // Mensagem amigável antes de tentar; a unique do banco cobre a corrida (double-click).
-  if (await repo.findIdByDocument(ctx.db, digits)) throw duplicateClient();
+  const existing = await repo.findIdByDocument(ctx.db, digits);
+  // Um CPF/CNPJ = um cliente, contando o excluído: o caminho é restaurar, não recadastrar.
+  if (existing?.deleted) throw conflict(DELETED_CLIENT_MESSAGE);
+  if (existing) throw duplicateClient();
   const payload = createPayload(input);
   const id = await repo.save(ctx.db, null, payload);
   ctx.log.info("client.created", { clientId: id });
@@ -155,7 +202,11 @@ export async function replaceCompanyPeople(ctx: ServiceContext, input: ReplaceCo
   return { representatives: counts.representatives, partners: counts.shareholders };
 }
 
-/** Exclusão lógica (ADMIN). Processos não são apagados: voltam para a lista de pendências. */
+/**
+ * Exclusão lógica (ADMIN). Nada mais é alterado: casos, processos, prazos e
+ * documentos do cliente continuam como estavam. O cadastro volta pela Lixeira
+ * (server/domain/trash, migration 066).
+ */
 export async function removeClient(ctx: ServiceContext, id: string): Promise<{ affectedProcessIds: string[] }> {
   requirePermission(ctx, "clients.delete");
   const affectedProcessIds = await repo.listLinkedProcessIds(ctx.db, id);

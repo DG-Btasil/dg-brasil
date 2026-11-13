@@ -19,6 +19,8 @@ const EXPECTED: Record<string, Role[]> = {
   "dgbrasil.view": ["ADMIN"],
   "dgbrasil.manage": ["ADMIN"],
   "audit.view": ["ADMIN"],
+  "trash.manage": ["ADMIN"],
+  "data.export": ["ADMIN"],
   "demo.tools": ["ADMIN"],
   "analyses.start": ["ADMIN", "LAWYER"],
   "office.wake": ["ADMIN", "LAWYER"],

@@ -72,7 +72,7 @@ describe("processos — equipe interna", () => {
     await expectDomainError(processes.createProcess(await ctxFor("LAWYER"), newProcess(randomUUID())), "NOT_FOUND");
   });
 
-  it("busca por CNJ (prefixo) e por título; listagem do caso", async () => {
+  it("busca por CNJ (começo ou qualquer trecho) e por título; listagem do caso", async () => {
     const lawyer = await ctxFor("LAWYER");
     const { caseId } = await internalCase();
     const cnj = fakeCnj();
@@ -80,6 +80,8 @@ describe("processos — equipe interna", () => {
     const { id } = await processes.createProcess(lawyer, newProcess(caseId, { cnj, title }));
     const byCnj = await processes.listProcesses(lawyer, listProcessesSchema.parse({ q: cnj.slice(0, 15) }));
     expect(byCnj.items.map((p) => p.id)).toContain(id);
+    const byCnjMiddle = await processes.listProcesses(lawyer, listProcessesSchema.parse({ q: cnj.slice(5, 18) }));
+    expect(byCnjMiddle.items.map((p) => p.id)).toContain(id);
     const byTitle = await processes.listProcesses(lawyer, listProcessesSchema.parse({ q: `busca processo ${world.run}`, pageSize: 5 }));
     expect(byTitle.items.map((p) => p.id)).toContain(id);
     const ofCase = await processes.listCaseProcesses(lawyer, { caseId, page: 1, pageSize: 10 });

@@ -8,6 +8,9 @@ import { PortalClientList } from "@/features/partner-portal/components/portal-cl
 import { portalClientInput, portalQueryFromSearchParams } from "@/features/partner-portal/list-query";
 import { listClientsAction } from "@/server/domain/clients/actions";
 
+/** A exportação de planilha (até 5.000 linhas) roda como Server Action desta rota. */
+export const maxDuration = 60;
+
 /** Primeira página carregada no servidor, já com os filtros da URL. */
 async function InternalClientList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const query = clientQueryFromSearchParams(searchParams);

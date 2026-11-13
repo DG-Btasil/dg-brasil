@@ -89,6 +89,72 @@ nome público (`name`), o servidor escolhe a coluna (`display_name`). Busca
 textual escapa curingas do `ILIKE`. Nenhum `select *`: colunas explícitas, e
 DTO de parceiro com menos colunas que o interno.
 
+## Exportação de planilhas (CSV)
+
+Tela `/clientes` e `/processos`: botão "Exportar planilha" (só ADMIN). O
+arquivo sai com os filtros e a ordem da tela, em CSV que o Excel brasileiro
+abre direto (`;`, BOM UTF-8, datas dd/mm/aaaa, vírgula decimal). Limite de
+**5.000 linhas** por arquivo (`EXPORT_MAX_ROWS`); passou disso, sai cortado e a
+tela avisa. Toda exportação grava `DATA_EXPORTED` na auditoria ANTES de o
+arquivo sair (migration 066): tipo da lista, filtros e quantidade de linhas. O
+texto da busca não é gravado (vira `search: true`) e o banco recusa filtro que
+pareça CPF, CNPJ ou e-mail. CPF/CNPJ sai completo e com máscara no arquivo
+(sem máscara o Excel corta zeros e estraga o CNJ); nunca vai para URL nem log.
+
+Para ligar outra lista (três passos):
+
+```ts
+// 1. server/domain/<x>/service.ts — mesmas consultas da lista, até o limite
+export async function exportDeadlines(ctx: ServiceContext, input: ListDeadlinesInput): Promise<ExportFileDTO> {
+  requirePermission(ctx, "data.export");
+  const { rows, total, truncated } = await collectForExport((page) => repo.listDeadlines(ctx.db, filtersOf(input), page, sortOf(input)));
+  return exportCsv(ctx, {
+    kind: "deadlines",          // vai para a auditoria (minúsculas, sem espaço)
+    fileName: "prazos",         // prazos-2026-11-13.csv
+    columns: [
+      { header: "Prazo", value: (d) => d.title },
+      { header: "Vencimento", value: (d) => csvDate(d.due_at) },   // csvDate, csvDateTime, csvMoney
+    ],
+    rows,
+    filters: { q: input.q, status: input.status },   // q nunca é gravado
+    total,
+    truncated,
+  });
+}
+
+// 2. server/domain/<x>/actions.ts
+export async function exportDeadlinesAction(input: unknown) {
+  return runAction({ name: "deadlines.export", permission: "data.export", schema: listDeadlinesSchema, input, handler: service.exportDeadlines });
+}
+
+// 3. na tela, com a MESMA entrada da listagem
+<ExportButton action={exportDeadlinesAction} input={deadlineQueryToInput(query)} />
+```
+
+`collectForExport` pede páginas de 500 (o PostgREST do projeto devolve no
+máximo 1000 linhas) e para no limite. Consulta auxiliar com `in (ids)` usa
+`chunked(ids, 100)`: os ids vão na URL. Código: `server/domain/exports/`
+(`csv.ts` puro, `service.ts`) e `features/export/export-button.tsx`.
+
+## Lixeira e número CNJ de processo excluído (066)
+
+Excluir cliente, processo ou documento é exclusão lógica (`deleted_at`) e não
+mexe em mais nada. A Lixeira (`/configuracoes/lixeira`, só ADMIN) lista os três
+e restaura. Regras que ficam no banco:
+
+- **CPF/CNPJ**: continua "um CPF/CNPJ = um cliente", contando o excluído. Quem
+  tenta cadastrar o documento de um cliente excluído recebe a orientação de
+  restaurar (`DELETED_CLIENT_MESSAGE`).
+- **CNJ**: o índice único da 008 não mudou. Quando alguém cadastra (ou corrige)
+  um processo com o número de um processo EXCLUÍDO, o excluído solta o número
+  (`released_cnj_number` guarda o que ele tinha) e o acompanhamento no DataJud
+  passa para o novo. Restaurar devolve o número, se nenhum processo ativo o
+  estiver usando. Publicações e movimentações que o excluído já tinha ficam
+  com ele. Os índices não viraram parciais porque a importação (042) e o
+  portal do parceiro (025/045) supõem uma linha por CPF/CNPJ e por CNJ.
+- O que não se desfaz: publicações e andamentos que saíram enquanto o processo
+  esteve excluído não foram capturados. A tela diz isso antes de restaurar.
+
 ## Cache
 
 Dado jurídico nunca passa por cache compartilhado: o client do servidor usa
@@ -138,6 +204,9 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Integração judicial (043) | visão e configuração; OABs (ADMIN e administrador do parceiro); cobertura; publicações (listar, abrir, criar prazo, sem prazo, reabrir); prévia da contagem; calendário; situação e pausa do processo; buscar agora | RPCs `*_judicial_*` (invoker → definer, papel conferido no banco); busca no DJEN/DataJud pelo servidor com `dg_worker` (`docs/judicial.md`) |
 | Conta (`server/domain/account`) | sessões da própria conta (lista, MFA), sair dos outros dispositivos, sair de todos — toda sessão liberada, qualquer papel, sem `userId` no input | `get_my_sessions`, `record_account_security_event` (038) + `auth.signOut({ scope })` com o JWT do usuário |
 | Auditoria | eventos e acessos a dado pessoal (ADMIN, paginado, metadata por whitelist, sem IP/navegador) | `audit_events`, `personal_data_access_events` |
+| Lixeira (`server/domain/trash`, 066) | listar clientes, processos e documentos excluídos (quem excluiu, quando, busca e página no servidor), restaurar — só ADMIN (`trash.manage`) | `trash_list`, `restore_client`, `restore_process`, `restore_document` (o banco confere o ADMIN, recusa a restauração que deixaria dois registros ativos com o mesmo CPF/CNPJ ou CNJ e grava a auditoria) |
+| Exportação (`server/domain/exports`, 066) | CSV das listas com os filtros da tela — só ADMIN (`data.export`); ligada em Clientes e Processos | `record_data_export` grava `DATA_EXPORTED` (tipo, filtros, quantidade de linhas; nunca o conteúdo) |
+| Busca global (`server/domain/search`) | uma action que chama as buscas das listas de clientes, casos e processos, 5 resultados por grupo | nenhuma função própria: permissão e RLS das listas |
 
 ## Idempotência
 
@@ -260,6 +329,12 @@ forte/distribuído antes de expansão do produto.
 - Notificação ao parceiro quando uma solicitação é criada (exige RPC/trigger).
 - Busca: `*` digitado vira curinga do PostgREST (amplia o resultado, não
   injeta). Sem índice de trigram por enquanto.
+- Busca de processo pelo número CNJ casa por qualquer trecho (`like %dígitos%`),
+  na lista e na busca global: sem índice de trigram, lê a coluna inteira. Com
+  a carteira atual é imperceptível; reavaliar se passar de dezenas de milhares.
+- Busca global (cabeçalho, Ctrl+K): o texto vai no corpo da Server Action e
+  nunca para a URL; "Ver todos" só leva a busca para a lista quando não há
+  dígitos (mesma regra do `?busca=` das listas). O CPF/CNPJ volta mascarado.
 
 ## Testes
 
