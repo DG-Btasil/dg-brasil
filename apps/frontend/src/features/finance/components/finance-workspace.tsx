@@ -30,7 +30,7 @@ export function FinanceWorkspace({ tab, children }: { tab: FinanceTab; children:
 
   return (
     <PageContainer>
-      <PageHeader title="Financeiro" description="Tudo ligado ao processo: valor da causa, honorários (escritório × parceiro), contratos, recebimentos e despesas." />
+      <PageHeader title="Financeiro" description="Tudo ligado ao processo: valor da causa, honorários (escritório × parceiro), contratos, parcelas a receber, recebimentos e despesas." />
       <Tabs items={TAB_ITEMS} value={shown} onChange={change} label="Seções do financeiro" className="mb-5" />
       <TabPanel tabKey={shown}>
         <div aria-busy={pending || undefined} className={cn("space-y-5 transition-opacity", pending && "pointer-events-none opacity-60")}>

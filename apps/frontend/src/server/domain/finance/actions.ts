@@ -18,19 +18,23 @@ import { partnerShareDetailSchema, createPaymentScheduleSchema,
   createPaymentSchema,
   createTransferSchema,
   idSchema,
+  listAgreementRowsSchema,
   listAgreementsSchema,
   listAllocationsSchema,
   listCasePartnershipsSchema,
   listFeeModelsSchema,
   listPartnerAgreementSharesSchema,
   listPaymentsSchema,
+  listReceiptStatementSchema,
   listReceiptsSchema,
+  listReceivablesSchema,
   listTransfersSchema,
   markTransferPaidSchema,
   partnerFinanceSchema,
   registerAdjustmentSchema,
   registerReceiptSchema,
   registerReversalSchema,
+  reopenAgreementSchema,
   updateAgreementSchema,
   updateFeeModelSchema,
   updatePaymentSchema,
@@ -64,12 +68,12 @@ export async function listAgreementsAction(input: unknown) {
   return runAction({ name: "finance.agreements.list", permission: "finance.view", schema: listAgreementsSchema, input, handler: service.listAgreements });
 }
 
-/** Lista de acordos com rótulos do caso e totais do ledger (ADMIN). */
+/** Lista de contratos com rótulos e totais do livro; busca, período e vencimento filtrados no banco (ADMIN). */
 export async function listAgreementRowsAction(input: unknown) {
-  return runAction({ name: "finance.agreements.rows", permission: "finance.view", schema: listAgreementsSchema, input, handler: service.listAgreementRows });
+  return runAction({ name: "finance.agreements.rows", permission: "finance.view", schema: listAgreementRowsSchema, input, handler: service.listAgreementRows });
 }
 
-/** Visão geral agregada no servidor (ADMIN). */
+/** Visão geral somada no banco (ADMIN). A Home e o Financeiro leem daqui. */
 export async function getFinanceSummaryAction(input?: unknown) {
   return runAction({ name: "finance.summary", permission: "finance.view", schema: z.unknown(), input, handler: (ctx) => service.getFinanceSummary(ctx) });
 }
@@ -90,7 +94,12 @@ export async function changeAgreementStatusAction(input: unknown) {
   return runAction({ name: "finance.agreements.status", permission: "finance.manage", schema: changeAgreementStatusSchema, input, handler: service.changeAgreementStatus });
 }
 
-/* Obrigações */
+/** Reabre contrato concluído ou cancelado, com motivo (ADMIN; auditado). */
+export async function reopenAgreementAction(input: unknown) {
+  return runAction({ name: "finance.agreements.reopen", permission: "finance.manage", schema: reopenAgreementSchema, input, handler: service.reopenAgreement });
+}
+
+/* Parcelas (obrigações) */
 
 export async function listPaymentsAction(input: unknown) {
   return runAction({ name: "finance.payments.list", permission: "finance.view", schema: listPaymentsSchema, input, handler: service.listPayments });
@@ -121,6 +130,16 @@ export async function cancelPaymentAction(input: unknown) {
 
 export async function listReceiptsAction(input: unknown) {
   return runAction({ name: "finance.receipts.list", permission: "finance.view", schema: listReceiptsSchema, input, handler: service.listReceipts });
+}
+
+/** Extrato de recebimentos por período, com o total do período (ADMIN). */
+export async function listReceiptStatementAction(input: unknown) {
+  return runAction({ name: "finance.receipts.statement", permission: "finance.view", schema: listReceiptStatementSchema, input, handler: service.listReceiptStatement });
+}
+
+/** "A receber": parcelas em aberto por vencimento, com os totais (ADMIN). */
+export async function listReceivablesAction(input: unknown) {
+  return runAction({ name: "finance.receivables.list", permission: "finance.view", schema: listReceivablesSchema, input, handler: service.listReceivables });
 }
 
 export async function registerReceiptAction(input: unknown) {

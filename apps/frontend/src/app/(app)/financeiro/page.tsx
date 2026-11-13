@@ -8,6 +8,8 @@ import { FeeModelsPanel } from "@/features/finance/components/fee-models-panel";
 import { FinanceOverviewTab } from "@/features/finance/components/finance-overview";
 import { FinanceWorkspace } from "@/features/finance/components/finance-workspace";
 import { ProcessFinanceTable } from "@/features/finance/components/process-finance-table";
+import { ReceiptStatementPanel } from "@/features/finance/components/receipt-statement-panel";
+import { ReceivablesPanel } from "@/features/finance/components/receivables-panel";
 import {
   agreementQueryFromSearchParams,
   agreementQueryToInput,
@@ -16,6 +18,10 @@ import {
   financeTabFromSearchParams,
   processFinanceQueryFromSearchParams,
   processFinanceQueryToInput,
+  receiptStatementQueryFromSearchParams,
+  receiptStatementQueryToInput,
+  receivableQueryFromSearchParams,
+  receivableQueryToInput,
   type FinanceTab,
 } from "@/features/finance/list-query";
 import { PortalFinance } from "@/features/partner-portal/components/portal-finance";
@@ -31,8 +37,11 @@ import {
   listFeeModelsAction,
   listPartnerAgreementSharesAction,
   listProcessFinanceAction,
+  listReceiptStatementAction,
+  listReceivablesAction,
   listTransfersAction,
 } from "@/server/domain/finance/actions";
+import { todaySaoPaulo } from "@/server/domain/finance/schemas";
 
 export const metadata: Metadata = { title: "Financeiro" };
 
@@ -53,9 +62,19 @@ async function InternalTab({ tab, searchParams }: { tab: FinanceTab; searchParam
           initialResult={await listAgreementRowsAction(agreementQueryToInput(query))}
           syncUrl
           urlTab="contratos"
-          description="Contratos de honorários de cada processo. Clique em um contrato para ver as obrigações e registrar recebimentos."
+          description="Contratos de honorários de cada processo. Abra um contrato para ver as parcelas e registrar recebimentos."
         />
       );
+    }
+    case "a-receber": {
+      const query = receivableQueryFromSearchParams(searchParams);
+      return <ReceivablesPanel initialQuery={query} initialResult={await listReceivablesAction(receivableQueryToInput(query))} />;
+    }
+    case "recebimentos": {
+      // Sem período na URL, o extrato abre no mês corrente (dia de São Paulo, o mesmo no servidor e na tela).
+      const today = todaySaoPaulo();
+      const query = receiptStatementQueryFromSearchParams(searchParams, today);
+      return <ReceiptStatementPanel today={today} initialQuery={query} initialResult={await listReceiptStatementAction(receiptStatementQueryToInput(query))} />;
     }
     case "despesas": {
       const query = expenseQueryFromSearchParams(searchParams);

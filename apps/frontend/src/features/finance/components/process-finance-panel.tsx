@@ -61,7 +61,7 @@ function ProcessFinanceSummary({ p }: { p: ProcessFinanceDTO }) {
             hint={partner ? `Escritório ${formatCurrency(p.receivedOwnerShare)} · parceiro ${formatCurrency(p.receivedPartnerShare)}` : undefined}
           />
           <Tile label="Em aberto" value={formatCurrency(p.openBalance)} />
-          <Tile label="Em atraso" value={formatCurrency(p.overdue)} tone={p.overdue > 0 ? "danger" : undefined} hint={p.overdue > 0 ? "Obrigações vencidas com saldo" : "Nada vencido"} />
+          <Tile label="Em atraso" value={formatCurrency(p.overdue)} tone={p.overdue > 0 ? "danger" : undefined} hint={p.overdue > 0 ? "Parcelas vencidas com saldo" : "Nada vencido"} />
           <Tile label="Despesas pagas" value={formatCurrency(p.expensesPaid)} hint={p.expensesReimbursable > 0 ? `${formatCurrency(p.expensesReimbursable)} reembolsáveis pelo cliente` : undefined} />
           <Tile label="Despesas a pagar" value={formatCurrency(p.expensesOpen)} tone={p.expensesOpen > 0 ? "warning" : undefined} />
           {/* 11 indicadores em 4 colunas: o Resultado ocupa duas e fecha a última linha sem buraco. */}
@@ -107,7 +107,7 @@ export function ProcessFinancePanel({ processId, initial }: { processId: string;
           initialQuery={DEFAULT_AGREEMENT_QUERY}
           initialResult={agreements}
           title="Contratos de honorários do processo"
-          description="Um contrato ativo por processo. Clique para ver as obrigações e registrar recebimentos."
+          description="Um contrato ativo por processo. Abra o contrato para ver as parcelas e registrar recebimentos."
         />
       )}
       {expenses && (
@@ -120,7 +120,7 @@ export function ProcessFinancePanel({ processId, initial }: { processId: string;
         />
       )}
       <p className="text-[12px] text-subtle">
-        Valores em reais, somados pelo banco. Contratos antigos, ligados só ao caso, aparecem na{" "}
+        Valores em reais, somados pelo sistema. Contratos antigos, ligados só ao caso, aparecem na{" "}
         <Link href={`/casos/${p.legalCaseId}?aba=financeiro`} className="text-navy-700 underline underline-offset-2">
           aba Financeiro do caso
         </Link>

@@ -55,7 +55,7 @@ export function PartnershipValuesDialog({ agreementId, caseTitle, internal, onCl
           <p className="text-[12.5px] text-muted">
             Divisão deste caso: <span className="font-medium text-foreground">{formatPercent(d.share.partnerPercentage)} parceiro</span> /{" "}
             {formatPercent(d.ownerPercentage)} escritório, registrada em {formatDate(d.share.effectiveAt)} e mantida mesmo se a divisão padrão mudar. Os valores são
-            calculados pelo banco a partir dos recebimentos — não se digitam.
+            calculados pelo sistema a partir dos recebimentos. Não se digitam.
           </p>
           <DefinitionGrid
             columns={3}

@@ -25,7 +25,12 @@ import type {
   TransferInternalDTO,
   TransferItemDTO,
   TransferPartnerDTO,
-  TransferStatus, PartnerShareTransferDTO, ContractedByModelPoint } from "./dto";
+  TransferStatus, PartnerShareTransferDTO, ContractedByModelPoint,
+  FinanceSummaryDTO,
+  ReceiptStatementItemDTO,
+  ReceiptStatementTotalsDTO,
+  ReceivableItemDTO,
+  ReceivablesTotalsDTO } from "./dto";
 import { EXPENSE_CATEGORIES, type CreateAgreementInput, type CreateExpenseInput, type CreateFeeModelInput, type UpdateAgreementInput, type UpdateExpenseInput, type UpdateFeeModelInput } from "./schemas";
 
 /**
@@ -94,6 +99,9 @@ export interface AgreementRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** 064: última reabertura. Opcionais no tipo para linhas lidas sem as colunas. */
+  reopened_at?: string | null;
+  reopen_reason?: string | null;
 }
 
 /** Linha da view payment_balances (derivada do ledger). */
@@ -170,17 +178,33 @@ export type PartnershipPartnerRow = Pick<PartnershipRow, "id" | "legal_case_id" 
 type Many<T> = T | T[] | null;
 const first = <T>(v: Many<T> | undefined): T | undefined => (Array.isArray(v) ? v[0] : (v ?? undefined));
 
-/** Acordo + rótulos do caso e do modelo (embeds de leitura). */
+/** Caso com o cliente (embed de leitura da lista geral de despesas). */
 interface CaseEmbed {
   title: string;
   origin_organization_id: string;
   clients?: Many<{ individual_client_details?: Many<{ full_name: string }>; company_client_details?: Many<{ legal_name: string }> }>;
 }
 
+function clientNameOf(c: CaseEmbed): string {
+  const client = first(c.clients);
+  return first(client?.individual_client_details)?.full_name ?? first(client?.company_client_details)?.legal_name ?? "";
+}
+
+/** Linha da view finance_agreement_list (064): contrato + rótulos + totais do livro, tudo do banco. */
 export interface AgreementListRow extends AgreementRow {
-  fee_models?: Many<{ name: string }>;
-  legal_cases?: Many<CaseEmbed>;
-  legal_processes?: Many<{ title: string | null; cnj_number: string | null }>;
+  fee_model_name: string | null;
+  case_title: string | null;
+  case_origin_organization_id: string | null;
+  client_name: string | null;
+  process_title: string | null;
+  cnj_number: string | null;
+  in_process_totals: boolean;
+  contracted: Numeric;
+  received: Numeric;
+  outstanding: Numeric;
+  overdue: Numeric;
+  open_payments: number;
+  next_due_date: string | null;
 }
 
 export interface TransferRow {
@@ -255,6 +279,8 @@ export function agreementFromRow(r: AgreementRow): FinancialAgreementDTO {
     createdBy: opt(r.created_by),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    reopenedAt: opt(r.reopened_at),
+    reopenReason: opt(r.reopen_reason),
   };
 }
 
@@ -416,51 +442,154 @@ export function agreementShareFromRows(agreement: PartnershipPartnerRow, balance
 /* Totais (somados no servidor sobre o que o banco derivou)            */
 /* ------------------------------------------------------------------ */
 
-const OPEN_STATUSES = new Set(["PENDING", "PARTIAL", "OVERDUE"]);
-
-/** Totais de obrigações a partir da view payment_balances. Centavos inteiros: sem erro de ponto flutuante. */
-export function balanceTotals(rows: Pick<PaymentBalanceRow, "amount" | "received_amount" | "balance" | "status">[]): FinanceTotals {
-  let contracted = 0;
-  let received = 0;
-  let outstanding = 0;
-  let overdue = 0;
-  let open = 0;
-  for (const r of rows) {
-    received += toCents(r.received_amount);
-    if (r.status === "CANCELLED") continue;
-    contracted += toCents(r.amount);
-    if (OPEN_STATUSES.has(r.status)) {
-      outstanding += toCents(r.balance);
-      open += 1;
-      if (r.status === "OVERDUE") overdue += toCents(r.balance);
-    }
-  }
-  return { contracted: fromCents(contracted), received: fromCents(received), outstanding: fromCents(outstanding), overdue: fromCents(overdue), openPayments: open };
+/** Totais que o banco já somou (colunas da view ou do JSON de finance_summary). */
+function totalsFrom(t: { contracted: Numeric; received: Numeric; outstanding: Numeric; overdue: Numeric; open_payments: number }): FinanceTotals {
+  return { contracted: money(t.contracted), received: money(t.received), outstanding: money(t.outstanding), overdue: money(t.overdue), openPayments: Number(t.open_payments) };
 }
 
-function clientNameOf(c: CaseEmbed): string {
-  const client = first(c.clients);
-  return first(client?.individual_client_details)?.full_name ?? first(client?.company_client_details)?.legal_name ?? "";
-}
-
-export function agreementListItemFromRows(row: AgreementListRow, balances: PaymentBalanceRow[]): AgreementListItemDTO {
-  const own = balances.filter((b) => b.financial_agreement_id === row.id);
-  const legalCase = first(row.legal_cases);
-  const process = first(row.legal_processes);
-  const nextDueDate = own
-    .filter((b) => OPEN_STATUSES.has(b.status) && b.due_date)
-    .map((b) => b.due_date as string)
-    .sort()[0];
+/** Linha da lista de contratos (view finance_agreement_list): nada é somado aqui. */
+export function agreementListItemFromRow(row: AgreementListRow): AgreementListItemDTO {
   return {
     ...agreementFromRow(row),
-    caseTitle: legalCase?.title ?? "",
-    clientName: legalCase ? clientNameOf(legalCase) : "",
-    processTitle: process ? process.title?.trim() || legalCase?.title || undefined : undefined,
-    cnjNumber: opt(process?.cnj_number),
-    caseOriginOrganizationId: legalCase?.origin_organization_id,
-    feeModelName: first(row.fee_models)?.name,
-    totals: balanceTotals(own),
-    nextDueDate,
+    caseTitle: row.case_title ?? "",
+    clientName: row.client_name ?? "",
+    processTitle: opt(row.process_title),
+    cnjNumber: opt(row.cnj_number),
+    caseOriginOrganizationId: opt(row.case_origin_organization_id),
+    feeModelName: opt(row.fee_model_name),
+    totals: totalsFrom(row),
+    nextDueDate: opt(row.next_due_date),
+    inProcessTotals: row.in_process_totals,
+  };
+}
+
+/** JSON de public.finance_summary (064). */
+export interface FinanceSummaryRaw {
+  totals: { contracted: Numeric; received: Numeric; outstanding: Numeric; overdue: Numeric; open_payments: number };
+  outside: { contracted: Numeric; received: Numeric; outstanding: Numeric; overdue: Numeric; open_payments: number };
+  agreements_by_status: Record<AgreementDbStatus, number>;
+  monthly: { month: string; amount: Numeric }[];
+}
+
+export function financeSummaryFromRaw(raw: FinanceSummaryRaw, byFeeModel: ContractedByModelPoint[]): FinanceSummaryDTO {
+  const count = (status: AgreementDbStatus) => Number(raw.agreements_by_status?.[status] ?? 0);
+  return {
+    totals: totalsFrom(raw.totals),
+    outside: totalsFrom(raw.outside),
+    agreementsByStatus: { DRAFT: count("DRAFT"), ACTIVE: count("ACTIVE"), COMPLETED: count("COMPLETED"), CANCELLED: count("CANCELLED") },
+    monthly: (raw.monthly ?? []).map((m) => ({ month: m.month, amount: money(m.amount) })),
+    byFeeModel,
+    truncated: false,
+  };
+}
+
+/** Linha da view finance_receipt_statement (064). */
+export interface ReceiptStatementRow {
+  receipt_id: string;
+  sequence: number;
+  kind: ReceiptKind;
+  amount: Numeric;
+  currency: string;
+  occurred_at: string;
+  occurred_on: string;
+  method: string | null;
+  notes: string | null;
+  payment_id: string;
+  payment_type: PaymentType;
+  payment_description: string | null;
+  financial_agreement_id: string;
+  legal_case_id: string;
+  legal_process_id: string | null;
+  client_name: string | null;
+  case_title: string | null;
+  process_title: string | null;
+  cnj_number: string | null;
+}
+
+export function receiptStatementItemFromRow(r: ReceiptStatementRow): ReceiptStatementItemDTO {
+  return {
+    receiptId: r.receipt_id,
+    sequence: Number(r.sequence),
+    kind: r.kind,
+    amount: money(r.amount),
+    currency: r.currency.trim(),
+    occurredAt: r.occurred_at,
+    occurredOn: r.occurred_on,
+    method: opt(r.method),
+    notes: opt(r.notes),
+    paymentId: r.payment_id,
+    paymentType: r.payment_type,
+    paymentDescription: opt(r.payment_description),
+    agreementId: r.financial_agreement_id,
+    legalCaseId: r.legal_case_id,
+    legalProcessId: opt(r.legal_process_id),
+    clientName: r.client_name ?? "",
+    caseTitle: r.case_title ?? "",
+    processTitle: opt(r.process_title),
+    cnjNumber: opt(r.cnj_number),
+  };
+}
+
+export function receiptStatementTotalsFromRaw(raw: { count: number; received: Numeric; deducted: Numeric; net: Numeric } | null | undefined): ReceiptStatementTotalsDTO {
+  return { count: Number(raw?.count ?? 0), received: money(raw?.received ?? 0), deducted: money(raw?.deducted ?? 0), net: money(raw?.net ?? 0) };
+}
+
+/** Linha da view finance_receivables (064). */
+export interface ReceivableRow {
+  payment_id: string;
+  financial_agreement_id: string;
+  legal_case_id: string;
+  legal_process_id: string | null;
+  agreement_status: AgreementDbStatus;
+  amount: Numeric;
+  received_amount: Numeric;
+  balance: Numeric;
+  currency: string;
+  due_date: string | null;
+  status: DbPaymentStatus;
+  days_overdue: number | null;
+  payment_type: PaymentType;
+  description: string | null;
+  client_name: string | null;
+  case_title: string | null;
+  process_title: string | null;
+  cnj_number: string | null;
+  in_process_totals: boolean;
+}
+
+export function receivableFromRow(r: ReceivableRow): ReceivableItemDTO {
+  return {
+    paymentId: r.payment_id,
+    agreementId: r.financial_agreement_id,
+    legalCaseId: r.legal_case_id,
+    legalProcessId: opt(r.legal_process_id),
+    agreementStatus: r.agreement_status,
+    amount: money(r.amount),
+    receivedAmount: money(r.received_amount),
+    balance: money(r.balance),
+    currency: r.currency.trim(),
+    dueDate: opt(r.due_date),
+    status: r.status,
+    daysOverdue: r.days_overdue === null || r.days_overdue === undefined ? undefined : Number(r.days_overdue),
+    paymentType: r.payment_type,
+    description: opt(r.description),
+    clientName: r.client_name ?? "",
+    caseTitle: r.case_title ?? "",
+    processTitle: opt(r.process_title),
+    cnjNumber: opt(r.cnj_number),
+    inProcessTotals: r.in_process_totals,
+  };
+}
+
+export function receivablesTotalsFromRaw(
+  raw: { count: number; total: Numeric; overdue: Numeric; overdue_count: number; outside_totals: Numeric } | null | undefined,
+): ReceivablesTotalsDTO {
+  return {
+    count: Number(raw?.count ?? 0),
+    total: money(raw?.total ?? 0),
+    overdue: money(raw?.overdue ?? 0),
+    overdueCount: Number(raw?.overdue_count ?? 0),
+    outsideTotals: money(raw?.outside_totals ?? 0),
   };
 }
 
@@ -478,16 +607,6 @@ export function lastMonths(now: Date, count = 12): string[] {
     const d = new Date(Date.UTC(y, m - 1 - (count - 1 - i), 1));
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
   });
-}
-
-/** Recebido LÍQUIDO por mês (entradas − estornos ± ajustes), pelos lançamentos do ledger. */
-export function monthlyNet(receipts: { amount: Numeric; occurred_at: string }[], months: string[]): { month: string; amount: number }[] {
-  const byMonth = new Map(months.map((m) => [m, 0]));
-  for (const r of receipts) {
-    const key = monthKey(r.occurred_at);
-    if (byMonth.has(key)) byMonth.set(key, (byMonth.get(key) ?? 0) + toCents(r.amount));
-  }
-  return months.map((month) => ({ month, amount: fromCents(byMonth.get(month) ?? 0) }));
 }
 
 /* ------------------------------------------------------------------ */

@@ -23,9 +23,39 @@ export const RECEIPT_KINDS = ["RECEIPT", "ADJUSTMENT", "REVERSAL"] as const;
 export const RECEIPT_METHODS = ["PIX", "TED", "DOC", "BOLETO", "CARD", "CASH", "CHECK", "OTHER"] as const;
 export const TRANSFER_STATUSES = ["PENDING", "PAID", "CANCELLED"] as const;
 
-/** Data/hora de um fato financeiro: nunca no futuro (tolerância de 5 min de relógio). */
-const zPastDateTime = () =>
-  zIsoDateTime().refine((v) => Date.parse(v) <= Date.now() + 5 * 60_000, "A data não pode estar no futuro.");
+const SP_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** Data civil (YYYY-MM-DD) de um instante no fuso de São Paulo. */
+export function saoPauloDate(instant: Date): string {
+  return SP_DATE.format(instant);
+}
+
+/** Hoje (YYYY-MM-DD) no fuso de São Paulo. */
+export function todaySaoPaulo(now = new Date()): string {
+  return saoPauloDate(now);
+}
+
+/**
+ * Data de um fato financeiro (recebimento, ajuste, estorno, pagamento de
+ * repasse): nunca num DIA futuro, pela data civil de São Paulo. A tela só
+ * pergunta o dia e manda o meio-dia dele; comparar o instante recusava "hoje"
+ * antes do meio-dia. O service grava no máximo o instante atual
+ * (`pastInstant`), então nada no ledger fica com hora no futuro.
+ */
+const zPastDateTime = () => zIsoDateTime().refine((v) => saoPauloDate(new Date(v)) <= todaySaoPaulo(), "A data não pode estar no futuro.");
+
+/** Instante de um fato já validado pelo dia: se a hora ainda não chegou (hoje, meio-dia, lançado de manhã), vale o agora. */
+export function pastInstant(occurredAt: string | undefined, now = new Date()): string | undefined {
+  if (occurredAt === undefined) return undefined;
+  return Date.parse(occurredAt) > now.getTime() ? now.toISOString() : occurredAt;
+}
+
+/** Busca das listas: cliente, título do processo ou do caso; só dígitos = prefixo do número CNJ. */
+const zSearch = () => z.string().trim().max(200).optional();
+
+/** `from` não pode ser depois de `to` (os dois opcionais). */
+const periodInOrder = (from: string | undefined, to: string | undefined) => !from || !to || from <= to;
+const PERIOD_MESSAGE = "A data inicial não pode ser depois da final.";
 
 /** Inteiro positivo pequeno (número de parcelas). */
 const zInstallments = () => z.number().int("Informe um número inteiro.").min(1, "Mínimo de 1 parcela.").max(600, "Máximo de 600 parcelas.");
@@ -93,6 +123,35 @@ export const listAgreementsSchema = pageInputSchema
   .and(sortSchema(AGREEMENT_SORT_FIELDS, "createdAt"));
 export type ListAgreementsInput = z.infer<typeof listAgreementsSchema>;
 
+/**
+ * Lista de contratos com rótulos e totais (view finance_agreement_list, 064):
+ * busca por cliente/título/CNJ, período pela data do contrato (início ou, sem
+ * início, o dia da criação) e vencimento pelo PRÓXIMO vencimento em aberto.
+ */
+export const AGREEMENT_ROW_SORT_FIELDS = {
+  createdAt: "created_at",
+  updatedAt: "updated_at",
+  startDate: "start_date",
+  contractDate: "contract_date",
+  nextDueDate: "next_due_date",
+} as const;
+
+export const listAgreementRowsSchema = pageInputSchema
+  .extend({
+    legalCaseId: zUuid().optional(),
+    legalProcessId: zUuid().optional(),
+    status: z.enum(AGREEMENT_DB_STATUSES).optional(),
+    q: zSearch(),
+    periodFrom: zIsoDate().optional(),
+    periodTo: zIsoDate().optional(),
+    dueFrom: zIsoDate().optional(),
+    dueTo: zIsoDate().optional(),
+  })
+  .refine((v) => periodInOrder(v.periodFrom, v.periodTo), { message: PERIOD_MESSAGE, path: ["periodTo"] })
+  .refine((v) => periodInOrder(v.dueFrom, v.dueTo), { message: PERIOD_MESSAGE, path: ["dueTo"] })
+  .and(sortSchema(AGREEMENT_ROW_SORT_FIELDS, "createdAt"));
+export type ListAgreementRowsInput = z.infer<typeof listAgreementRowsSchema>;
+
 export const idSchema = z.object({ id: zUuid() });
 
 /**
@@ -132,7 +191,17 @@ export const updateAgreementSchema = z.object({
 });
 export type UpdateAgreementInput = z.infer<typeof updateAgreementSchema>;
 
-/** Ciclo de vida: DRAFT → ACTIVE → COMPLETED; DRAFT/ACTIVE → CANCELLED. */
+/**
+ * Reabrir contrato concluído ou cancelado (064): volta a ATIVO, com motivo,
+ * auditado. É o caminho para estornar ou ajustar depois de concluir.
+ */
+export const reopenAgreementSchema = z.object({
+  id: zUuid(),
+  reason: zText(500, "Informe o motivo da reabertura."),
+});
+export type ReopenAgreementInput = z.infer<typeof reopenAgreementSchema>;
+
+/** Ciclo de vida: DRAFT → ACTIVE → COMPLETED; DRAFT/ACTIVE → CANCELLED. Voltar de concluído/cancelado: `reopenAgreementSchema`. */
 export const changeAgreementStatusSchema = z.object({
   id: zUuid(),
   to: z.enum(["ACTIVE", "COMPLETED", "CANCELLED"]),
@@ -215,6 +284,39 @@ export type CancelPaymentInput = z.infer<typeof cancelPaymentSchema>;
 export const listReceiptsSchema = pageInputSchema.extend({ paymentId: zUuid() });
 export type ListReceiptsInput = z.infer<typeof listReceiptsSchema>;
 
+/**
+ * Extrato de recebimentos por período (064; view finance_receipt_statement).
+ * O período é o DIA do lançamento em São Paulo. Filtros e total no banco.
+ */
+export const RECEIPT_STATEMENT_SORT_FIELDS = { occurredAt: "occurred_at", amount: "amount" } as const;
+
+export const listReceiptStatementSchema = pageInputSchema
+  .extend({
+    from: zIsoDate().optional(),
+    to: zIsoDate().optional(),
+    method: z.enum(RECEIPT_METHODS).optional(),
+    kind: z.enum(RECEIPT_KINDS).optional(),
+    q: zSearch(),
+  })
+  .refine((v) => periodInOrder(v.from, v.to), { message: PERIOD_MESSAGE, path: ["to"] })
+  .and(sortSchema(RECEIPT_STATEMENT_SORT_FIELDS, "occurredAt", "desc"));
+export type ListReceiptStatementInput = z.infer<typeof listReceiptStatementSchema>;
+
+/** "A receber" (064; view finance_receivables): parcelas em aberto com saldo, por vencimento. */
+export const RECEIVABLE_SORT_FIELDS = { dueDate: "due_date", balance: "balance" } as const;
+
+export const listReceivablesSchema = pageInputSchema
+  .extend({
+    from: zIsoDate().optional(),
+    to: zIsoDate().optional(),
+    /** Só parcelas vencidas. */
+    overdueOnly: z.boolean().optional(),
+    q: zSearch(),
+  })
+  .refine((v) => periodInOrder(v.from, v.to), { message: PERIOD_MESSAGE, path: ["to"] })
+  .and(sortSchema(RECEIVABLE_SORT_FIELDS, "dueDate", "asc"));
+export type ListReceivablesInput = z.infer<typeof listReceivablesSchema>;
+
 /** Entrada. Sem `amount`, quita o saldo restante da obrigação (lido do banco). */
 export const registerReceiptSchema = z.object({
   paymentId: zUuid(),
@@ -230,18 +332,22 @@ export type RegisterReceiptInput = z.infer<typeof registerReceiptSchema>;
 /**
  * Ajuste com justificativa. O sinal vem de `direction` (o valor é sempre
  * positivo no formulário): INCREASE soma ao recebido, DECREASE subtrai.
+ * Para MENOS, o recebimento corrigido é obrigatório (064): a parte do parceiro
+ * sai da mesma divisão do original. O banco recusa sem ele.
  */
-export const registerAdjustmentSchema = z.object({
-  paymentId: zUuid(),
-  /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
-  idempotencyKey: zUuid(),
-  direction: z.enum(["INCREASE", "DECREASE"]),
-  amount: zPositiveMoney(),
-  justification: zText(1000, "Informe a justificativa do ajuste."),
-  /** Lançamento de entrada que o ajuste corrige (opcional; mesma obrigação). */
-  originalReceiptId: zUuid().optional(),
-  occurredAt: zPastDateTime().optional(),
-});
+export const registerAdjustmentSchema = z
+  .object({
+    paymentId: zUuid(),
+    /** Chave do formulário (UUID gerado pelo navegador uma vez por formulário): reenvio devolve o já gravado. */
+    idempotencyKey: zUuid(),
+    direction: z.enum(["INCREASE", "DECREASE"]),
+    amount: zPositiveMoney(),
+    justification: zText(1000, "Informe a justificativa do ajuste."),
+    /** Recebimento que o ajuste corrige (mesma parcela). Obrigatório no ajuste para menos. */
+    originalReceiptId: zUuid().optional(),
+    occurredAt: zPastDateTime().optional(),
+  })
+  .refine((v) => v.direction === "INCREASE" || !!v.originalReceiptId, { message: "Escolha o recebimento que este ajuste corrige.", path: ["originalReceiptId"] });
 export type RegisterAdjustmentInput = z.infer<typeof registerAdjustmentSchema>;
 
 /** Estorno de um lançamento de entrada. Sem `amount`, estorna o que resta dele. */
@@ -365,16 +471,13 @@ export const listExpensesSchema = pageInputSchema
     processId: zUuid().optional(),
     category: z.enum(EXPENSE_CATEGORIES).optional(),
     status: z.enum(EXPENSE_STATUSES).optional(),
+    /** Período pela data da despesa. */
+    from: zIsoDate().optional(),
+    to: zIsoDate().optional(),
   })
+  .refine((v) => periodInOrder(v.from, v.to), { message: PERIOD_MESSAGE, path: ["to"] })
   .and(sortSchema(EXPENSE_SORT_FIELDS, "incurredOn", "desc"));
 export type ListExpensesInput = z.infer<typeof listExpensesSchema>;
-
-const SP_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
-
-/** Hoje (YYYY-MM-DD) no fuso de São Paulo. */
-export function todaySaoPaulo(now = new Date()): string {
-  return SP_DATE.format(now);
-}
 
 /** Data do pagamento: fato, nunca no futuro (dia de São Paulo). A data da despesa pode ser futura (ex.: audiência marcada). */
 const zPaidOn = () => zIsoDate().refine((v) => v <= todaySaoPaulo(), "A data do pagamento não pode estar no futuro.");
@@ -382,10 +485,12 @@ const zExpenseDescription = () => zText(500, "Descreva a despesa.");
 
 /**
  * Nova despesa do processo. O caso vem do processo (o banco também sobrescreve);
- * autor da sessão. Sem `paidOn` = a pagar.
+ * autor da sessão. Sem `paidOn` = a pagar. Clique duplo não lança duas (chave).
  */
 export const createExpenseSchema = z.object({
   processId: zUuid(),
+  /** Chave do formulário (UUID gerado pelo navegador uma vez por envio; 064): reenvio devolve a despesa já lançada. */
+  idempotencyKey: zUuid(),
   category: z.enum(EXPENSE_CATEGORIES),
   description: zExpenseDescription(),
   amount: zPositiveMoney(),

@@ -25,6 +25,7 @@ import { JudicialCaptureAlert } from "@/features/judicial/components/judicial-ca
 import { agendaHref } from "@/features/deadlines/list-query";
 import { useDirectoryUserMap, useOrganizationNames } from "@/features/directory/directory-context";
 import { formatCNJ, maskCNPJ, maskCPF } from "@/lib/formatting";
+import { hasOutsideTotals, outsideTotalsNotice } from "@/features/finance/outside-totals";
 import type { InternalHomeData } from "../load";
 import { EntriesTrend, MetricsBoard } from "@/features/metrics/components/metrics-board";
 import type { DashboardMetricsDTO } from "@/server/domain/metrics/dto";
@@ -165,10 +166,12 @@ export function HomeDashboard({ data, metrics }: { data: InternalHomeData; metri
 
 function FinanceSnapshot({ finance }: { finance: NonNullable<InternalHomeData["finance"]> }) {
   if (!finance.ok) return <ActionErrorState error={finance} title="Não foi possível carregar o financeiro." />;
+  // Mesma conta do Financeiro (totais por processo, somados no banco de dados): o "em aberto" daqui é o de lá.
   const t = finance.data.totals;
+  const outside = finance.data.outside;
   const items = [
-    { label: "Em aberto", value: formatCurrency(t.outstanding), hint: pluralize(t.openPayments, "obrigação a receber", "obrigações a receber") },
-    { label: "Em atraso", value: formatCurrency(t.overdue), hint: t.overdue > 0 ? "Obrigações vencidas com saldo" : "Nenhuma obrigação vencida", alert: t.overdue > 0 },
+    { label: "Em aberto", value: formatCurrency(t.outstanding), hint: pluralize(t.openPayments, "parcela a receber", "parcelas a receber") },
+    { label: "Em atraso", value: formatCurrency(t.overdue), hint: t.overdue > 0 ? "Parcelas vencidas com saldo" : "Nenhuma parcela vencida", alert: t.overdue > 0 },
     { label: "Recebido no mês", value: formatCurrency(finance.data.monthly.at(-1)?.amount ?? 0), hint: "Valor líquido lançado neste mês" },
   ];
   return (
@@ -201,6 +204,8 @@ function FinanceSnapshot({ finance }: { finance: NonNullable<InternalHomeData["f
           ))}
         </dl>
       </div>
+      {/* O mesmo aviso da visão geral do Financeiro, com os mesmos valores. */}
+      {hasOutsideTotals(outside) && <p className="border-t border-line px-5 py-2 text-[12px] text-muted">{outsideTotalsNotice(outside)}</p>}
     </section>
   );
 }

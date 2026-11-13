@@ -5,9 +5,11 @@ import type { FinanceSummaryDTO, ProcessFinanceTotalsDTO } from "@/server/domain
 
 /**
  * Indicadores da visão geral. Com os totais por processo (046, somados no
- * banco: view process_finance_totals), mostra valor das ações, honorários
- * (escritório × parceiro), recebido, em aberto, atraso, despesas e resultado.
- * Sem eles (falha de leitura), cai nos totais do ledger (payment_balances).
+ * banco de dados: view process_finance_totals), mostra valor das ações,
+ * honorários (escritório × parceiro), recebido, em aberto, atraso, despesas e
+ * resultado. "Em aberto" e "Em atraso" saem de `summary.totals` (064), o
+ * MESMO campo que a Home mostra: é a mesma conta dos totais por processo
+ * (conferido no verificador do banco), lida de um lugar só.
  */
 export function FinanceStats({ summary, totals }: { summary: FinanceSummaryDTO; totals?: ProcessFinanceTotalsDTO }) {
   const { agreementsByStatus } = summary;
@@ -24,14 +26,14 @@ export function FinanceStats({ summary, totals }: { summary: FinanceSummaryDTO; 
     const t = summary.totals;
     return (
       <div className="grid grid-cols-4 gap-4">
-        <Stat label="Em aberto" value={formatCurrency(t.outstanding)} icon={Wallet} hint={`${pluralize(t.openPayments, "obrigação", "obrigações")} a receber`} />
+        <Stat label="Em aberto" value={formatCurrency(t.outstanding)} icon={Wallet} hint={`${pluralize(t.openPayments, "parcela", "parcelas")} a receber`} />
         <Stat label="Recebido" value={formatCurrency(t.received)} icon={HandCoins} tone="success" hint={`De ${formatCurrency(t.contracted)} contratados`} />
         <Stat
           label="Em atraso"
           value={formatCurrency(t.overdue)}
           icon={CircleAlert}
           tone={t.overdue > 0 ? "danger" : "neutral"}
-          hint={t.overdue > 0 ? "Obrigações vencidas com saldo" : "Nenhuma obrigação vencida"}
+          hint={t.overdue > 0 ? "Parcelas vencidas com saldo" : "Nenhuma parcela vencida"}
         />
         {contracts}
       </div>
@@ -61,13 +63,19 @@ export function FinanceStats({ summary, totals }: { summary: FinanceSummaryDTO; 
         tone={totals.netResultTotal < 0 ? "danger" : "navy"}
         hint="Recebido do escritório − despesas pagas"
       />
-      <Stat label="Em aberto" value={formatCurrency(totals.openTotal)} icon={Wallet} hint={`De ${formatCurrency(totals.contractedTotal)} contratados`} />
+      <Stat
+        label="Em aberto"
+        value={formatCurrency(summary.totals.outstanding)}
+        icon={Wallet}
+        href="/financeiro?aba=a-receber"
+        hint={`${pluralize(summary.totals.openPayments, "parcela", "parcelas")} a receber · de ${formatCurrency(summary.totals.contracted)} contratados`}
+      />
       <Stat
         label="Em atraso"
-        value={formatCurrency(totals.overdueTotal)}
+        value={formatCurrency(summary.totals.overdue)}
         icon={CircleAlert}
-        tone={totals.overdueTotal > 0 ? "danger" : "neutral"}
-        hint={totals.overdueTotal > 0 ? "Obrigações vencidas com saldo" : "Nenhuma obrigação vencida"}
+        tone={summary.totals.overdue > 0 ? "danger" : "neutral"}
+        hint={summary.totals.overdue > 0 ? "Parcelas vencidas com saldo" : "Nenhuma parcela vencida"}
       />
       <Stat
         label="Despesas"

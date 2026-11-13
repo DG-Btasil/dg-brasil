@@ -114,12 +114,63 @@ export const zCnjOptional = () =>
     .optional()
     .refine((v) => !v || isCnjFormat(v), msg.cnj);
 
-/** Valor monetário digitado como texto ("1.234,56") → número. */
+/**
+ * Leitura de um número digitado no formato brasileiro. Três respostas, nunca
+ * misturadas: campo vazio (de propósito), número, ou texto que NÃO é número.
+ * Texto inválido nunca vira "em branco": em branco tem significado nas telas
+ * (quitar o saldo, estornar tudo, limpar o valor).
+ */
+export type NumberInputReading =
+  | { kind: "empty" }
+  | { kind: "ok"; value: number }
+  | { kind: "invalid"; problem: "DOT_DECIMAL" | "TOO_MANY_DECIMALS" | "NOT_A_NUMBER"; message: string };
+
+/** "1234", "1.234", "1.234.567,8", "1234,56": ponto só como separador de milhar, vírgula para os decimais (até 2). */
+const BR_NUMBER = /^-?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?$/;
+const BR_NUMBER_LONG_DECIMALS = /^-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{3,}$/;
+
+function readBrNumber(text: string, messages: { dot: string; decimals: string; invalid: string }): NumberInputReading {
+  if (!text) return { kind: "empty" };
+  if (BR_NUMBER.test(text)) return { kind: "ok", value: Number(text.replace(/\./g, "").replace(",", ".")) };
+  if (BR_NUMBER_LONG_DECIMALS.test(text)) return { kind: "invalid", problem: "TOO_MANY_DECIMALS", message: messages.decimals };
+  // Só dígitos, pontos e vírgulas, com ponto fora do lugar de milhar: é o ponto usado como decimal ("1500.00", "2.5", "1,234.56").
+  if (/^-?[\d.,]+$/.test(text) && text.includes(".")) return { kind: "invalid", problem: "DOT_DECIMAL", message: messages.dot };
+  return { kind: "invalid", problem: "NOT_A_NUMBER", message: messages.invalid };
+}
+
+const CURRENCY_MESSAGES = {
+  dot: "Use vírgula para os centavos. Exemplo: 1.500,00.",
+  decimals: "Use no máximo 2 casas depois da vírgula.",
+  invalid: "Informe um valor válido. Exemplo: 1.500,00.",
+};
+const PERCENT_MESSAGES = {
+  dot: "Use vírgula para as casas decimais. Exemplo: 2,5.",
+  decimals: "Use no máximo 2 casas depois da vírgula.",
+  invalid: "Informe um percentual válido. Exemplo: 30 ou 2,5.",
+};
+
+/**
+ * Valor em reais digitado como texto. Aceita "1.234,56", "1234,56", "1234" e
+ * "R$ 1.234,56". Recusa o ponto como decimal ("1500.00" já virou 150000 aqui):
+ * a resposta diz o que fazer.
+ */
+export function readCurrencyInput(value: string | undefined | null): NumberInputReading {
+  return readBrNumber((value ?? "").replace(/R\$/i, "").replace(/\s/g, ""), CURRENCY_MESSAGES);
+}
+
+/** Percentual digitado como texto ("30", "2,5", "33,33%"). Mesma disciplina do dinheiro: "2.5" é recusado, não vira 25. */
+export function readPercentInput(value: string | undefined | null): NumberInputReading {
+  return readBrNumber((value ?? "").replace(/\s/g, "").replace(/%$/, ""), PERCENT_MESSAGES);
+}
+
+/**
+ * Valor monetário digitado como texto ("1.234,56") → número. Vazio E inválido
+ * devolvem `undefined`: quem chama já validou o campo (`zCurrencyOptional` no
+ * formulário, ou `readCurrencyInput` quando "em branco" tem significado).
+ */
 export function parseCurrencyInput(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const normalized = value.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : undefined;
+  const reading = readCurrencyInput(value);
+  return reading.kind === "ok" ? reading.value : undefined;
 }
 
 export const zCurrencyOptional = () =>
@@ -127,5 +178,8 @@ export const zCurrencyOptional = () =>
     .string()
     .trim()
     .optional()
-    .refine((v) => !v || parseCurrencyInput(v) !== undefined, "Informe um valor válido.")
-    .refine((v) => !v || (parseCurrencyInput(v) ?? 0) >= 0, msg.positive);
+    .superRefine((v, ctx) => {
+      const reading = readCurrencyInput(v);
+      if (reading.kind === "invalid") ctx.addIssue({ code: "custom", message: reading.message });
+      else if (reading.kind === "ok" && reading.value < 0) ctx.addIssue({ code: "custom", message: msg.positive });
+    });

@@ -848,7 +848,7 @@ await deveFalhar('estorno sem lançamento original é recusado', () =>
 
 await deveFalhar('recebimento acima da obrigação é recusado', () =>
   db.query(`insert into payment_receipts (payment_id, kind, amount) values ($1, 'RECEIPT', 600)`, [ids.obrig]),
-  /excederia a obrigação/)
+  /excederia a parcela/)
 
 await deveFalhar('ajuste sem justificativa é recusado', () =>
   db.query(`insert into payment_receipts (payment_id, kind, amount) values ($1, 'ADJUSTMENT', 10)`, [ids.obrig]),
@@ -2761,7 +2761,7 @@ await deve('concluir com obrigação em aberto é recusado; quitada, conclui; de
   const p = await obrigacao030(ids.barbara, ids.fa030, 800)
   let msg = ''
   try { await situacao030(ids.barbara, ids.fa030, 'COMPLETED') } catch (e) { msg = e.message }
-  if (!/obrigações em aberto/.test(msg)) throw new Error(`esperava recusa, veio "${msg}"`)
+  if (!/parcelas em aberto/.test(msg)) throw new Error(`esperava recusa, veio "${msg}"`)
   if (/800/.test(msg)) throw new Error('valor na mensagem de erro')
   await entrada030(ids.barbara, p, 800)
   await situacao030(ids.barbara, ids.fa030, 'COMPLETED')
@@ -2773,30 +2773,31 @@ await deveFalhar('acordo concluído não muda (nem observação)', () =>
 await deveFalhar('acordo concluído não recebe obrigação nova', () => obrigacao030(ids.barbara, ids.fa030), /não recebe nem altera obrigações/)
 await deveFalhar('obrigação de acordo concluído não muda', () =>
   como(ids.barbara, (tx) => tx.query(`update payments set description = 'x' where id = $1`, [ids.p030])), /não recebe nem altera obrigações/)
-await deve('estorno (correção) vale mesmo com o acordo concluído', async () => {
+// [064] Antes, estorno valia com o acordo concluído e deixava saldo em aberto sem saída. Agora exige reabrir (cenário completo no bloco 064).
+await deveFalhar('estorno com o acordo concluído é recusado: precisa reabrir o contrato [064]', async () => {
   const original = (await um(db, `select id from payment_receipts where payment_id = $1 and kind = 'RECEIPT'`, [ids.p030])).id
   await entrada030(ids.barbara, ids.p030, -100, 'REVERSAL', original)
-  igual((await um(db, `select sum(amount)::text s from payment_receipts where payment_id = $1`, [ids.p030])).s, '700.00', 'líquido')
-})
-await deveFalhar('…mas entrada nova em acordo concluído é recusada', () => entrada030(ids.barbara, ids.p030, 100), /Ative o acordo/)
+}, /Reabra o contrato/)
+// Entrada nova em acordo concluído: toda parcela dele está quitada ou cancelada, então a guarda do livro recusa antes (excede a parcela).
+await deveFalhar('…e entrada nova em acordo concluído é recusada', () => entrada030(ids.barbara, ids.p030, 100), /excederia a parcela/)
 await deve('rascunho: aceita obrigação, recusa entrada; cancelar com obrigação aberta é recusado; cancelada a obrigação, cancela', async () => {
   const fa = await acordo030(ids.barbara, await novoCaso030('Caso 030 rascunho'))
   const p = await obrigacao030(ids.barbara, fa, 300)
   let msg = ''
   try { await entrada030(ids.barbara, p, 300) } catch (e) { msg = e.message }
-  if (!/Ative o acordo/.test(msg)) throw new Error(`esperava recusa da entrada, veio "${msg}"`)
+  if (!/Ative o contrato/.test(msg)) throw new Error(`esperava recusa da entrada, veio "${msg}"`)
   msg = ''
   try { await situacao030(ids.barbara, fa, 'CANCELLED') } catch (e) { msg = e.message }
-  if (!/obrigações em aberto/.test(msg)) throw new Error(`esperava recusa do cancelamento, veio "${msg}"`)
+  if (!/parcelas em aberto/.test(msg)) throw new Error(`esperava recusa do cancelamento, veio "${msg}"`)
   await como(ids.barbara, (tx) => tx.query(`update payments set cancelled_at = now(), cancellation_reason = 'Lançada por engano' where id = $1`, [p]))
   await situacao030(ids.barbara, fa, 'CANCELLED')
   igual((await um(db, `select status from financial_agreements where id = $1`, [fa])).status, 'CANCELLED', 'cancelado')
 })
-await deveFalhar('cancelado não volta a ativo', async () => {
+await deveFalhar('cancelado não volta a ativo sem o motivo da reabertura [064]', async () => {
   const fa = await acordo030(ids.barbara, await novoCaso030('Caso 030 cancelado'))
   await situacao030(ids.barbara, fa, 'CANCELLED')
   await situacao030(ids.barbara, fa, 'ACTIVE')
-}, /histórico/)
+}, /motivo para reabrir/)
 await deve('auditoria: mudança de situação do acordo fica registrada (sem valores)', async () => {
   const ev = await linhas(db, `select action, metadata from audit_events where entity_id = $1 order by created_at`, [ids.fa030])
   if (ev.length < 3) throw new Error(`eventos: ${ev.length}`)
@@ -7879,6 +7880,376 @@ await deve('catálogo [063]: funções novas com search_path fixo; anon não exe
   await recusa063(db.transaction(async (tx) => { await tx.query('set local role anon'); await tx.query(`select public.deadline_mark_checked($1)`, [t063.doAgente]) }), /permission denied/)
   // Fim do cenário: nada do cenário fica em aberto para os lembretes das próximas verificações.
   await db.query(`update deadlines set status = 'CANCELLED', status_reason = 'Fim do cenário 063' where status = 'OPEN' and legal_case_id in (select id from legal_cases where title like '%063%')`)
+})
+
+// ═════════════════════════════ financeiro: revisão final [064] ═══════════
+
+secao('Financeiro — revisão final: reabrir contrato, ajuste para menos, repasse pelo saldo real, listas e totais no banco [064]')
+const f064 = {}
+const n064 = (v) => Number(v)
+const caso064 = async (titulo, parceiroOrg = null) => (parceiroOrg
+  ? await um(db, `insert into legal_cases (client_id, legal_area_id, title, partner_organization_id, origin_organization_id, created_by_organization_id, status, accepted_at, assigned_lawyer_id)
+      values ($1, $2, $3, $4, $4, $4, 'ACCEPTED', now(), $5) returning id`, [ids.joao, ids.banking, titulo, parceiroOrg, ids.lucas])
+  : await um(db, `insert into legal_cases (client_id, legal_area_id, title, origin_organization_id, created_by_organization_id) values ($1, $2, $3, $4, $4) returning id`,
+      [ids.joao, ids.banking, titulo, ids.owner])).id
+const processo064 = async (caso, titulo) => (await um(db, `insert into legal_processes (legal_case_id, title) values ($1, $2) returning id`, [caso, titulo])).id
+const contrato064 = (caso, proc, status = 'ACTIVE') => como(ids.barbara, async (tx) =>
+  (await um(tx, `insert into financial_agreements (legal_case_id, legal_process_id, status, fixed_fee) values ($1, $2, $3, 1000) returning id`, [caso, proc, status])).id)
+const parcela064 = (contrato, valor, vencimento = null) => como(ids.barbara, async (tx) =>
+  (await um(tx, `insert into payments (financial_agreement_id, amount, payment_type, due_date, description) values ($1, $2, 'FIXED', $3, 'Parcela 064') returning id`, [contrato, valor, vencimento])).id)
+const lancar064 = (parcela, kind, valor, o = {}) => como(o.uid ?? ids.barbara, async (tx) =>
+  (await um(tx, `insert into payment_receipts (payment_id, kind, amount, original_receipt_id, notes, method, occurred_at)
+    values ($1, $2, $3, $4, $5, $6, coalesce($7::timestamptz, now())) returning id`, [parcela, kind, valor, o.original ?? null, o.notes ?? null, o.method ?? null, o.em ?? null])).id)
+const situacao064 = (contrato, status, uid = ids.barbara) => como(uid, (tx) => tx.query(`update financial_agreements set status = $2 where id = $1`, [contrato, status]))
+const reabrir064 = (contrato, motivo, uid = ids.barbara, extra = '') => como(uid, (tx) =>
+  tx.query(`update financial_agreements set status = 'ACTIVE', reopened_at = now(), reopen_reason = $2${extra} where id = $1`, [contrato, motivo]))
+const contratoLido064 = (id) => um(db, `select status, reopened_by, reopen_reason, reopened_at, notes from financial_agreements where id = $1`, [id])
+const saldo064 = async (parcela) => {
+  const b = await um(db, `select status, received_amount::text r, balance::text b from payment_balances where payment_id = $1`, [parcela])
+  return [b.status, b.r, b.b]
+}
+const repasse064 = (uid, org, valor, o = {}) => como(uid, async (tx) =>
+  (await um(tx, `select public.create_partner_transfer($1, $2, $3, $4, $5) r`, [org, valor, o.ref ?? null, o.caso ?? null, o.chave ?? randomUUID()])).r)
+const disponivel064 = async (org, caso = null) => n064((await um(db,
+  `select coalesce(sum(net_partner_amount - transferred_amount), 0)::text v from partner_allocation_balances where partner_organization_id = $1 and ($2::uuid is null or legal_case_id = $2)`, [org, caso])).v)
+
+// ── 1. Estorno depois de concluir: exige reabrir o contrato ──
+await deve('cenário: contrato concluído com a parcela quitada', async () => {
+  f064.caso = await caso064('Caso 064 reabertura')
+  f064.proc = await processo064(f064.caso, 'Processo 064 reabertura')
+  f064.fa = await contrato064(f064.caso, f064.proc)
+  f064.p = await parcela064(f064.fa, 800, '2020-01-10')
+  f064.rec = await lancar064(f064.p, 'RECEIPT', 800, { method: 'PIX' })
+  await situacao064(f064.fa, 'COMPLETED')
+  igual((await contratoLido064(f064.fa)).status, 'COMPLETED', 'concluído')
+})
+await deveFalhar('estorno em contrato concluído é recusado, com o caminho na mensagem', () =>
+  lancar064(f064.p, 'REVERSAL', -300, { original: f064.rec }), /Este contrato está concluído\. Reabra o contrato antes de registrar estorno ou ajuste/)
+await deveFalhar('ajuste para menos em contrato concluído também é recusado', () =>
+  lancar064(f064.p, 'ADJUSTMENT', -10, { original: f064.rec, notes: 'Correção' }), /Reabra o contrato/)
+await deveFalhar('reabrir sem motivo é recusado', () => situacao064(f064.fa, 'ACTIVE'), /motivo para reabrir/)
+await deveFalhar('reabrir com motivo em branco é recusado', () => reabrir064(f064.fa, '   '), /motivo para reabrir/)
+await deveFalhar('na reabertura só a situação muda: termos continuam congelados', () =>
+  reabrir064(f064.fa, 'Estorno do Pix', ids.barbara, ', fixed_fee = 1'), /histórico/)
+await deveFalhar('…nem a observação muda junto', () => reabrir064(f064.fa, 'Estorno do Pix', ids.barbara, `, notes = 'x'`), /histórico/)
+await deveFalhar('concluído não vai direto para cancelado', () => situacao064(f064.fa, 'CANCELLED'), /histórico/)
+await deve('LAWYER não reabre: a RLS nem mostra a linha', async () => {
+  const r = await reabrir064(f064.fa, 'Tentativa', ids.lucas)
+  igual(r.affectedRows ?? 0, 0, 'linhas alteradas')
+  igual((await contratoLido064(f064.fa)).status, 'COMPLETED', 'intacto')
+})
+await deve('ADMIN reabre com motivo: volta a ativo, com autor, data e motivo; auditado com a situação de origem', async () => {
+  await reabrir064(f064.fa, '  Pix devolvido pelo banco do cliente  ')
+  const c = await contratoLido064(f064.fa)
+  igual([c.status, c.reopened_by, c.reopen_reason, !!c.reopened_at], ['ACTIVE', ids.barbara, 'Pix devolvido pelo banco do cliente', true], 'reaberto')
+  const ev = await linhas(db, `select metadata, actor_user_id from audit_events where action = 'FINANCIAL_AGREEMENT_REOPENED' and entity_id = $1`, [f064.fa])
+  igual(ev.length, 1, 'um evento de reabertura')
+  igual([ev[0].actor_user_id, ev[0].metadata.from_status, ev[0].metadata.status, ev[0].metadata.reason, ev[0].metadata.legal_process_id],
+    [ids.barbara, 'COMPLETED', 'ACTIVE', 'Pix devolvido pelo banco do cliente', f064.proc], 'auditoria')
+  f064.reaberto1 = c.reopened_at
+})
+await deveFalhar('fora da reabertura, os dados da reabertura não mudam', () =>
+  como(ids.barbara, (tx) => tx.query(`update financial_agreements set reopen_reason = 'outro motivo' where id = $1`, [f064.fa])), /só mudam ao reabrir/)
+await deveFalhar('contrato novo não nasce reaberto', async () => {
+  const proc = await processo064(f064.caso, 'Processo 064 nasce reaberto')
+  await como(ids.barbara, (tx) => tx.query(`insert into financial_agreements (legal_case_id, legal_process_id, status, reopen_reason) values ($1, $2, 'DRAFT', 'x')`, [f064.caso, proc]))
+}, /não nasce reaberto/)
+await deve('reaberto: o estorno entra, a parcela volta a ter saldo e o contrato não conclui com ela em aberto', async () => {
+  await lancar064(f064.p, 'REVERSAL', -300, { original: f064.rec, notes: 'Pix devolvido' })
+  igual(await saldo064(f064.p), ['OVERDUE', '500.00', '300.00'], 'parcela depois do estorno')
+  let msg = ''
+  try { await situacao064(f064.fa, 'COMPLETED') } catch (e) { msg = e.message }
+  if (!/parcelas em aberto/.test(msg)) throw new Error(`esperava recusa, veio "${msg}"`)
+})
+await deve('…recebe de novo e conclui: nada fica em aberto no processo', async () => {
+  await lancar064(f064.p, 'RECEIPT', 300)
+  await situacao064(f064.fa, 'COMPLETED')
+  const v = await como(ids.barbara, (tx) => um(tx, `select open_balance::text o, overdue::text a, received::text r from process_finance_overview where legal_process_id = $1`, [f064.proc]))
+  igual([v.o, v.a, v.r], ['0.00', '0.00', '800.00'], 'visão do processo')
+})
+await deve('segunda reabertura (mesmo motivo): estorna tudo, cancela a parcela e conclui; duas reaberturas na auditoria', async () => {
+  await reabrir064(f064.fa, 'Pix devolvido pelo banco do cliente')
+  const c = await contratoLido064(f064.fa)
+  if (!(c.reopened_at > f064.reaberto1)) throw new Error('a data da reabertura não avançou')
+  for (const r of await linhas(db, `select r.id, r.amount + coalesce((select sum(x.amount) from payment_receipts x where x.original_receipt_id = r.id and x.amount < 0), 0) resta
+                                     from payment_receipts r where r.payment_id = $1 and r.kind = 'RECEIPT'`, [f064.p])) {
+    if (n064(r.resta) > 0) await lancar064(f064.p, 'REVERSAL', -n064(r.resta), { original: r.id })
+  }
+  igual(await saldo064(f064.p), ['OVERDUE', '0.00', '800.00'], 'tudo estornado')
+  await como(ids.barbara, (tx) => tx.query(`update payments set cancelled_at = now(), cancellation_reason = 'Cliente desistiu' where id = $1`, [f064.p]))
+  await situacao064(f064.fa, 'COMPLETED')
+  igual((await um(db, `select count(*)::int n from audit_events where action = 'FINANCIAL_AGREEMENT_REOPENED' and entity_id = $1`, [f064.fa])).n, 2, 'reaberturas auditadas')
+})
+await deve('contrato cancelado também reabre com motivo (ex.: devolução da entrada depois do cancelamento)', async () => {
+  const proc = await processo064(f064.caso, 'Processo 064 cancelado')
+  const fa = await contrato064(f064.caso, proc)
+  const p = await parcela064(fa, 500)
+  const rec = await lancar064(p, 'RECEIPT', 500)
+  await situacao064(fa, 'CANCELLED')
+  let msg = ''
+  try { await lancar064(p, 'REVERSAL', -500, { original: rec }) } catch (e) { msg = e.message }
+  if (!/Este contrato está cancelado\. Reabra o contrato/.test(msg)) throw new Error(`esperava recusa, veio "${msg}"`)
+  await reabrir064(fa, 'Entrada devolvida ao cliente')
+  await lancar064(p, 'REVERSAL', -500, { original: rec })
+  await como(ids.barbara, (tx) => tx.query(`update payments set cancelled_at = now(), cancellation_reason = 'Contrato cancelado' where id = $1`, [p]))
+  await situacao064(fa, 'CANCELLED')
+  const ev = await um(db, `select metadata ->> 'from_status' de from audit_events where action = 'FINANCIAL_AGREEMENT_REOPENED' and entity_id = $1`, [fa])
+  igual([(await contratoLido064(fa)).status, ev.de], ['CANCELLED', 'CANCELLED'], 'cancelado de novo, com a reabertura registrada')
+})
+await deveFalhar('reabrir é recusado se o processo já tem outro contrato ativo', async () => {
+  const proc = await processo064(f064.caso, 'Processo 064 dois contratos')
+  const antigo = await contrato064(f064.caso, proc)
+  await situacao064(antigo, 'COMPLETED')
+  await contrato064(f064.caso, proc)
+  await reabrir064(antigo, 'Estorno')
+}, /one_active_per_process/)
+
+// ── 2. Ajuste para menos exige o recebimento corrigido; 3. cancelar parcela com recebimento ──
+await deve('cenário: parceiro novo a 30% com dois casos aceitos', async () => {
+  f064.org = await parceiro('Parceiro 064', 30)
+  f064.c1 = await caso064('Caso 064 A', f064.org)
+  f064.c2 = await caso064('Caso 064 B', f064.org)
+  f064.proc1 = await processo064(f064.c1, 'Processo 064 A')
+  f064.proc2 = await processo064(f064.c2, null)
+  f064.fa1 = await contrato064(f064.c1, f064.proc1)
+  f064.fa2 = await contrato064(f064.c2, f064.proc2)
+  f064.aj = await parcela064(f064.fa1, 400, '2099-01-10')
+  f064.ajRec = await lancar064(f064.aj, 'RECEIPT', 400, { method: 'TED' })
+  igual(await disponivel064(f064.org), 120, '30% de 400')
+})
+await deveFalhar('ajuste para menos sem o recebimento corrigido é recusado', () =>
+  lancar064(f064.aj, 'ADJUSTMENT', -50, { notes: 'Tarifa descontada' }), /Ajuste para menos precisa indicar o recebimento/)
+await deve('ajuste para menos com o original: a parte do parceiro sai da MESMA divisão do recebimento', async () => {
+  const aj = await lancar064(f064.aj, 'ADJUSTMENT', -50, { original: f064.ajRec, notes: 'Tarifa descontada' })
+  const orig = await um(db, `select id, case_partnership_agreement_id a from partner_revenue_allocations where receipt_id = $1`, [f064.ajRec])
+  const d = await um(db, `select partner_amount::text p, owner_amount::text o, reverses_allocation_id r, case_partnership_agreement_id a from partner_revenue_allocations where receipt_id = $1`, [aj])
+  igual([d.p, d.o, d.r, d.a], ['-15.00', '-35.00', orig.id, orig.a], 'divisão do ajuste')
+  igual(await disponivel064(f064.org), 105, 'disponível depois do ajuste')
+})
+await deveFalhar('ajuste para menos acima do que resta do recebimento é recusado', () =>
+  lancar064(f064.aj, 'ADJUSTMENT', -351, { original: f064.ajRec, notes: 'Erro' }), /excede o valor do lançamento original/)
+await deve('ajuste para mais continua valendo sem original', async () => {
+  await lancar064(f064.aj, 'ADJUSTMENT', 50, { notes: 'Diferença recebida' })
+  igual(await saldo064(f064.aj), ['PAID', '400.00', '0.00'], 'parcela')
+  igual(await disponivel064(f064.org), 120, 'disponível')
+})
+await deveFalhar('cancelar parcela com recebimento é recusado no banco (antes, só o painel conferia)', () =>
+  como(ids.barbara, (tx) => tx.query(`update payments set cancelled_at = now(), cancellation_reason = 'Engano' where id = $1`, [f064.aj])), /tem recebimento: estorne/)
+await deveFalhar('…mesmo fora do painel (dono do banco)', () =>
+  db.query(`update payments set cancelled_at = now(), cancellation_reason = 'Engano' where id = $1`, [f064.aj]), /tem recebimento: estorne/)
+await deve('parcela sem recebimento líquido cancela normalmente', async () => {
+  const p = await parcela064(f064.fa1, 90)
+  const rec = await lancar064(p, 'RECEIPT', 90)
+  await lancar064(p, 'REVERSAL', -90, { original: rec })
+  await como(ids.barbara, (tx) => tx.query(`update payments set cancelled_at = now(), cancellation_reason = 'Lançada por engano' where id = $1`, [p]))
+  igual((await saldo064(p))[0], 'CANCELLED', 'cancelada')
+  igual(await disponivel064(f064.org), 120, 'disponível não muda')
+})
+
+// ── 4. Repasse: o limite é o saldo LÍQUIDO do parceiro, contando as divisões negativas ──
+await deve('zera o disponível do cenário anterior com um repasse (para a conta a seguir partir de zero)', async () => {
+  const r = await repasse064(ids.barbara, f064.org, 120)
+  igual(r.deduplicated, false, 'repasse novo')
+  igual(await disponivel064(f064.org), 0, 'disponível')
+})
+await deve('o cenário da revisão: recebe 1.000 a 30%, repassa 300, estorna o recebimento, recebe outros 1.000', async () => {
+  f064.p1 = await parcela064(f064.fa1, 1000, '2099-02-10')
+  f064.r1 = await lancar064(f064.p1, 'RECEIPT', 1000)
+  igual(await disponivel064(f064.org), 300, '30% de 1.000')
+  f064.t1 = (await repasse064(ids.barbara, f064.org, 300)).transfer_id
+  igual(await disponivel064(f064.org), 0, 'depois do repasse')
+  await lancar064(f064.p1, 'REVERSAL', -1000, { original: f064.r1, notes: 'Pix devolvido' })
+  igual(await disponivel064(f064.org), -300, 'o parceiro recebeu 300 de um dinheiro que voltou')
+  f064.r1b = await lancar064(f064.p1, 'RECEIPT', 1000)
+  igual(await disponivel064(f064.org), 0, 'os 300 novos compensam os 300 já pagos')
+})
+await deveFalhar('…novo repasse de 300 é RECUSADO (antes: R$ 600 pagos para R$ 300 devidos)', () => repasse064(ids.barbara, f064.org, 300), /Saldo disponível insuficiente/)
+await deveFalhar('…nem um centavo passa', () => repasse064(ids.barbara, f064.org, 0.01), /Saldo disponível insuficiente/)
+await deve('…e a recusa não deixa repasse nem item gravado', async () => {
+  const t = await um(db, `select count(*)::int n, coalesce(sum(amount) filter (where status <> 'CANCELLED'), 0)::text v from partner_transfers where partner_organization_id = $1`, [f064.org])
+  igual([t.n, t.v], [2, '420.00'], 'repasses do parceiro: 120 + 300')
+})
+await deve('repasse restrito a um caso: vale o menor entre o líquido do caso e o líquido do parceiro', async () => {
+  f064.p2 = await parcela064(f064.fa2, 1000, '2099-03-10')
+  f064.r2 = await lancar064(f064.p2, 'RECEIPT', 500)
+  igual([await disponivel064(f064.org), await disponivel064(f064.org, f064.c1), await disponivel064(f064.org, f064.c2)], [150, 0, 150], 'parceiro, caso A, caso B')
+  let msg = ''
+  try { await repasse064(ids.barbara, f064.org, 100, { caso: f064.c1 }) } catch (e) { msg = e.message }
+  if (!/Saldo disponível insuficiente/.test(msg)) throw new Error(`caso A sem saldo deveria recusar, veio "${msg}"`)
+  // O caso A fica devendo (estorno de um recebimento ainda não repassado zera a divisão; a negativa continua): o parceiro inteiro vai a −150.
+  await lancar064(f064.p1, 'REVERSAL', -1000, { original: f064.r1b })
+  igual([await disponivel064(f064.org), await disponivel064(f064.org, f064.c1), await disponivel064(f064.org, f064.c2)], [-150, -300, 150], 'depois do segundo estorno')
+  msg = ''
+  try { await repasse064(ids.barbara, f064.org, 150, { caso: f064.c2 }) } catch (e) { msg = e.message }
+  if (!/Saldo disponível insuficiente/.test(msg)) throw new Error(`o caso B tem 150, mas o parceiro deve 150: deveria recusar, veio "${msg}"`)
+})
+await deve('cancelado o repasse do dinheiro que voltou, o saldo real aparece e o repasse do caso B passa, só com a divisão dele', async () => {
+  await como(ids.barbara, (tx) => tx.query(`update partner_transfers set status = 'CANCELLED', cancellation_reason = 'Recebimento estornado' where id = $1`, [f064.t1]))
+  igual([await disponivel064(f064.org), await disponivel064(f064.org, f064.c1), await disponivel064(f064.org, f064.c2)], [150, 0, 150], 'saldo real')
+  const chave = randomUUID()
+  const r = await repasse064(ids.barbara, f064.org, 150, { caso: f064.c2, chave, ref: 'Pix 064' })
+  const itens = await linhas(db, `select al.receipt_id r, i.amount::text v from partner_transfer_items i join partner_revenue_allocations al on al.id = i.allocation_id where i.transfer_id = $1`, [r.transfer_id])
+  igual(itens.map((i) => [i.r, i.v]), [[f064.r2, '150.00']], 'itens do repasse')
+  igual(await disponivel064(f064.org), 0, 'disponível')
+  // Reenvio com a mesma chave devolve o mesmo repasse, mesmo sem saldo agora.
+  const de_novo = await repasse064(ids.barbara, f064.org, 150, { caso: f064.c2, chave, ref: 'Pix 064' })
+  igual([de_novo.transfer_id, de_novo.deduplicated], [r.transfer_id, true], 'idempotente')
+})
+await deveFalhar('LAWYER não registra repasse', () => repasse064(ids.lucas, f064.org, 1), /Somente ADMIN/)
+await deveFalhar('repasse de valor zero é recusado', () => repasse064(ids.barbara, f064.org, 0), /maior que zero/)
+
+// ── 5. Listas com filtro no banco ──
+await deve('lista de contratos: cliente, processo, totais do livro, próximo vencimento e a marca "entra nos totais por processo"', async () => {
+  await parcela064(f064.fa2, 200, '2020-05-05')
+  const v = await como(ids.barbara, (tx) => um(tx, `select v.*, v.next_due_date::text venc, v.contract_date = (f.created_at at time zone 'America/Sao_Paulo')::date data_ok
+    from finance_agreement_list v join financial_agreements f on f.id = v.id where v.id = $1`, [f064.fa2]))
+  igual([v.client_name, v.case_title, v.process_title, v.status, v.in_process_totals], ['João da Silva', 'Caso 064 B', 'Caso 064 B', 'ACTIVE', true], 'rótulos (processo sem nome usa o do caso)')
+  igual([n064(v.contracted), n064(v.received), n064(v.outstanding), n064(v.overdue), v.open_payments], [1200, 500, 700, 200, 2], 'totais')
+  igual(v.venc, '2020-05-05', 'próximo vencimento = o mais antigo em aberto')
+  igual(v.data_ok, true, 'sem data de início, vale o dia da criação (São Paulo)')
+})
+await deve('lista de contratos: busca por cliente, período e vencimento filtram no banco', async () => {
+  const lista = (onde, p = []) => como(ids.barbara, async (tx) => (await linhas(tx, `select id from finance_agreement_list where ${onde}`, p)).map((r) => r.id))
+  igual((await lista(`client_name ilike '%joão%' and id = any($1)`, [[f064.fa1, f064.fa2]])).length, 2, 'busca pelo cliente')
+  igual((await lista(`client_name ilike '%ninguém%'`)).length, 0, 'busca sem resultado')
+  igual((await lista(`next_due_date between date '2020-05-01' and date '2020-05-31' and id = any($1)`, [[f064.fa1, f064.fa2]])), [f064.fa2], 'vencimento em maio/2020')
+  igual((await lista(`contract_date > (now() at time zone 'America/Sao_Paulo')::date and id = any($1)`, [[f064.fa1, f064.fa2]])).length, 0, 'período futuro')
+})
+await deve('contrato de processo excluído sai dos totais por processo e fica marcado na lista', async () => {
+  f064.procFora = await processo064(f064.c2, 'Processo 064 excluído')
+  f064.faFora = await contrato064(f064.c2, f064.procFora)
+  f064.pFora = await parcela064(f064.faFora, 70, '2020-06-06')
+  await db.query(`update legal_processes set deleted_at = now() where id = $1`, [f064.procFora])
+  const v = await como(ids.barbara, (tx) => um(tx, `select in_process_totals t, outstanding::text o from finance_agreement_list where id = $1`, [f064.faFora]))
+  igual([v.t, v.o], [false, '70.00'], 'fora dos totais')
+})
+await deve('extrato de recebimentos: cliente, processo, forma e valor; o período é o DIA em São Paulo', async () => {
+  // 23h30 de 31/10 em São Paulo já é 1º/11 em UTC: o extrato de outubro tem de trazer.
+  const p = await parcela064(f064.fa2, 300)
+  f064.recOut = await lancar064(p, 'RECEIPT', 300, { method: 'BOLETO', em: '2025-10-31T23:30:00-03:00' })
+  const linha = await como(ids.barbara, (tx) => um(tx, `select * from finance_receipt_statement where receipt_id = $1`, [f064.recOut]))
+  igual([linha.client_name, linha.process_title, linha.case_title, linha.method, linha.kind, n064(linha.amount), linha.payment_description],
+    ['João da Silva', 'Caso 064 B', 'Caso 064 B', 'BOLETO', 'RECEIPT', 300, 'Parcela 064'], 'linha do extrato')
+  const out = await como(ids.barbara, (tx) => linhas(tx, `select receipt_id from finance_receipt_statement where occurred_on between date '2025-10-01' and date '2025-10-31'`))
+  igual(out.map((r) => r.receipt_id), [f064.recOut], 'outubro/2025')
+  const nov = await como(ids.barbara, (tx) => linhas(tx, `select receipt_id from finance_receipt_statement where occurred_on between date '2025-11-01' and date '2025-11-30'`))
+  igual(nov.length, 0, 'novembro/2025')
+})
+await deve('total do período do extrato: mesmos filtros da lista (período, forma, tipo, busca), estornos descontados', async () => {
+  const total = (args) => como(ids.barbara, async (tx) => (await um(tx, `select public.finance_receipt_statement_totals($1, $2, $3, $4, $5, $6) r`, args)).r)
+  const out = await total(['2025-10-01', '2025-10-31', null, null, null, null])
+  igual([out.count, out.received, out.deducted, out.net], [1, 300, 0, 300], 'outubro/2025')
+  igual((await total(['2025-10-01', '2025-10-31', 'PIX', null, null, null])).count, 0, 'forma que não houve')
+  igual((await total(['2025-10-01', '2025-10-31', null, null, '%ninguém%', null])).count, 0, 'busca sem resultado')
+  igual((await total(['2025-10-01', '2025-10-31', null, null, '%caso 064 b%', null])).net, 300, 'busca pelo título')
+  // Tudo dos casos deste bloco, conferido com o livro (entradas, estornos e ajustes para menos, líquido).
+  const livro = await um(db, `select count(*)::int n, coalesce(sum(r.amount) filter (where r.amount > 0), 0)::float8 e, coalesce(sum(r.amount) filter (where r.amount < 0), 0)::float8 s, sum(r.amount)::float8 l
+    from payment_receipts r join payments p on p.id = r.payment_id join financial_agreements f on f.id = p.financial_agreement_id join legal_cases c on c.id = f.legal_case_id
+    where c.title ilike 'Caso 064 %'`)
+  const t = await total([null, null, null, null, 'Caso 064 %', null])
+  if (!(livro.n >= 15 && livro.s < 0)) throw new Error(`o livro do bloco deveria ter estornos: ${JSON.stringify(livro)}`)
+  igual([t.count, t.received, t.deducted, t.net], [livro.n, livro.e, livro.s, livro.l], 'total igual ao livro')
+  const estornos = await total([null, null, null, 'REVERSAL', 'Caso 064 %', null])
+  igual([estornos.received, estornos.net === estornos.deducted, estornos.net < 0], [0, true, true], 'só estornos: nada recebido, tudo descontado')
+})
+await deve('a receber: parcelas em aberto por vencimento, vencidas com os dias de atraso; total e parte fora dos totais por processo', async () => {
+  const atraso = (await um(db, `select (now() at time zone 'America/Sao_Paulo')::date - date '2020-05-05' n`)).n
+  const linhasAbertas = await como(ids.barbara, (tx) => linhas(tx,
+    `select payment_id, status, balance::text b, days_overdue, in_process_totals t, client_name from finance_receivables where financial_agreement_id = any($1) order by due_date nulls last, payment_id`,
+    [[f064.fa2, f064.faFora]]))
+  igual(linhasAbertas.map((r) => [r.status, r.b, r.t]), [['OVERDUE', '200.00', true], ['OVERDUE', '70.00', false], ['PARTIAL', '500.00', true]], 'em aberto, por vencimento')
+  igual(linhasAbertas[0].days_overdue, atraso, 'dias de atraso')
+  igual(linhasAbertas[2].days_overdue, null, 'parcela a vencer não tem atraso')
+  igual(linhasAbertas.every((r) => r.client_name === 'João da Silva'), true, 'cliente')
+  const total = (args) => como(ids.barbara, async (tx) => (await um(tx, `select public.finance_receivables_totals($1, $2, $3, $4, $5) r`, args)).r)
+  const campos = (o) => [o.count, o.total, o.overdue, o.overdue_count, o.outside_totals]
+  igual(campos(await total([null, null, false, '%Caso 064 B%', null])), [3, 770, 270, 2, 70], 'totais do caso B')
+  igual(campos(await total([null, null, true, '%Caso 064 B%', null])), [2, 270, 270, 2, 70], 'só vencidas')
+  igual((await total(['2020-05-01', '2020-05-31', false, '%Caso 064 B%', null])).total, 200, 'vencimento em maio/2020')
+  // Parcela quitada ou cancelada não aparece.
+  igual((await como(ids.barbara, (tx) => linhas(tx, `select 1 from finance_receivables where payment_id = any($1)`, [[f064.aj, f064.p]]))).length, 0, 'quitada e cancelada fora')
+})
+await deve('listas e totais para LAWYER e parceiro: nada (RLS das tabelas de origem)', async () => {
+  for (const uid of [ids.lucas, ids.almeidaAdm, ids.ana]) {
+    const n = await como(uid, async (tx) => [
+      (await um(tx, `select count(*)::int n from finance_agreement_list`)).n,
+      (await um(tx, `select count(*)::int n from finance_receipt_statement`)).n,
+      (await um(tx, `select count(*)::int n from finance_receivables`)).n,
+      (await um(tx, `select public.finance_receipt_statement_totals() r`)).r.count,
+      (await um(tx, `select public.finance_receivables_totals() r`)).r.total,
+    ])
+    igual(n, [0, 0, 0, 0, 0], 'linhas visíveis')
+  }
+})
+
+// ── 6. Totais da visão geral somados no banco, na mesma conta do Financeiro por processo ──
+await deve('finance_summary: os totais são os MESMOS de process_finance_totals; o que fica fora vem separado e fecha com o livro', async () => {
+  const s = await como(ids.barbara, async (tx) => (await um(tx, `select public.finance_summary() r`)).r)
+  const t = await como(ids.barbara, (tx) => um(tx, `select contracted_total::float8 c, received_total::float8 r, open_total::float8 o, overdue_total::float8 a from process_finance_totals`))
+  igual([s.totals.contracted, s.totals.received, s.totals.outstanding, s.totals.overdue], [t.c, t.r, t.o, t.a], 'mesma conta dos totais por processo')
+  const livro = await um(db, `select coalesce(sum(received_amount), 0)::float8 r, coalesce(sum(balance) filter (where status in ('PENDING', 'PARTIAL', 'OVERDUE')), 0)::float8 o,
+      count(*) filter (where status in ('PENDING', 'PARTIAL', 'OVERDUE'))::int n from payment_balances`)
+  const cent = (v) => Math.round(v * 100)
+  igual([cent(s.totals.received) + cent(s.outside.received), cent(s.totals.outstanding) + cent(s.outside.outstanding), s.totals.open_payments + s.outside.open_payments],
+    [cent(livro.r), cent(livro.o), livro.n], 'dentro + fora = livro inteiro')
+  if (!(s.outside.outstanding >= 70 && s.outside.open_payments >= 1)) throw new Error(`a parcela do processo excluído deveria estar fora: ${JSON.stringify(s.outside)}`)
+  // A lista "A receber" fecha com os dois: total = em aberto dos totais + o que fica fora; a parte vencida também.
+  const lista = await como(ids.barbara, async (tx) => (await um(tx, `select public.finance_receivables_totals() r`)).r)
+  igual([cent(lista.total), cent(lista.outside_totals), cent(lista.overdue), lista.count],
+    [cent(s.totals.outstanding) + cent(s.outside.outstanding), cent(s.outside.outstanding), cent(s.totals.overdue) + cent(s.outside.overdue), s.totals.open_payments + s.outside.open_payments],
+    'a receber = em aberto da visão geral')
+  const porSituacao = await um(db, `select count(*) filter (where status = 'DRAFT')::int d, count(*) filter (where status = 'ACTIVE')::int a,
+      count(*) filter (where status = 'COMPLETED')::int c, count(*) filter (where status = 'CANCELLED')::int x from financial_agreements`)
+  igual([s.agreements_by_status.DRAFT, s.agreements_by_status.ACTIVE, s.agreements_by_status.COMPLETED, s.agreements_by_status.CANCELLED], [porSituacao.d, porSituacao.a, porSituacao.c, porSituacao.x], 'contratos por situação')
+})
+await deve('finance_summary: 12 meses do mais antigo ao atual, pelo mês de São Paulo; meses sem lançamento valem zero', async () => {
+  const s = await como(ids.barbara, async (tx) => (await um(tx, `select public.finance_summary() r`)).r)
+  const mes = (await um(db, `select to_char(now() at time zone 'America/Sao_Paulo', 'YYYY-MM') m`)).m
+  igual([s.monthly.length, s.monthly[11].month], [12, mes], 'janela')
+  igual([...s.monthly].map((m) => m.month).sort(), s.monthly.map((m) => m.month), 'ordem crescente')
+  const doMes = await um(db, `select coalesce(sum(amount), 0)::float8 v from payment_receipts where to_char(occurred_at at time zone 'America/Sao_Paulo', 'YYYY-MM') = $1`, [mes])
+  igual(s.monthly[11].amount, doMes.v, 'líquido do mês atual')
+  const s24 = await como(ids.barbara, async (tx) => (await um(tx, `select public.finance_summary(24) r`)).r)
+  igual(s24.monthly.find((m) => m.month === '2025-10')?.amount, 300, 'outubro/2025 (lançado às 23h30 de São Paulo)')
+  igual(s24.monthly.find((m) => m.month === '2025-11')?.amount, 0, 'novembro/2025 vazio')
+  igual((await como(ids.barbara, async (tx) => (await um(tx, `select public.finance_summary(999) r`)).r)).monthly.length, 36, 'no máximo 36 meses')
+})
+for (const [quem, uid] of [['LAWYER', 'lucas'], ['ASSISTANT', 'ana'], ['parceiro', 'almeidaAdm']]) {
+  await deveFalhar(`finance_summary: ${quem} não lê os totais`, () => como(ids[uid], (tx) => tx.query(`select public.finance_summary()`)), /Somente ADMIN/)
+}
+
+// ── 7. Despesa com chave de idempotência ──
+await deve('despesa: a mesma chave do mesmo autor não lança duas; chaves diferentes lançam', async () => {
+  const chave = randomUUID()
+  const nova = (k) => como(ids.barbara, async (tx) => (await um(tx,
+    `insert into process_expenses (legal_process_id, legal_case_id, category, description, amount, incurred_on, idempotency_key) values ($1, $2, 'COURT_COSTS', 'Custas 064', 55, current_date, $3) returning id`,
+    [f064.proc2, f064.c2, k])).id)
+  await nova(chave)
+  let msg = ''
+  try { await nova(chave) } catch (e) { msg = e.message }
+  if (!/process_expenses_idempotency/.test(msg)) throw new Error(`esperava o índice único, veio "${msg}"`)
+  await nova(randomUUID())
+  await nova(null)
+  await nova(null)
+  igual((await um(db, `select count(*)::int n from process_expenses where legal_process_id = $1 and description = 'Custas 064'`, [f064.proc2])).n, 4, 'despesas lançadas')
+})
+
+await deve('catálogo [064]: funções com search_path fixo; guardas fechadas; leituras novas só para usuário logado; views com a RLS de quem consulta', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.proname = any ($1) order by 1`,
+    [['financial_agreements_guard', 'financial_agreements_reopen_audit', 'payment_receipts_require_active_agreement', 'payment_receipts_guard', 'payments_guard',
+      'create_partner_transfer', 'finance_receipt_statement_totals', 'finance_receivables_totals', 'finance_summary']])
+  igual(r.length, 10, 'uma versão de cada função (create_partner_transfer tem a privada e a pública)')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.wrk).map((x) => x.f), [], 'search_path fixo, sem anon nem dg_worker')
+  igual(r.filter((x) => x.usr).map((x) => x.f), ['private.create_partner_transfer', 'public.create_partner_transfer', 'public.finance_receipt_statement_totals', 'public.finance_receivables_totals', 'public.finance_summary'],
+    'usuário logado: o repasse (como na 026) e as três leituras novas')
+  igual(r.filter((x) => x.f.startsWith('public.finance_')).some((x) => x.def), false, 'leituras novas rodam com o papel de quem chama (RLS vale)')
+  const v = await linhas(db, `select c.relname v, coalesce(array_to_string(c.reloptions, ','), '') opt, has_table_privilege('anon', c.oid, 'select') anon
+    from pg_class c where c.relnamespace = 'public'::regnamespace and c.relname = any($1) order by 1`, [['finance_agreement_list', 'finance_receipt_statement', 'finance_receivables']])
+  igual(v.map((x) => [x.v, x.opt.includes('security_invoker=true'), x.anon]),
+    [['finance_agreement_list', true, false], ['finance_receipt_statement', true, false], ['finance_receivables', true, false]], 'views')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

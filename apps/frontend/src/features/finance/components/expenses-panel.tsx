@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { MoreHorizontal, Plus, ReceiptText } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatCNJ, formatCurrency, formatDate, pluralize } from "@/lib/formatting";
@@ -22,10 +22,11 @@ import { listExpensesAction } from "@/server/domain/finance/actions";
 import type { ExpenseCategory, ExpenseDTO, ExpenseStatus } from "@/server/domain/finance/dto";
 import { EXPENSE_CATEGORIES, EXPENSE_STATUSES } from "@/server/domain/finance/schemas";
 import { EXPENSE_CATEGORY_LABEL, EXPENSE_STATUS_LABEL, EXPENSE_STATUS_TONE } from "../labels";
-import { EXPENSE_PAGE_SIZE, expenseQueryToInput, expenseQueryToSearchParams, withFinanceTab, type ExpenseListQuery, type FinanceTab } from "../list-query";
+import { DEFAULT_EXPENSE_QUERY, EXPENSE_PAGE_SIZE, expenseQueryToInput, expenseQueryToSearchParams, withFinanceTab, type ExpenseListQuery, type FinanceTab } from "../list-query";
 import { useFinanceActions } from "../use-finance-actions";
 import { ExpenseDialog, MarkExpensePaidDialog } from "./expense-dialogs";
 import { ReasonDialog } from "./finance-dialogs";
+import { PeriodFilter } from "./period-filter";
 
 const CATEGORY_OPTIONS = EXPENSE_CATEGORIES.map((c) => ({ value: c, label: EXPENSE_CATEGORY_LABEL[c] }));
 const STATUS_OPTIONS = EXPENSE_STATUSES.map((s) => ({ value: s, label: EXPENSE_STATUS_LABEL[s] }));
@@ -34,8 +35,9 @@ type Modal = { kind: "new" } | { kind: "edit"; expense: ExpenseDTO } | { kind: "
 
 /**
  * Despesas (ADMIN): de um processo (aba Financeiro do processo) ou todas (aba
- * Despesas do Financeiro). Filtros e páginas no servidor. Despesa nunca é
- * apagada: cancelar exige motivo e ela fica no histórico.
+ * Despesas do Financeiro). Categoria, situação e período (data da despesa)
+ * filtrados e paginados no servidor. Despesa nunca é apagada: cancelar exige
+ * motivo e ela fica no histórico.
  */
 export function ExpensesPanel({
   initialQuery,
@@ -45,6 +47,7 @@ export function ExpensesPanel({
   urlTab,
   title = "Despesas",
   description = "Custas, advogado contratado, perícia, audiência e outras despesas dos processos.",
+  exportAction,
 }: {
   initialQuery: ExpenseListQuery;
   initialResult: ActionResult<Page<ExpenseDTO>>;
@@ -54,6 +57,8 @@ export function ExpensesPanel({
   urlTab?: FinanceTab;
   title?: string;
   description?: string;
+  /** EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (a infraestrutura vem de outro pacote de trabalho). */
+  exportAction?: ReactNode;
 }) {
   const canManage = usePermission("finance.manage");
   const scope = processId ? { processId } : {};
@@ -70,7 +75,7 @@ export function ExpensesPanel({
   const reload = useCallback(() => undefined, []);
   const actions = useFinanceActions();
   const page = result.ok ? result.data : undefined;
-  const filtered = !!(query.category || query.status);
+  const filtered = !!(query.category || query.status || query.from || query.to);
 
   const newButton = canManage ? (
     <Button size="sm" icon={<Plus className="size-4" aria-hidden />} onClick={() => setModal({ kind: "new" })}>
@@ -85,26 +90,36 @@ export function ExpensesPanel({
         description={description}
         actions={
           <div className="flex items-center gap-2">
-            <Select
-              aria-label="Categoria da despesa"
-              placeholder="Todas as categorias"
-              options={CATEGORY_OPTIONS}
-              value={query.category}
-              onChange={(e) => setQuery({ ...query, category: e.target.value as ExpenseCategory | "", page: 1 })}
-              className="h-8 w-[190px] text-[12.5px]"
-            />
-            <Select
-              aria-label="Situação da despesa"
-              placeholder="Todas as situações"
-              options={STATUS_OPTIONS}
-              value={query.status}
-              onChange={(e) => setQuery({ ...query, status: e.target.value as ExpenseStatus | "", page: 1 })}
-              className="h-8 w-[160px] text-[12.5px]"
-            />
+            {/* EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (prop exportAction). */}
+            {exportAction}
             {newButton}
           </div>
         }
       />
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-5 py-3" role="search" aria-label="Filtrar despesas">
+        <Select
+          aria-label="Categoria da despesa"
+          placeholder="Todas as categorias"
+          options={CATEGORY_OPTIONS}
+          value={query.category}
+          onChange={(e) => setQuery({ ...query, category: e.target.value as ExpenseCategory | "", page: 1 })}
+          className="w-[200px]"
+        />
+        <Select
+          aria-label="Situação da despesa"
+          placeholder="Todas as situações"
+          options={STATUS_OPTIONS}
+          value={query.status}
+          onChange={(e) => setQuery({ ...query, status: e.target.value as ExpenseStatus | "", page: 1 })}
+          className="w-[180px]"
+        />
+        <PeriodFilter label="Data da despesa" from={query.from} to={query.to} onChange={(from, to) => setQuery({ ...query, from, to, page: 1 })} />
+        {filtered && (
+          <Button variant="ghost" onClick={() => setQuery(DEFAULT_EXPENSE_QUERY)}>
+            Limpar filtros
+          </Button>
+        )}
+      </div>
       <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-60")}>
         {!result.ok ? (
           <ActionErrorState error={result} onRetry={retry} title="Não foi possível carregar as despesas." />

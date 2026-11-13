@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronRight, Scale } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatCNJ, formatCurrency, pluralize } from "@/lib/formatting";
@@ -42,7 +42,16 @@ const href = (p: ProcessFinanceDTO) => `/processos/${p.legalProcessId}?aba=finan
  * process_finance_overview). Busca, filtros, ordem e página no servidor e na
  * URL (`?aba=processos`). Cada linha abre a aba Financeiro do processo.
  */
-export function ProcessFinanceTable({ initialQuery, initialResult }: { initialQuery: ProcessFinanceListQuery; initialResult: ActionResult<Page<ProcessFinanceDTO>> }) {
+export function ProcessFinanceTable({
+  initialQuery,
+  initialResult,
+  exportAction,
+}: {
+  initialQuery: ProcessFinanceListQuery;
+  initialResult: ActionResult<Page<ProcessFinanceDTO>>;
+  /** EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (a infraestrutura vem de outro pacote de trabalho). */
+  exportAction?: ReactNode;
+}) {
   const router = useRouter();
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
@@ -57,7 +66,12 @@ export function ProcessFinanceTable({ initialQuery, initialResult }: { initialQu
 
   return (
     <Panel>
-      <PanelHeader title="Financeiro por processo" description="Valor da causa, honorários (escritório × parceiro), contratado, recebido, despesas e resultado de cada processo." />
+      <PanelHeader
+        title="Financeiro por processo"
+        description="Valor da causa, honorários (escritório × parceiro), contratado, recebido, despesas e resultado de cada processo."
+        /* EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (prop exportAction). */
+        actions={exportAction}
+      />
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3" role="search" aria-label="Filtrar processos">
         <SearchInput
           aria-label="Buscar por cliente, título ou número CNJ"
