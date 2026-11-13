@@ -28,3 +28,6 @@ __pycache__/
 /docs/agentes/clonagem/*
 !/docs/agentes/clonagem/README.md
 !/docs/agentes/clonagem/contrato-dos-clones.md
+
+# Cópias de trabalho dos agentes do Claude Code (só deste computador)
+.claude/worktrees/
