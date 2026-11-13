@@ -97,7 +97,10 @@ function InactivateDialog({
   );
 }
 
-/** Exclusão: confirmação forte. Processos NÃO são excluídos. */
+/**
+ * Exclusão: confirmação forte. É exclusão lógica: nada além do cadastro muda
+ * (casos, processos, prazos e documentos ficam) e o ADMIN restaura pela Lixeira.
+ */
 function DeleteDialog({
   client,
   onClose,
@@ -136,7 +139,7 @@ function DeleteDialog({
             disabled={typed.trim().toUpperCase() !== CONFIRM_WORD}
             onClick={confirm}
           >
-            Excluir definitivamente
+            Excluir cliente
           </Button>
         </>
       }
@@ -148,10 +151,17 @@ function DeleteDialog({
           <strong>Inativar</strong>: o cadastro continua no histórico e
           pesquisável.
         </p>
-        <Callout tone="warning" title="Processos vinculados não são excluídos">
-          Cliente e processo são independentes. Se houver processos deste cliente, eles continuam no sistema com o alerta “Cliente
-          associado removido — revisão necessária” até que outro cliente seja vinculado.
+        <Callout tone="warning" title="O que acontece ao excluir">
+          <ul className="list-disc space-y-1 pl-4">
+            <li>O cliente sai da lista e a ficha dele deixa de abrir. Para o parceiro, o cliente deixa de aparecer.</li>
+            <li>Casos, processos, prazos e documentos não são excluídos nem alterados: continuam nas suas listas, com o nome do cliente.</li>
+            <li>O CPF/CNPJ continua reservado para este cadastro. Para atender a pessoa de novo, restaure o cliente em vez de cadastrar outra vez.</li>
+          </ul>
         </Callout>
+        <p className="text-muted">
+          Dá para desfazer: um administrador restaura o cadastro em <strong className="text-foreground">Configurações</strong>, na{" "}
+          <strong className="text-foreground">Lixeira</strong>. A exclusão fica registrada na auditoria.
+        </p>
         <Field
           label={`Para confirmar, digite ${CONFIRM_WORD}`}
           requirement="required"
@@ -231,8 +241,9 @@ export function ClientLifecycleActions({ client }: { client: Client }) {
                 Ações perigosas
               </h2>
               <p className="mt-0.5 text-[12.5px] text-muted">
-                Excluir remove o cliente da lista. Processos vinculados não são
-                excluídos e passam a exigir revisão do vínculo.
+                Excluir tira o cliente da lista. Casos, processos e documentos
+                não são excluídos. Dá para restaurar pela Lixeira, em
+                Configurações.
               </p>
             </div>
             <Button

@@ -26,6 +26,11 @@ export async function listClientsAction(input: unknown) {
   return runAction({ name: "clients.list", schema: listClientsSchema, input, handler: service.listClients });
 }
 
+/** Planilha de clientes com os filtros da lista (só ADMIN; fica na auditoria). */
+export async function exportClientsAction(input: unknown) {
+  return runAction({ name: "clients.export", permission: "data.export", schema: listClientsSchema, input, handler: service.exportClients });
+}
+
 export async function listRelatedClientsAction(input: unknown) {
   return runAction({ name: "clients.related", schema: listRelatedClientsSchema, input, handler: service.listRelatedClients });
 }

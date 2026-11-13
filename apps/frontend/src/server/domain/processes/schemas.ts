@@ -37,7 +37,7 @@ export type ProcessDeadlineFilter = (typeof PROCESS_DEADLINE_FILTERS)[number];
 
 export const listProcessesSchema = pageInputSchema
   .extend({
-    /** CNJ (só dígitos, prefixo, com ou sem máscara) ou trecho do título. */
+    /** Trecho do número CNJ (só dígitos, com ou sem máscara) ou trecho do título. */
     q: z.string().trim().max(120).optional(),
     status: z.enum(PROCESS_STATUSES).optional(),
     clientId: zUuid().optional(),

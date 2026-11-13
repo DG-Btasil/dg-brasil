@@ -3,8 +3,10 @@ import { can } from "@/lib/permissions";
 import { isPartner, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { forbidden, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
+import { collectForExport, exportCsv, mapChunks, type ExportFileDTO } from "@/server/domain/exports/service";
 import { deadlineInsertRow } from "./deadlines/mappers";
 import type { ProcessCreatedDTO, ProcessDetailDTO, ProcessEventDTO, ProcessListItem, ProcessPartyDTO, ProcessStatusCountDTO, ProcessSummaryDTO } from "./dto";
+import { processExportColumns, type ProcessExportRow } from "./export";
 import {
   activeProcessTotal,
   eventFromRow,
@@ -64,32 +66,76 @@ async function requireProcess(ctx: ServiceContext, id: string) {
 /* Processos                                                           */
 /* ------------------------------------------------------------------ */
 
+/** Filtros da lista como o repositório espera (os mesmos na tela e na exportação). */
+function processFilters(ctx: ServiceContext, input: ListProcessesInput): repo.ProcessFilters {
+  const scope = scopeOf(ctx);
+  return {
+    q: input.q,
+    status: input.status,
+    clientId: input.clientId,
+    caseId: input.caseId,
+    // Parceiro não filtra por responsável interno; a RLS já limita aos casos dele.
+    responsibleUserId: scope === "INTERNAL" ? input.responsibleUserId : undefined,
+    phase: input.phase,
+    court: input.court,
+    technicalOrigin: input.technicalOrigin,
+    caseOriginOrganizationId: scope === "INTERNAL" ? input.caseOriginOrganizationId : undefined,
+    // Prazos são só da equipe interna (RLS): parceiro nem chega a filtrar por eles.
+    openDeadlineBefore: scope === "INTERNAL" && input.deadline ? deadlineCutoff(input.deadline) : undefined,
+  };
+}
+
 export async function listProcesses(ctx: ServiceContext, input: ListProcessesInput): Promise<Page<ProcessListItem>> {
   requirePermission(ctx, "processes.view");
   const scope = scopeOf(ctx);
   const viewer = { surface: scope, canViewCaseValue: canViewCaseValue(ctx) } as const;
-  const { rows, total } = await repo.listProcesses(
-    ctx.db,
-    repo.processColumns(scope, viewer.canViewCaseValue),
-    {
+  const { rows, total } = await repo.listProcesses(ctx.db, repo.processColumns(scope, viewer.canViewCaseValue), processFilters(ctx, input), input, {
+    column: input.column,
+    ascending: input.ascending,
+  });
+  const items = rows.map((r) => listItemFromRow(r, viewer));
+  return toPage(scope === "INTERNAL" ? await withNextDeadline(ctx, items) : items, total, input);
+}
+
+/**
+ * Planilha de processos (ADMIN, `data.export`): os MESMOS filtros e ordem da
+ * lista, com o próximo prazo em aberto e o nome do responsável. Fica na
+ * auditoria (tipo, filtros e quantidade de linhas; nunca o conteúdo).
+ */
+export async function exportProcesses(ctx: ServiceContext, input: ListProcessesInput): Promise<ExportFileDTO> {
+  requireInternal(ctx);
+  requirePermission(ctx, "data.export");
+  const viewer = { surface: "INTERNAL", canViewCaseValue: canViewCaseValue(ctx) } as const;
+  const columns = repo.processColumns("INTERNAL", viewer.canViewCaseValue);
+  const filters = processFilters(ctx, input);
+  const sort = { column: input.column, ascending: input.ascending };
+  const { rows, total, truncated } = await collectForExport((page) => repo.listProcesses(ctx.db, columns, filters, page, sort));
+  const items = rows.map((r) => listItemFromRow(r, viewer));
+  // Próximo prazo e responsável em blocos de 100 (os ids vão na URL da consulta).
+  const withDeadlines = await mapChunks(items, 100, (part) => withNextDeadline(ctx, part));
+  const responsibleIds = [...new Set(items.map((i) => i.responsibleUserId).filter((id): id is string => !!id))];
+  const names = new Map((await mapChunks(responsibleIds, 100, (ids) => repo.listProfileNames(ctx.db, ids))).map((p) => [p.id, p.full_name ?? ""]));
+  const exportRows: ProcessExportRow[] = withDeadlines.map((i) => ({ ...i, responsibleName: i.responsibleUserId ? names.get(i.responsibleUserId) : undefined }));
+  return exportCsv(ctx, {
+    kind: "processes",
+    fileName: "processos",
+    columns: processExportColumns(viewer.canViewCaseValue),
+    rows: exportRows,
+    filters: {
       q: input.q,
       status: input.status,
       clientId: input.clientId,
       caseId: input.caseId,
-      // Parceiro não filtra por responsável interno; a RLS já limita aos casos dele.
-      responsibleUserId: scope === "INTERNAL" ? input.responsibleUserId : undefined,
+      responsibleUserId: input.responsibleUserId,
       phase: input.phase,
       court: input.court,
       technicalOrigin: input.technicalOrigin,
-      caseOriginOrganizationId: scope === "INTERNAL" ? input.caseOriginOrganizationId : undefined,
-      // Prazos são só da equipe interna (RLS): parceiro nem chega a filtrar por eles.
-      openDeadlineBefore: scope === "INTERNAL" && input.deadline ? deadlineCutoff(input.deadline) : undefined,
+      caseOriginOrganizationId: input.caseOriginOrganizationId,
+      deadline: input.deadline,
     },
-    input,
-    { column: input.column, ascending: input.ascending },
-  );
-  const items = rows.map((r) => listItemFromRow(r, viewer));
-  return toPage(scope === "INTERNAL" ? await withNextDeadline(ctx, items) : items, total, input);
+    total,
+    truncated,
+  });
 }
 
 /**
@@ -252,7 +298,12 @@ export async function updateProcess(ctx: ServiceContext, input: UpdateProcessInp
   ctx.log.info("process.updated", { processId: input.id });
 }
 
-/** Exclusão lógica (ADMIN; o trigger também recusa os demais). Prazos e movimentações ficam. */
+/**
+ * Exclusão lógica (ADMIN; o trigger também recusa os demais). Prazos e
+ * movimentações ficam. O processo volta pela Lixeira (server/domain/trash,
+ * migration 066); o número CNJ fica com ele até alguém cadastrar esse número
+ * de novo.
+ */
 export async function removeProcess(ctx: ServiceContext, id: string): Promise<void> {
   requireInternal(ctx);
   requirePermission(ctx, "processes.delete");

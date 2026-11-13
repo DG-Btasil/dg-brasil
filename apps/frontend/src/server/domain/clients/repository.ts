@@ -63,6 +63,24 @@ export async function listDirectory(
   return { rows: (data ?? []) as ClientDirectoryRow[], total: count ?? 0 };
 }
 
+/** Contatos e endereço principais, para a exportação (até 100 ids por chamada: vai na URL). */
+export interface ClientExportExtraRow {
+  id: string;
+  client_contacts: { type: string; value: string; is_primary: boolean }[] | null;
+  client_addresses: { city: string | null; state: string | null; is_primary: boolean }[] | null;
+}
+
+export async function listExportExtras(db: SupabaseClient, ids: string[]): Promise<ClientExportExtraRow[]> {
+  if (ids.length === 0) return [];
+  return (unwrap(await db.from("clients").select("id, client_contacts(type, value, is_primary), client_addresses(city, state, is_primary)").in("id", ids)) ?? []) as ClientExportExtraRow[];
+}
+
+/** Nomes dos escritórios (origem do cadastro), para a exportação. */
+export async function listOrganizationNames(db: SupabaseClient): Promise<Map<string, string>> {
+  const rows = (unwrap(await db.from("organizations").select("id, name")) ?? []) as { id: string; name: string }[];
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
 /**
  * Página de clientes com relacionamento ATIVO com a organização: primeiro a
  * página de relacionamentos, depois as linhas do diretório desses clientes

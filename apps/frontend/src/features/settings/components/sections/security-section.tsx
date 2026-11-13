@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import { KeyRound, ShieldCheck, Smartphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
+import { TrashLinkPanel } from "@/features/trash/components/trash-page";
 import { SectionHeader } from "../section-header";
 import { AuditLog } from "./audit-log";
 
@@ -42,6 +43,9 @@ export function SecuritySection() {
           </ul>
         </PanelBody>
       </Panel>
+
+      {/* Lixeira: restaurar o que foi excluído (a seção é só de ADMIN). */}
+      <TrashLinkPanel />
 
       <AuditLog />
     </div>

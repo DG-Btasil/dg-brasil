@@ -19,7 +19,9 @@ import {
   UNNAMED_PROCESS,
   type ProcessRow,
 } from "./mappers";
-import { likePattern, orQuoted, processColumns, searchTarget, titleSearchFilter } from "./repository";
+import { buildCsv } from "@/server/domain/exports/csv";
+import { processExportColumns, type ProcessExportRow } from "./export";
+import { cnjPattern, likePattern, orQuoted, processColumns, searchTarget, titleSearchFilter } from "./repository";
 const KEY = "11111111-1111-4111-8111-111111111111";
 
 import {
@@ -341,5 +343,54 @@ describe("repositório — partes puras", () => {
     const pattern = likePattern('Maria, "x"');
     expect(titleSearchFilter(pattern, [])).toBe(`title.ilike.${orQuoted(pattern)}`);
     expect(titleSearchFilter(pattern, [CASE, CLIENT])).toBe(`title.ilike."%Maria, \\"x\\"%",legal_case_id.in.(${CASE},${CLIENT})`);
+  });
+
+  it("número CNJ casa por QUALQUER trecho, com ou sem máscara (não só pelo começo)", () => {
+    // O fim do número, o ano com o tribunal, o número inteiro com máscara: tudo vira "contém estes dígitos".
+    expect(cnjPattern("8190001")).toBe("%8190001%");
+    const masked = searchTarget("56.2026.8.19");
+    expect(masked).toEqual({ kind: "cnj", digits: "562026819" });
+    expect(cnjPattern(masked?.kind === "cnj" ? masked.digits : "")).toBe("%562026819%");
+    expect(cnjPattern("0001234-56.2026.8.19.0001")).toBe("%00012345620268190001%");
+  });
+});
+
+describe("planilha de processos", () => {
+  const item: ProcessExportRow = {
+    id: "p1",
+    legalCaseId: CASE,
+    clientId: CLIENT,
+    clientName: "Maria Teste",
+    caseTitle: "Consignado Maria",
+    origin: "MANUAL",
+    cnj: "00012345620268190001",
+    title: "Maria x Banco",
+    court: "TJRJ",
+    state: "RJ",
+    status: "ACTIVE",
+    phase: "APPEAL",
+    distributionDate: "2026-03-05",
+    caseValue: 15000.5,
+    nextDeadline: { id: "d1", title: "Réplica", dueAt: "2026-12-03T21:00:00Z", dueDateLocal: "2026-12-03" },
+    responsibleName: "Lucas Advogado",
+    createdAt: "2026-10-01T15:00:00Z",
+    updatedAt: "2026-11-13T15:00:00Z",
+  };
+
+  it("número CNJ com máscara (o Excel não o estraga), datas dd/mm/aaaa, valor com vírgula, próximo prazo e responsável", () => {
+    const lines = buildCsv(processExportColumns(true), [item]).split("\r\n");
+    expect(lines[0]).toBe("Número CNJ;Processo;Cliente;Caso;Tribunal;UF;Classe;Situação;Fase;Origem do cadastro;Distribuição;Valor da causa;Próximo prazo;Prazo;Responsável;Cadastrado em;Atualizado em");
+    const cells = lines[1]?.split(";") ?? [];
+    expect(cells[0]).toBe("0001234-56.2026.8.19.0001");
+    expect([cells[1], cells[2], cells[3], cells[4], cells[5]]).toEqual(["Maria x Banco", "Maria Teste", "Consignado Maria", "TJRJ", "RJ"]);
+    expect([cells[10], cells[11], cells[12], cells[13], cells[14], cells[15]]).toEqual(["05/03/2026", "15000,50", "03/12/2026", "Réplica", "Lucas Advogado", "01/10/2026"]);
+  });
+
+  it("sem permissão para o valor da causa, a coluna nem existe; processo sem número e sem prazo sai em branco", () => {
+    const lines = buildCsv(processExportColumns(false), [{ ...item, cnj: undefined, nextDeadline: undefined, caseValue: undefined, responsibleName: undefined }]).split("\r\n");
+    expect(lines[0]).not.toContain("Valor da causa");
+    expect(lines[0]?.split(";")).toHaveLength(16);
+    const cells = lines[1]?.split(";") ?? [];
+    expect([cells[0], cells[11], cells[12], cells[13]]).toEqual(["", "", "", ""]);
   });
 });

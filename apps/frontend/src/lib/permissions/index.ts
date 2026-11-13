@@ -106,6 +106,9 @@ export const OWNER_PERMISSIONS = [
   "settings.security.view",
   "settings.notifications.edit",
   "audit.view",
+  // Lixeira (restaurar excluídos) e exportação de planilhas: só ADMIN — o banco (066) também confere.
+  "trash.manage",
+  "data.export",
   // Ferramentas da demonstração (mocks): só ADMIN, até a 4.3 trocar os mocks.
   "demo.tools",
 ] as const;

@@ -59,8 +59,16 @@ interface ClientPartnerBase {
 
 export type ClientDetailDTO = { surface: "INTERNAL"; client: ClientInternalDTO } | { surface: "PARTNER"; client: ClientPartnerDTO };
 
-/** Consulta de CPF/CNPJ. Para o parceiro, EXISTS não traz id, nome nem escritório. */
-export type ClientLookupDTO = { status: "NOT_FOUND" } | { status: "FOUND"; clientId: ID } | { status: "ALREADY_RELATED"; clientId: ID } | { status: "EXISTS" };
+/**
+ * Consulta de CPF/CNPJ. Para o parceiro, EXISTS não traz id, nome nem escritório.
+ * DELETED (só equipe interna): o CPF/CNPJ é de um cliente que está na Lixeira.
+ */
+export type ClientLookupDTO =
+  | { status: "NOT_FOUND" }
+  | { status: "FOUND"; clientId: ID }
+  | { status: "ALREADY_RELATED"; clientId: ID }
+  | { status: "EXISTS" }
+  | { status: "DELETED" };
 
 /** Resultado da edição do bloco societário (só contagens). */
 export interface CompanyPeopleResultDTO {

@@ -59,8 +59,8 @@ export function useClientLifecycleActions() {
         tone: "warning",
         title: "Cliente excluído",
         description: affected
-          ? `${affected === 1 ? "1 processo foi mantido" : `${affected} processos foram mantidos`} com vínculo pendente. Veja os alertas.`
-          : "Nenhum processo estava vinculado.",
+          ? `${affected === 1 ? "1 processo do cliente continua" : `${affected} processos do cliente continuam`} na lista de processos. Para desfazer, restaure o cliente na Lixeira, em Configurações.`
+          : "Para desfazer, restaure o cliente na Lixeira, em Configurações.",
       });
       return true;
     },
