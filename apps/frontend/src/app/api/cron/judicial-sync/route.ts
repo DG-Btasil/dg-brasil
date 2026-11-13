@@ -39,8 +39,18 @@ function authorized(request: Request): boolean {
 }
 
 export async function GET(request: Request) {
-  if (!authorized(request)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!process.env.DG_WORKER_DB_URL) return NextResponse.json({ skipped: "DG_WORKER_DB_URL ausente" });
+  if (!authorized(request)) {
+    // Deixa rastro (sem o segredo): servidor sem CRON_SECRET é erro de configuração;
+    // segredo diferente do que o agendador manda também para a captura.
+    if (!process.env.CRON_SECRET) log.error("judicial.cron_misconfigured", { missing: "CRON_SECRET" });
+    else log.warn("judicial.cron_unauthorized", { hasAuthorization: request.headers.has("authorization") });
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (!process.env.DG_WORKER_DB_URL) {
+    // Antes respondia 200 "skipped" e ninguém ficava sabendo que a captura não rodou.
+    log.error("judicial.cron_misconfigured", { missing: "DG_WORKER_DB_URL" });
+    return NextResponse.json({ error: "misconfigured" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  }
   const started = Date.now();
   // ?only=datajud: lote só do DataJud (agendador do banco, sem OAB pendente no dia).
   const onlyDatajud = new URL(request.url).searchParams.get("only") === "datajud";

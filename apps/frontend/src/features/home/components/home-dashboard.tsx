@@ -21,6 +21,7 @@ import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
 import { AGENT_RUN_STATUS_LABEL, AGENT_RUN_STATUS_TONE } from "@/features/agent-runs/components/agent-runs-panel";
 import { ACTOR_TYPE_LABEL, actionLabel, eventDetail } from "@/features/audit/humanize";
 import { useOrganizationNames } from "@/features/directory/directory-context";
+import { JudicialCaptureAlert } from "@/features/judicial/components/judicial-capture-alert";
 import { maskCNPJ, maskCPF } from "@/lib/formatting";
 import type { InternalHomeData } from "../load";
 import { EntriesTrend, MetricsBoard } from "@/features/metrics/components/metrics-board";
@@ -65,6 +66,9 @@ export function HomeDashboard({ data, metrics }: { data: InternalHomeData; metri
           {data.officeName}
         </p>
       </header>
+
+      {/* Captura de publicações atrasada (integração judicial): só aparece quando há o que avisar. */}
+      <JudicialCaptureAlert className="mb-6" />
 
       <section aria-label="Indicadores do escritório" data-tour="home-kpis" className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat label="Casos ativos" value={num(k.activeCases)} icon={FolderOpen} href="/casos?situacao=ativos" hint="Em análise, aceitos e em andamento" />

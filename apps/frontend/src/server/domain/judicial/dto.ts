@@ -40,6 +40,27 @@ export interface CourtCalendarDayDTO {
   description: string;
 }
 
+/** Estado da captura do DJEN no dia (062). */
+export interface JudicialCaptureDTO {
+  /** Dia de conferir: dia útil, depois das 08:00 de Brasília, com o DJEN ligado e OAB ativa. */
+  applies: boolean;
+  /** Há OAB sem busca concluída hoje (desde as 05:00). */
+  late: boolean;
+  reason?: "NOT_RUN" | "OAB_FAILED";
+  title?: string;
+  message?: string;
+  oabsTotal: number;
+  oabsPending: number;
+  lastSuccessAt?: ISODateTime;
+  /** O agendador do sistema não consegue chamar a busca em lotes (texto técnico, para quem cuida do sistema). */
+  configProblem?: string;
+  checkedAt: ISODateTime;
+}
+
+export interface JudicialCaptureAlertDTO extends JudicialCaptureDTO {
+  canManage: boolean;
+}
+
 export interface JudicialOverviewDTO {
   canManage: boolean;
   settings: {
@@ -52,10 +73,17 @@ export interface JudicialOverviewDTO {
     deadlineAutoApply?: boolean;
     /** Prazo do agente vira tarefa do processo para o orquestrador (061). Ausente em banco anterior à 061. */
     deadlineAutoTask?: boolean;
+    /** Horas que a publicação espera o agente antes de voltar para a equipe (062). Ausente em banco anterior à 062. */
+    agentTimeoutHours?: number;
     updatedAt: ISODateTime;
   };
   monitors: JudicialMonitorDTO[];
+  /** As 10 últimas rodadas (de qualquer tipo). */
   runs: JudicialRunDTO[];
+  /** A última busca completa (publicações e andamentos), mesmo fora das 10 últimas (062). */
+  lastFullRun?: Pick<JudicialRunDTO, "id" | "trigger" | "status" | "startedAt" | "finishedAt">;
+  /** Estado da captura do dia (062). Ausente em banco anterior à 062. */
+  capture?: JudicialCaptureDTO;
   processes: { tracked: number; paused: number; neverSynced: number; withError: number };
   publications: { pending: number; withAgent: number; doneLast30Days: number };
   agents: { id: string; name: string }[];
@@ -106,9 +134,12 @@ export interface JudicialPublicationDTO {
   triageNotes?: string;
   triagedBy?: string;
   triagedAt?: ISODateTime;
-  deadline?: { id: string; title: string; dueAt: ISODateTime; status: string };
+  /** dueOn: data local do vencimento (Brasília), 062. */
+  deadline?: { id: string; title: string; dueAt: ISODateTime; dueOn?: ISODate; status: string };
   agentRunId?: string;
   agentRunStatus?: string;
+  /** Desde quando a publicação está com o agente (062). */
+  agentRequestedAt?: ISODateTime;
   agentError?: string;
   pendingReviewId?: string;
   capturedAt: ISODateTime;
@@ -126,6 +157,8 @@ export interface DeadlineCountDTO {
 
 export interface JudicialPublicationDetailDTO extends JudicialPublicationDTO {
   suggestion: DeadlineCountDTO;
+  /** O agente tem como responder? (062). Ausente em banco anterior à 062. */
+  agentRuntime?: { executionEnabled: boolean; executorOnline: boolean; timeoutHours: number };
 }
 
 export interface PublicationPageDTO {

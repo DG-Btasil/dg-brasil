@@ -17,6 +17,11 @@ import { addDays, safeError } from "./text";
  *     guarda as de processos cadastrados (das outras, só conta). Limite de
  *     consultas (429): encerra o DJEN desta rodada; as OABs restantes ficam
  *     para o próximo lote.
+ *     Dias antigos (062): quando a OAB tem dia anterior à janela que ainda não
+ *     foi lido (captura parada por dias, OAB nova, OAB pausada), o banco manda
+ *     `from`. Depois da janela normal de TODAS as OABs, o tempo que sobra lê
+ *     esses dias em pedaços de até 7 dias, do mais antigo para o mais novo. O
+ *     que não couber fica para o próximo lote (a OAB continua na fila do banco).
  *  3. DataJud: processos cadastrados com CNJ, os há mais tempo sem leitura
  *     primeiro, em paralelo curto, até o tempo da rodada acabar.
  *  4. judicial_sync_finish: COMPLETED, PARTIAL (alguma falha) ou FAILED.
@@ -70,6 +75,10 @@ export interface JudicialSyncStats {
   datajudErrors: number;
   movementsNew: number;
   processesLeftForNextRun: number;
+  /** Pedaços de dias antigos (anteriores à janela normal) lidos com sucesso nesta rodada (062). */
+  djenBackfillWindows: number;
+  /** OABs que ainda têm dia antigo por ler depois desta rodada (062). */
+  djenBackfillLeftForNextRun: number;
 }
 
 export type JudicialSyncResult =
@@ -85,7 +94,12 @@ interface Begin {
   datajud_enabled?: boolean;
   lookback_days?: number;
   today?: string;
-  oabs?: { oab_number: string; oab_state: string }[];
+  /**
+   * `essential` (062): ler a janela normal desta OAB nesta rodada (ausente = sim,
+   * banco anterior à 062). `from`: dia mais antigo que ainda falta ler, quando é
+   * anterior à janela normal.
+   */
+  oabs?: { oab_number: string; oab_state: string; essential?: boolean; from?: string }[];
 }
 
 interface QueueItem {
@@ -98,8 +112,29 @@ interface QueueItem {
 const emptyStats = (): JudicialSyncStats => ({
   oabs: 0, oabsChecked: 0, oabsLeftForNextRun: 0, djenErrors: 0, publicationsFound: 0, publicationsNew: 0,
   publicationsDuplicate: 0, publicationsOutsideDgBrasil: 0, processesQueued: 0, processesRead: 0, processesNotFound: 0,
-  datajudErrors: 0, movementsNew: 0, processesLeftForNextRun: 0,
+  datajudErrors: 0, movementsNew: 0, processesLeftForNextRun: 0, djenBackfillWindows: 0, djenBackfillLeftForNextRun: 0,
 });
+
+/** Tamanho máximo, em dias, de cada pedaço de dias antigos (a janela normal vai até 7). */
+export const BACKFILL_CHUNK_DAYS = 7;
+
+/**
+ * Pedaços [início, fim] (datas inclusivas) que cobrem os dias antigos de uma
+ * OAB, de `from` até a véspera da janela normal (`baseFrom`), do mais antigo
+ * para o mais novo. Nunca mais de 31 dias para trás de `baseFrom`.
+ */
+export function backfillWindows(from: string, baseFrom: string, size = BACKFILL_CHUNK_DAYS): [string, string][] {
+  const out: [string, string][] = [];
+  const floor = addDays(baseFrom, -31);
+  let start = from < floor ? floor : from;
+  const last = addDays(baseFrom, -1);
+  while (start <= last && out.length < 10) {
+    const end = addDays(start, size - 1);
+    out.push([start, end > last ? last : end]);
+    start = addDays(start, size);
+  }
+  return out;
+}
 
 export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOptions): Promise<JudicialSyncResult> {
   const now = d.now ?? Date.now;
@@ -117,12 +152,17 @@ export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOpt
     if (begin.djen_enabled && begin.today) {
       const to = begin.today;
       const from = addDays(to, -Math.max(1, begin.lookback_days ?? 5));
-      const oabs = begin.oabs ?? [];
+      const all = begin.oabs ?? [];
+      const oabs = all.filter((o) => o.essential !== false);
+      const key = (o: { oab_number: string; oab_state: string }) => `${o.oab_state}${o.oab_number}`;
+      const fresh = new Set<string>();
       stats.oabs = oabs.length;
       let stop = false;
       let started = 0;
+      const noTime = () => outOfTime() || (d.deadline !== undefined && now() + (d.djenCallBudgetMs ?? 12_000) > d.deadline);
+      // 1. A janela normal de cada OAB: é ela que traz a publicação do dia.
       for (const o of oabs) {
-        if (stop || outOfTime() || (d.deadline !== undefined && now() + (d.djenCallBudgetMs ?? 12_000) > d.deadline)) {
+        if (stop || noTime()) {
           stats.oabsLeftForNextRun++;
           continue;
         }
@@ -131,6 +171,7 @@ export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOpt
           const items = await d.djen.byOab(o.oab_number, o.oab_state, from, to, d.deadline);
           const r = await d.db<{ found: number; new: number; duplicates: number; unmatched: number }>(
             "judicial_ingest_djen", [runId, o.oab_number, o.oab_state, from, to, true, null, items]);
+          fresh.add(key(o));
           stats.oabsChecked++;
           stats.publicationsFound += r.found ?? 0;
           stats.publicationsNew += r.new ?? 0;
@@ -151,6 +192,47 @@ export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOpt
           await d.db("judicial_ingest_djen", [runId, o.oab_number, o.oab_state, from, to, false, msg, null]).catch(() => undefined);
           if (e instanceof DjenError && e.rateLimited) stop = true;
         }
+      }
+      // 2. Dias antigos que faltam (062), só de OAB cuja janela normal está em
+      //    dia: nesta rodada ou, na agendada, mais cedo no mesmo dia.
+      for (const o of all) {
+        if (!o.from || o.from >= from) continue;
+        if (o.essential !== false && !fresh.has(key(o))) {
+          stats.djenBackfillLeftForNextRun++;
+          continue;
+        }
+        let done = true;
+        for (const [a, b] of backfillWindows(o.from, from)) {
+          if (stop || noTime()) {
+            done = false;
+            break;
+          }
+          try {
+            const items = await d.djen.byOab(o.oab_number, o.oab_state, a, b, d.deadline);
+            const r = await d.db<{ found: number; new: number; duplicates: number; unmatched: number }>(
+              "judicial_ingest_djen", [runId, o.oab_number, o.oab_state, a, b, true, null, items]);
+            stats.djenBackfillWindows++;
+            stats.publicationsFound += r.found ?? 0;
+            stats.publicationsNew += r.new ?? 0;
+            stats.publicationsDuplicate += r.duplicates ?? 0;
+            stats.publicationsOutsideDgBrasil += r.unmatched ?? 0;
+          } catch (e) {
+            done = false;
+            // Faltou tempo: o resto fica para o próximo lote, sem falha.
+            if (e instanceof DjenError && e.outOfTime) {
+              stop = true;
+              break;
+            }
+            const msg = safeError(e);
+            stats.djenErrors++;
+            errors.push(`OAB ${o.oab_state} ${o.oab_number} (dias antigos, ${a} a ${b}): ${msg}`);
+            d.log.warn("judicial.djen_backfill_failed", { oab: `${o.oab_state}${o.oab_number}`, from: a, to: b, error: msg });
+            await d.db("judicial_ingest_djen", [runId, o.oab_number, o.oab_state, a, b, false, msg, null]).catch(() => undefined);
+            if (e instanceof DjenError && e.rateLimited) stop = true;
+            break;
+          }
+        }
+        if (!done) stats.djenBackfillLeftForNextRun++;
       }
     }
 

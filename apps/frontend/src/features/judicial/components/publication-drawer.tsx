@@ -20,20 +20,25 @@ import {
 } from "@/server/domain/judicial/actions";
 import type { DeadlineCountDTO, JudicialPublicationDetailDTO } from "@/server/domain/judicial/dto";
 import { useToast } from "@/store/ui-store";
-import { DEADLINE_TYPE_OPTIONS, TRIAGE_LABEL, TRIAGE_TONE } from "../labels";
+import { agentBlocker, DEADLINE_TYPE_OPTIONS, TRIAGE_LABEL, TRIAGE_TONE, waitingFor } from "../labels";
 
 type Mode = "view" | "deadline" | "no-deadline" | "reopen";
 
 /**
  * Uma publicação do DJEN: teor, contagem sugerida e a decisão humana — criar o
  * prazo (já com a contagem em dias úteis) ou registrar que não há prazo.
- * Proposta do agente, quando houver, é decidida em Revisões.
+ * Proposta do agente, quando houver, é decidida em Revisões. Enquanto ela está
+ * com o agente, a tela diz há quanto tempo e se ele tem como responder; a
+ * pessoa pode assumir ("Tratar eu mesmo").
  */
 export function PublicationDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const can = useCan();
+  const failed = useActionFeedback();
+  const toast = useToast();
   const [data, setData] = useState<ActionResult<JudicialPublicationDetailDTO> | null>(null);
   const [mode, setMode] = useState<Mode>("view");
   const [version, setVersion] = useState(0);
+  const [takingOver, setTakingOver] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -50,6 +55,17 @@ export function PublicationDrawer({ id, onClose, onChanged }: { id: string; onCl
   };
   const p = data?.ok ? data.data : null;
   const canDecide = can("processes.edit");
+
+  // "Tratar eu mesmo": tira a publicação do agente e devolve para a triagem da equipe.
+  async function takeOver() {
+    if (takingOver) return;
+    setTakingOver(true);
+    const r = await callAction(() => decideJudicialPublicationAction({ id, action: "TAKE_OVER" }));
+    setTakingOver(false);
+    if (!r.ok) return failed(r, "Não foi possível assumir a publicação.");
+    toast({ tone: "success", title: "Publicação com você", description: "Ela voltou para “A tratar”. Crie o prazo ou registre que não há prazo." });
+    done();
+  }
 
   return (
     <Drawer open onOpenChange={(o) => !o && onClose()} width={680} title={p ? `Publicação — ${p.processTitle || p.caseTitle || formatCNJ(p.cnjNumber)}` : "Publicação"} description={p ? `${p.court ?? ""} · disponibilizada em ${formatDate(p.availableOn)}` : undefined}>
@@ -107,7 +123,7 @@ export function PublicationDrawer({ id, onClose, onChanged }: { id: string; onCl
               </div>
             </div>
 
-            <TriageBlock p={p} />
+            <TriageBlock p={p} onTakeOver={canDecide ? takeOver : undefined} takingOver={takingOver} />
 
             {canDecide && mode === "view" && (
               <div className="flex flex-wrap gap-2 border-t border-line pt-4">
@@ -136,24 +152,36 @@ export function PublicationDrawer({ id, onClose, onChanged }: { id: string; onCl
   );
 }
 
-function TriageBlock({ p }: { p: JudicialPublicationDetailDTO }) {
+function TriageBlock({ p, onTakeOver, takingOver }: { p: JudicialPublicationDetailDTO; onTakeOver?: () => void; takingOver: boolean }) {
   const by = useDirectoryUser(p.triagedBy);
+  const reviewLink = p.pendingReviewId ? (
+    <Link href={`/revisoes/${p.pendingReviewId}`} className="font-medium underline underline-offset-2">
+      decidir em Revisões
+    </Link>
+  ) : null;
   if (p.triageStatus === "WITH_AGENT") {
-    return (
-      <Callout tone="info" title="O agente está calculando o prazo">
-        A publicação virou um trabalho do agente no computador do escritório.
-        {p.pendingReviewId ? (
-          <>
-            {" "}
-            A proposta já chegou:{" "}
-            <Link href={`/revisoes/${p.pendingReviewId}`} className="font-medium underline underline-offset-2">
-              decidir em Revisões
-            </Link>
-            .
-          </>
-        ) : (
-          " O prazo que ele calcular entra na agenda do processo (ou aparece em Revisões, se o escritório preferiu revisar antes); você também pode criar o prazo aqui mesmo."
-        )}
+    const since = p.agentRequestedAt ? `Está com o agente há ${waitingFor(p.agentRequestedAt)}.` : "A publicação virou um trabalho do agente no computador do escritório.";
+    const takeOverButton = onTakeOver && (
+      <Button size="sm" variant="secondary" loading={takingOver} onClick={onTakeOver}>
+        Tratar eu mesmo
+      </Button>
+    );
+    if (reviewLink) {
+      return (
+        <Callout tone="info" title="A proposta do agente está em Revisões" action={takeOverButton}>
+          {since} O agente já respondeu: {reviewLink}. Enquanto a revisão estiver em aberto, a publicação fica aqui.
+        </Callout>
+      );
+    }
+    const blocker = agentBlocker(p.agentRuntime);
+    const timeout = p.agentRuntime ? ` Sem resposta em ${p.agentRuntime.timeoutHours} h, a publicação volta sozinha para “A tratar” e o responsável é avisado.` : "";
+    return blocker ? (
+      <Callout tone="warning" title="O agente não está respondendo agora" action={takeOverButton}>
+        {since} {blocker} Nenhum prazo nasce enquanto isso não for resolvido.{timeout} Para não esperar, trate você: “Tratar eu mesmo” ou crie o prazo abaixo.
+      </Callout>
+    ) : (
+      <Callout tone="info" title="O agente está calculando o prazo" action={takeOverButton}>
+        {since} O prazo que ele calcular entra na agenda do processo (ou aparece em Revisões, se o escritório preferiu revisar antes).{timeout} Você também pode criar o prazo aqui mesmo.
       </Callout>
     );
   }
@@ -165,7 +193,8 @@ function TriageBlock({ p }: { p: JudicialPublicationDetailDTO }) {
             <Link href={`/processos/${p.legalProcessId}?aba=prazos`} className="font-medium underline underline-offset-2">
               {p.deadline.title}
             </Link>{" "}
-            — vence em {formatEventTime(p.deadline.dueAt)}.{" "}
+            {/* Data local do prazo (Brasília): formatEventTime é para o passado e mostrava "vence em há -10 dias". */}
+            — vence em {formatDate(p.deadline.dueOn ?? p.deadline.dueAt)}.{" "}
           </>
         )}
         {p.triageNotes && <span className="block">{p.triageNotes}</span>}
@@ -175,7 +204,18 @@ function TriageBlock({ p }: { p: JudicialPublicationDetailDTO }) {
       </Callout>
     );
   }
-  return p.agentError ? <Callout tone="warning">{p.agentError}</Callout> : null;
+  // "A tratar": o motivo de ter voltado do agente e, se ele respondeu depois, a proposta que espera em Revisões.
+  if (!p.agentError && !reviewLink) return null;
+  return (
+    <div className="space-y-2">
+      {p.agentError && <Callout tone="warning">{p.agentError}</Callout>}
+      {reviewLink && (
+        <Callout tone="info" title="O agente respondeu: a proposta dele está em Revisões">
+          Antes de tratar aqui, veja o que ele propôs: {reviewLink}. Se ele propôs um prazo e você criar outro aqui, rejeite a proposta lá, para não ficarem dois prazos.
+        </Callout>
+      )}
+    </div>
+  );
 }
 
 function DeadlineForm({ p, onCancel, onDone }: { p: JudicialPublicationDetailDTO; onCancel: () => void; onDone: () => void }) {
@@ -224,7 +264,7 @@ function DeadlineForm({ p, onCancel, onDone }: { p: JudicialPublicationDetailDTO
         <Field label="Dias úteis" hint="15, 5…">
           {(a) => <Input {...a} type="number" min={1} max={120} value={days} onChange={(e) => recount(e.target.value)} />}
         </Field>
-        <Field label="Data do prazo" requirement="required" hint="Calculado; ajuste se o tribunal tiver feriado local não cadastrado.">
+        <Field label="Data do prazo" requirement="required" hint="Calculado. Ajuste se houver feriado na cidade do fórum: feriado municipal não entra no calendário.">
           {(a) => <Input {...a} type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} />}
         </Field>
       </div>
@@ -242,7 +282,8 @@ function DeadlineForm({ p, onCancel, onDone }: { p: JudicialPublicationDetailDTO
       <Field label="Observação" requirement="optional">
         {(a) => <Textarea {...a} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />}
       </Field>
-      {p.triageStatus === "WITH_AGENT" && <Callout tone="warning">O agente também está calculando um prazo para esta publicação. Se você criar aqui, confira depois se não ficaram dois prazos (ou rejeite a proposta dele em Revisões).</Callout>}
+      {p.triageStatus === "WITH_AGENT" && !p.pendingReviewId && <Callout tone="warning">O agente também está calculando um prazo para esta publicação. Se você criar aqui, a resposta dele vai para Revisões: rejeite a proposta lá, para não ficarem dois prazos.</Callout>}
+      {p.pendingReviewId && <Callout tone="warning">Há uma proposta do agente em Revisões para esta publicação. Se ela for de prazo e você criar outro aqui, rejeite a proposta lá, para não ficarem dois prazos.</Callout>}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
           Cancelar

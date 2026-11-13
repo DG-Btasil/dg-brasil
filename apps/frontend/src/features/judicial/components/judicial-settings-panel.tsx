@@ -20,9 +20,10 @@ import {
   deleteCourtCalendarDayAction, getJudicialOverviewAction, saveCourtCalendarDayAction, saveJudicialMonitorAction,
   saveJudicialSettingsAction, setJudicialMonitorActiveAction, syncJudicialNowAction,
 } from "@/server/domain/judicial/actions";
-import type { JudicialMonitorDTO, JudicialOverviewDTO } from "@/server/domain/judicial/dto";
+import type { CourtCalendarDayDTO, JudicialMonitorDTO, JudicialOverviewDTO } from "@/server/domain/judicial/dto";
 import { useToast } from "@/store/ui-store";
-import { RUN_SCOPE_LABEL, RUN_STATUS_LABEL, RUN_STATUS_TONE, runSummary } from "../labels";
+import { CALENDAR_HELP, RUN_SCOPE_LABEL, RUN_STATUS_LABEL, RUN_STATUS_TONE, runSummary } from "../labels";
+import { JudicialCaptureCallout } from "./judicial-capture-alert";
 import { CoverageDialog } from "./coverage-dialog";
 import { MonitorStatus } from "./monitor-status";
 
@@ -39,6 +40,7 @@ export function JudicialSettingsPanel() {
   const [syncing, setSyncing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [coverage, setCoverage] = useState<JudicialMonitorDTO | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
 
   useEffect(() => {
@@ -60,15 +62,20 @@ export function JudicialSettingsPanel() {
   }
 
   async function toggle(m: JudicialMonitorDTO) {
+    if (toggling) return;
+    setToggling(m.id);
     const r = await callAction(() => setJudicialMonitorActiveAction({ id: m.id, active: !m.active }));
+    setToggling(null);
     if (!r.ok) return failed(r, "Não foi possível alterar a OAB.");
+    toast(monitorToggledToast(m));
     reload();
   }
 
   if (!data) return <SkeletonRows rows={4} />;
   if (!data.ok) return <ActionErrorState error={data} title="Não foi possível ler a integração judicial." />;
   const d = data.data;
-  const last = d.runs.find((r) => r.scope === "ALL" && r.status !== "RUNNING");
+  // A última busca completa vem do servidor (062): entre as 10 últimas rodadas ela some depois de 10 lotes do DataJud.
+  const last = d.lastFullRun ?? d.runs.find((r) => r.scope === "ALL" && r.status !== "RUNNING");
   const own = d.monitors.filter((m) => m.organizationType === "OWNER");
   const partners = d.monitors.filter((m) => m.organizationType !== "OWNER");
 
@@ -91,6 +98,7 @@ export function JudicialSettingsPanel() {
           }
         />
         <PanelBody className="space-y-3">
+          {d.capture && <JudicialCaptureCallout capture={d.capture} canManage={d.canManage} detailed />}
           <DefinitionGrid
             columns={4}
             items={[
@@ -109,7 +117,7 @@ export function JudicialSettingsPanel() {
             ]}
           />
           <p className="text-[12px] text-muted">
-            Publicações: uma vez por dia, de manhã, revendo os últimos {d.settings.lookbackDays} dias (o DJEN libera parte das publicações com atraso). Andamentos: o DataJud atualiza a cópia pública com 1 a 3 semanas de atraso; quem traz a intimação a tempo é o DJEN.
+            Publicações: uma vez por dia, de manhã, revendo os últimos {d.settings.lookbackDays} dias (o DJEN libera parte das publicações com atraso). Se a busca ficar parada por alguns dias, ou a OAB for nova, os dias que faltaram são lidos depois (até 30 dias para trás). Andamentos: o DataJud atualiza a cópia pública com 1 a 3 semanas de atraso; quem traz a intimação a tempo é o DJEN.
           </p>
           {d.canManage && <SettingsForm overview={d} onSaved={reload} />}
         </PanelBody>
@@ -130,7 +138,7 @@ export function JudicialSettingsPanel() {
         {d.monitors.length === 0 ? (
           <EmptyState compact icon={Newspaper} title="Nenhuma OAB acompanhada." description="Cadastre a OAB de cada advogado do escritório para receber as publicações do DJEN." />
         ) : (
-          <MonitorTable rows={[...own, ...partners]} canManage={d.canManage} onToggle={toggle} onCoverage={setCoverage} />
+          <MonitorTable rows={[...own, ...partners]} canManage={d.canManage} onToggle={toggle} onCoverage={setCoverage} busyId={toggling} />
         )}
       </Panel>
 
@@ -191,13 +199,19 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
   const [auto, setAuto] = useState(s.deadlineAutoApply ?? false);
   const hasTask = s.deadlineAutoTask !== undefined;
   const [task, setTask] = useState(s.deadlineAutoTask ?? false);
+  // Banco anterior à 062 não devolve o tempo de espera: a tela não mostra o campo.
+  const hasTimeout = s.agentTimeoutHours !== undefined;
+  const [timeout, setTimeoutHours] = useState(String(s.agentTimeoutHours ?? 4));
+  const timeoutN = Number(timeout);
+  const timeoutOk = !hasTimeout || (Number.isInteger(timeoutN) && timeoutN >= 1 && timeoutN <= 72);
   const [saving, setSaving] = useState(false);
   const dirty = djen !== s.djenEnabled || datajud !== s.datajudEnabled || Number(lookback) !== s.lookbackDays || agent !== (s.deadlineAgentId ?? "")
-    || (hasAuto && auto !== s.deadlineAutoApply) || (hasTask && task !== s.deadlineAutoTask);
+    || (hasAuto && auto !== s.deadlineAutoApply) || (hasTask && task !== s.deadlineAutoTask) || (hasTimeout && timeoutN !== s.agentTimeoutHours);
 
   async function save() {
+    if (!timeoutOk) return;
     setSaving(true);
-    const r = await callAction(() => saveJudicialSettingsAction({ djenEnabled: djen, datajudEnabled: datajud, lookbackDays: Number(lookback), deadlineAgentId: agent || null, ...(hasAuto ? { deadlineAutoApply: auto } : {}), ...(hasTask ? { deadlineAutoTask: task } : {}) }));
+    const r = await callAction(() => saveJudicialSettingsAction({ djenEnabled: djen, datajudEnabled: datajud, lookbackDays: Number(lookback), deadlineAgentId: agent || null, ...(hasAuto ? { deadlineAutoApply: auto } : {}), ...(hasTask ? { deadlineAutoTask: task } : {}), ...(hasTimeout ? { agentTimeoutHours: timeoutN } : {}) }));
     setSaving(false);
     if (!r.ok) return failed(r, "Não foi possível salvar.");
     toast({ tone: "success", title: "Configuração salva" });
@@ -250,13 +264,22 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
               onChange={(e) => setTask(e.target.checked)}
             />
           )}
+          {hasTimeout && (
+            <Field
+              label="Tempo de espera pelo agente (horas)"
+              hint="Horas corridas. Sem prazo nem proposta nesse tempo (computador do escritório desligado, por exemplo), a publicação volta para “A tratar” e o responsável e os administradores são avisados."
+              error={timeoutOk ? undefined : "De 1 a 72 horas."}
+            >
+              {(a) => <Input {...a} type="number" min={1} max={72} step={1} value={timeout} disabled={!agent} onChange={(e) => setTimeoutHours(e.target.value)} className="max-w-[120px] tabular" />}
+            </Field>
+          )}
         </div>
         <Field label="Dias revistos" hint="A cada busca no DJEN.">
           {(a) => <Select {...a} value={lookback} onChange={(e) => setLookback(e.target.value)} options={[1, 2, 3, 4, 5, 6, 7].map((n) => ({ value: String(n), label: `${n} dia(s)` }))} />}
         </Field>
       </div>
       <div className="mt-3 flex justify-end">
-        <Button size="sm" disabled={!dirty} loading={saving} onClick={save}>
+        <Button size="sm" disabled={!dirty || !timeoutOk} loading={saving} onClick={save}>
           Salvar configuração
         </Button>
       </div>
@@ -264,14 +287,24 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
   );
 }
 
+/** Aviso de sucesso ao pausar ou retomar uma OAB (escritório e portal do parceiro). */
+export function monitorToggledToast(m: JudicialMonitorDTO) {
+  const oab = `OAB ${m.oabState} ${m.oabNumber}`;
+  return m.active
+    ? { tone: "success" as const, title: `${oab} pausada`, description: "As publicações desta OAB deixam de ser buscadas até você retomar." }
+    : { tone: "success" as const, title: `${oab} retomada`, description: "As publicações voltam a ser buscadas na próxima rodada, inclusive as dos dias em que ela ficou pausada (até 30 dias)." };
+}
+
 export function MonitorTable({
-  rows, canManage, onToggle, onCoverage, showOrganization = true,
+  rows, canManage, onToggle, onCoverage, showOrganization = true, busyId = null,
 }: {
   rows: JudicialMonitorDTO[];
   canManage: boolean;
   onToggle: (m: JudicialMonitorDTO) => void;
   onCoverage: (m: JudicialMonitorDTO) => void;
   showOrganization?: boolean;
+  /** OAB com alteração em envio: o botão dela gira e os outros esperam. */
+  busyId?: string | null;
 }) {
   return (
     <Table caption="OABs acompanhadas">
@@ -312,7 +345,7 @@ export function MonitorTable({
                   Cobertura
                 </Button>
                 {canManage && (
-                  <Button size="sm" variant="ghost" icon={m.active ? <Pause className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />} onClick={() => onToggle(m)}>
+                  <Button size="sm" variant="ghost" icon={m.active ? <Pause className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />} loading={busyId === m.id} disabled={busyId !== null} onClick={() => onToggle(m)}>
                     {m.active ? "Pausar" : "Retomar"}
                   </Button>
                 )}
@@ -397,7 +430,10 @@ function ResponsibleField({ value, onChange }: { value: string; onChange: (v: st
 
 function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO; onChanged: () => void }) {
   const failed = useActionFeedback();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [removing, setRemoving] = useState<CourtCalendarDayDTO | null>(null);
+  const [removingBusy, setRemovingBusy] = useState(false);
   const [court, setCourt] = useState("");
   const [day, setDay] = useState("");
   const [kind, setKind] = useState<"HOLIDAY" | "SUSPENSION">("HOLIDAY");
@@ -409,6 +445,7 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
     const r = await callAction(() => saveCourtCalendarDayAction({ court, day, kind, description }));
     setSaving(false);
     if (!r.ok) return failed(r, "Não foi possível salvar o dia.");
+    toast({ tone: "success", title: "Dia cadastrado", description: "Vale para as próximas contagens." });
     setOpen(false);
     setCourt("");
     setDay("");
@@ -416,9 +453,15 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
     onChanged();
   }
 
-  async function remove(id: string) {
-    const r = await callAction(() => deleteCourtCalendarDayAction({ id }));
+  // Remover muda a contagem dos próximos prazos: pede confirmação e não aceita o segundo clique.
+  async function confirmRemove() {
+    if (!removing || removingBusy) return;
+    setRemovingBusy(true);
+    const r = await callAction(() => deleteCourtCalendarDayAction({ id: removing.id }));
+    setRemovingBusy(false);
     if (!r.ok) return failed(r, "Não foi possível remover o dia.");
+    toast({ tone: "success", title: "Dia removido", description: `${formatDate(removing.day)} volta a contar como dia útil nas próximas contagens.` });
+    setRemoving(null);
     onChanged();
   }
 
@@ -426,7 +469,7 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
     <Panel>
       <PanelHeader
         title="Calendário de prazos"
-        description="A contagem já pula fins de semana, feriados nacionais, a Sexta-feira Santa e o recesso de 20/12 a 20/01 (art. 220 do CPC). Cadastre aqui feriados locais e suspensões de cada tribunal. Sem o cadastro, a data calculada pode sair antes da real, nunca depois — e é sempre conferida por uma pessoa."
+        description={CALENDAR_HELP}
         actions={
           overview.canManage && (
             <Button size="sm" variant="secondary" icon={<CalendarX2 className="size-4" aria-hidden />} onClick={() => setOpen(true)}>
@@ -436,7 +479,7 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
         }
       />
       {overview.calendar.length === 0 ? (
-        <EmptyState compact title="Nenhum dia cadastrado." description="Ex.: 25/01 (aniversário de São Paulo) no TJSP; segunda e terça de Carnaval, se o tribunal suspender." />
+        <EmptyState compact title="Nenhum dia cadastrado." description="Ex.: 09/07 no TJSP (feriado estadual em São Paulo); segunda e terça de Carnaval, se o tribunal suspender os prazos. Feriado de uma cidade só não entra aqui." />
       ) : (
         <Table caption="Dias sem expediente cadastrados">
           <THead>
@@ -458,7 +501,7 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
                 </Td>
                 {overview.canManage && (
                   <Td className="text-right">
-                    <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => remove(c.id)}>
+                    <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" aria-hidden />} disabled={removingBusy} onClick={() => setRemoving(c)}>
                       Remover
                     </Button>
                   </Td>
@@ -468,11 +511,35 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
           </TBody>
         </Table>
       )}
+      {removing && (
+        <Dialog
+          open
+          size="sm"
+          onOpenChange={(o) => !o && !removingBusy && setRemoving(null)}
+          title="Remover dia do calendário"
+          description={`${formatDate(removing.day)} · ${removing.court ?? "todos os tribunais"} · ${removing.description}`}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setRemoving(null)} disabled={removingBusy}>
+                Cancelar
+              </Button>
+              <Button variant="danger" icon={<Trash2 className="size-4" aria-hidden />} loading={removingBusy} onClick={confirmRemove}>
+                Remover dia
+              </Button>
+            </>
+          }
+        >
+          <Callout tone="warning">
+            Este dia volta a contar como dia útil: as próximas contagens {removing.court ? `do ${removing.court}` : "de todos os tribunais"} podem vencer um dia antes. Prazos já criados não mudam. A remoção fica registrada na auditoria.
+          </Callout>
+        </Dialog>
+      )}
       {open && (
         <Dialog
           open
-          onOpenChange={(o) => !o && setOpen(false)}
+          onOpenChange={(o) => !o && !saving && setOpen(false)}
           title="Dia sem contagem de prazo"
+          description="Só feriado ou suspensão que vale para o tribunal inteiro."
           footer={
             <>
               <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -489,7 +556,7 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
               <Field label="Dia" requirement="required">
                 {(a) => <Input {...a} type="date" value={day} onChange={(e) => setDay(e.target.value)} />}
               </Field>
-              <Field label="Tribunal" hint="Sigla (TJSP, TRF3…). Vazio = todos.">
+              <Field label="Tribunal" hint="Sigla (TJSP, TRF3…). Vazio = todos os tribunais.">
                 {(a) => <Input {...a} value={court} onChange={(e) => setCourt(e.target.value.toUpperCase())} placeholder="TJSP" maxLength={15} />}
               </Field>
             </div>
@@ -499,8 +566,11 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
               )}
             </Field>
             <Field label="Motivo" requirement="required">
-              {(a) => <Input {...a} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="Aniversário da cidade de São Paulo" />}
+              {(a) => <Input {...a} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="Feriado estadual (Revolução Constitucionalista)" />}
             </Field>
+            <Callout tone="warning" title="O dia vale para todos os processos do tribunal">
+              Não cadastre feriado de uma cidade só: ele adiaria o prazo dos processos das outras cidades, e a data sairia depois da real. Para o feriado da cidade do fórum, ajuste a data na hora de criar o prazo.
+            </Callout>
             <Callout tone="info">Vale para as próximas contagens; prazos já criados não mudam.</Callout>
           </div>
         </Dialog>

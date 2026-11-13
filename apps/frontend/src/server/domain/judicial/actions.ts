@@ -21,6 +21,9 @@ const empty = z.object({}).default({});
 export async function getJudicialOverviewAction() {
   return runAction({ name: "judicial.overview", permission: "settings.integrations.view", schema: empty, input: {}, handler: (ctx) => service.getOverview(ctx) });
 }
+export async function getJudicialCaptureAlertAction() {
+  return runAction({ name: "judicial.capture_alert", permission: "settings.integrations.view", schema: empty, input: {}, handler: (ctx) => service.getCaptureAlert(ctx) });
+}
 export async function saveJudicialSettingsAction(input: unknown) {
   return runAction({ name: "judicial.settings", permission: "settings.integrations.manage", schema: settingsSchema, input, handler: (ctx, v) => service.saveSettings(ctx, v) });
 }

@@ -3,7 +3,7 @@ import { createLogger } from "@/server/core/logger";
 import { camel } from "@/server/domain/judicial/service";
 import { DatajudClient, DatajudError, normalizeDatajud } from "./datajud";
 import { DjenClient, DjenError, normalizeDjenItem, type DjenItem } from "./djen";
-import { runJudicialSync, type JudicialDbFunction, type JudicialSyncDeps } from "./sync";
+import { BACKFILL_CHUNK_DAYS, backfillWindows, runJudicialSync, type JudicialDbFunction, type JudicialSyncDeps } from "./sync";
 import { addDays, datajudAlias, fixCase, formatCnj, htmlToText, isValidCnj, parseDatajudDate } from "./text";
 
 vi.mock("server-only", () => ({}));
@@ -25,6 +25,13 @@ describe("texto e número do processo", () => {
     expect(htmlToText("Linha 1<br />Linha 2")).toBe("Linha 1\nLinha 2");
     expect(htmlToText("texto puro, sem marcação")).toBe("texto puro, sem marcação");
     expect(htmlToText(null)).toBe("");
+  });
+  it("entidades de espaço e invisíveis do DJEN não sobram no teor (&emsp;, &ensp;, &thinsp;, &zwnj;, &shy;, numéricas)", () => {
+    expect(htmlToText("&emsp;&emsp;Vistos.&ensp;Intime-se&thinsp;a parte&zwnj; autora&#8195;em 15&nbsp;dias.&shy;")).toBe("Vistos. Intime-se a parte autora em 15 dias.");
+    expect(htmlToText("<p>&emsp;Par&aacute;grafo 1</p><p>&emsp;&emsp;Par&aacute;grafo 2 &sup2; &frac12;</p>")).toBe("Parágrafo 1\nParágrafo 2 ² ½");
+    expect(htmlToText("zero​largura e espaço largo")).toBe("zerolargura e espaço largo");
+    // Entidade desconhecida fica como veio (não some texto).
+    expect(htmlToText("R&D &naoexiste; fim")).toBe("R&D &naoexiste; fim");
   });
   it("caixa estragada do DJEN é corrigida; caixa normal fica", () => {
     expect(fixCase("AçãO PENAL")).toBe("Ação penal");
@@ -354,6 +361,88 @@ describe("rodada", () => {
     const { d, calls } = deps({}, { busy: true, run_id: undefined });
     expect(await runJudicialSync(d, { trigger: "CRON" })).toEqual({ busy: true });
     expect(calls.map((c) => c.fn)).toEqual(["judicial_sync_begin"]);
+  });
+});
+
+describe("dias antigos por ler (062)", () => {
+  const ingests = (calls: { fn: JudicialDbFunction; args: unknown[] }[]) =>
+    calls.filter((c) => c.fn === "judicial_ingest_djen").map((c) => [c.args[1], c.args[3], c.args[4], c.args[5]]);
+  function deps(oabs: unknown[], over: Partial<JudicialSyncDeps> = {}) {
+    const calls: { fn: JudicialDbFunction; args: unknown[] }[] = [];
+    const d: JudicialSyncDeps = {
+      log: createLogger({ test: "judicial" }),
+      db: (async (fn: JudicialDbFunction, args: unknown[]) => {
+        calls.push({ fn, args });
+        if (fn === "judicial_sync_begin") return { busy: false, run_id: "run-1", djen_enabled: true, datajud_enabled: false, lookback_days: 5, today: "2026-11-13", oabs };
+        if (fn === "judicial_ingest_djen") return { ok: true, found: 1, new: 1, duplicates: 0, unmatched: 0 };
+        return null;
+      }) as JudicialSyncDeps["db"],
+      djen: { byOab: async () => [] as DjenItem[] },
+      datajud: { process: async () => ({ kind: "not_found" as const, message: "x" }) },
+      ...over,
+    };
+    return { d, calls };
+  }
+
+  it("pedaços de até 7 dias, do mais antigo para o mais novo, até a véspera da janela normal; nunca mais de 31 dias para trás", () => {
+    expect(backfillWindows("2026-10-14", "2026-11-08")).toEqual([
+      ["2026-10-14", "2026-10-20"], ["2026-10-21", "2026-10-27"], ["2026-10-28", "2026-11-03"], ["2026-11-04", "2026-11-07"]]);
+    expect(backfillWindows("2026-11-07", "2026-11-08")).toEqual([["2026-11-07", "2026-11-07"]]);
+    expect(backfillWindows("2026-11-08", "2026-11-08")).toEqual([]);
+    expect(backfillWindows("2026-01-01", "2026-11-08")[0][0]).toBe("2026-10-08");
+    expect(BACKFILL_CHUNK_DAYS).toBeLessThanOrEqual(7);
+  });
+  it("primeiro a janela normal de TODAS as OABs, depois os dias antigos de quem precisa (captura parada, OAB nova)", async () => {
+    const byOab = vi.fn(async () => [] as DjenItem[]);
+    const { d, calls } = deps([{ oab_number: "1", oab_state: "RJ", essential: true, from: "2026-10-30" }, { oab_number: "2", oab_state: "SP", essential: true }], { djen: { byOab } });
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect(ingests(calls)).toEqual([
+      ["1", "2026-11-08", "2026-11-13", true], ["2", "2026-11-08", "2026-11-13", true],
+      ["1", "2026-10-30", "2026-11-05", true], ["1", "2026-11-06", "2026-11-07", true]]);
+    expect([r.status, r.stats.oabs, r.stats.oabsChecked, r.stats.djenBackfillWindows, r.stats.djenBackfillLeftForNextRun, r.stats.publicationsNew]).toEqual(["COMPLETED", 2, 2, 2, 0, 4]);
+  });
+  it("OAB já conferida hoje (essential: false): só os dias antigos, sem repetir a janela normal", async () => {
+    const { d, calls } = deps([{ oab_number: "1", oab_state: "RJ", essential: false, from: "2026-11-05" }]);
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect(ingests(calls)).toEqual([["1", "2026-11-05", "2026-11-07", true]]);
+    expect([r.stats.oabs, r.stats.oabsChecked, r.stats.djenBackfillWindows]).toEqual([0, 0, 1]);
+  });
+  it("janela normal falhou: os dias antigos dessa OAB ficam para o próximo lote", async () => {
+    const byOab = vi.fn(async () => {
+      throw new DjenError("DJEN respondeu HTTP 503");
+    });
+    const { d, calls } = deps([{ oab_number: "1", oab_state: "RJ", essential: true, from: "2026-10-30" }], { djen: { byOab } });
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect(byOab).toHaveBeenCalledTimes(1);
+    expect(ingests(calls)).toEqual([["1", "2026-11-08", "2026-11-13", false]]);
+    expect([r.status, r.stats.djenErrors, r.stats.djenBackfillWindows, r.stats.djenBackfillLeftForNextRun]).toEqual(["PARTIAL", 1, 0, 1]);
+  });
+  it("faltou tempo no meio dos dias antigos: o que foi lido fica gravado, o resto vai para o próximo lote, sem falha", async () => {
+    let n = 0;
+    const byOab = vi.fn(async () => {
+      if (++n === 3) throw new DjenError("não coube", false, true);
+      return [] as DjenItem[];
+    });
+    const { d, calls } = deps([{ oab_number: "1", oab_state: "RJ", essential: true, from: "2026-10-20" }, { oab_number: "2", oab_state: "SP", essential: false, from: "2026-11-01" }], { djen: { byOab } });
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect(ingests(calls)).toEqual([["1", "2026-11-08", "2026-11-13", true], ["1", "2026-10-20", "2026-10-26", true]]);
+    expect([r.status, r.stats.djenErrors, r.stats.djenBackfillWindows, r.stats.djenBackfillLeftForNextRun]).toEqual(["COMPLETED", 0, 1, 2]);
+  });
+  it("falha num pedaço antigo: registra a falha daquele período e não insiste na OAB nesta rodada; a janela normal continua valendo", async () => {
+    const byOab = vi.fn(async (_n: string, _uf: string, from: string) => {
+      if (from === "2026-10-30") throw new DjenError("DJEN respondeu HTTP 500");
+      return [] as DjenItem[];
+    });
+    const { d, calls } = deps([{ oab_number: "1", oab_state: "RJ", essential: true, from: "2026-10-30" }], { djen: { byOab } });
+    const r = await runJudicialSync(d, { trigger: "MANUAL", requestedBy: "u1" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect(ingests(calls)).toEqual([["1", "2026-11-08", "2026-11-13", true], ["1", "2026-10-30", "2026-11-05", false]]);
+    expect([r.status, r.stats.oabsChecked, r.stats.djenErrors, r.stats.djenBackfillLeftForNextRun]).toEqual(["PARTIAL", 1, 1, 1]);
+    expect(r.errors[0]).toMatch(/dias antigos, 2026-10-30 a 2026-11-05/);
   });
 });
 

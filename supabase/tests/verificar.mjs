@@ -4203,7 +4203,7 @@ await deve('manutenção (pg_cron): proposta aprovada vira prazo; execução fec
 })
 await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo; importações diária [042]; DataJud a cada 20 min [043])', async () => {
   const j = await linhas(db, `select jobname, schedule from cron.job where jobname like 'dg-%' order by jobname`)
-  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-limpeza-do-agendador', '43 6 * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
+  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-judicial-vigia', '*/15 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-limpeza-do-agendador', '43 6 * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
 })
 
 secao('Computador do escritório: interrupção, falha, devolução e queda [040]')
@@ -4877,12 +4877,23 @@ await deve('DJEN: só a publicação de processo cadastrado entra; da outra não
   igual(JSON.stringify(ov).includes(cnj043(9)), false, 'a tela não recebe o número')
 })
 await deve('agendador: OAB conferida hoje sai da lista; com falha, volta 10 min depois', async () => {
-  const due = async (t) => (await linhas(db, `select oab_state || oab_number o from private.judicial_djen_due($1::timestamptz) order by 1`, [t])).map((x) => x.o)
+  const due = async (t, tx = db) => (await linhas(tx, `select oab_state || oab_number o from private.judicial_djen_due($1::timestamptz) order by 1`, [t])).map((x) => x.o)
   const t = await um(db, `select (now() at time zone 'America/Sao_Paulo')::date::text hoje,
     ((now() at time zone 'America/Sao_Paulo')::date + 1)::text amanha,
     ((now() + interval '11 minutes') at time zone 'America/Sao_Paulo')::time >= time '05:00' manha`)
-  igual((await due(`${t.hoje} 23:30-03`)).includes('RJ225006'), false, 'conferida hoje: fora')
-  igual((await due(`${t.amanha} 06:00-03`)).includes('RJ225006'), true, 'amanhã: de novo')
+  // 062: "conferida hoje" é busca concluída a partir das 05:00, e a OAB com dia antigo por ler continua na lista. Aqui a OAB foi
+  // conferida ao meio-dia e está com os últimos 30 dias em dia (a transação é desfeita: os dias de verdade seguem como estavam).
+  await db.transaction(async (tx) => {
+    await tx.query(`update judicial_monitor_status s set last_success_at = ($1::date + time '12:00') at time zone 'America/Sao_Paulo',
+        last_attempt_at = ($1::date + time '12:00') at time zone 'America/Sao_Paulo'
+      from judicial_monitors m where m.id = s.judicial_monitor_id and m.oab_number = '225006' and m.oab_state = 'RJ'`, [t.hoje])
+    await tx.query(`insert into judicial_capture_days (oab_number, oab_state, day, first_ok_at, last_ok_at, found)
+      select '225006', 'RJ', d::date, now(), now(), 0 from generate_series($1::date - 30, $1::date, interval '1 day') d
+      on conflict (oab_number, oab_state, day) do update set last_ok_at = now()`, [t.hoje])
+    igual((await due(`${t.hoje} 23:30-03`, tx)).includes('RJ225006'), false, 'conferida hoje: fora')
+    igual((await due(`${t.amanha} 06:00-03`, tx)).includes('RJ225006'), true, 'amanhã: de novo')
+    await tx.rollback()
+  })
   await worker043(`select private.judicial_ingest_djen($1, '77001', 'SP', '2026-11-01', '2026-11-02', false, 'HTTP 503', null) r`, [j043.run])
   igual((await due(new Date(Date.now() + 5 * 60e3).toISOString())).includes('SP77001'), false, 'falhou há 5 min: espera')
   if (t.manha) igual((await due(new Date(Date.now() + 11 * 60e3).toISOString())).includes('SP77001'), true, 'falhou há 11 min: tenta de novo')
@@ -7109,6 +7120,387 @@ await deve('catálogo [066]: funções com search_path fixo; as internas são de
   }).then(() => { throw new Error('abriu a Lixeira sem MFA') }, (e) => { if (!/administrador/.test(e.message)) throw e })
   // Fim do cenário: o que foi criado aqui sai de cena (excluído), para não sobrar processo ativo fictício com CNJ.
   for (const p of [l066.p1, l066.p3b, l066.p5]) await excluir066(ids.barbara, 'legal_processes', p)
+})
+
+// ═════════════════════════════ Integração judicial: revisão final [062] ═══
+
+secao('Integração judicial, revisão final: publicação com o agente tem validade; captura atrasada avisa; janela do DJEN por OAB; teor cortado vai para Revisões [062]')
+const r062 = {}
+// CNJs fictícios (TJRJ, 8.19, origem 0999) para os cenários da 062.
+const cnj062 = (n) => cnj(6200 + n, '2026', '8', '19', '0999')
+// As verificações da 059 e da 061 rodaram aquelas migrations de novo (e elas redefinem funções que a 062 redefine): a 062 vem depois delas, como no banco de verdade.
+const rodar062 = async () => db.exec(await readFile(new URL('migrations/20261113000062_judicial_revisao_final.sql', raiz), 'utf8'))
+let seq062 = 0
+// Publicação nova → pedido ao agente de prazos, SEM reserva: o trabalho fica na fila, como com o computador do escritório desligado.
+async function pedido062(proc, cnjN, teor = null) {
+  const n = 62000 + ++seq062
+  const pub = (await um(db, `insert into judicial_publications (external_id, legal_process_id, cnj_number, court, organ, communication_type, available_on, content, link)
+    values ($1, $2, $3, 'TJRJ', '1ª Vara Cível Fictícia', 'Intimação', $4, $5, $6) returning id`,
+    [String(n), proc, cnjN, r062.hoje, teor ?? `Fica a parte autora intimada para réplica em 15 dias. (${n})`, `https://comunica.pje.jus.br/x/${n}`])).id
+  const run = (await um(db, `select private.judicial_request_deadline_proposal($1) r`, [pub])).r
+  if (!run) throw new Error(`agente não acionado: ${(await um(db, `select agent_error e from judicial_publications where id = $1`, [pub])).e}`)
+  const i = await um(db, `select parameters p, request_text t from agent_run_inputs where agent_run_id = $1`, [run])
+  return { pub, run, proc, dias: i.p.business_days, pedido: i.t, cortado: i.p.content_truncated }
+}
+// O computador do escritório volta e reserva o trabalho que estava na fila.
+async function reservar062(t) {
+  t.reserva = lease()
+  igual((await reservar040(hA, t.run, t.reserva)).claimed, true, 'trabalho reservado pelo computador do escritório')
+  return t
+}
+const concluir062 = (t) => ex(`select private.executor_complete($1, $2, $3) r`, [hA, t.run, t.reserva])
+// A rotina que solta as publicações presas, como se rodasse em `quando` (expressão SQL).
+const soltar062 = async (quando = 'now()') => (await um(db, `select private.judicial_release_stuck_publications(${quando}) n`)).n
+const pub062 = (t) => um(db, `select triage_status st, triage_outcome res, deadline_id prazo, triaged_by por, agent_error aviso from judicial_publications where id = $1`, [t.pub])
+const avisos062 = (t) => linhas(db, `select user_id, type, severity, related_type, related_id, title, message from notifications where event_key = $1 order by user_id`, ['pub-triagem:' + t.pub])
+const execucao062 = async (t) => (await um(db, `select status from agent_runs where id = $1`, [t.run])).status
+const saude062 = async (quando, tx = db) => (await um(tx, `select private.judicial_capture_health($1::timestamptz) r`, [quando])).r
+const SOLTA_TEMPO062 = (h) => `O agente não respondeu em ${h} h (o computador do escritório pode estar desligado).`
+const SOLTA_FIM062 = ' Crie o prazo ou registre que não há prazo. Se o agente responder depois, a proposta dele aparece em Revisões.'
+
+await deve('cenário: a 062 roda de novo sem quebrar nem duplicar a vigia; caso com processo A (responsável: Lucas) e B (sem responsável); agente de prazos e prazo direto ligados; tempo de espera padrão de 4 h', async () => {
+  await rodar062()
+  igual(await linhas(db, `select schedule, command from cron.job where jobname = 'dg-judicial-vigia'`), [{ schedule: '*/15 * * * *', command: 'select private.judicial_watchdog()' }], 'vigia agendada uma vez')
+  igual((await um(db, `select agent_timeout_hours h from judicial_settings where id`)).h, 4, 'padrão: 4 horas')
+  const cli = (await um(db, `select client_id from legal_cases where id = $1`, [j043.caso])).client_id
+  r062.caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Caso fictício 062', 'IN_PROGRESS', $3, $3, $4) returning id`, [cli, ids.banking, ids.owner, ids.lucas])).id
+  r062.procA = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court, responsible_user_id) values ($1, $2, 'Fictícia x Banco 062 A', 'TJRJ', $3) returning id`,
+    [r062.caso, cnj062(1), ids.lucas])).id
+  r062.procB = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court) values ($1, $2, 'Fictícia x Banco 062 B', 'TJRJ') returning id`, [r062.caso, cnj062(2)])).id
+  r062.procC = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court) values ($1, $2, 'Fictícia x Banco 062 C', 'TJRJ') returning id`, [r062.caso, cnj062(3)])).id
+  await db.query(`update judicial_settings set deadline_agent_id = $1, deadline_auto_apply = true where id`, [ids.agente])
+  r062.hoje = await dia059()
+  r062.admins = (await linhas(db, `select a from private.active_admin_ids() a`)).map((x) => x.a).sort()
+  if (!r062.admins.length) throw new Error('cenário sem ADMIN ativo')
+  r062.avisados = [...new Set([ids.lucas, ...r062.admins])].sort()
+  // O que os cenários anteriores deixaram "com o agente" sem proposta viva sai da frente: as contagens daqui em diante são só deste cenário.
+  await soltar062(`now() + interval '100 days'`)
+  igual(await soltar062(`now() + interval '100 days'`), 0, 'nada mais preso')
+})
+
+await deve('computador do escritório desligado: antes das 4 h a publicação segue com o agente; depois volta para "A tratar" com o motivo e avisa o responsável do processo e os ADMIN, uma vez; o trabalho continua na fila', async () => {
+  const t = r062.a = await pedido062(r062.procA, cnj062(1))
+  igual([(await pub062(t)).st, await execucao062(t)], ['WITH_AGENT', 'QUEUED'], 'com o agente, trabalho na fila')
+  igual(await soltar062(`now() + interval '3 hours 50 minutes'`), 0, 'antes das 4 h: nada')
+  igual((await pub062(t)).st, 'WITH_AGENT', 'segue com o agente')
+  igual(await soltar062(`now() + interval '4 hours 10 minutes'`), 1, 'depois das 4 h: solta')
+  const p = await pub062(t)
+  igual([p.st, p.res, p.prazo, p.aviso], ['PENDING', null, null, SOLTA_TEMPO062(4) + SOLTA_FIM062], 'de volta à triagem, com o motivo')
+  const av = await avisos062(t)
+  igual(av.map((x) => x.user_id).sort(), r062.avisados, 'responsável do processo e ADMIN ativos')
+  for (const a of av) {
+    igual([a.type, a.severity, a.related_type, a.related_id, a.title], ['PUBLICATION_RECEIVED', 'URGENT', 'publication', t.pub, 'Publicação voltou para a triagem: Fictícia x Banco 062 A'], 'aviso')
+    igual(a.message, `${SOLTA_TEMPO062(4)} Publicação de ${br059(r062.hoje)}: crie o prazo ou registre que não há prazo.`, 'mensagem')
+  }
+  igual(await soltar062(`now() + interval '5 hours'`), 0, 'de novo: nada')
+  igual((await avisos062(t)).length, av.length, 'sem segundo aviso')
+  igual(await execucao062(t), 'QUEUED', 'o trabalho não é cancelado')
+  const minhas = await rpc043(ids.lucas, `select public.list_judicial_publications('{"status":"PENDING","mine":true,"page_size":50}') r`)
+  igual(minhas.items.some((x) => x.id === t.pub), true, 'aparece em "Minhas a tratar"')
+})
+await deve('o agente responde depois do tempo de espera: a proposta NÃO vira prazo direto (vai para Revisões, com o motivo); aprovada, nasce UM prazo e a publicação que estava "A tratar" fica tratada com ele', async () => {
+  const t = await reservar062(r062.a)
+  const antes = await prazos059(r062.procA)
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-062-tarde')
+  const p = await caminhoAntigo059(t, r, antes, 'proposta atrasada')
+  igual(await motivos059(t), ['Prazo não entrou direto na agenda (foi para Revisões): a publicação não está mais com o agente (voltou para a triagem da equipe)'], 'motivo')
+  igual((await pub062(t)).st, 'PENDING', 'a publicação segue com a equipe')
+  igual((await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [t.pub])).pending_review_id, p.revisao_id, 'a tela da publicação mostra a revisão pendente')
+  await concluir062(t)
+  await decidir(ids.lucas, p.revisao_id, 'APPROVE')
+  await db.query(`select private.maintenance_tick()`)
+  const depois = await proposta059(r.proposal_id)
+  const pub = await pub062(t)
+  igual([depois.status, pub.st, pub.res, pub.prazo, pub.por, pub.aviso], ['APPLIED', 'DONE', 'DEADLINE', depois.prazo, ids.lucas, null], 'tratada com o prazo aprovado, por quem aprovou')
+  igual(await prazos059(r062.procA), antes + 1, 'um prazo só')
+})
+await deve('a equipe trata a publicação solta e o agente responde depois: a proposta vai para Revisões com o motivo, nada entra direto e a publicação continua como a equipe deixou', async () => {
+  const t = r062.b = await pedido062(r062.procA, cnj062(1))
+  igual(await soltar062(`now() + interval '5 hours'`), 1, 'solta')
+  const antes = await prazos059(r062.procA)
+  const feito = await rpc043(ids.lucas, `select public.create_deadline_from_publication($1, $2) r`, [t.pub, JSON.stringify({ title: 'Réplica (criada pela equipe)', due_on: t.dias[14] })])
+  await reservar062(t)
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-062-tratada')
+  await caminhoAntigo059(t, r, antes + 1, 'proposta atrasada, publicação já tratada')
+  igual(await motivos059(t), ['Prazo não entrou direto na agenda (foi para Revisões): a publicação já foi tratada'], 'motivo')
+  const pub = await pub062(t)
+  igual([pub.st, pub.res, pub.prazo, pub.por], ['DONE', 'DEADLINE', feito.deadline_id, ids.lucas], 'a publicação continua com o prazo da equipe')
+  await concluir062(t)
+})
+await deve('tempo de espera configurável pelo ADMIN: com 8 h, a publicação só volta depois de 8 h; processo sem responsável avisa o advogado do caso', async () => {
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"agent_timeout_hours":8}') r`)
+  igual((await rpc043(ids.barbara, `select public.get_judicial_overview() r`)).settings.agent_timeout_hours, 8, 'na visão geral')
+  const t = r062.c = await pedido062(r062.procB, cnj062(2))
+  igual(await soltar062(`now() + interval '5 hours'`), 0, '5 h: ainda não')
+  igual(await soltar062(`now() + interval '9 hours'`), 1, '9 h: solta')
+  igual((await pub062(t)).aviso, SOLTA_TEMPO062(8) + SOLTA_FIM062, 'motivo com o tempo configurado')
+  igual((await avisos062(t)).map((x) => x.user_id).sort(), r062.avisados, 'advogado do caso e ADMIN ativos')
+  // Salvar outra opção não mexe no tempo de espera.
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_apply":true}') r`)
+  igual((await um(db, `select agent_timeout_hours h from judicial_settings where id`)).h, 8, 'chave ausente não muda')
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"agent_timeout_hours":4}') r`)
+})
+await deveFalhar('tempo de espera fora de 1 a 72 h é recusado', () => rpc043(ids.barbara, `select public.save_judicial_settings('{"agent_timeout_hours":0}') r`), /1 a 72 horas/)
+await deveFalhar('advogado não muda o tempo de espera', () => rpc043(ids.lucas, `select public.save_judicial_settings('{"agent_timeout_hours":2}') r`), /Somente ADMIN/)
+await deve('proposta do agente em Revisões: com a revisão em aberto a publicação fica com o agente, mesmo depois do tempo de espera; "alterações solicitadas" (a revisão termina sem prazo) → a vigia devolve para a triagem na hora e avisa', async () => {
+  const t = r062.d = await reservar062(await pedido062(r062.procA, cnj062(1)))
+  const antes = await prazos059(r062.procA)
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(sabado059(t.dias)), 'k-062-sabado')
+  const p = await caminhoAntigo059(t, r, antes, 'sábado')
+  igual((await concluir062(t)).status, 'WAITING_HUMAN', 'trabalho aguardando a revisão')
+  igual(await soltar062(`now() + interval '30 hours'`), 0, 'revisão em aberto: não solta')
+  igual((await pub062(t)).st, 'WITH_AGENT', 'segue com o agente (a proposta está em Revisões)')
+  await decidir(ids.lucas, p.revisao_id, 'REQUEST_CHANGES', 'O vencimento caiu num sábado.')
+  await db.query(`select private.maintenance_tick()`)
+  igual([(await pub062(t)).st, (await proposta059(r.proposal_id)).status], ['WITH_AGENT', 'PENDING'], 'sem a vigia a publicação ficaria presa: a proposta fica pendente para sempre')
+  igual(await soltar062(), 1, 'a vigia solta na hora, sem esperar o tempo')
+  const pub = await pub062(t)
+  igual([pub.st, pub.aviso], ['PENDING', 'A revisão da proposta do agente terminou sem criar prazo.' + SOLTA_FIM062], 'de volta à triagem, com o motivo')
+  const av = await avisos062(t)
+  igual(av.map((x) => x.user_id).sort(), r062.avisados, 'avisados')
+  igual(av[0].message, `A revisão da proposta do agente terminou sem criar prazo. Publicação de ${br059(r062.hoje)}: crie o prazo ou registre que não há prazo.`, 'mensagem')
+  igual(await prazos059(r062.procA), antes, 'nenhum prazo criado')
+  igual((await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [t.pub])).pending_review_id, null, 'a tela não aponta mais a revisão encerrada como pendente')
+})
+await deve('"Tratar eu mesmo": o advogado tira a publicação do agente (auditado, sem aviso); se o agente responder depois, a proposta vai para Revisões', async () => {
+  const t = r062.e = await pedido062(r062.procA, cnj062(1))
+  const r = await rpc043(ids.lucas, `select public.judicial_publication_decide($1, 'TAKE_OVER') r`, [t.pub])
+  igual([r.id, r.action], [t.pub, 'TAKE_OVER'], 'resposta')
+  const p = await pub062(t)
+  igual([p.st, p.aviso], ['PENDING', 'A equipe assumiu esta publicação. Se o agente responder depois, a proposta dele aparece em Revisões.'], 'de volta à triagem')
+  igual((await um(db, `select count(*)::int n from audit_events where action = 'JUDICIAL_PUBLICATION_TAKE_OVER' and entity_id = $1 and actor_user_id = $2`, [t.pub, ids.lucas])).n, 1, 'auditoria')
+  igual((await avisos062(t)).length, 0, 'sem aviso: foi uma pessoa que assumiu')
+  igual(await soltar062(`now() + interval '5 hours'`), 0, 'a vigia não mexe no que a equipe assumiu')
+  await reservar062(t)
+  const antes = await prazos059(r062.procA)
+  const pr = await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-062-assumida')
+  await caminhoAntigo059(t, pr, antes, 'depois de assumida')
+  await concluir062(t)
+})
+await deveFalhar('"Tratar eu mesmo" só vale para publicação que está com o agente', () =>
+  rpc043(ids.lucas, `select public.judicial_publication_decide($1, 'TAKE_OVER') r`, [r062.e.pub]), /não está com o agente/)
+await deveFalhar('assistente não tira a publicação do agente', async () => {
+  r062.f = await pedido062(r062.procA, cnj062(1))
+  return rpc043(ids.ana, `select public.judicial_publication_decide($1, 'TAKE_OVER') r`, [r062.f.pub])
+}, /Somente advogado/)
+await deve('tela da publicação: desde quando está com o agente, a situação do computador do escritório, o tempo de espera e a data local do prazo', async () => {
+  const d = await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [r062.f.pub])
+  igual([d.triage_status, d.agent_run_status, typeof d.agent_requested_at], ['WITH_AGENT', 'QUEUED', 'string'], 'com o agente')
+  igual([typeof d.agent_runtime.execution_enabled, typeof d.agent_runtime.executor_online, d.agent_runtime.timeout_hours], ['boolean', 'boolean', 4], 'situação do agente')
+  const feita = await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [r062.b.pub])
+  igual([feita.deadline.due_on, feita.deadline.due_at.slice(0, 4)], [r062.b.dias[14], r062.b.dias[14].slice(0, 4)], 'data local do vencimento (Brasília)')
+  const l = await rpc043(ids.lucas, `select public.list_judicial_publications($1) r`, [JSON.stringify({ status: 'WITH_AGENT', legal_process_id: r062.procA })])
+  igual([l.total, l.items[0].id, typeof l.items[0].agent_requested_at], [1, r062.f.pub, 'string'], 'na lista "Com o agente"')
+})
+await deve('teor longo: o pedido ao agente leva o começo E o fim do teor, avisa do corte e cabe no limite; o prazo proposto NÃO entra direto (vai para Revisões, com o motivo); publicação curta continua entrando direto', async () => {
+  const longo = 'INICIO-DO-TEOR ' + 'palavra '.repeat(4000) + 'Intime-se para réplica em 15 dias. FIM-DO-TEOR'
+  const t = await reservar062(await pedido062(r062.procA, cnj062(1), longo))
+  igual([t.cortado, t.pedido.length, t.pedido.startsWith('ATENÇÃO: esta publicação é longa e o TEOR abaixo está CORTADO NO MEIO.'), t.pedido.includes('\n\nTEOR:\nINICIO-DO-TEOR palavra'),
+    t.pedido.endsWith('Intime-se para réplica em 15 dias. FIM-DO-TEOR'), t.pedido.includes('[... TRECHO DO MEIO CORTADO: a publicação não coube inteira. Leia a íntegra pelo link. ...]')],
+    [true, 20000, true, true, true, true], 'pedido: aviso, começo, marca do corte e fim, no limite de 20 mil caracteres')
+  igual(t.pedido.includes('ATENÇÃO: o prazo proposto ENTRA DIRETO NA AGENDA'), true, 'o resto do pedido é o de sempre')
+  const antes = await prazos059(r062.procA)
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-062-cortado')
+  await caminhoAntigo059(t, r, antes, 'teor cortado')
+  igual(await motivos059(t), ['Prazo não entrou direto na agenda (foi para Revisões): o teor da publicação foi cortado no pedido ao agente (publicação longa): uma pessoa confere pela íntegra'], 'motivo')
+  await concluir062(t)
+  const curto = await reservar062(await pedido062(r062.procA, cnj062(1)))
+  igual([curto.cortado, curto.pedido.includes('CORTADO'), curto.pedido.startsWith('Publicação do DJEN no processo ')], [false, false, true], 'curta: o pedido é o de antes')
+  const rc = await propor059(curto, 'CREATE_DEADLINE', prazo059(curto.dias[14]), 'k-062-curto')
+  igual([rc.created, rc.applied], [true, true], 'curta: prazo direto')
+  await concluir062(curto)
+})
+
+await deve('captura do dia: em dia útil, depois das 08:00, com OAB sem busca concluída desde as 05:00 → atrasada; "nenhuma busca começou" e "há OAB sem conferência" são motivos diferentes; antes das 08:00, no sábado e com o DJEN desligado não se aplica', async () => {
+  await rpc043(ids.barbara, `select public.save_judicial_monitor('620002', 'RJ', 'OAB fictícia 062') r`)
+  const dia = r062.dia = (await um(db, `select d::date::text d from generate_series((now() at time zone 'America/Sao_Paulo')::date + 1, (now() at time zone 'America/Sao_Paulo')::date + 12, interval '1 day') d
+    where extract(isodow from d) < 6 and coalesce(private.non_business_reason(d::date, null), '') not in ('Feriado nacional', 'Sexta-feira Santa') order by d limit 1`)).d
+  const sabado = (await um(db, `select d::date::text d from generate_series((now() at time zone 'America/Sao_Paulo')::date + 1, (now() at time zone 'America/Sao_Paulo')::date + 8, interval '1 day') d
+    where extract(isodow from d) = 6 order by d limit 1`)).d
+  const total = (await um(db, `select count(*)::int n from (select distinct m.oab_number, m.oab_state from judicial_monitors m
+    join organizations o on o.id = m.organization_id and o.status = 'ACTIVE' and o.deleted_at is null where m.active) x`)).n
+  const h = await saude062(`${dia} 09:00-03`)
+  igual([h.applies, h.late, h.reason, h.title, h.oabs_total, h.oabs_pending], [true, true, 'NOT_RUN', 'A busca de publicações não rodou hoje', total, total], 'nenhuma busca começou')
+  igual(h.message, `Nenhuma busca no DJEN começou hoje e há ${total} OAB(s) sem conferência. Pode haver publicação nova sem prazo: confira o DJEN por fora e avise quem cuida do sistema.`, 'mensagem')
+  const cedo = await saude062(`${dia} 07:59-03`)
+  igual([cedo.applies, cedo.late, cedo.reason], [false, false, null], 'antes das 08:00')
+  const fds = await saude062(`${sabado} 09:00-03`)
+  igual([fds.applies, fds.late], [false, false], 'sábado')
+  await db.transaction(async (tx) => {
+    await tx.query(`insert into judicial_sync_runs (trigger, scope, status, started_at, finished_at) values ('CRON', 'ALL', 'PARTIAL', $1::timestamptz, $1::timestamptz)`, [`${dia} 05:10-03`])
+    const f = await saude062(`${dia} 09:00-03`, tx)
+    igual([f.late, f.reason, f.title], [true, 'OAB_FAILED', 'Há OAB sem conferência no DJEN hoje'], 'a busca rodou e há OAB sem conferência')
+    igual(f.message, `${total} de ${total} OAB(s) ainda sem busca concluída hoje. Pode haver publicação nova sem prazo: veja o motivo em DG Brasil → Integrações.`, 'mensagem')
+    await tx.query(`insert into judicial_monitor_status (judicial_monitor_id, last_attempt_at, last_success_at)
+      select m.id, $1::timestamptz, $1::timestamptz from judicial_monitors m where m.active
+      on conflict (judicial_monitor_id) do update set last_attempt_at = excluded.last_attempt_at, last_success_at = excluded.last_success_at`, [`${dia} 06:00-03`])
+    const emDia = await saude062(`${dia} 09:00-03`, tx)
+    igual([emDia.applies, emDia.late, emDia.reason, emDia.oabs_pending], [true, false, null, 0], 'todas conferidas depois das 05:00: em dia')
+    await tx.query(`update judicial_monitor_status set last_success_at = $1::timestamptz`, [`${dia} 01:30-03`])
+    igual((await saude062(`${dia} 09:00-03`, tx)).late, true, 'conferida de madrugada (antes do caderno do dia): não vale')
+    await tx.query(`update judicial_settings set djen_enabled = false where id`)
+    igual((await saude062(`${dia} 09:00-03`, tx)).applies, false, 'DJEN desligado')
+    await tx.rollback()
+  })
+})
+await deve('vigia (pg_cron, a cada 15 min): captura atrasada avisa os ADMIN ativos uma vez por dia por motivo; agendador sem configuração tem aviso próprio; com pg_net e os dois segredos, não avisa', async () => {
+  const dia = r062.dia
+  await db.transaction(async (tx) => {
+    const vigia = async (hora) => (await um(tx, `select private.judicial_watchdog($1::timestamptz) r`, [`${dia} ${hora}-03`])).r
+    const avisos = async (motivo) => linhas(tx, `select user_id, type, severity, title from notifications where event_key = $1 order by user_id`, [`jcapture:${dia}:${motivo}`])
+    const w = await vigia('09:00')
+    igual([w.capture_late, w.reason, w.config_problem], [true, 'NOT_RUN', 'pg_net ou Vault indisponível'], 'resultado da vigia')
+    await vigia('09:15')
+    const a = await avisos('NOT_RUN')
+    igual(a.map((x) => x.user_id).sort(), r062.admins, 'um aviso por ADMIN (captura), sem repetir na segunda passada')
+    igual([a[0].type, a[0].severity, a[0].title], ['JUDICIAL_SYNC_FAILED', 'URGENT', 'A busca de publicações não rodou hoje'], 'aviso da captura')
+    const c = await avisos('CONFIG')
+    igual(c.map((x) => x.user_id).sort(), r062.admins, 'um aviso por ADMIN (agendador sem configuração)')
+    igual([c[0].type, c[0].severity, c[0].title], ['JUDICIAL_SYNC_FAILED', 'WARNING', 'O agendador da busca de publicações está sem configuração'], 'aviso da configuração')
+    // Outro motivo no mesmo dia: avisa de novo, com outra chave.
+    await tx.query(`insert into judicial_sync_runs (trigger, scope, status, started_at, finished_at) values ('CRON', 'ALL', 'PARTIAL', $1::timestamptz, $1::timestamptz)`, [`${dia} 09:20-03`])
+    igual((await vigia('09:30')).reason, 'OAB_FAILED', 'a busca rodou e sobrou OAB')
+    igual((await avisos('OAB_FAILED')).map((x) => x.user_id).sort(), r062.admins, 'um aviso por ADMIN (outro motivo)')
+    igual((await avisos('NOT_RUN')).length, r062.admins.length, 'o primeiro motivo não repete')
+    // Agendador configurado: sem problema de configuração.
+    await tx.exec(`create schema net; create schema vault; create table vault.decrypted_secrets (name text, decrypted_secret text);
+      insert into vault.decrypted_secrets values ('dg_app_url', 'https://exemplo.invalid');`)
+    igual((await um(tx, `select private.judicial_cron_config_problem() r`)).r, 'segredos dg_app_url/dg_cron_secret ausentes', 'falta um segredo')
+    await tx.query(`insert into vault.decrypted_secrets values ('dg_cron_secret', 'segredo-de-teste')`)
+    igual((await um(tx, `select private.judicial_cron_config_problem() r`)).r, null, 'configurado')
+    igual((await saude062(`${dia} 09:00-03`, tx)).config_problem, null, 'a visão da captura não aponta problema')
+    await tx.rollback()
+  })
+  igual((await um(db, `select count(*)::int n from notifications where event_key like $1`, [`jcapture:${dia}:%`])).n, 0, 'a simulação foi desfeita')
+})
+await deve('visão geral: estado da captura; "última busca completa" aparece mesmo fora das 10 últimas rodadas; "a tratar" conta como a lista (sem publicação de processo excluído)', async () => {
+  const completa = (await um(db, `insert into judicial_sync_runs (trigger, scope, status, started_at, finished_at) values ('CRON', 'ALL', 'COMPLETED', now() + interval '1 minute', now() + interval '2 minutes') returning id`)).id
+  const lotes = (await linhas(db, `insert into judicial_sync_runs (trigger, scope, status, started_at, finished_at)
+    select 'CRON', 'DATAJUD', 'COMPLETED', now() + make_interval(mins => 2 + g), now() + make_interval(mins => 3 + g) from generate_series(1, 11) g returning id`)).map((x) => x.id)
+  try {
+    const ov = await rpc043(ids.lucas, `select public.get_judicial_overview() r`)
+    igual([ov.runs.length, ov.runs.some((x) => x.scope === 'ALL')], [10, false], 'as 10 últimas rodadas são lotes do DataJud')
+    igual([ov.last_full_run.id, ov.last_full_run.status], [completa, 'COMPLETED'], 'a última busca completa continua aparecendo')
+    igual([typeof ov.capture.late, typeof ov.capture.applies, ov.capture.config_problem, ov.capture.oabs_total > 0], ['boolean', 'boolean', 'pg_net ou Vault indisponível', true], 'estado da captura')
+  } finally {
+    await db.query(`delete from judicial_sync_runs where id = any ($1)`, [[completa, ...lotes]])
+  }
+  // Publicação "a tratar" num processo que depois é excluído: some da lista e do contador, juntos.
+  await db.query(`insert into judicial_publications (external_id, legal_process_id, cnj_number, court, available_on, content) values ('62900', $1, $2, 'TJRJ', $3, 'Publicação de processo que será excluído.')`,
+    [r062.procC, cnj062(3), r062.hoje])
+  const contar = async () => {
+    const ov = await rpc043(ids.barbara, `select public.get_judicial_overview() r`)
+    const pend = await rpc043(ids.barbara, `select public.list_judicial_publications('{"status":"PENDING"}') r`)
+    const ag = await rpc043(ids.barbara, `select public.list_judicial_publications('{"status":"WITH_AGENT"}') r`)
+    return { contador: [ov.publications.pending, ov.publications.with_agent], lista: [pend.total, ag.total] }
+  }
+  const antes = await contar()
+  igual(antes.contador, antes.lista, 'contador = lista')
+  await db.query(`update legal_processes set deleted_at = now() where id = $1`, [r062.procC])
+  const depois = await contar()
+  igual(depois.contador, depois.lista, 'contador = lista, depois da exclusão')
+  igual(depois.contador[0], antes.contador[0] - 1, 'a publicação do processo excluído saiu do contador')
+})
+await deve('faixa de alerta da Home: ADMIN e advogado leem o estado da captura', async () => {
+  const a = await rpc043(ids.barbara, `select public.get_judicial_capture_alert() r`)
+  igual([typeof a.late, typeof a.applies, a.can_manage, a.config_problem], ['boolean', 'boolean', true, 'pg_net ou Vault indisponível'], 'ADMIN')
+  igual((await rpc043(ids.lucas, `select public.get_judicial_capture_alert() r`)).can_manage, false, 'advogado lê, não configura')
+})
+await deveFalhar('assistente não lê o alerta da captura', () => rpc043(ids.ana, `select public.get_judicial_capture_alert() r`), /Somente advogado ou ADMIN/)
+await deveFalhar('parceiro não lê o alerta da captura', () => rpc043(ids.almeidaUsr, `select public.get_judicial_capture_alert() r`), /Somente advogado ou ADMIN/)
+await deve('rodada interrompida avisa os ADMIN, com a chave do aviso de falha (no máximo dois por dia)', async () => {
+  const chave = await chaveJsync057()
+  await db.query(`update judicial_sync_runs set status = 'FAILED', finished_at = now() where status = 'RUNNING'`)
+  await db.query(`delete from notifications where event_key = $1`, [chave])
+  const velha = (await um(db, `insert into judicial_sync_runs (trigger, scope, started_at) values ('CRON', 'DATAJUD', now() - interval '7 minutes') returning id`)).id
+  await worker043(`select private.judicial_sync_begin('CRON', null, null, true) r`)
+  igual((await um(db, `select status from judicial_sync_runs where id = $1`, [velha])).status, 'FAILED', 'encerrada como interrompida')
+  const n = await linhas(db, `select user_id, type, title from notifications where event_key = $1 order by user_id`, [chave])
+  igual(n.map((x) => x.user_id).sort(), r062.admins, 'um aviso por ADMIN')
+  igual([n[0].type, n[0].title], ['JUDICIAL_SYNC_FAILED', 'A busca de publicações e andamentos foi interrompida'], 'aviso')
+  await db.query(`update judicial_sync_runs set status = 'FAILED', finished_at = now() where status = 'RUNNING'`)
+})
+
+await deve('janela do DJEN por OAB: OAB nunca lida precisa dos 30 dias; lida hoje, está em dia; um dia sem captura reabre o dia que perdeu a última releitura; seis dias parada, volta 11 dias', async () => {
+  const hoje = r062.hoje
+  const falta = async (tx) => (await um(tx, `select private.judicial_djen_gap_from('620001', 'RJ', $1::date, 5)::text d`, [hoje])).d
+  igual(await falta(db), mais059(hoje, -30), 'OAB nunca lida: 30 dias')
+  await db.transaction(async (tx) => {
+    // Como se a última busca com sucesso tivesse sido em `ultimo`, lendo tudo até aquele dia.
+    const lidaAte = async (ultimo) => {
+      await tx.query(`delete from judicial_capture_days where oab_number = '620001'`)
+      await tx.query(`insert into judicial_capture_days (oab_number, oab_state, day, first_ok_at, last_ok_at, found)
+        select '620001', 'RJ', d::date, ($2::date + time '05:30') at time zone 'America/Sao_Paulo', ($2::date + time '05:30') at time zone 'America/Sao_Paulo', 0
+        from generate_series($1::date, $2::date, interval '1 day') d`, [mais059(hoje, -40), ultimo])
+    }
+    await lidaAte(hoje)
+    igual(await falta(tx), null, 'lida hoje: nada além da janela normal')
+    await lidaAte(mais059(hoje, -1))
+    igual(await falta(tx), null, 'lida ontem: a janela normal de hoje cobre')
+    await lidaAte(mais059(hoje, -2))
+    igual(await falta(tx), mais059(hoje, -6), 'ontem não houve captura: o dia D−6 ficou sem a releitura de ontem')
+    await lidaAte(mais059(hoje, -7))
+    igual(await falta(tx), mais059(hoje, -11), 'seis dias parada: volta ao dia D−11 (nada se perde)')
+    igual((await um(tx, `select private.judicial_djen_gap_from('620001', 'RJ', $1::date, 7)::text d`, [hoje])).d, mais059(hoje, -13), 'com 7 dias revistos, volta mais')
+    await tx.rollback()
+  })
+})
+await deve('rodada: cada OAB vem com "essential" e, havendo dia antigo por ler, "from"; a OAB com dia antigo por ler continua na fila mesmo já conferida hoje; conferida de madrugada volta à fila às 05:00', async () => {
+  const hoje = r062.hoje
+  await db.query(`update judicial_sync_runs set status = 'FAILED', finished_at = now() where status = 'RUNNING'`)
+  const r = await worker043(`select private.judicial_sync_begin('MANUAL', $1) r`, [ids.barbara])
+  const nova = r.oabs.find((o) => o.oab_number === '620002')
+  igual([nova.essential, nova.from, r.today, r.lookback_days], [true, mais059(hoje, -30), hoje, 5], 'OAB nova: janela normal e os 30 dias')
+  igual(r.oabs.every((o) => o.essential === true), true, 'pedida na tela: a janela normal de todas')
+  await worker043(`select private.judicial_sync_finish($1, 'COMPLETED', '{}') r`, [r.run_id])
+  await db.transaction(async (tx) => {
+    const naFila = async (hora) => (await linhas(tx, `select oab_number o from private.judicial_djen_due($1::timestamptz)`, [`${hoje} ${hora}-03`])).some((x) => x.o === '620002')
+    const pendente = async (hora) => (await um(tx, `select private.judicial_djen_pending_today('620002', 'RJ', $1::timestamptz) r`, [`${hoje} ${hora}-03`])).r
+    const conferida = (hora) => tx.query(`insert into judicial_monitor_status (judicial_monitor_id, last_attempt_at, last_success_at)
+      select m.id, $1::timestamptz, $1::timestamptz from judicial_monitors m where m.oab_number = '620002'
+      on conflict (judicial_monitor_id) do update set last_attempt_at = excluded.last_attempt_at, last_success_at = excluded.last_success_at`, [`${hoje} ${hora}-03`])
+    await tx.query(`insert into judicial_capture_days (oab_number, oab_state, day, first_ok_at, last_ok_at, found)
+      select '620002', 'RJ', d::date, ($1::date + time '05:30') at time zone 'America/Sao_Paulo', ($1::date + time '05:30') at time zone 'America/Sao_Paulo', 0
+      from generate_series($1::date - 30, $1::date, interval '1 day') d`, [hoje])
+    await conferida('05:30')
+    igual([await naFila('06:00'), await pendente('06:00')], [false, false], 'conferida hoje e com os dias antigos em dia: fora da fila')
+    await tx.query(`delete from judicial_capture_days where oab_number = '620002' and day = $1::date`, [mais059(hoje, -10)])
+    igual([await naFila('06:00'), await pendente('06:00')], [true, false], 'dia antigo por ler: continua na fila, sem repetir a janela normal')
+    igual(await naFila('05:35'), false, 'mas espera 10 min entre uma tentativa e outra')
+    await tx.query(`insert into judicial_capture_days (oab_number, oab_state, day, first_ok_at, last_ok_at, found) values ('620002', 'RJ', $1::date, now(), now(), 0)`, [mais059(hoje, -10)])
+    await conferida('01:00')
+    igual([await naFila('04:59'), await naFila('05:00'), await pendente('05:00')], [false, true, true], 'conferida à 01:00 ("Buscar agora" de madrugada): às 05:00 volta, para ler o caderno do dia')
+    await tx.rollback()
+  })
+})
+
+await deve('catálogo [062]: funções com search_path fixo; anon e service_role não executam nenhuma; usuário logado só as da tela; o servidor só a que abre a rodada; a vigia não é chamável por ninguém', async () => {
+  const internas = ['judicial_djen_gap_from', 'judicial_djen_pending_today', 'judicial_djen_due', 'judicial_cron_config_problem', 'judicial_capture_health',
+    'judicial_release_stuck_publications', 'judicial_watchdog', 'judicial_publications_follow_proposals', 'judicial_publication_json',
+    'judicial_direct_deadline_check', 'judicial_request_deadline_proposal', 'judicial_sync_begin']
+  const tela = ['get_judicial_overview', 'save_judicial_settings', 'get_judicial_publication', 'judicial_publication_decide', 'get_judicial_capture_alert']
+  const r = await linhas(db, `select n.nspname s, p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname = 'private' and p.proname = any ($1)) or (n.nspname = 'public' and p.proname = 'get_judicial_capture_alert') order by 1, 2`, [[...internas, ...tela]])
+  const priv = r.filter((x) => x.s === 'private')
+  igual(priv.length, internas.length + tela.length, 'uma versão de cada função')
+  igual(r.filter((x) => !x.cfg.includes('search_path=')).map((x) => x.f), [], 'search_path fixo')
+  igual(r.filter((x) => x.anon || x.srv).map((x) => `${x.s}.${x.f}`), [], 'anon e service_role')
+  igual(priv.filter((x) => !x.def).map((x) => x.f), [], 'privadas como definer')
+  igual(priv.filter((x) => x.usr).map((x) => x.f).sort(), [...tela].sort(), 'usuário logado: só as da tela')
+  igual(priv.filter((x) => x.wrk).map((x) => x.f), ['judicial_sync_begin'], 'servidor: só a que abre a rodada')
+  const pub = r.find((x) => x.s === 'public')
+  igual([pub.def, pub.usr, pub.wrk], [false, true, false], 'pública: invoker, só para usuário logado')
+  await como(ids.barbara, (tx) => tx.query(`select private.judicial_watchdog()`)).then(
+    () => { throw new Error('usuário logado chamou a vigia') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  await como(ids.barbara, (tx) => tx.query(`select private.judicial_release_stuck_publications()`)).then(
+    () => { throw new Error('usuário logado soltou publicações') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  // Fim do cenário: a OAB fictícia é pausada e a configuração volta a ser a de antes.
+  await db.query(`update judicial_monitors set active = false where oab_number = '620002'`)
+  await db.query(`update judicial_settings set deadline_agent_id = null, agent_timeout_hours = 4 where id`)
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
