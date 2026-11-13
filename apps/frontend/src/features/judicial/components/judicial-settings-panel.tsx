@@ -223,7 +223,7 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
       <div className="grid gap-4 md:grid-cols-[1fr_1fr_160px]">
         <div className="space-y-2">
           <Checkbox label="Publicações do DJEN" description="Busca diária pelas OABs acompanhadas." checked={djen} onChange={(e) => setDjen(e.target.checked)} />
-          <Checkbox label="Andamentos do DataJud" description="Dados e movimentações pelo número CNJ." checked={datajud} onChange={(e) => setDatajud(e.target.checked)} />
+          <Checkbox label="Andamentos do DataJud" description="Dados e andamentos pelo número CNJ." checked={datajud} onChange={(e) => setDatajud(e.target.checked)} />
         </div>
         <div className="space-y-2">
           <Field

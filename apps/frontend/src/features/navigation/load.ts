@@ -12,6 +12,7 @@ import { countUnreadNotificationsAction } from "@/server/domain/notifications/ac
 import { listPartnersAction } from "@/server/domain/organizations/actions";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 import { getProcessStatusCountsAction, listProcessesAction } from "@/server/domain/processes/actions";
+import { listOverdueDeadlinesAction } from "@/server/domain/processes/deadlines/actions";
 import { activeProcessTotal } from "@/server/domain/processes/mappers";
 import { listReviewsAction } from "@/server/domain/reviews/actions";
 
@@ -51,20 +52,24 @@ export const loadNavCounts = cache(async (): Promise<Partial<Record<NavKey, stri
       notifications: unreadCount === undefined ? undefined : unreadCount ? `${unreadCount} não lidas` : "Tudo em dia",
     };
   }
-  const [clients, awaiting, active, byStatus, reviews, partners] = await Promise.all([
+  const [clients, awaiting, active, byStatus, overdueDeadlines, reviews, partners] = await Promise.all([
     listClientsAction({ pageSize: 1 }),
     listCasesAction({ status: AWAITING, pageSize: 1 }),
     listCasesAction({ status: ACTIVE, pageSize: 1 }),
     // Uma consulta (045): processos ativos = todos os status, exceto recebido e arquivado.
     getProcessStatusCountsAction(),
+    // Prazos vencidos e ainda em aberto, do escritório inteiro (o mesmo número do contador da agenda).
+    listOverdueDeadlinesAction({ pageSize: 1 }),
     can(role, "reviews.view") ? listReviewsAction({ status: "OPEN", pageSize: 1 }) : none,
     can(role, "partners.view") ? listPartnersAction({ status: "ACTIVE", pageSize: 1 }) : none,
   ]);
   const openReviews = n(reviews);
+  const overdue = n(overdueDeadlines);
   return {
     clients: n(clients) !== undefined ? pluralize(n(clients) ?? 0, "cliente", "clientes") : undefined,
     cases: n(awaiting) ? `${n(awaiting)} aguardando análise` : n(active) !== undefined ? `${n(active)} ativos` : undefined,
     processes: byStatus.ok ? `${activeProcessTotal(byStatus.data)} ativos` : undefined,
+    deadlines: overdue === undefined ? undefined : overdue ? pluralize(overdue, "vencido", "vencidos") : "Nenhum vencido",
     reviews: openReviews === undefined ? undefined : openReviews ? `${openReviews} pendentes` : "Nenhuma pendente",
     partners: n(partners) !== undefined ? `${n(partners)} ativos` : undefined,
   };

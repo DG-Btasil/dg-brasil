@@ -237,13 +237,3 @@ export function Steps({ steps, className }: { steps: { key: string; label: strin
     </ol>
   );
 }
-
-/** Rótulo "Conteúdo jurídico fictício" padrão. */
-export function DemoContentNotice({ children = "Conteúdo jurídico fictício para demonstração da interface.", className }: { children?: ReactNode; className?: string }) {
-  return (
-    <p className={cn("inline-flex items-center gap-1.5 rounded-xs border border-dashed border-line-strong px-2 py-1 text-[11.5px] text-muted", className)}>
-      <CircleAlert className="size-3" aria-hidden />
-      {children}
-    </p>
-  );
-}

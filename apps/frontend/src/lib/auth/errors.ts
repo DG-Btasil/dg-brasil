@@ -14,7 +14,7 @@ const GENERIC = "Não foi possível concluir agora. Tente novamente em instantes
 export function loginErrorMessage(error: AuthLikeError | null | undefined): string {
   if (!error) return GENERIC;
   if (error.status === 429 || error.code === "over_request_rate_limit") {
-    return "Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.";
+    return "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.";
   }
   if (error.name === "AuthRetryableFetchError" || error.status === 0) {
     return "Não foi possível conectar ao servidor. Verifique sua conexão.";

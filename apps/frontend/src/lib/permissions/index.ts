@@ -8,8 +8,8 @@
  * Existem dois públicos (audiences):
  * - OWNER: equipe da Barbara Cardoso Advocacia (escritório proprietário), visão global;
  * - PARTNER: usuários de um escritório parceiro, que veem apenas os dados da
- *   própria relação com o DG Brasil. O recorte de DADOS do parceiro fica em
- *   `./partner-scope.ts`; aqui ficam apenas os papéis e as permissões.
+ *   própria relação com o DG Brasil. O recorte de DADOS do parceiro é feito
+ *   no servidor (RLS e services); aqui ficam apenas os papéis e as permissões.
  *
  * No backend futuro, a mesma matriz precisa existir no servidor: esconder
  * interface não é autorização. Aqui ela só decide o que renderizar.

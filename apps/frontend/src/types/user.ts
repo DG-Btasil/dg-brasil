@@ -23,25 +23,3 @@ export interface User extends OfficeScoped {
    */
   partnerOfficeId?: ID;
 }
-
-export interface Invitation extends OfficeScoped {
-  token: string;
-  email: string;
-  name?: string;
-  role: Role;
-  /** Convite para usuário de escritório parceiro. */
-  partnerOfficeId?: ID;
-  invitedBy: ID;
-  createdAt: ISODateTime;
-  acceptedAt?: ISODateTime;
-}
-
-export interface UserSession {
-  id: ID;
-  officeId: ID;
-  userId: ID;
-  device: string;
-  location: string;
-  lastActiveAt: ISODateTime;
-  current: boolean;
-}
