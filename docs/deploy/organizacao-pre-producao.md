@@ -12,7 +12,7 @@ estão na primeira seção.
 > **Atualização de 13/11/2026.** Este documento é a foto da revisão de
 > 12/11/2026: onde ele conta 55 ou 57 migrations, é a contagem daquele dia.
 > Depois dele entraram a 058 a 061 (aplicadas no DEV: 61 no total) e as da
-> revisão final, 062 a 067 (ainda não aplicadas em nenhum Supabase). As
+> revisão final, 062 a 068 (ainda não aplicadas em nenhum Supabase). As
 > **instruções** abaixo foram trocadas para "todas as migrations"; os números
 > das medições ficaram como estavam. A ordem do dia da produção está no
 > [checklist da virada](checklist-da-virada.md).
@@ -44,7 +44,7 @@ Feito no DEV, com autorização do Miguel:
 | Migrations 056 e 057 aplicadas | 57 migrations no DEV; `verificar` com 893 conferências |
 | Contas das rodadas automáticas apagadas (`npm run limpar:teste`) | 484 contas e 298 escritórios parceiros a menos. Ficaram 14 contas e 11 escritórios |
 | Avisos de falha da busca judicial apagados | Notificações: de 143.906 para 84 |
-| DJEN e DataJud desligados no DEV | O agendador responde "nada a ler". Religar em Configurações → Integrações para testar |
+| DJEN e DataJud desligados no DEV | O agendador responde "nada a ler". Religar em DG Brasil → Integrações para testar |
 | Histórico do agendador limpo | 11.622 execuções antigas apagadas |
 
 | Medida | Antes | Depois |
@@ -129,7 +129,7 @@ Na ordem. Os itens 1 a 3 resolvem a maior parte.
 | # | Ação | Onde | Efeito |
 |---|---|---|---|
 | 1 | **Reiniciar o projeto DEV** | Painel do Supabase → Project Settings → General → Restart project | Zera o swap acumulado. O DEV fica fora do ar por 1 a 2 minutos |
-| 2 | **Desligar DJEN e DataJud no DEV** enquanto a integração judicial não estiver em teste | DG Brasil → Configurações → Integrações | Para o ciclo de 5 em 5 minutos: a chamada à Vercel, as gravações no banco e as 64 notificações por rodada. Religar quando for testar |
+| 2 | **Desligar DJEN e DataJud no DEV** enquanto a integração judicial não estiver em teste | DG Brasil → Integrações | Para o ciclo de 5 em 5 minutos: a chamada à Vercel, as gravações no banco e as 64 notificações por rodada. Religar quando for testar |
 | 3 | **Apagar as notificações de lixo** | SQL Editor do Supabase, um comando por vez (abaixo) | Tira cerca de 140 mil linhas e 65 MB, metade do banco |
 | 4 | **Rodar os testes contra o DEV só quando necessário**, um conjunto por vez | — | `test:integration` e `validar:real` são os picos de carga. O `verificar` roda local e não toca no DEV |
 | 5 | Fechar abas do DG Brasil que não estão em uso | — | Algumas telas consultam o banco a cada 20 segundos |

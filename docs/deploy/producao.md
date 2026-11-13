@@ -82,7 +82,7 @@ hora de contratar.
   - Pedir ao Claude quando chegar a hora.
 - **Como conferir:**
   - na Vercel, em **Settings → Cron Jobs**, aparece `*/15 * * * *`;
-  - no DG Brasil, em **Configurações → Integrações → Google Drive**, a última
+  - no DG Brasil, em **DG Brasil → Integrações → Google Drive**, a última
     sincronização é recente.
 
 ## 3. Supabase de produção (projeto novo, no plano Pro)
@@ -304,7 +304,7 @@ verdade:
      mudar no código**. Só conferir, no painel da Vercel, que a função
      `/api/cron/judicial-sync` não está limitada a menos de 300 s.
   3. Se mudar a frequência (passo 1), atualizar os textos em `route.ts`, em
-     [docs/judicial.md](../judicial.md) e nas telas (Configurações → Integrações).
+     [docs/judicial.md](../judicial.md) e nas telas (DG Brasil → Integrações).
 - **Chave do DataJud:** é a pública da wiki do CNJ e pode mudar. Se a tela
   mostrar "DataJud recusou a chave pública", pôr a nova em `DATAJUD_API_KEY`
   na Vercel.

@@ -6,6 +6,7 @@ planos e o que precisa estar configurado.
 | Arquivo | Para quê |
 |---|---|
 | [checklist-da-virada.md](checklist-da-virada.md) | **A ordem do dia de pôr em uso:** 39 passos, do que contratar ao primeiro trabalho com dado real, cada um apontando o documento que explica como fazer. Comece por aqui no dia. |
+| [pendencias-revisao-final.md](pendencias-revisao-final.md) | O que ficou da revisão final de 13/11/2026: a ordem para publicar as correções no DEV, as decisões a confirmar e o que não foi testado. |
 | [producao.md](producao.md) | **O que mudar quando o DG Brasil entrar em produção.** Planos pagos, automações que o plano gratuito não comporta, e-mail, domínios, variáveis, cópia de segurança, monitoramento e conferências antes do primeiro dado real. Ficou de fora de propósito na fase de teste. |
 | [restauracao-dos-documentos.md](restauracao-dos-documentos.md) | Cópia de segurança dos arquivos do Storage (o backup do Supabase não cobre) e o roteiro para restaurar. |
 | [pedido-de-titular.md](pedido-de-titular.md) | Como atender um pedido de titular de dados: o que o sistema já registra, o que é manual e onde estão os dados. |

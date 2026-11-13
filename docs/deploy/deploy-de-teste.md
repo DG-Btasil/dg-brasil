@@ -97,7 +97,7 @@ Endereço: `https://app.dgbrasil.adv.br`. Use o `app.`, não o domínio sem ele.
 3. **No site, entre como ADMIN:**
    - **Configurações → Computador do escritório** abre e mostra que não há
      computador conectado. Isso prova que o site novo e a 040 estão no ar.
-   - **Configurações → Integrações → Google Drive** mostra que o Drive não está
+   - **DG Brasil → Integrações → Google Drive** mostra que o Drive não está
      configurado. É o esperado por enquanto.
 4. **A rota agendada está protegida.** No PowerShell:
 

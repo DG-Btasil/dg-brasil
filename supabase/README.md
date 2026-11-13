@@ -10,7 +10,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 > **Regra de migrations.** Migration aplicada **nunca** é reescrita: mudança
 > nova é sempre um arquivo novo, com o número seguinte. Em 13/11/2026 o Supabase
 > de desenvolvimento tem **61 aplicadas (001–061)**; as da revisão final
-> (062–067) estão no repositório e ainda não foram aplicadas em nenhum Supabase.
+> (062–068) estão no repositório e ainda não foram aplicadas em nenhum Supabase.
 > Nenhuma das aplicadas pode ser editada. (As 19 primeiras foram corrigidas no
 > lugar só até 2026-10-09, antes do primeiro `db push` real; a conferência de
 > que o DEV bate com os arquivos está em
@@ -454,7 +454,7 @@ foi resetado em seguida.
 | `20261113000059_prazo_direto` | **Exceção ao gate humano, decidida pela dona:** o prazo do agente de prazos entra na agenda sem Revisões (desliga-se em Integrações) |
 | `20261113000060_ponte_origem_do_cliente` | Ponte: a pasta do cliente ganha o nível do escritório de origem |
 | `20261113000061_prazo_vira_tarefa` | O prazo do agente de prazos vira tarefa do processo e chama o orquestrador; a minuta continua parando em Revisões |
-| `062`–`064`, `066`, `067` | **Revisão final (13/11/2026), ainda não aplicadas em nenhum Supabase.** Uma por área da revisão; o cabeçalho de cada arquivo diz o que faz |
+| `062`–`064`, `066`–`068` | **Revisão final (13/11/2026), ainda não aplicadas em nenhum Supabase.** Uma por área da revisão; o cabeçalho de cada arquivo diz o que faz |
 | `20261113000065_vigia_da_plataforma` | **Revisão final, ainda não aplicada.** Vigia diária (`private.platform_watch`, `dg-vigia-da-plataforma`: avisa as administradoras de falha no agendador, fila de agentes parada e computador do escritório sem contato); agenda o expurgo dos pedidos vencidos (`dg-expurgo-de-pedidos`); contador de consultas de CPF no banco (`consume_rate_limit`). Testes `[065]` |
 
 ### Supabase Advisors (2026-10-09)
