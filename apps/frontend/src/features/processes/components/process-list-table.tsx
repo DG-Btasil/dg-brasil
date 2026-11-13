@@ -58,7 +58,7 @@ export function ProcessListTable({
           <Th>Tribunal</Th>
           {internal && <Th>Responsável</Th>}
           <Th>Fase</Th>
-          <Th>Status</Th>
+          <Th>Situação</Th>
           {internal && <Th>Próximo prazo</Th>}
           {showCaseValue && <Th className="text-right">Valor da causa</Th>}
           {internal && <Th>Origem</Th>}

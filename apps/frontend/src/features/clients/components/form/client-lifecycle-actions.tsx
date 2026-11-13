@@ -132,8 +132,7 @@ function DeleteDialog({
             Cancelar
           </Button>
           <Button
-            variant="danger"
-            className="border-danger bg-danger text-white hover:bg-danger/90"
+            variant="dangerSolid"
             icon={<Trash2 className="size-4" aria-hidden />}
             loading={saving}
             disabled={typed.trim().toUpperCase() !== CONFIRM_WORD}

@@ -56,6 +56,14 @@ export const TOUR_STEPS: TourStep[] = [
     openMenu: true,
   },
   {
+    id: "deadlines",
+    anchors: ["nav-deadlines"],
+    title: "Prazos",
+    text: "Em Prazos fica a agenda de prazos do escritório, dos mais próximos para os mais distantes.",
+    permission: "processes.view",
+    openMenu: true,
+  },
+  {
     id: "publications",
     anchors: ["nav-publications"],
     title: "Publicações",
