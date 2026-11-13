@@ -141,6 +141,41 @@ documentos de vários casos (o Lucas usou o `HISCON (2).pdf` e o `COMPROVANTE DE
 RESIDÊNCIA (2).pdf` vindos de outro caso). Na vida real é o comportamento esperado: o
 documento mais novo do cliente vale. Para testes, usar um cliente fictício por cenário.
 
+## DJEN, DataJud e agente de prazos (13/11/2026)
+
+Com autorização da Barbara, UM processo real foi cadastrado no caso de teste 17
+só para esta validação (a apagar depois). Rodada curta, de 00:05 a 00:35.
+
+| O que | Como | Resultado |
+|---|---|---|
+| Busca do DJEN pelas OABs | Integrações → "Buscar agora", com as duas buscas ligadas | **Passou.** 565 publicações achadas; guardou só a do processo cadastrado (1) e descartou 564 de quem não é cliente |
+| Publicação na tela | Publicações → "Todas a tratar" | **Passou.** Intimação de 10/11/2026, com órgão, classe, teor e os botões "Criar prazo" e "Não há prazo" |
+| Andamentos do DataJud | Lotes automáticos e consulta direta à API do CNJ | **Pendente por lentidão do CNJ.** A API pública respondeu à consulta direta (37 andamentos do processo), mas levou 49 s e recusou duas tentativas por sobrecarga; o site espera 45 s e marcou "DataJud não respondeu". O site tenta de novo sozinho a cada hora. A cópia pública do CNJ estava atualizada só até julho de 2026 |
+| Agente de prazos cadastrado e escolhido | Agentes → Criar agente; Integrações → "Agente que propõe prazos" | **Passou.** Salvo e conferido ao reabrir a tela |
+| Publicação real → proposta | Pedido igual ao que o banco monta, execução ligada, uma sessão | **Passou.** Proposta "Sem prazo:" em Revisões: o despacho manda o cartório fazer o sequestro e expedir a ordem de pagamento, sem prazo para o cliente. O agente ainda apontou que o nome da parte no teor não era o do cliente do cadastro (verdade: o caso de teste usa o cliente fictício) |
+| Publicação fictícia de réplica → proposta | Idem, com um ato ordinatório fictício de 15 dias | **Passou.** "Proposta de prazo" em Revisões: Réplica à contestação, vencimento 03/12/2026 às 23:59, prioridade alta, contagem conferida de duas formas (lista do pedido e script), agente indicado para a peça |
+| Testes em memória | `npm run verificar` e testes do conector | **Passou.** 907 verificações no banco; 71 testes no conector |
+
+Não coberto ao vivo, por depender da migration 058 no banco de teste:
+
+- a publicação nova virar trabalho do agente **sozinha** (nesta rodada a
+  publicação já estava guardada quando o agente foi escolhido, então o pedido
+  foi criado à mão, com o mesmo texto). Coberto pelos testes em memória;
+- o arquivo `PROCESSO_<CNJ>.txt` na pasta do cliente. Coberto pelos testes do
+  conector; falta uma passada curta da ponte depois da 058.
+
+Aprovar a proposta de prazo (para ver o prazo nascer no caso) ficou para uma
+pessoa: é a decisão humana que a esteira exige.
+
+Achados desta rodada:
+
+- o teor de algumas publicações aparece com `&emsp;` escrito (pós-MVP, item 5);
+- publicação que chega antes de haver agente escolhido não vai para ele depois
+  (pós-MVP, item 5);
+- os 9 processos fictícios dos casos de teste contam como "processos com
+  aviso" na tela de Integrações, porque o DataJud nunca os acha. Some com a
+  limpeza dos casos de teste.
+
 ## O que ainda não foi validado
 
 - Os agentes rodando sozinhos depois da aprovação (a sequência 056 põe os dois na fila:

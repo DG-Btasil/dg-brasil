@@ -29,10 +29,12 @@ Brasil. Os originais em `~/.claude/agents` **nunca são alterados**.
   descrição entra na lista de agentes de toda sessão; texto longo gasta
   assinatura. Sem lista de outros agentes e sem histórico.
 - `tools:` só o que existe no DG Brasil: `Read, Grep, Glob, Write, Edit,
-  PowerShell, Bash, WebSearch, WebFetch` e, para quem já usava, as ferramentas
-  `mcp__djen__*` do original (o DG Brasil terá o conector DJEN). Saem:
-  ChatJurídico, ADVBOX, Gmail, Google Drive (conector), `PushNotification`,
-  `AskUserQuestion`, `Skill`, `Agent`.
+  PowerShell, Bash, WebSearch, WebFetch`. Saem: ChatJurídico, ADVBOX, Gmail,
+  Google Drive (conector), `PushNotification`, `AskUserQuestion`, `Skill`,
+  `Agent` e as ferramentas `mcp__djen__*` do original: o conector DJEN do
+  escritório não existe na sessão do DG Brasil (mostraria dados de outros
+  clientes). As publicações e os andamentos vêm do `PROCESSO_<CNJ>.txt`
+  (seção 3).
 
 ## 3. Como o clone recebe o trabalho
 
@@ -52,7 +54,7 @@ DG Brasil.
 
 `HISCON.pdf`, `HISCREN.pdf`, `IDENTIDADE.pdf`, `COMPROVANTE DE RESIDÊNCIA.pdf`,
 `CONTRACHEQUE.pdf`, `AUTOS_<título>.pdf` (os autos do processo), outros
-documentos com o título que têm no DG Brasil, e dois arquivos de dados:
+documentos com o título que têm no DG Brasil, e os arquivos de dados:
 
 **`DADOS DO CADASTRO.txt`** (uma linha por campo, `campo: valor`; campo sem
 valor fica vazio):
@@ -84,6 +86,11 @@ cidade_do_fecho:
 email:
 telefone:
 ```
+
+**`PROCESSO_<CNJ>.txt`** (ex.: `PROCESSO_0001001-20.2026.8.19.0999.txt`; um por
+processo do caso com número CNJ, no máximo 5, regravado a cada trabalho): os
+dados do processo, as partes, as movimentações e as publicações do DJEN que o
+DG Brasil guarda (data, tipo, órgão, link e teor; a cancelada vem sem o teor).
 
 Não existem `conversa_id`, `contact_id`, `atendente`, anotações de atendente,
 etapas, tags nem funil.
@@ -130,8 +137,9 @@ etapas, tags nem funil.
   Clara): o clone não chama ninguém. Diz isso na ficha de revisão.
 - **Dados do cliente:** vêm do `DADOS DO CADASTRO.txt` e dos documentos da pasta.
 - **Quem assina:** vem do `DADOS DO ESCRITORIO.txt`.
-- **Prazo:** a data da intimação vem do pedido, dos autos ou do conector DJEN.
-  Sem nenhuma das três, o clone calcula pelo cenário mais curto e avisa.
+- **Prazo:** a data da intimação vem do pedido, dos autos ou das publicações
+  do `PROCESSO_<CNJ>.txt` (o clone não consulta o DJEN: lê esse arquivo). Sem
+  nenhuma das três, o clone calcula pelo cenário mais curto e avisa.
 
 ## 6. Decisões, lacunas e alertas (ficha de revisão)
 

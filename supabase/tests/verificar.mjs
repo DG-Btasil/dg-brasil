@@ -139,10 +139,26 @@ await deve('sequência automática [056]: a Análise Bancária já sai com Lucas
   if (!/procuração, declaração de hipossuficiência e contrato de honorários/.test(t.req[lucas])) throw new Error('pedido do Lucas')
   if (!/primeira rodada.*segunda rodada não está autorizada/s.test(t.req[alice])) throw new Error('pedido da Alice')
 })
+// Agente de prazos (058): entra no kit e, como a integração judicial não tinha agente escolhido, passa a propor os prazos.
+const KIT058 = 'intimacao-dg'
+await deve('agente de prazos [058]: a Diana vem cadastrada e ativa, chamando o intimacao-dg; a integração judicial, que não tinha agente, aponta para ela', async () => {
+  const a = await um(db, `select a.id, a.name, a.description, a.purpose, a.status, v.version_number, v.configuration ->> 'local_agent' local, v.instructions
+                            from agents a join agent_versions v on v.id = a.current_version_id where a.slug = $1 and a.deleted_at is null`, [KIT058])
+  igual([a.name, a.status, a.version_number, a.local], ['Diana · Prazos das publicações', 'ACTIVE', 1, KIT058], 'agente')
+  igual(a.description, 'Lê cada publicação nova do DJEN, diz se abre prazo para o cliente e propõe o prazo, com a contagem e o agente que faz a peça.', 'descrição')
+  igual(a.purpose, "Nenhum prazo sem dono: toda publicação vira um prazo proposto ou um 'sem prazo' para a equipe conferir.", 'objetivo')
+  igual(a.instructions, ['Como entregar no DG Brasil:',
+    '- O agente termina a resposta com um bloco PROPOR (tipo, resumo, dados). Chame a ferramenta propor UMA vez, exatamente com esses dados.',
+    '- Nunca escreva ao cliente nem diga que algo foi protocolado: o prazo só vale depois que um advogado aprovar em Revisões.'].join('\n'), 'orientações')
+  const s = await um(db, `select deadline_agent_id, updated_by from judicial_settings where id`)
+  igual([s.deadline_agent_id, s.updated_by], [a.id, null], 'agente que propõe prazos (ninguém "escolheu": updated_by fica vazio)')
+})
 // Os testes seguintes montam os próprios agentes e supõem o banco sem agentes do kit (modelo sem agente, sem
-// orquestrador, sem sequência automática): o kit sai de cena, como se tivesse sido arquivado no site.
+// orquestrador, sem sequência automática, integração judicial sem agente de prazos): o kit sai de cena, como se
+// tivesse sido arquivado no site.
 await db.query(`update analysis_templates set primary_agent_id = null, next_agent_ids = '{}', next_agent_requests = '{}' where name = 'Análise Bancária'`)
-await db.query(`update agents set slug = slug || '-kit054', status = 'INACTIVE', deleted_at = now() where slug = any($1)`, [KIT054])
+await db.query(`update judicial_settings set deadline_agent_id = null where id`)
+await db.query(`update agents set slug = slug || '-kit054', status = 'INACTIVE', deleted_at = now() where slug = any($1)`, [[...KIT054, KIT058]])
 
 // ═════════════════════════════ cenário ═══════════════════════════════════
 // Montado como faria o backend/bootstrap (dono do banco).
@@ -6003,6 +6019,149 @@ await deve('limpeza do histórico não é chamável por usuário, backend nem wo
     has_function_privilege('service_role', 'private.cron_history_housekeeping(interval)', 'execute') s,
     has_function_privilege('dg_worker', 'private.cron_history_housekeeping(interval)', 'execute') w`)
   igual([r.a, r.s, r.w], [false, false, false], 'sem execute')
+})
+
+// ═════════════════════════════ Processo para os agentes [058] ════════════
+
+secao('Processo para os agentes: publicações do DJEN só do processo do caso do trabalho; agente de prazos no kit [058]')
+const p058 = {}
+// CNJs fictícios (TJRJ, 8.19, origem 0999) para os cenários da 058.
+const cnj058 = (n) => cnj(5800 + n, '2026', '8', '19', '0999')
+const pub058 = (proc, cnjN, n, dia, teor, cancelada = false) => db.query(
+  `insert into judicial_publications (external_id, legal_process_id, cnj_number, court, organ, communication_type, available_on, content, link, cancelled_at, cancel_reason)
+   values ($1, $2, $3, 'TJRJ', '1ª Vara Cível Fictícia', 'Intimação', $4, $5, $6, case when $7 then now() end, case when $7 then 'Publicada por engano' end)`,
+  [String(58000 + n), proc, cnjN, dia, teor, `https://comunica.pje.jus.br/x/${58000 + n}`, cancelada])
+const processo058 = (proc) => ex(`select private.executor_get_process($1, $2, $3, $4) r`, [hA, p058.run, p058.reserva, proc])
+await deve('cenário: caso com dois processos com CNJ e um sem; 12 publicações no primeiro (uma longa, uma cancelada), 1 no segundo', async () => {
+  // Outro caso da MESMA cliente do cenário da 043: as publicações de lá não podem aparecer aqui.
+  const cli = (await um(db, `select client_id from legal_cases where id = $1`, [j043.caso])).client_id
+  p058.caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Caso fictício 058', 'IN_PROGRESS', $3, $3, $4) returning id`, [cli, ids.banking, ids.owner, ids.lucas])).id
+  p058.proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court, legal_class) values ($1, $2, 'Fictícia x Banco Fictício', 'TJRJ', 'Procedimento Comum Cível') returning id`,
+    [p058.caso, cnj058(1)])).id
+  p058.proc2 = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, 'Fictícia x Outro Banco Fictício') returning id`, [p058.caso, cnj058(2)])).id
+  p058.semCnj = (await um(db, `insert into legal_processes (legal_case_id, title) values ($1, 'Em preparação') returning id`, [p058.caso])).id
+  await db.query(`insert into process_parties (legal_process_id, party_type, name) values ($1, 'DEFENDANT', 'Banco Fictício S.A.')`, [p058.proc])
+  await db.query(`insert into process_events (legal_process_id, event_type, title, description, occurred_at, source)
+    values ($1, 'MOVEMENT', 'Conclusos para despacho', 'Conclusos para despacho', '2026-10-05T10:00:00-03:00', 'JUDICIAL_INTEGRATION')`, [p058.proc])
+  // Disponibilizadas de 01/10 a 12/10/2026: a de 12/10 é longa; a de 11/10 foi cancelada pelo tribunal.
+  for (let n = 1; n <= 12; n++) {
+    const teor = n === 12 ? `INICIO-058 ${'x'.repeat(7000)} FIM-058` : n === 11 ? 'TEOR-DA-CANCELADA-058' : `Teor fictício 058 nº ${n}`
+    await pub058(p058.proc, cnj058(1), n, `2026-10-${String(n).padStart(2, '0')}`, teor, n === 11)
+  }
+  await pub058(p058.proc2, cnj058(2), 20, '2026-10-08', 'PUBLICACAO-DO-OUTRO-PROCESSO-058')
+  p058.run = (await como(ids.lucas, (tx) => um(tx, `select public.request_agent_run_once($1, $2, $3, $4, 'Conferir o prazo da publicação', '{}', 'EXECUTE') r`,
+    [randomUUID(), ids.agente, p058.caso, p058.proc]))).r.run_id
+  p058.reserva = lease()
+  igual((await reservar040(hA, p058.run, p058.reserva)).claimed, true, 'trabalho reservado pelo computador do escritório')
+})
+await deve('publicações do processo: da mais nova para a mais antiga, no máximo 10, com as datas, o tipo, o órgão, o link e o teor', async () => {
+  const r = await processo058(p058.proc)
+  igual(r.publicacoes.map((x) => x.disponibilizada_em),
+    ['2026-10-12', '2026-10-11', '2026-10-10', '2026-10-09', '2026-10-08', '2026-10-07', '2026-10-06', '2026-10-05', '2026-10-04', '2026-10-03'], 'as 10 mais novas, em ordem')
+  const p9 = r.publicacoes[3]
+  igual(Object.keys(p9).sort(), ['cancelada', 'disponibilizada_em', 'link', 'orgao', 'publicada_em', 'teor', 'teor_cortado', 'tipo'], 'campos')
+  // Disponibilizada na sexta 09/10; segunda 12/10 é feriado nacional: a publicação é na terça 13/10.
+  igual([p9.publicada_em, p9.tipo, p9.orgao, p9.link, p9.teor, p9.teor_cortado, p9.cancelada],
+    ['2026-10-13', 'Intimação', '1ª Vara Cível Fictícia', 'https://comunica.pje.jus.br/x/58009', 'Teor fictício 058 nº 9', false, false], 'publicação comum')
+  const txt = JSON.stringify(r.publicacoes)
+  igual([txt.includes('nº 1"'), txt.includes('nº 2"')], [false, false], 'as duas mais antigas ficam de fora')
+})
+await deve('teor longo sai cortado em 6.000 caracteres, com o indicador', async () => {
+  const p = (await processo058(p058.proc)).publicacoes[0]
+  igual([p.teor.length, p.teor.startsWith('INICIO-058 '), p.teor.includes('FIM-058'), p.teor_cortado, p.cancelada], [6000, true, false, true, false], 'cortado')
+})
+await deve('publicação cancelada: só a informação de que foi cancelada, sem o teor', async () => {
+  const r = await processo058(p058.proc)
+  const p = r.publicacoes[1]
+  igual([p.disponibilizada_em, p.cancelada, p.teor, p.teor_cortado], ['2026-10-11', true, null, false], 'cancelada')
+  igual(JSON.stringify(r.publicacoes).includes('TEOR-DA-CANCELADA-058'), false, 'teor da cancelada não sai')
+  igual(r.publicacoes.filter((x) => x.cancelada).length, 1, 'só ela')
+})
+await deve('só as publicações DAQUELE processo: o outro processo do mesmo caso tem as suas; processo sem publicação, lista vazia', async () => {
+  igual(JSON.stringify(await processo058(p058.proc)).includes('PUBLICACAO-DO-OUTRO-PROCESSO-058'), false, 'não mistura processos')
+  const outro = await processo058(p058.proc2)
+  igual(outro.publicacoes.map((x) => [x.disponibilizada_em, x.teor]), [['2026-10-08', 'PUBLICACAO-DO-OUTRO-PROCESSO-058']], 'o outro processo')
+  igual((await processo058(p058.semCnj)).publicacoes, [], 'sem publicação')
+})
+await deve('nunca de outro caso: processo de outro caso (mesmo da mesma cliente) não é entregue, pela porta do computador nem pela do worker', async () => {
+  igual((await um(db, `select count(*)::int n from judicial_publications where legal_process_id = $1`, [j043.proc])).n > 0, true, 'o outro caso tem publicações')
+  igual(await processo058(j043.proc), null, 'porta do computador do escritório')
+  const por = (await um(db, `select claimed_by from agent_runs where id = $1`, [p058.run])).claimed_by
+  await comoWorker(async (tx) => {
+    igual((await um(tx, `select private.worker_get_process($1, $2, $3) p`, [p058.run, por, j043.proc])).p, null, 'porta do worker')
+    igual((await um(tx, `select private.worker_get_process($1, $2, $3) p`, [p058.run, por, p058.proc])).p.publicacoes.length, 10, 'worker: o processo do caso, com as publicações')
+  })
+  await comoWorker((tx) => tx.query(`select private.worker_get_process($1, 'outro-worker', $2)`, [p058.run, p058.proc])).then(
+    () => { throw new Error('worker que não reservou leu') }, (e) => { if (!/não está reservada por este worker/.test(e.message)) throw e })
+  igual(JSON.stringify(await processo058(p058.proc)).includes('(910001)'), false, 'nada do outro caso')
+  await ex(`select private.executor_get_process($1, $2, $3, $4) r`, [hB, p058.run, p058.reserva, p058.proc]).then(
+    () => { throw new Error('outro computador leu') }, (e) => { if (!/não está reservado|inválido ou revogado/.test(e.message)) throw e })
+})
+await deve('o resto do processo sai como antes (dados, partes e movimentações)', async () => {
+  const r = await processo058(p058.proc)
+  igual(Object.keys(r).sort(), ['case_value', 'client_side', 'cnj_number', 'court', 'court_unit', 'distribution_date', 'district', 'id', 'legal_case_id',
+    'legal_class', 'movimentacoes', 'partes', 'publicacoes', 'state', 'status', 'subject'], 'campos')
+  igual([r.id, r.legal_case_id, r.cnj_number, r.court, r.legal_class], [p058.proc, p058.caso, cnj058(1), 'TJRJ', 'Procedimento Comum Cível'], 'dados')
+  igual(r.partes.map((x) => [x.tipo, x.nome]), [['DEFENDANT', 'Banco Fictício S.A.']], 'partes')
+  igual(r.movimentacoes.map((m) => [m.event_type, m.description, m.source]), [['MOVEMENT', 'Conclusos para despacho', 'JUDICIAL_INTEGRATION']], 'movimentações')
+})
+await deve('worker_get_process continua uma função só, com search_path fixo e só para o dg_worker', async () => {
+  const r = await linhas(db, `select p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1) order by 1`, [['worker_get_process', 'executor_get_process']])
+  igual(r.map((x) => x.f), ['executor_get_process', 'worker_get_process'], 'sem versão duplicada')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || !x.def || x.anon || x.srv || x.usr || !x.wrk).map((x) => x.f), [], 'permissões')
+})
+await deve('pedido de prazo ao agente: logo depois do tipo, quem é o nosso cliente, o polo dele e a parte contrária (do cadastro do processo)', async () => {
+  await db.query(`update judicial_settings set deadline_agent_id = $1 where id`, [ids.agente])
+  const pub = (await um(db, `select id from judicial_publications where external_id = '58009'`)).id
+  const pedido = async (polo, contraria) => {
+    await db.query(`update legal_processes set client_side = $2, adverse_party_summary = $3 where id = $1`, [p058.proc, polo, contraria])
+    const run = (await um(db, `select private.judicial_request_deadline_proposal($1) r`, [pub])).r
+    if (!run) throw new Error(`agente não acionado: ${(await um(db, `select agent_error e from judicial_publications where id = $1`, [pub])).e}`)
+    return (await um(db, `select request_text t from agent_run_inputs where agent_run_id = $1`, [run])).t
+  }
+  const ativo = await pedido('ACTIVE', 'Banco Fictício S.A.\n(e outro)')
+  igual(ativo.includes('. Tipo: Intimação.\nNosso cliente: Odete Integração · polo ativo (do cadastro do processo)\nParte contrária: Banco Fictício S.A. (e outro)\n\nO QUE FAZER: '),
+    true, 'cliente, polo e parte contrária, uma linha cada')
+  igual((await pedido('PASSIVE', 'Banco Fictício S.A.')).includes('\nNosso cliente: Odete Integração · polo passivo (do cadastro do processo)\nParte contrária: Banco Fictício S.A.\n'), true, 'polo passivo')
+  igual((await pedido('THIRD_PARTY', null)).includes('\nNosso cliente: Odete Integração · polo terceiro (do cadastro do processo)\n\nO QUE FAZER: '), true, 'terceiro, sem parte contrária')
+  const vazio = await pedido(null, '   ')
+  igual([vazio.includes('\nNosso cliente: Odete Integração · polo não informado (do cadastro do processo)\n\nO QUE FAZER: '), vazio.includes('Parte contrária')],
+    [true, false], 'processo sem polo nem parte contrária no cadastro')
+  // O resto do pedido continua como na 043: datas, contagem, link e teor.
+  igual([ativo.startsWith(`Publicação do DJEN no processo ${cnj058(1).slice(0, 7)}-`), ativo.includes('disponibilizada em 09/10/2026, publicada em 13/10/2026'),
+    ativo.includes('dia 1: 14/10/2026'), ativo.includes('\n\nÍntegra: https://comunica.pje.jus.br/x/58009\n\nTEOR:\nTeor fictício 058 nº 9')], [true, true, true, true], 'resto do pedido')
+  await db.query(`update judicial_settings set deadline_agent_id = null where id`)
+})
+const rodar058 = async () => db.exec(await readFile(new URL('migrations/20261113000058_processo_para_agentes.sql', raiz), 'utf8'))
+const prazos058 = async () => (await um(db, `select deadline_agent_id id from judicial_settings where id`)).id
+await deve('integração judicial que já tem agente escolhido não muda (a migration, rodada de novo, só recadastra a Diana que faltava)', async () => {
+  igual((await um(db, `select count(*)::int n from agents where slug = $1`, [KIT058])).n, 0, 'a Diana saiu de cena lá em cima')
+  await db.query(`update judicial_settings set deadline_agent_id = $1 where id`, [ids.agente])
+  await rodar058()
+  igual(await prazos058(), ids.agente, 'continua o agente escolhido')
+  igual((await um(db, `select status from agents where slug = $1`, [KIT058])).status, 'ACTIVE', 'Diana cadastrada')
+})
+await deve('rodar de novo não duplica a Diana nem mexe no que o escritório editou; integração sem agente passa a apontar para ela', async () => {
+  await db.query(`update agents set name = 'Diana editada no site' where slug = $1`, [KIT058])
+  await db.query(`update judicial_settings set deadline_agent_id = null where id`)
+  await rodar058()
+  const a = await um(db, `select count(*)::int n, max(name) nome, (array_agg(id))[1] id from agents where slug = $1`, [KIT058])
+  igual([a.n, a.nome], [1, 'Diana editada no site'], 'sem duplicar, sem sobrescrever')
+  igual((await um(db, `select count(*)::int n from agent_versions where agent_id = $1`, [a.id])).n, 1, 'uma versão')
+  igual(await prazos058(), a.id, 'aponta para a Diana')
+})
+await deve('Diana pausada no site: a integração sem agente continua sem agente', async () => {
+  await db.query(`update judicial_settings set deadline_agent_id = null where id`)
+  await db.query(`update agents set status = 'INACTIVE' where slug = $1`, [KIT058])
+  await rodar058()
+  igual(await prazos058(), null, 'não aponta para agente pausado')
+  // O kit sai de cena de novo, como no começo do arquivo.
+  await db.query(`update agents set slug = slug || '-kit058', deleted_at = now() where slug = $1`, [KIT058])
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

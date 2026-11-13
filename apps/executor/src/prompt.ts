@@ -44,6 +44,7 @@ PASSOS:
       Se o agente local não existir neste computador, ou se esta sessão recusar chamá-lo (a Vigia só lista os agentes da ponte): informar_falha (AGENT_NOT_FOUND), dizendo o nome do agente. Nunca troque por outro agente.
    e. Se precisar de teses ou referências do escritório: consultar_teses, listar_referencias, abrir_referencia (e repasse ao agente).
    f. Entregue: análise com entregar_analise (resultado ou arquivo analise.json); cada arquivo gerado com entregar_minuta; providências com propor.
+      Se a resposta do agente terminar com um bloco PROPOR (linhas "tipo:", "resumo:" e "dados:" com um JSON): chame propor UMA vez, exatamente com esse tipo, esse resumo e esses dados, sem reescrever nem resumir; a prioridade da proposta é a "priority" dos dados (sem ela, HIGH). Não crie outras propostas para o mesmo assunto.
    g. concluir_trabalho. Se algo impedir de terminar: informar_falha (tentar_de_novo=true só para problema passageiro e se nada foi entregue). Se a pessoa desistir antes de qualquer entrega: devolver_trabalho.
    Se alguma ferramenta disser que um advogado pediu para INTERROMPER: pare na hora e chame concluir_trabalho.
 3. No fim, resuma para a pessoa o que foi entregue em cada trabalho e lembre que a revisão é em DG Brasil → Revisões.`

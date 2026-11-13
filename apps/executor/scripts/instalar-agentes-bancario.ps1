@@ -67,6 +67,19 @@ foreach ($f in $clones) {
   if ($Simular) { Faria "copiar $($f.Name)" } else { Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $Destino $f.Name) -Force }
 }
 Ok "$($clones.Count) agentes: $($nomes -join ', ')"
+# Agentes do kit que NÃO passam pela ponte (trabalham só com o pedido, sem pasta do cliente), como o de
+# prazos das publicações: são instalados e liberados na sessão, mas não entram no ponte.json.
+$Gerais = Join-Path $Repo 'agentes\geral'
+$nomesGerais = @()
+if (Test-Path $Gerais) {
+  foreach ($f in @(Get-ChildItem -Path $Gerais -Filter '*-dg.md' -File | Sort-Object Name)) {
+    $m = Select-String -Path $f.FullName -Pattern '^name:\s*([a-z0-9-]+)\s*$' -List
+    if (-not $m -or "$($m.Matches[0].Groups[1].Value).md" -ne $f.Name) { throw "$($f.Name): o 'name:' tem de ser o nome do arquivo." }
+    $nomesGerais += $m.Matches[0].Groups[1].Value
+    if ($Simular) { Faria "copiar $($f.Name)" } else { Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $Destino $f.Name) -Force }
+  }
+  if ($nomesGerais.Count) { Ok "Fora da ponte: $($nomesGerais -join ', ')" }
+}
 foreach ($a in @('porteiro-dg', 'arquivista-dg', 'mensageiro-dg', 'orquestrador')) {
   $origem = Join-Path $DaPonte "$a.md"
   if (-not (Test-Path $origem)) { Aviso "Não achei $origem"; continue }
@@ -156,7 +169,7 @@ if (-not (Test-Path $Settings)) {
   $allow = @($s.permissions.allow)
   foreach ($r in $novas) { if ($allow -notcontains $r) { $allow += $r } }
   # A Vigia tira da lista os agentes que não chama: os clones precisam ficar.
-  $liberar = @($nomes | ForEach-Object { "Agent($_)" }) + @('Agent(orquestrador)')
+  $liberar = @(($nomes + $nomesGerais) | ForEach-Object { "Agent($_)" }) + @('Agent(orquestrador)')
   $deny = @(@($s.permissions.deny) | Where-Object { $liberar -notcontains $_ })
   $s.permissions.allow = $allow
   $s.permissions.deny = $deny

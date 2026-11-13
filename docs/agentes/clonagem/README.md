@@ -62,6 +62,30 @@ de gestão que **não** foram clonados (Luísa, Otávio, Beto, Bruno, Helena, So
 Carlos), e o que se aproveitou deles no Porteiro e no orquestrador:
 [_comerciais-e-gestao.md](_comerciais-e-gestao.md).
 
+## Agente de prazos (fora da ponte)
+
+| Agente | O que faz | Relatório |
+|---|---|---|
+| `intimacao-dg` (no site: "Diana · Prazos das publicações") | Lê cada publicação nova do DJEN de um processo cadastrado, diz se abre prazo para o cliente e propõe o prazo (ou registra "Sem prazo"), com a contagem e o agente do kit que faz a peça | [intimacao.md](intimacao.md) |
+
+Clone melhorado do agente de intimações, feito em 13/11/2026 a pedido da
+Barbara ("preciso que um dos agentes proponha um prazo"). Diferenças para os 13
+clones da esteira:
+
+- **não passa pela ponte**: trabalha só com o pedido que o site monta (a
+  publicação inteira, o lado do cliente e a lista de dias úteis). Não usa a
+  pasta do cliente, por isso não entra no `ponte.json`; o instalador o copia da
+  pasta `agentes/geral/` e o libera na sessão;
+- **não gera documento**: a entrega é UMA proposta em Revisões. "Prazo" (com
+  título, data e a contagem) ou "Sem prazo:" com o motivo. O prazo só existe
+  depois que um advogado aprova;
+- **confere a data duas vezes**: pela lista de dias úteis do pedido e pelo
+  script de prazo. Se as duas divergirem, propõe a data mais cedo e avisa.
+
+Quem escolhe o agente é o escritório, em DG Brasil → Integrações → "Agente que
+propõe prazos". A migration 058 já o cadastra e, se esse campo estiver vazio, o
+escolhe (ver "Publicações e andamentos para os agentes", abaixo).
+
 ## Decisões tomadas (Barbara, 11/11/2026)
 
 1. **Pasta:** `G:\Meu Drive\DG BRASIL\CLIENTE BANCÁRIO\<NOME DO CLIENTE>`. O
@@ -130,6 +154,33 @@ pedido em texto de cada um (`next_agent_ids` e `next_agent_requests` em
 `analysis_templates`). Lista vazia = nada acontece depois da aprovação. A tela
 para configurar isso está no [pós-MVP](../../deploy/pos-mvp.md), item 5.
 
+## Publicações e andamentos para os agentes (decisão de 13/11/2026)
+
+A integração judicial do site (DJEN pelas OABs do escritório, DataJud pelo
+número CNJ) já guardava as publicações e os andamentos dos processos
+cadastrados. Faltava isso chegar aos agentes. Ficou assim:
+
+1. **Prazo de cada publicação, sozinho.** Publicação nova de processo
+   cadastrado vira um trabalho do agente de prazos, sem ninguém pedir; a
+   proposta chega em Revisões. Com a migration 058, o agente de prazos do kit
+   passa a ser o escolhido quando o escritório ainda não escolheu nenhum
+   (decisão de deixar a esteira mais automática). Para desligar: Integrações →
+   "Agente que propõe prazos" → "Nenhum (a equipe trata)".
+2. **O pedido diz de que lado o cliente está.** O texto que o site manda ao
+   agente ganhou as linhas "Nosso cliente: … · polo …" e "Parte contrária: …",
+   tiradas do cadastro do processo (058).
+3. **`PROCESSO_<CNJ>.txt` na pasta do cliente.** Quando o trabalho é de um
+   processo cadastrado, o conector (1.3.2) grava na pasta do cliente um arquivo
+   com os dados do processo, as partes, os andamentos e as publicações do DJEN
+   (formato no [contrato](contrato-dos-clones.md)). Os clones leem esse
+   arquivo: **nenhum clone consulta o DJEN ou o DataJud por conta própria**
+   (a sessão do DG Brasil nunca carregou esse conector; as consultas saíram
+   dos 11 clones que as citavam). Os índices do BACEN continuam vindo dos
+   scripts.
+
+Validação em 13/11/2026: [qa-clones.md](../../qa/clones/qa-clones.md), seção
+"DJEN, DataJud e agente de prazos".
+
 ## O que foi feito
 
 | Parte | Onde | Situação |
@@ -156,9 +207,9 @@ cliente fictício.
 
 ## Pendências conhecidas
 
-- **Conector DJEN na sessão do DG Brasil:** os clones mantêm as consultas, mas a
-  sessão ainda não carrega esse conector. Enquanto isso, eles seguem pelos
-  autos e avisam na ficha.
+- **Publicação que chegou antes de haver agente de prazos escolhido** não vai
+  para o agente depois (só as novas vão). A equipe trata na tela Publicações
+  ("Criar prazo" ou "Não há prazo"). Melhoria no [pós-MVP](../../deploy/pos-mvp.md), item 5.
 - **Distribuição dos clones (decisão de 12/11/2026):** ficam só no computador
   do escritório, fora do GitHub, e são instalados a partir da pasta local. No
   site fica só o cadastro (kit básico, migration 054). O botão "Setup" no site

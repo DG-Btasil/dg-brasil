@@ -44,6 +44,10 @@ class FakeDg {
   wakeConsultas = 0
   semWake = false
   bridge: unknown = { cliente: { id: 'cli-1', nome: 'José da Silva Fictício', profissao: 'aposentado', estado_civil: 'casado(a)', email: null }, pasta_drive: { id: 'pastaFicticia_0001', nome: 'JOSE DA SILVA FICTICIO' } }
+  /** O caso do trabalho (com "processos") e cada processo, por id. Processo fora do mapa: 404, como no DG Brasil. */
+  caso: unknown = { id: 'c1', cliente: 'José Fictício' }
+  processos = new Map<string, unknown>()
+  casoFora = false
 
   add(kind: Job['kind'] = 'EXECUTE'): Job {
     const j: Job = { id: randomUUID(), status: 'QUEUED', cancel: false, kind, calls: [] }
@@ -94,7 +98,7 @@ class FakeDg {
       switch (action) {
         case 'heartbeat': return send(200, { ok: true, status: 'RUNNING', cancel_requested: job.cancel })
         case 'config': return send(200, { recorded: true })
-        case 'case': return send(200, { id: 'c1', cliente: 'José Fictício' })
+        case 'case': return this.casoFora ? send(409, { error: { code: 'CONFLICT', message: 'Caso indisponível.' } }) : send(200, this.caso)
         case 'documents': return send(200, { documents: [{ document_id: 'd1', title: this.docTitle, category: 'BENEFIT_STATEMENT', version_id: v1, version_number: 1, filename: 'hiscon.pdf', mime_type: 'application/pdf', size: this.docBody.length, checksum_sha256: sha(this.docBody), source: this.docSource }] })
         case `documents/${v1}/download`: return send(200, { url: `${this.url}/files/${v1}`, filename: '..\\..\\hiscon.pdf', size: this.docBody.length, checksum_sha256: sha(this.docBody), title: this.docTitle, category: 'BENEFIT_STATEMENT', version_number: 1 })
         case 'bridge': return send(200, this.bridge)
@@ -104,6 +108,10 @@ class FakeDg {
         case 'complete': job.status = this.proposals.length || this.finalized.length || this.analyses.length ? 'WAITING_HUMAN' : 'COMPLETED'; return send(200, { status: job.cancel ? 'CANCELLED' : job.status, error_code: null })
         case 'fail': job.status = body.retryable ? 'QUEUED' : 'FAILED'; job.lease = undefined; return send(200, { status: job.status, error_code: body.error_code })
         case 'release': job.status = 'QUEUED'; job.lease = undefined; return send(200, { status: 'QUEUED' })
+      }
+      if (action.startsWith('processes/')) {
+        const processo = this.processos.get(action.slice('processes/'.length))
+        return processo ? send(200, processo) : send(404, { error: { code: 'NOT_FOUND', message: 'Processo não pertence ao caso deste trabalho.' } })
       }
       if (action.startsWith('outputs/') && action.endsWith('/finalize')) { this.finalized.push({ ...body, version: action.split('/')[1] }); return send(200, { document_version_id: action.split('/')[1], version_number: 1, created: true }) }
       return send(404, { error: { code: 'NOT_FOUND', message: action } })
@@ -129,6 +137,7 @@ beforeEach(async () => {
   dg.enabled = true; dg.corruptDownload = false; dg.analyses = []; dg.proposals = []; dg.finalized = []
   dg.docBody = HISCON; dg.docTitle = 'HISCON'; dg.docSource = 'UPLOAD'
   dg.bridge = { cliente: { id: 'cli-1', nome: 'José da Silva Fictício', profissao: 'aposentado', estado_civil: 'casado(a)', email: null }, pasta_drive: { id: 'pastaFicticia_0001', nome: 'JOSE DA SILVA FICTICIO' } }
+  dg.caso = { id: 'c1', cliente: 'José Fictício' }; dg.processos = new Map(); dg.casoFora = false
   antivirus = 'limpo'
   trabalhos = new Trabalhos(new DgApi(dg.url, TOKEN, 'dg-executor/test'), pasta, logMudo, 40)
   const servidor = criarServidor(trabalhos, 'dg-executor/test', logMudo, undefined, {
@@ -489,6 +498,121 @@ describe('ponte com os agentes da máquina', () => {
     expect(c.erro, c.texto).toBe(false)
     expect(c.texto).toContain('não copiado (entregue por um agente')
     expect((await readdir(join(kit, 'JOSE DA SILVA FICTICIO'))).sort()).toEqual(['DADOS DO CADASTRO.txt', 'DADOS DO ESCRITORIO.txt'])
+  })
+
+  describe('PROCESSO_<CNJ>.txt (andamentos e publicações do DJEN)', () => {
+    const P1 = '22222222-2222-4222-8222-222222222222', P2 = '33333333-3333-4333-8333-333333333333'
+    const P3 = '44444444-4444-4444-8444-444444444444', P4 = '55555555-5555-4555-8555-555555555555'
+    const A1 = 'PROCESSO_0001001-20.2026.8.19.0999.txt', A3 = 'PROCESSO_0002002-20.2026.8.19.0999.txt', A4 = 'PROCESSO_0003003-20.2026.8.19.0999.txt'
+    /** Todos os padrões de "trazer" que os instaladores gravam no ponte.json (agentes do escritório e clones). */
+    const PADROES = ['MINUTA_*.docx', 'MINUTA_*.pdf', 'Memoria_Calculo_*.xlsx', 'MEMORIA_CALCULO_*.xlsx', 'FICHA_REVISAO_*.md', 'FICHA_*.md',
+      'ROTEIRO_CONSIGNADO_*.html', 'ROTEIRO_CONSIGNADO_*.pdf', 'TETO_NORMATIVO_*.html', 'TETO_NORMATIVO_*.pdf', 'Procuracao_*.pdf',
+      'Declaracao_Hipossuficiencia_*.pdf', 'Contrato_Honorarios_*.pdf', 'Declaracao_Residencia_*.pdf', 'PARECER_*.docx', 'TABELA_*.docx', 'TABELA_*.xlsx']
+    const processo = (cnj: string, extra: Record<string, unknown> = {}) => ({
+      id: P1, legal_case_id: 'c1', cnj_number: cnj, status: 'IN_PROGRESS', court: 'TJRJ', court_unit: '1ª Vara Cível Fictícia', district: 'Cidade Fictícia', state: 'RJ',
+      legal_class: 'Procedimento Comum Cível', subject: 'Empréstimo consignado', client_side: 'ACTIVE', case_value: 10000, distribution_date: '2026-03-02',
+      partes: [{ tipo: 'DEFENDANT', nome: 'Banco Fictício S.A.' }],
+      movimentacoes: [{ event_type: 'MOVEMENT', description: 'Conclusos para despacho', occurred_at: '2026-10-05T13:00:00+00:00', source: 'JUDICIAL_INTEGRATION' }],
+      ...extra,
+    })
+    const publicacao = (teor: string | null, extra: Record<string, unknown> = {}) => ({
+      disponibilizada_em: '2026-11-03', publicada_em: '2026-11-04', tipo: 'Intimação', orgao: '1ª Vara Cível Fictícia', link: 'https://comunica.pje.jus.br/x/1',
+      cancelada: false, teor, teor_cortado: false, ...extra,
+    })
+
+    beforeEach(async () => {
+      await ponte({ agentes: { 'kit-cliente-teste': { pasta: ['7. KIT DO CLIENTE'], trazer: PADROES } } })
+      dg.caso = { id: 'c1', cliente: 'José Fictício', processos: [
+        { id: P1, cnj: '00010012020268190999', status: 'IN_PROGRESS', tribunal: 'TJRJ' },
+        { id: P2, cnj: null, status: 'PREPARING', tribunal: null },
+        { id: P3, cnj: '00020022020268190999', status: 'IN_PROGRESS', tribunal: 'TJRJ' },
+        { id: P4, cnj: '00030032020268190999', status: 'IN_PROGRESS', tribunal: 'TJRJ' },
+      ] }
+      dg.processos.set(P1, processo('00010012020268190999', { publicacoes: [
+        publicacao('Fica a parte autora intimada para réplica em 15 dias.'),
+        publicacao(null, { disponibilizada_em: '2026-10-20', publicada_em: '2026-10-21', cancelada: true }),
+      ] }))
+      // Banco ainda sem a migration 058: o processo vem sem "publicacoes".
+      dg.processos.set(P3, processo('00020022020268190999'))
+      // P4 não está no mapa: a consulta falha (404).
+    })
+
+    it('um arquivo por processo do caso com CNJ, regravado a cada trabalho; falha e banco antigo só avisam; o Mensageiro não traz', async () => {
+      const j = await ate('ler')
+      const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+      expect(c.erro, c.texto).toBe(false)
+      const cliente = join(kit, 'JOSE DA SILVA FICTICIO')
+      expect((await readdir(cliente)).sort()).toEqual(['DADOS DO CADASTRO.txt', 'DADOS DO ESCRITORIO.txt', 'HISCON.pdf', A1, A3])
+      // Só os processos com CNJ foram consultados, pela reserva do trabalho.
+      expect(j.calls.filter((x) => x === 'case' || x.startsWith('processes/'))).toEqual(['case', `processes/${P1}`, `processes/${P3}`, `processes/${P4}`])
+      const um = await readFile(join(cliente, A1), 'utf8')
+      expect(um).toMatch(/^PROCESSO 0001001-20\.2026\.8\.19\.0999\r\n/)
+      expect(um).toContain('vara: 1ª Vara Cível Fictícia\r\ncomarca: Cidade Fictícia/RJ\r\n')
+      expect(um).toContain(`origem: DG Brasil, trabalho ${j.id}\r\n`)
+      expect(um).toContain('PARTES\r\n- Réu: Banco Fictício S.A.\r\n')
+      expect(um).toContain('- 05/10/2026: Conclusos para despacho\r\n')
+      expect(um).toContain('1) Disponibilizada em 03/11/2026. Publicada em 04/11/2026.\r\n   Tipo: Intimação\r\n')
+      expect(um).toContain('   Teor:\r\n       Fica a parte autora intimada para réplica em 15 dias.\r\n')
+      expect(um).toContain('2) Disponibilizada em 20/10/2026. Publicada em 21/10/2026.\r\n   CANCELADA pelo tribunal.')
+      expect(c.texto).toContain(`- ${A1} (gerado: dados do processo, andamentos e publicações do DJEN que o DG Brasil tem)`)
+      // Banco sem a 058: grava o que tem e avisa. Consulta que falhou: avisa e o trabalho segue.
+      expect(await readFile(join(cliente, A3), 'utf8')).toContain('PUBLICAÇÕES DO DJEN\r\n(não vieram: ')
+      expect(c.texto).toContain(`- ${A3}: gravado SEM as publicações do DJEN`)
+      expect(c.texto).toContain(`- ${A4}: não gravado (Processo não pertence ao caso deste trabalho.)`)
+      expect(c.texto).toContain('Agora chame o agente da máquina kit-cliente-teste')
+
+      // Outro trabalho do mesmo cliente: publicação nova no DG Brasil; o arquivo é regravado (o que estava nele se perde).
+      await writeFile(join(cliente, A1), 'anotação antiga feita à mão')
+      dg.processos.set(P1, processo('00010012020268190999', { publicacoes: [publicacao('Sentença publicada. Prazo para recurso.', { disponibilizada_em: '2026-11-10', publicada_em: '2026-11-11' })] }))
+      dg.processos.set(P4, processo('00030032020268190999', { publicacoes: [] }))
+      const j2 = await ate('ler')
+      const c2 = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j2.id })
+      expect(c2.erro, c2.texto).toBe(false)
+      expect(c2.texto).toContain(`- ${A1} (atualizado: `)
+      expect(c2.texto).toContain(`- ${A4} (gerado: `)
+      const dois = await readFile(join(cliente, A1), 'utf8')
+      expect(dois).toContain('       Sentença publicada. Prazo para recurso.\r\n')
+      expect(dois).not.toContain('anotação antiga')
+      expect(dois).not.toContain('réplica em 15 dias')
+      expect((await readdir(cliente)).sort()).toEqual(['DADOS DO CADASTRO.txt', 'DADOS DO ESCRITORIO.txt', 'HISCON.pdf', A1, A3, A4])
+
+      // O agente gera a minuta; o Mensageiro traz só ela, nunca os arquivos de dados.
+      await writeFile(join(cliente, 'MINUTA_REPLICA_SILVA_BANCO-FICTICIO.docx'), 'PK minuta')
+      const t = await chamar('trazer_da_pasta_do_cliente', { trabalho_id: j2.id })
+      expect(t.erro, t.texto).toBe(false)
+      expect((await readdir(join(pasta, j2.id, 'saida'))).sort()).toEqual(['MINUTA_REPLICA_SILVA_BANCO-FICTICIO.docx', 'porteiro-script.json', 'porteiro.json'])
+      expect(t.texto).not.toContain('PROCESSO_')
+    })
+
+    it('mais de 5 processos com CNJ: grava 5 (o processo do trabalho entre eles) e avisa', async () => {
+      const ids = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: `${n}`.repeat(8) + '-1111-4111-8111-111111111111', cnj: `000${n}00120202681909${String(n).padStart(2, '0')}` }))
+      dg.caso = { id: 'c1', cliente: 'José Fictício', processos: ids }
+      for (const p of ids) dg.processos.set(p.id, processo(p.cnj, { publicacoes: [] }))
+      const j = await ate('ler')
+      const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+      expect(c.erro, c.texto).toBe(false)
+      expect((await readdir(join(kit, 'JOSE DA SILVA FICTICIO'))).filter((x) => x.startsWith('PROCESSO_'))).toHaveLength(5)
+      expect(c.texto).toContain('2 ficaram sem PROCESSO_<CNJ>.txt')
+    })
+
+    it('consulta do caso falhou: os documentos e os dados do cadastro são gravados do mesmo jeito, com o aviso', async () => {
+      dg.casoFora = true
+      const j = await ate('ler')
+      const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+      expect(c.erro, c.texto).toBe(false)
+      expect((await readdir(join(kit, 'JOSE DA SILVA FICTICIO'))).sort()).toEqual(['DADOS DO CADASTRO.txt', 'DADOS DO ESCRITORIO.txt', 'HISCON.pdf'])
+      expect(c.texto).toContain('Processos do caso: não consegui consultar o DG Brasil (Caso indisponível.)')
+      expect(c.texto).toContain('Agora chame o agente da máquina kit-cliente-teste')
+    })
+
+    it('agente que não usa os arquivos de dados (dados_do_cadastro: false): nenhum PROCESSO_<CNJ>.txt, nenhuma consulta', async () => {
+      await ponte({ agentes: { 'kit-cliente-teste': { pasta: ['7. KIT DO CLIENTE'], trazer: PADROES, dados_do_cadastro: false } } })
+      const j = await ate('ler')
+      const c = await chamar('copiar_para_pasta_do_cliente', { trabalho_id: j.id })
+      expect(c.erro, c.texto).toBe(false)
+      expect(await readdir(join(kit, 'JOSE DA SILVA FICTICIO'))).toEqual(['HISCON.pdf'])
+      expect(j.calls.some((x) => x === 'case' || x.startsWith('processes/'))).toBe(false)
+    })
   })
 
   it('agentes clonados: cliente sem nome válido no cadastro não ganha pasta', async () => {
