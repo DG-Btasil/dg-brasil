@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CLIENT_POLES, DEADLINE_TYPES, PROCESS_PHASES, PROCESS_STATUSES } from "@/lib/constants/status";
+import { CLIENT_POLES, DEADLINE_TYPES, HEARING_MODES, PROCESS_PHASES, PROCESS_STATUSES } from "@/lib/constants/status";
 import { msg, zCnjOptional, zCurrencyOptional, zRequired } from "@/lib/validation";
 
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
@@ -75,13 +75,48 @@ export const processEventSchema = z.object({
 });
 export type ProcessEventValues = z.infer<typeof processEventSchema>;
 
-/** "Adicionar prazo". */
-export const deadlineSchema = z.object({
-  title: zRequired("Informe o título do prazo."),
-  type: requiredEnum(DEADLINE_TYPES),
-  dueDate: z.string().refine((v) => isoDate.test(v), "Informe o vencimento."),
-  responsibleUserId: zRequired("Selecione o responsável."),
-  notes: z.string().optional(),
-});
+/**
+ * "Adicionar prazo" e "Editar prazo". Audiência pede hora e modalidade (local e
+ * link ajudam, mas podem ficar para depois); nos outros tipos o prazo vale até
+ * o fim do dia e os campos de audiência nem aparecem.
+ */
+export const deadlineSchema = z
+  .object({
+    title: zRequired("Informe o título do prazo."),
+    type: requiredEnum(DEADLINE_TYPES),
+    dueDate: z.string().refine((v) => isoDate.test(v), "Informe o vencimento."),
+    dueTime: z.string().optional(),
+    responsibleUserId: zRequired("Selecione o responsável."),
+    hearingMode: z.string().optional(),
+    hearingLocation: z.string().max(500, "Máximo de 500 caracteres.").optional(),
+    hearingLink: z.string().max(1000, "Máximo de 1000 caracteres.").optional(),
+    notes: z.string().optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.type !== "HEARING") return;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v.dueTime ?? "")) ctx.addIssue({ code: "custom", path: ["dueTime"], message: "Informe a hora da audiência." });
+    if (!(HEARING_MODES as readonly string[]).includes(v.hearingMode ?? "")) ctx.addIssue({ code: "custom", path: ["hearingMode"], message: "Selecione a modalidade." });
+    const link = v.hearingLink?.trim();
+    if (link && !/^https?:\/\/\S+$/i.test(link)) ctx.addIssue({ code: "custom", path: ["hearingLink"], message: "Informe um link que comece com http:// ou https://." });
+  });
 export type DeadlineFormInput = z.input<typeof deadlineSchema>;
 export type DeadlineFormValues = z.output<typeof deadlineSchema>;
+
+/**
+ * Formulário de prazo → campos das Server Actions (o servidor valida de novo).
+ * Fora da audiência, hora e dados de audiência não são enviados.
+ */
+export function deadlineFormFields(v: DeadlineFormValues) {
+  const hearing = v.type === "HEARING";
+  return {
+    title: v.title.trim(),
+    type: v.type,
+    dueDate: v.dueDate,
+    dueTime: hearing ? v.dueTime : undefined,
+    responsibleUserId: v.responsibleUserId,
+    description: v.notes?.trim() ?? "",
+    hearingMode: hearing ? v.hearingMode : undefined,
+    hearingLocation: hearing ? (v.hearingLocation?.trim() ?? "") : undefined,
+    hearingLink: hearing ? (v.hearingLink?.trim() ?? "") : undefined,
+  };
+}

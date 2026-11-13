@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Ban, CalendarCheck, CalendarPlus, Check, ChevronRight, Pencil } from "lucide-react";
+import { CalendarCheck, CalendarPlus, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DEADLINE_STATUS_LABEL, DEADLINE_STATUS_TONE, DEADLINE_TYPE_LABEL, DEADLINE_URGENCY_LABEL, DEADLINE_URGENCY_TONE } from "@/lib/constants/status";
 import { deadlineUrgency, formatDate, formatDateTime } from "@/lib/formatting";
@@ -9,7 +9,7 @@ import type { ActionResult } from "@/lib/actions/result";
 import { Can } from "@/components/layout/guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { Badge, StatusBadge } from "@/components/ui/badge";
-import { Button, IconButton } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { DeadlineBadge } from "@/components/ui/display";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
@@ -17,12 +17,14 @@ import { TONE_BORDER_LEFT, TONE_TEXT } from "@/components/ui/tone";
 import { EmptyState } from "@/components/feedback/states";
 import type { Page } from "@/server/core/pagination";
 import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
+import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUserMap } from "@/features/directory/directory-context";
-import { useProcessActions } from "../../use-process-actions";
+import { DeadlineActionDialog, DeadlineAgentMark, deadlineHasTime, DeadlineRowActions, HearingInfo, type DeadlineActionRequest } from "../deadline-actions";
 
 /**
  * Prazos do processo. A situação vem do banco (`effectiveStatus`: "Vencido"
- * é derivado na view, nunca gravado); a urgência é só apresentação.
+ * é derivado, nunca gravado); a urgência é só apresentação. Cumprir, cancelar,
+ * marcar como perdido e reabrir pedem confirmação (deadline-actions).
  */
 export function DeadlinesTab({
   deadlines,
@@ -34,22 +36,16 @@ export function DeadlinesTab({
   onEdit: (deadline: DeadlineDTO) => void;
 }) {
   const users = useDirectoryUserMap();
-  const { completeDeadline, cancelDeadline } = useProcessActions();
-  const [busy, setBusy] = useState<string | null>(null);
+  const canEdit = usePermission("processes.edit");
+  const [action, setAction] = useState<DeadlineActionRequest | null>(null);
   const items = useMemo(() => (deadlines.ok ? deadlines.data.items : []), [deadlines]);
   const { open, done } = useMemo(
     () => ({
       open: items.filter((d) => d.status === "OPEN").sort((a, b) => a.dueAt.localeCompare(b.dueAt)),
-      done: items.filter((d) => d.status !== "OPEN").sort((a, b) => (b.completedAt ?? b.updatedAt).localeCompare(a.completedAt ?? a.updatedAt)),
+      done: items.filter((d) => d.status !== "OPEN").sort((a, b) => (b.statusChangedAt ?? b.completedAt ?? b.updatedAt).localeCompare(a.statusChangedAt ?? a.completedAt ?? a.updatedAt)),
     }),
     [items],
   );
-
-  async function act(id: string, run: () => Promise<unknown>) {
-    setBusy(id);
-    await run();
-    setBusy(null);
-  }
 
   if (!deadlines.ok) return <ActionErrorState error={deadlines} title="Não foi possível carregar os prazos." />;
 
@@ -61,15 +57,20 @@ export function DeadlinesTab({
           as="h3"
           description="Ordenados pela data do prazo. Hoje e vencidos em vermelho, amanhã em laranja, até 5 dias em amarelo."
           actions={
-            <Can permission="processes.edit">
-              <Button size="sm" icon={<CalendarPlus className="size-3.5" aria-hidden />} onClick={onAdd}>
-                Adicionar prazo
-              </Button>
-            </Can>
+            <div className="flex items-center gap-2">
+              <ButtonLink href="/prazos" variant="ghost" size="sm">
+                Ver a agenda do escritório
+              </ButtonLink>
+              <Can permission="processes.edit">
+                <Button size="sm" icon={<CalendarPlus className="size-3.5" aria-hidden />} onClick={onAdd}>
+                  Adicionar prazo
+                </Button>
+              </Can>
+            </div>
           }
         />
         {open.length === 0 ? (
-          <EmptyState compact icon={CalendarCheck} title="Nenhum prazo em aberto." description="Prazos adicionados pela equipe ou confirmados em Revisões aparecem aqui." />
+          <EmptyState compact icon={CalendarCheck} title="Nenhum prazo em aberto." description="Prazos adicionados pela equipe ou lançados pelos agentes aparecem aqui." />
         ) : (
           <Table caption="Prazos em aberto do processo">
             <THead>
@@ -92,13 +93,20 @@ export function DeadlinesTab({
                 return (
                   <Tr key={d.id}>
                     <Td className={cn("border-l-2", tone === "neutral" ? "border-l-transparent" : TONE_BORDER_LEFT[tone])}>
-                      <div className="font-medium text-foreground">{d.title}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-foreground">{d.title}</span>
+                        <DeadlineAgentMark deadline={d} canCheck={canEdit} />
+                      </div>
                       {d.description && <div className="mt-0.5 max-w-[360px] truncate text-[12px] text-muted">{d.description}</div>}
+                      <HearingInfo deadline={d} />
                     </Td>
                     <Td className="text-[12.5px] text-muted">{DEADLINE_TYPE_LABEL[d.type]}</Td>
                     <Td>
                       <div className="flex items-center gap-2 whitespace-nowrap">
-                        <span className="tabular">{formatDate(d.dueDateLocal)}</span>
+                        <span className="tabular">
+                          {formatDate(d.dueDateLocal)}
+                          {deadlineHasTime(d) ? ` às ${d.dueTimeLocal}` : ""}
+                        </span>
                         <DeadlineBadge dueDate={d.dueDateLocal} />
                       </div>
                     </Td>
@@ -109,24 +117,7 @@ export function DeadlinesTab({
                     </Td>
                     <Td className="text-right">
                       <Can permission="processes.edit">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            icon={<Check className="size-3.5" aria-hidden />}
-                            loading={busy === d.id}
-                            disabled={!!busy}
-                            onClick={() => act(d.id, () => completeDeadline(d.id, d.title))}
-                          >
-                            Marcar como cumprido
-                          </Button>
-                          <IconButton label={`Editar prazo ${d.title}`} size="sm" disabled={!!busy} onClick={() => onEdit(d)}>
-                            <Pencil className="size-3.5" aria-hidden />
-                          </IconButton>
-                          <IconButton label={`Cancelar prazo ${d.title}`} size="sm" disabled={!!busy} onClick={() => act(d.id, () => cancelDeadline(d.id, d.title))}>
-                            <Ban className="size-3.5" aria-hidden />
-                          </IconButton>
-                        </div>
+                        <DeadlineRowActions deadline={d} onEdit={onEdit} onAction={setAction} />
                       </Can>
                     </Td>
                   </Tr>
@@ -153,20 +144,34 @@ export function DeadlinesTab({
                   <Th>Data do prazo</Th>
                   <Th>Responsável</Th>
                   <Th>Situação</Th>
+                  <Th className="text-right">
+                    <span className="sr-only">Ações</span>
+                  </Th>
                 </tr>
               </THead>
               <TBody>
                 {done.map((d) => (
                   <Tr key={d.id} className="text-muted">
-                    <Td>{d.title}</Td>
+                    <Td>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{d.title}</span>
+                        <DeadlineAgentMark deadline={d} canCheck={false} />
+                      </div>
+                      {d.statusReason && <div className="mt-0.5 max-w-[420px] truncate text-[12px]" title={d.statusReason}>Motivo: {d.statusReason}</div>}
+                    </Td>
                     <Td className="text-[12.5px]">{DEADLINE_TYPE_LABEL[d.type]}</Td>
                     <Td className="tabular">{formatDate(d.dueDateLocal)}</Td>
                     <Td className="text-[12.5px]">{(d.responsibleUserId && users.get(d.responsibleUserId)?.name) || "—"}</Td>
                     <Td>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={d.status} labels={DEADLINE_STATUS_LABEL} tones={DEADLINE_STATUS_TONE} />
-                        {d.completedAt && <span className="text-[12px] tabular">{formatDateTime(d.completedAt)}</span>}
+                        {(d.completedAt ?? d.statusChangedAt) && <span className="text-[12px] tabular">{formatDateTime(d.completedAt ?? d.statusChangedAt)}</span>}
                       </div>
+                    </Td>
+                    <Td className="text-right">
+                      <Can permission="processes.edit">
+                        <DeadlineRowActions deadline={d} onEdit={onEdit} onAction={setAction} />
+                      </Can>
                     </Td>
                   </Tr>
                 ))}
@@ -177,9 +182,10 @@ export function DeadlinesTab({
       )}
       {deadlines.data.total > items.length && (
         <p className="px-1 text-[12px] text-muted">
-          Mostrando {items.length} de {deadlines.data.total} prazos.
+          Mostrando {items.length} de {deadlines.data.total} prazos. Os demais estão na agenda do escritório.
         </p>
       )}
+      {action && <DeadlineActionDialog key={`${action.kind}:${action.deadline.id}`} request={action} onClose={() => setAction(null)} />}
     </div>
   );
 }

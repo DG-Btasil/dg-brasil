@@ -21,9 +21,10 @@ import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
 import { AGENT_RUN_STATUS_LABEL, AGENT_RUN_STATUS_TONE } from "@/features/agent-runs/components/agent-runs-panel";
 import { agentRunOperationLabel } from "@/features/agent-runs/labels";
 import { ACTOR_TYPE_LABEL, actionLabel, eventDetail } from "@/features/audit/humanize";
-import { useOrganizationNames } from "@/features/directory/directory-context";
 import { JudicialCaptureAlert } from "@/features/judicial/components/judicial-capture-alert";
-import { maskCNPJ, maskCPF } from "@/lib/formatting";
+import { agendaHref } from "@/features/deadlines/list-query";
+import { useDirectoryUserMap, useOrganizationNames } from "@/features/directory/directory-context";
+import { formatCNJ, maskCNPJ, maskCPF } from "@/lib/formatting";
 import type { InternalHomeData } from "../load";
 import { EntriesTrend, MetricsBoard } from "@/features/metrics/components/metrics-board";
 import type { DashboardMetricsDTO } from "@/server/domain/metrics/dto";
@@ -85,16 +86,36 @@ export function HomeDashboard({ data, metrics }: { data: InternalHomeData; metri
             hint={(k.urgentReviews ?? 0) > 0 ? pluralize(k.urgentReviews ?? 0, "urgente", "urgentes") : "Nenhuma marcada como urgente"}
           />
         ) : (
-          <Stat label="Prazos vencidos" value={num(k.overdueDeadlines)} icon={CircleAlert} tone={(k.overdueDeadlines ?? 0) > 0 ? "danger" : "neutral"} href="/processos?prazo=vencidos" />
+          <Stat
+            label="Prazos vencidos"
+            value={num(k.overdueDeadlines)}
+            icon={CircleAlert}
+            tone={(k.overdueDeadlines ?? 0) > 0 ? "danger" : "neutral"}
+            href={agendaHref({ situation: "vencidos" })}
+            className={(k.overdueDeadlines ?? 0) > 0 ? "border-danger-line bg-danger-soft" : undefined}
+          />
         )}
-        <Stat
-          label="Prazos em até 5 dias"
-          value={num(k.dueSoonDeadlines)}
-          icon={AlarmClock}
-          tone={(k.overdueDeadlines ?? 0) > 0 ? "danger" : (k.dueSoonDeadlines ?? 0) > 0 ? "warning" : "neutral"}
-          href="/processos?prazo=5dias"
-          hint={(k.overdueDeadlines ?? 0) > 0 ? `Atenção: ${pluralize(k.overdueDeadlines ?? 0, "prazo vencido", "prazos vencidos")}` : "Em aberto, ainda no prazo"}
-        />
+        {/* Quem vê "Revisões pendentes" no cartão ao lado (ADMIN e advogado) não pode perder o número de vencidos: havendo prazo vencido, é ele que ocupa este cartão, em destaque. */}
+        {k.pendingReviews !== undefined && (k.overdueDeadlines ?? 0) > 0 ? (
+          <Stat
+            label="Prazos vencidos"
+            value={num(k.overdueDeadlines)}
+            icon={CircleAlert}
+            tone="danger"
+            href={agendaHref({ situation: "vencidos" })}
+            className="border-danger-line bg-danger-soft"
+            hint={`Em aberto. Vencendo em até 5 dias: ${num(k.dueSoonDeadlines)}`}
+          />
+        ) : (
+          <Stat
+            label="Prazos em até 5 dias"
+            value={num(k.dueSoonDeadlines)}
+            icon={AlarmClock}
+            tone={(k.dueSoonDeadlines ?? 0) > 0 ? "warning" : "neutral"}
+            href={agendaHref({ situation: "no-prazo", period: "5dias" })}
+            hint="Em aberto, ainda no prazo"
+          />
+        )}
       </section>
 
       {data.finance && <FinanceSnapshot finance={data.finance} />}
@@ -225,7 +246,8 @@ function NewCases({ cases }: { cases: NonNullable<InternalHomeData["newCases"]> 
   );
 }
 
-function DeadlineRow({ d, overdue }: { d: DeadlineDTO; overdue: boolean }) {
+function DeadlineRow({ d, overdue, responsible }: { d: DeadlineDTO; overdue: boolean; responsible?: string }) {
+  const hasTime = d.dueTimeLocal !== "23:59";
   return (
     <li className={cn("grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-4 border-l-2 py-3 pl-4 pr-5", TONE_BORDER_LEFT[overdue ? "danger" : "warning"])}>
       <span className={cn("flex size-8 items-center justify-center rounded-md border border-line bg-surface-muted", overdue ? "text-danger" : "text-orange")}>
@@ -235,11 +257,23 @@ function DeadlineRow({ d, overdue }: { d: DeadlineDTO; overdue: boolean }) {
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-[13px] font-semibold text-foreground">{d.title}</p>
           <DeadlineBadge dueDate={d.dueDateLocal} />
+          {hasTime && <span className="text-[12px] tabular text-muted">às {d.dueTimeLocal}</span>}
+          {d.agentUnchecked && <Badge tone="warning">Agente, sem conferência</Badge>}
         </div>
-        <p className="mt-0.5 truncate text-[12.5px] text-muted">{d.processId ? "Prazo de processo" : "Prazo do caso"}</p>
+        <p className="mt-0.5 flex flex-wrap gap-x-3 text-[12.5px] text-muted">
+          <span className="max-w-[260px] truncate font-medium text-foreground/80">{d.clientName || d.caseTitle || "Cliente não informado"}</span>
+          {d.processId ? (
+            <span className="font-mono text-[12px] tabular tracking-tight">{d.processCnj ? formatCNJ(d.processCnj) : "Processo sem número CNJ"}</span>
+          ) : (
+            <span>Prazo do caso, sem processo</span>
+          )}
+          <span>
+            Responsável: <span className={responsible ? "text-foreground/80" : "font-medium text-danger"}>{responsible ?? "ninguém"}</span>
+          </span>
+        </p>
       </div>
       <Link
-        href={d.processId ? `/processos/${d.processId}?aba=prazos` : `/casos/${d.legalCaseId}`}
+        href={d.processId ? `/processos/${d.processId}?aba=prazos` : agendaHref({ caseId: d.legalCaseId })}
         className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[12.5px] font-medium text-navy-700 hover:bg-navy-50 hover:text-navy"
       >
         Abrir <ArrowRight className="size-3.5" aria-hidden />
@@ -253,6 +287,9 @@ function AttentionPanel({ overdue, upcoming }: { overdue: ActionResult<Page<Dead
   const error = !overdue.ok ? overdue : !upcoming.ok ? upcoming : null;
   const late = overdue.ok ? overdue.data.items : [];
   const soon = upcoming.ok ? upcoming.data.items : [];
+  const users = useDirectoryUserMap();
+  const nameOf = (d: DeadlineDTO) => (d.responsibleUserId ? users.get(d.responsibleUserId)?.name : undefined);
+  const hidden = (overdue.ok ? overdue.data.total - late.length : 0) + (upcoming.ok ? upcoming.data.total - soon.length : 0);
   return (
     <section aria-labelledby="home-attention-title" data-tour="home-attention" className="flex h-full flex-col rounded-lg border border-line bg-surface shadow-hairline">
       <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-3.5">
@@ -262,11 +299,18 @@ function AttentionPanel({ overdue, upcoming }: { overdue: ActionResult<Page<Dead
           </h2>
           <p className="mt-0.5 text-[12.5px] text-muted">Prazos vencidos e os que vencem em até 5 dias.</p>
         </div>
-        {late.length > 0 && (
-          <Badge tone="danger" dot>
-            {pluralize(overdue.ok ? overdue.data.total : late.length, "vencido", "vencidos")}
-          </Badge>
-        )}
+        <div className="flex shrink-0 items-center gap-3">
+          {late.length > 0 && (
+            <Link href={agendaHref({ situation: "vencidos" })} className="rounded-xs hover:opacity-80" title="Ver os prazos vencidos">
+              <Badge tone="danger" dot>
+                {pluralize(overdue.ok ? overdue.data.total : late.length, "vencido", "vencidos")}
+              </Badge>
+            </Link>
+          )}
+          <Link href={agendaHref()} className="inline-flex items-center gap-1 whitespace-nowrap text-[12.5px] font-medium text-navy-700 hover:text-navy hover:underline">
+            Ver todos <ArrowRight className="size-3.5" aria-hidden />
+          </Link>
+        </div>
       </div>
       {error ? (
         <ActionErrorState error={error} title="Não foi possível carregar os prazos." />
@@ -275,11 +319,19 @@ function AttentionPanel({ overdue, upcoming }: { overdue: ActionResult<Page<Dead
       ) : (
         <ul className="divide-y divide-line">
           {late.map((d) => (
-            <DeadlineRow key={d.id} d={d} overdue />
+            <DeadlineRow key={d.id} d={d} overdue responsible={nameOf(d)} />
           ))}
           {soon.map((d) => (
-            <DeadlineRow key={d.id} d={d} overdue={false} />
+            <DeadlineRow key={d.id} d={d} overdue={false} responsible={nameOf(d)} />
           ))}
+          {hidden > 0 && (
+            <li className="px-5 py-2.5 text-[12.5px] text-muted">
+              Mais {pluralize(hidden, "prazo", "prazos")} fora desta lista.{" "}
+              <Link href={agendaHref()} className="font-medium text-navy-700 hover:underline">
+                Abrir a agenda de prazos
+              </Link>
+            </li>
+          )}
         </ul>
       )}
     </section>

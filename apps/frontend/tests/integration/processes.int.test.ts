@@ -92,14 +92,14 @@ describe("processos — equipe interna", () => {
     const lawyer = await ctxFor("LAWYER");
     const { caseId } = await internalCase();
     const { id } = await processes.createProcess(lawyer, newProcess(caseId));
-    const { id: deadlineId } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId: caseId, title: "Prazo", dueDate: "2030-01-10" }));
+    const { id: deadlineId } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "Prazo", dueDate: "2030-01-10" }));
 
     const assistant = await ctxFor("ASSISTANT");
     expect((await processes.getProcess(assistant, id)).surface).toBe("INTERNAL");
     expect((await deadlines.getDeadline(assistant, deadlineId)).id).toBe(deadlineId);
     await expectDomainError(processes.createProcess(assistant, newProcess(caseId)), "FORBIDDEN");
     await expectDomainError(processes.updateProcess(assistant, { id, patch: { title: "x" } }), "FORBIDDEN");
-    await expectDomainError(deadlines.createDeadline(assistant, createDeadlineSchema.parse({ legalCaseId: caseId, title: "x", dueDate: "2030-01-10" })), "FORBIDDEN");
+    await expectDomainError(deadlines.createDeadline(assistant, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "x", dueDate: "2030-01-10" })), "FORBIDDEN");
     await expectDomainError(deadlines.completeDeadline(assistant, deadlineId), "FORBIDDEN");
 
     // Segunda barreira: a RLS recusa a escrita direta.
@@ -233,7 +233,7 @@ describe("prazos", () => {
     const { caseId } = await internalCase();
     const { id: processId } = await processes.createProcess(lawyer, newProcess(caseId));
     const past = new Date(Date.now() - 2 * 86_400_000).toISOString();
-    const { id } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId: caseId, processId, title: "Réplica", type: "REPLY", dueAt: past }));
+    const { id } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, processId, title: "Réplica", type: "REPLY", dueAt: past }));
 
     const overdue = await deadlines.listOverdueDeadlines(lawyer, listOverdueSchema.parse({ caseId }));
     expect(overdue.items.map((d) => d.id)).toEqual([id]);
@@ -249,7 +249,7 @@ describe("prazos", () => {
     expect(done.completedAt).toBeTruthy();
     expect((await deadlines.listOverdueDeadlines(lawyer, listOverdueSchema.parse({ caseId }))).items).toHaveLength(0);
     await expectDomainError(deadlines.completeDeadline(lawyer, id), "INVALID_STATE");
-    await expectDomainError(deadlines.cancelDeadline(lawyer, id), "INVALID_STATE");
+    await expectDomainError(deadlines.cancelDeadline(lawyer, { id: id, reason: "Cancelado no teste" }), "INVALID_STATE");
   });
 
   it("próximos prazos, cancelamento e processo de outro caso recusado", async () => {
@@ -258,21 +258,47 @@ describe("prazos", () => {
     const other = await internalCase();
     const { id: otherProcess } = await processes.createProcess(lawyer, newProcess(other.caseId));
     await expectDomainError(
-      deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId: caseId, processId: otherProcess, title: "x", dueDate: "2030-01-01" })),
+      deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, processId: otherProcess, title: "x", dueDate: "2030-01-01" })),
       "VALIDATION",
     );
-    await expectDomainError(deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId: randomUUID(), title: "x", dueDate: "2030-01-01" })), "NOT_FOUND");
+    await expectDomainError(deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: randomUUID(), title: "x", dueDate: "2030-01-01" })), "NOT_FOUND");
 
     const soon = new Date(Date.now() + 3 * 86_400_000).toISOString();
-    const { id } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId: caseId, title: "Audiência", type: "HEARING", dueAt: soon }));
+    const { id } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "Audiência", type: "HEARING", dueAt: soon }));
     const upcoming = await deadlines.listUpcomingDeadlines(lawyer, listUpcomingSchema.parse({ caseId, days: 7 }));
     expect(upcoming.items.map((d) => d.id)).toEqual([id]);
     expect(upcoming.items[0].effectiveStatus).toBe("OPEN");
 
-    await deadlines.cancelDeadline(lawyer, id);
+    await deadlines.cancelDeadline(lawyer, { id: id, reason: "Cancelado no teste" });
     const all = await deadlines.listDeadlines(lawyer, listDeadlinesSchema.parse({ caseId }));
     expect(all.items.map((d) => [d.id, d.effectiveStatus])).toEqual([[id, "CANCELLED"]]);
     expect((await deadlines.listUpcomingDeadlines(lawyer, listUpcomingSchema.parse({ caseId, days: 7 }))).items).toHaveLength(0);
+  });
+
+  it("063: chave de envio não duplica; reabrir exige motivo e volta para em aberto; conferência só em prazo de agente", async () => {
+    const lawyer = await ctxFor("LAWYER");
+    const { caseId } = await internalCase();
+    const input = createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "Prazo só do caso", dueDate: "2030-02-10" });
+    const first = await deadlines.createDeadline(lawyer, input);
+    const again = await deadlines.createDeadline(lawyer, input);
+    expect([first.deduplicated, again.deduplicated, again.id]).toEqual([false, true, first.id]);
+    await expectDomainError(deadlines.createDeadline(lawyer, { ...input, title: "Outro título" }), "CONFLICT");
+
+    await deadlines.completeDeadline(lawyer, first.id);
+    await deadlines.reopenDeadline(lawyer, { id: first.id, reason: "Marcado por engano" });
+    const reopened = await deadlines.getDeadline(lawyer, first.id);
+    expect(reopened).toMatchObject({ status: "OPEN", statusReason: "Marcado por engano", clientName: expect.any(String) });
+    expect(reopened.completedAt).toBeUndefined();
+    await expectDomainError(deadlines.reopenDeadline(lawyer, { id: first.id, reason: "De novo" }), "INVALID_STATE");
+    await deadlines.markDeadlineMissed(lawyer, { id: first.id });
+    await deadlines.reopenDeadline(lawyer, { id: first.id, reason: "Não estava perdido" });
+    await deadlines.cancelDeadline(lawyer, { id: first.id, reason: "Perdeu o objeto" });
+    expect((await deadlines.getDeadline(lawyer, first.id)).statusReason).toBe("Perdeu o objeto");
+    await expectDomainError(deadlines.reopenDeadline(await ctxFor("ASSISTANT"), { id: first.id, reason: "x" }), "FORBIDDEN");
+    // Prazo digitado pela equipe não tem conferência de agente.
+    await expectDomainError(deadlines.markDeadlineChecked(lawyer, first.id), "INVALID_STATE");
+    const listed = await deadlines.listDeadlines(lawyer, listDeadlinesSchema.parse({ caseId, status: "CANCELLED", agentUnchecked: false }));
+    expect(listed.items.map((d) => d.id)).toEqual([first.id]);
   });
 
   it("filtro de responsável (\"me\") e prazo de processo excluído some das listagens", async () => {
@@ -280,10 +306,10 @@ describe("prazos", () => {
     const { caseId } = await internalCase();
     const { id: processId } = await processes.createProcess(lawyer, newProcess(caseId));
     const past = new Date(Date.now() - 86_400_000).toISOString();
-    const { id: mine } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ legalCaseId: caseId, processId, title: "Meu prazo", dueAt: past }));
+    const { id: mine } = await deadlines.createDeadline(lawyer, createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, processId, title: "Meu prazo", dueAt: past }));
     const { id: theirs } = await deadlines.createDeadline(
       lawyer,
-      createDeadlineSchema.parse({ legalCaseId: caseId, title: "Prazo do ADMIN", dueAt: past, responsibleUserId: world.users.ADMIN.id }),
+      createDeadlineSchema.parse({ idempotencyKey: randomUUID(), legalCaseId: caseId, title: "Prazo do ADMIN", dueAt: past, responsibleUserId: world.users.ADMIN.id }),
     );
 
     const onlyMine = await deadlines.listOverdueDeadlines(lawyer, listOverdueSchema.parse({ caseId, responsibleUserId: "me" }));
