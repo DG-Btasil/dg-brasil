@@ -169,6 +169,29 @@ describe("DataJud", () => {
     const key = new DatajudClient({ fetch: (async () => new Response("", { status: 401 })) as unknown as typeof fetch, sleep: noSleep });
     await expect(key.process(cnj(1))).rejects.toMatchObject({ transient: false });
   });
+  it("CNJ sobrecarregado: espera até 2 min por tentativa e insiste 3 vezes na recusa (429), com pausa maior a cada vez", async () => {
+    let n = 0;
+    const waits: number[] = [];
+    const f = vi.fn(async () => (++n < 3 ? new Response("", { status: 429 }) : json({ hits: { hits: hits(cnj(1)) } })));
+    const c = new DatajudClient({ fetch: f as unknown as typeof fetch, sleep: async (ms) => void waits.push(ms) });
+    const timeouts: number[] = [];
+    const spy = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+      timeouts.push(ms);
+      return new AbortController().signal;
+    });
+    try {
+      expect((await c.process(cnj(1))).kind).toBe("ok");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(waits).toEqual([4_000, 12_000]);
+    expect(timeouts).toEqual([120_000, 120_000, 120_000]);
+    // Recusa que não passa: desiste na terceira, como falha passageira (volta em 1 h).
+    const always = vi.fn(async () => new Response("", { status: 429 }));
+    await expect(new DatajudClient({ fetch: always as unknown as typeof fetch, sleep: noSleep }).process(cnj(1))).rejects.toMatchObject({ transient: true });
+    expect(always).toHaveBeenCalledTimes(3);
+  });
   it("junta os graus, preenche os dados pelo 1º grau, deduplica movimento idêntico e mantém o que difere no complemento", () => {
     const r = normalizeDatajud("tjsp", cnj(1), hits(cnj(1)));
     if (r.kind !== "ok") throw new Error(r.kind);

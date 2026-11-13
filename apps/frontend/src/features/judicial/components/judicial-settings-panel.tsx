@@ -186,12 +186,16 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
   const [datajud, setDatajud] = useState(s.datajudEnabled);
   const [lookback, setLookback] = useState(String(s.lookbackDays));
   const [agent, setAgent] = useState(s.deadlineAgentId ?? "");
+  // Banco anterior à 059 não devolve a opção: a tela não a mostra e nada muda.
+  const hasAuto = s.deadlineAutoApply !== undefined;
+  const [auto, setAuto] = useState(s.deadlineAutoApply ?? false);
   const [saving, setSaving] = useState(false);
-  const dirty = djen !== s.djenEnabled || datajud !== s.datajudEnabled || Number(lookback) !== s.lookbackDays || agent !== (s.deadlineAgentId ?? "");
+  const dirty = djen !== s.djenEnabled || datajud !== s.datajudEnabled || Number(lookback) !== s.lookbackDays || agent !== (s.deadlineAgentId ?? "")
+    || (hasAuto && auto !== s.deadlineAutoApply);
 
   async function save() {
     setSaving(true);
-    const r = await callAction(() => saveJudicialSettingsAction({ djenEnabled: djen, datajudEnabled: datajud, lookbackDays: Number(lookback), deadlineAgentId: agent || null }));
+    const r = await callAction(() => saveJudicialSettingsAction({ djenEnabled: djen, datajudEnabled: datajud, lookbackDays: Number(lookback), deadlineAgentId: agent || null, ...(hasAuto ? { deadlineAutoApply: auto } : {}) }));
     setSaving(false);
     if (!r.ok) return failed(r, "Não foi possível salvar.");
     toast({ tone: "success", title: "Configuração salva" });
@@ -205,11 +209,33 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
           <Checkbox label="Publicações do DJEN" description="Busca diária pelas OABs acompanhadas." checked={djen} onChange={(e) => setDjen(e.target.checked)} />
           <Checkbox label="Andamentos do DataJud" description="Dados e movimentações pelo número CNJ." checked={datajud} onChange={(e) => setDatajud(e.target.checked)} />
         </div>
-        <Field label="Agente que propõe prazos" hint="Cada publicação nova vira um trabalho do agente no computador do escritório; a proposta vai para Revisões e só a aprovação cria o prazo. Sem agente, a equipe cria o prazo na tela.">
-          {(a) => (
-            <Select {...a} value={agent} onChange={(e) => setAgent(e.target.value)} options={[{ value: "", label: "Nenhum (a equipe trata)" }, ...overview.agents.map((x) => ({ value: x.id, label: x.name }))]} />
+        <div className="space-y-2">
+          <Field
+            label="Agente que propõe prazos"
+            hint={
+              hasAuto
+                ? "Cada publicação nova vira um trabalho do agente no computador do escritório. Sem agente, a equipe cria o prazo na tela."
+                : "Cada publicação nova vira um trabalho do agente no computador do escritório; a proposta vai para Revisões e só a aprovação cria o prazo. Sem agente, a equipe cria o prazo na tela."
+            }
+          >
+            {(a) => (
+              <Select {...a} value={agent} onChange={(e) => setAgent(e.target.value)} options={[{ value: "", label: "Nenhum (a equipe trata)" }, ...overview.agents.map((x) => ({ value: x.id, label: x.name }))]} />
+            )}
+          </Field>
+          {hasAuto && (
+            <Checkbox
+              label="Prazo entra direto na agenda"
+              description={
+                auto
+                  ? "O prazo que o agente calcula já nasce na agenda do processo, sem passar por Revisões. \"Sem prazo\" continua indo para a equipe conferir."
+                  : "Desligado: o prazo do agente vira proposta em Revisões e só a aprovação cria o prazo."
+              }
+              checked={auto}
+              disabled={!agent}
+              onChange={(e) => setAuto(e.target.checked)}
+            />
           )}
-        </Field>
+        </div>
         <Field label="Dias revistos" hint="A cada busca no DJEN.">
           {(a) => <Select {...a} value={lookback} onChange={(e) => setLookback(e.target.value)} options={[1, 2, 3, 4, 5, 6, 7].map((n) => ({ value: String(n), label: `${n} dia(s)` }))} />}
         </Field>

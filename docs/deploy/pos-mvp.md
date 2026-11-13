@@ -101,10 +101,28 @@ Não são do DG Brasil e já acontecem hoje:
     propõe prazos" (ou com o agente pausado) não vai para ele depois. Criar o
     botão "Pedir o prazo ao agente" na tela da publicação, ou repassar as
     pendentes quando o agente é escolhido;
-  - DataJud lento: em 13/11/2026 a API do CNJ levou 49 s para responder e o
-    site desiste em 45 s. Avaliar um tempo maior nos lotes de andamentos;
+  - DataJud lento: **feito em 13/11/2026** (cada consulta espera até 2 min e
+    insiste 3 vezes na recusa; a rodada agendada trabalha 4 min). Falta medir
+    por alguns dias quantos processos por lote isso lê;
+  - caso sem nenhum documento não passa pela ponte (o Porteiro não tem o que
+    conferir e o Arquivista recusa): dizer isso ao advogado com clareza, ou
+    deixar passar quando o trabalho só precisa do `PROCESSO_<CNJ>.txt`;
   - `ver_processo` ainda mostra o teor de publicação cancelada pelo tribunal
     dentro dos andamentos (no `PROCESSO_<CNJ>.txt` ela já sai sem teor).
+
+- **Revisões, prévia e download (13/11/2026):**
+  - baixar no OUTRO formato (Word de um PDF, PDF de um Word) não existe: o
+    site não tem como converter. Caminho sugerido: o computador do escritório
+    gera o PDF com o Word na hora da entrega e manda os dois;
+  - a prévia registra um acesso do tipo "download" ao abrir a revisão (usa a
+    mesma porta do botão de baixar). Separar "visualizou" de "baixou" pede
+    mudança no banco;
+  - a prévia de Word é aproximada (quebra de página e fontes): vale para ler,
+    não para conferir diagramação.
+- **Do prazo à peça:** o agente de prazos indica a peça e o agente do kit que
+  a faz, mas ninguém é chamado sozinho. Próximo passo de automação: o prazo
+  criado virar tarefa do processo (orquestrador → redator), quando os autos
+  estiverem no caso.
 
 ## 6. Distribuição dos agentes do kit: botão "Setup" no site (PRIORIDADE)
 

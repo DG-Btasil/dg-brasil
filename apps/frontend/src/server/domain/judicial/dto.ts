@@ -48,6 +48,8 @@ export interface JudicialOverviewDTO {
     lookbackDays: number;
     deadlineAgentId?: string;
     deadlineAgentName?: string;
+    /** Prazo do agente entra direto na agenda, sem Revisões (059). Ausente em banco anterior à 059. */
+    deadlineAutoApply?: boolean;
     updatedAt: ISODateTime;
   };
   monitors: JudicialMonitorDTO[];

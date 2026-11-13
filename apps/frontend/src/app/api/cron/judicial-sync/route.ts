@@ -11,15 +11,22 @@ import { runJudicialSync } from "@/server/integrations/judicial/sync";
  * Quem chama:
  *  - o pg_cron do banco (043, seção 9), em lotes a cada 5 min: a partir das
  *    05:00 (o DJEN libera o caderno às 03:00), enquanto houver OAB não conferida
- *    no dia, sem parâmetro; depois, ?only=datajud. Cada rodada tem 60 s (Hobby)
- *    e cabem ~15 consultas ao DJEN (20/min): com muitas OABs, são vários lotes;
+ *    no dia, sem parâmetro; depois, ?only=datajud. O DJEN aceita 20 consultas
+ *    por minuto: com muitas OABs, são vários lotes;
  *  - a Vercel Cron às 06:30 (09:30 UTC), como reserva.
  * Protegida por CRON_SECRET.
+ *
+ * Tempo da rodada (13/11/2026): a função pode rodar até 5 min (Fluid Compute da
+ * Vercel) e trabalha 4. Com o limite antigo de 60 s o DataJud não cabia: o CNJ
+ * leva de 30 s a mais de 1 min por consulta. Quem chama (pg_net, 60 s) desiste
+ * antes; a função segue até o fim e grava o resultado no banco.
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
+/** Tempo de trabalho da rodada; o resto fica para gravar o fim (JUD-06). */
+const WORK_MS = 240_000;
 
 const log = createLogger({ area: "judicial-cron" });
 
@@ -38,7 +45,7 @@ export async function GET(request: Request) {
   // ?only=datajud: lote só do DataJud (agendador do banco, sem OAB pendente no dia).
   const onlyDatajud = new URL(request.url).searchParams.get("only") === "datajud";
   // Lote só do DataJud: mais paralelo (as consultas demoram, quase não usam CPU).
-  const deps = { ...judicialSyncDeps(log, started + 48_000), datajudConcurrency: onlyDatajud ? 4 : 2 };
+  const deps = { ...judicialSyncDeps(log, started + WORK_MS), datajudConcurrency: onlyDatajud ? 4 : 2 };
   const r = await runJudicialSync(deps, { trigger: "CRON", onlyDatajud });
   if (r.busy || ("idle" in r && r.idle)) {
     log.info(r.busy ? "judicial.cron_busy" : "judicial.cron_idle", { onlyDatajud });

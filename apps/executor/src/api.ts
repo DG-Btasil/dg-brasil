@@ -133,7 +133,7 @@ export class DgApi {
     return this.pedir<{ result_id: string; review_id: string; created: boolean }>('POST', `jobs/${id}/analysis`, { reserva, corpo: { result: resultado } })
   }
   propor(id: string, reserva: string, corpo: unknown) {
-    return this.pedir<{ proposal_id: string; created: boolean }>('POST', `jobs/${id}/proposals`, { reserva, corpo })
+    return this.pedir<{ proposal_id: string; created: boolean; applied?: boolean }>('POST', `jobs/${id}/proposals`, { reserva, corpo })
   }
   prepararMinuta(id: string, reserva: string, corpo: { filename: string; mime_type: string; size: number }) {
     return this.pedir<{ document_id: string; document_version_id: string; storage_object_name: string; upload_url: string }>(

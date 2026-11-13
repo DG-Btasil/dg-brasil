@@ -28,6 +28,7 @@ export const settingsSchema = z.object({
   datajudEnabled: z.boolean().optional(),
   lookbackDays: z.number().int().min(1).max(7).optional(),
   deadlineAgentId: zUuid().nullable().optional(),
+  deadlineAutoApply: z.boolean().optional(),
 });
 
 export const calendarDaySchema = z.object({

@@ -61,22 +61,26 @@ por minuto). A Barbara escolheu manter a OAB (2026-11-04).
 | "Buscar agora" (todas as OABs + DataJud) | Na tela, ADMIN | Server Action |
 | "Buscar andamentos agora" (um processo) | Na tela, ADMIN ou advogado | Server Action |
 
-- **Por que em lotes:** cada rodada tem 60 s no plano Hobby e o DJEN aceita 20
-  consultas por minuto. Cabem umas 15 consultas, ou umas 5 OABs, por rodada.
-  Com as OABs do escritório e as dos parceiros (50, por exemplo), são uns 10
-  lotes: a conferência termina por volta das 06:00.
+- **Por que em lotes:** o DJEN aceita 20 consultas por minuto e o DataJud leva
+  de 30 s a mais de 1 min por processo. Desde 13/11/2026 cada rodada agendada
+  trabalha até 4 min (a função da Vercel pode rodar 5 min, com o Fluid
+  Compute); antes eram 60 s, e o DataJud quase nunca cabia. Com as OABs do
+  escritório e as dos parceiros (50, por exemplo), são poucos lotes: a
+  conferência termina antes das 06:00.
 - **OAB pendente no dia** (`private.judicial_djen_due`): a partir das 05:00, sem
   busca com sucesso naquele dia. Depois de uma falha, espera 10 min e tenta de
   novo. Cada OAB é consultada uma vez, mesmo que esteja em dois escritórios.
-- **Limite por rodada:** a rodada para de começar trabalho novo perto dos 50 s e
-  deixa o resto para o próximo lote:
+- **Limite por rodada:** a rodada agendada para de começar trabalho novo perto
+  dos 4 min ("Buscar agora", na tela, perto dos 45 s) e deixa o resto para o
+  próximo lote:
   - uma OAB só começa se ainda houver ~12 s;
   - uma OAB com páginas demais para uma rodada (mais de ~1.500 publicações em 5
     dias) fica com falha visível na tela; nesse caso, reduzir "Dias revistos" ou
     passar para o plano Pro (deploy/producao.md, item 10);
   - os processos lidos há mais tempo no DataJud vão primeiro.
 - **Leitura do DataJud** (044): cada processo é lido no máximo uma vez a cada 20 h. Falha passageira (tempo esgotado, 429, 5xx, rede) volta em 1 h; "ainda não aparece no DataJud" volta em 20 h. Depois de 3 falhas passageiras, a rodada para de consultar o DataJud (o CNJ costuma estar instável).
-- **Prazo de cada consulta:** nenhuma consulta ao DJEN ou ao DataJud passa do prazo da rodada (48 s na rota de 60 s), para a rodada sempre gravar o fim.
+- **Prazo de cada consulta:** nenhuma consulta ao DJEN ou ao DataJud passa do prazo da rodada (4 min na rota de 5 min), para a rodada sempre gravar o fim.
+- **Paciência com o DataJud (13/11/2026):** cada consulta espera até 2 min pela resposta do CNJ (eram 45 s; nesse dia o CNJ levou 49 s e o site desistia antes). Quando o CNJ recusa por sobrecarga (429 ou 5xx), a consulta tenta até 3 vezes, esperando 4 s e depois 12 s. Quem chama a rota (pg_net, 60 s) desiste antes do fim; a função continua e grava o resultado.
 - **Rodadas ao mesmo tempo:** duas rodadas não correm juntas; a segunda recebe "busy". Rodada sem fim gravado há 6 min vira "Interrompida".
 - **Os lotes precisam de** `pg_net` e de dois segredos no Vault (`dg_app_url`,
   `dg_cron_secret`); ver [deploy/producao.md](deploy/producao.md), item 10.
@@ -98,7 +102,8 @@ Cada publicação de processo cadastrado:
 2. avisa o responsável do processo, o advogado do caso e a equipe do parceiro. Sem ninguém interno, avisa os ADMIN;
 3. entra na caixa **Publicações** (`/publicacoes`, só a equipe interna) como **"A tratar"**.
 
-A triagem é **sempre humana**:
+A triagem é humana, com uma exceção desde 13/11/2026: o **prazo direto** do
+agente de prazos (abaixo). Na tela:
 - **Criar prazo:** já vem a contagem em dias úteis, editável. O prazo nasce com a origem "integração judicial" e o processo, o responsável e a descrição da contagem.
 - **Não há prazo:** exige o motivo.
 - **Reabrir:** devolve a publicação para "A tratar".
@@ -116,10 +121,23 @@ A triagem é **sempre humana**:
 
 **Agente que propõe prazos** (opcional, Configurações → Integrações):
 1. Cada publicação nova vira um trabalho do agente no computador do escritório.
-2. O pedido leva o teor, a data de publicação e a lista dos 30 primeiros dias úteis.
-3. O agente usa a ferramenta `propor` com `CREATE_DEADLINE`, e a proposta vai para **Revisões**.
-4. Aprovada, cria o prazo e fecha a triagem. Rejeitada, ou sem proposta, a publicação volta para "A tratar".
-5. A equipe também pode criar o prazo direto na tela; nesse caso, rejeite a proposta do agente.
+2. O pedido leva o teor, a data de publicação, o lado do cliente e a lista dos 30 primeiros dias úteis.
+3. O agente usa a ferramenta `propor` com `CREATE_DEADLINE` (há prazo) ou `OTHER` começando com "Sem prazo:".
+4. **Prazo direto** (migration 059, decisão da dona em 13/11/2026: "o agente dá o prazo e pronto"). Com a opção "Prazo entra direto na agenda" ligada (é o padrão), o prazo do agente **nasce na agenda do processo na hora, sem passar por Revisões**, a publicação fica tratada e o responsável é avisado ("Prazo criado pelo agente"). O banco só aceita direto quando:
+   - o trabalho é mesmo o daquela publicação, ela não foi cancelada, ainda está com o agente e não tem prazo;
+   - a data vem com hora e fuso, não passou e **é um dos dias úteis da lista que o próprio banco calculou** para a publicação;
+   - é a única proposta de prazo do trabalho;
+   - o processo tem responsável (ou o caso tem advogado) ativo.
+   Falhou qualquer conferência: a proposta vai para Revisões, como antes, e o motivo fica no histórico do trabalho.
+5. **"Sem prazo" nunca é direto**: vai para Revisões e a publicação volta para "A tratar". Um "sem prazo" errado é o erro mais caro; continua com a equipe.
+6. Opção desligada (Integrações → "Prazo entra direto na agenda"): todo prazo do agente vira proposta em Revisões e só a aprovação cria o prazo.
+7. A equipe também pode criar o prazo na tela da publicação; se o agente já lançou o dele, confira para não ficarem dois.
+
+Risco assumido no prazo direto: ninguém confere a conta antes de o prazo
+aparecer. As proteções são a lista de dias úteis do banco (a data nunca cai em
+fim de semana, feriado nacional ou recesso), a regra do agente de, na dúvida,
+lançar o prazo mais curto com "CONFERIR:" na descrição, e o fato de a conta sem
+feriado local sair antes da data real, nunca depois.
 
 O agente local sugerido está em [mcp/pilotos/agentes/prazos-dg.md](mcp/pilotos/agentes/prazos-dg.md).
 
@@ -147,7 +165,7 @@ Buscar agora ──────┘     (CRON_SECRET)              │           
                                                     ▼
           judicial_publications · process_events · judicial_capture_days · judicial_monitor_status · notifications
                                                     ▼
-          agente de prazos (opcional) → agent_runs → Revisões → deadlines
+          agente de prazos (opcional) → agent_runs → deadlines (prazo direto) ou Revisões → deadlines
 ```
 
 - O servidor fala com o banco só pelas 5 portas da busca, com o login `dg_worker`, que não lê tabela com dado de cliente.

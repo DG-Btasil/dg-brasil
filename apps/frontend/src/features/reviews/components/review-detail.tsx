@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CheckCircle2, Download, MessageSquareWarning, RotateCcw, XCircle } from "lucide-react";
+import { CheckCircle2, MessageSquareWarning, RotateCcw, XCircle } from "lucide-react";
 import {
   DOCUMENT_CATEGORY_LABEL,
   PRIORITIES,
@@ -27,12 +27,13 @@ import type { ReviewDetailDTO, ReviewTargetDTO } from "@/server/domain/reviews/d
 import { PROPOSAL_TYPE_LABEL } from "@/server/domain/reviews/labels";
 import { usePermission, useRole } from "@/features/auth/hooks";
 import { useDirectoryUserMap, useLawyerOptions } from "@/features/directory/directory-context";
-import { useDocumentActions } from "@/features/documents/use-document-actions";
 import { REVIEW_KIND_LABEL } from "../list-query";
 import { useReviewActions } from "../use-review-actions";
-import { canEditReview } from "../manual-revision";
+import { canEditReview, isEditableMime } from "../manual-revision";
 import { DecisionDialog } from "./decision-dialog";
 import { DocumentContentPanel } from "./document-content";
+import { DocumentPreviewPanel } from "./document-preview-panel";
+import { DownloadVersionButton } from "./download-version-button";
 import { AnalysisResultView } from "@/features/analyses/components/analysis-result-view";
 import { PriorityBadge } from "./priority-badge";
 import { DB_STATUS_LABEL, isOpen } from "./review-table";
@@ -185,8 +186,6 @@ const PAYLOAD_LABEL: Record<string, string> = {
 const show = (v: unknown): string => (v === null || v === undefined ? "—" : typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
 
 function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: ReviewTargetDTO | null; reviewId: string; reviewStatus: string; canEdit: boolean }) {
-  const docs = useDocumentActions();
-  const [busy, setBusy] = useState(false);
   if (!target) {
     return (
       <Panel>
@@ -216,27 +215,15 @@ function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: Revi
     );
   }
   if (target.kind === "DOCUMENT_VERSION") {
+    // O MIME vem da versão gravada (document_versions.mime_type); o nome do arquivo cobre MIME ausente ou genérico.
+    const file = { mimeType: target.mimeType, filename: target.originalFilename };
     return (
       <div className="space-y-5">
         <Panel>
           <PanelHeader
             title={target.title}
             description={`Versão ${target.versionNumber} · ${DOCUMENT_CATEGORY_LABEL[target.category as DocumentCategory] ?? target.category}`}
-            actions={
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={<Download className="size-3.5" aria-hidden />}
-                loading={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  await docs.download(target.documentId, target.documentVersionId);
-                  setBusy(false);
-                }}
-              >
-                Baixar esta versão
-              </Button>
-            }
+            actions={<DownloadVersionButton documentId={target.documentId} versionId={target.documentVersionId} file={file} />}
           />
           <PanelBody>
             <DefinitionGrid
@@ -250,7 +237,12 @@ function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: Revi
             />
           </PanelBody>
         </Panel>
-        <DocumentContentPanel reviewId={reviewId} mimeType={target.mimeType} canEdit={canEdit} />
+        {/* Minuta de texto (.md/.txt): lida e editada na tela. PDF, Word e imagem: prévia do arquivo, sem baixar. */}
+        {isEditableMime(target.mimeType) ? (
+          <DocumentContentPanel reviewId={reviewId} mimeType={target.mimeType} canEdit={canEdit} />
+        ) : (
+          <DocumentPreviewPanel documentId={target.documentId} versionId={target.documentVersionId} title={target.title} file={file} />
+        )}
       </div>
     );
   }

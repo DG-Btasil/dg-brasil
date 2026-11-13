@@ -140,18 +140,25 @@ await deve('sequência automática [056]: a Análise Bancária já sai com Lucas
   if (!/primeira rodada.*segunda rodada não está autorizada/s.test(t.req[alice])) throw new Error('pedido da Alice')
 })
 // Agente de prazos (058): entra no kit e, como a integração judicial não tinha agente escolhido, passa a propor os prazos.
+// Prazo direto (059): as orientações da 058 ("o prazo só vale depois que um advogado aprovar em Revisões") ganham versão nova.
 const KIT058 = 'intimacao-dg'
-await deve('agente de prazos [058]: a Diana vem cadastrada e ativa, chamando o intimacao-dg; a integração judicial, que não tinha agente, aponta para ela', async () => {
+const DIANA058 = ['Como entregar no DG Brasil:',
+  '- O agente termina a resposta com um bloco PROPOR (tipo, resumo, dados). Chame a ferramenta propor UMA vez, exatamente com esses dados.',
+  '- Nunca escreva ao cliente nem diga que algo foi protocolado: o prazo só vale depois que um advogado aprovar em Revisões.'].join('\n')
+const DIANA059 = ['Como entregar no DG Brasil:',
+  '- O agente termina a resposta com um bloco PROPOR (tipo, resumo, dados). Chame a ferramenta propor UMA vez, exatamente com esses dados.',
+  '- Nunca escreva ao cliente nem diga que algo foi protocolado. O prazo proposto entra direto na agenda do processo; "Sem prazo" vai para a equipe conferir.'].join('\n')
+await deve('agente de prazos [058/059]: a Diana vem cadastrada e ativa, chamando o intimacao-dg, já com as orientações do prazo direto (versão 2); a integração judicial, que não tinha agente, aponta para ela', async () => {
   const a = await um(db, `select a.id, a.name, a.description, a.purpose, a.status, v.version_number, v.configuration ->> 'local_agent' local, v.instructions
                             from agents a join agent_versions v on v.id = a.current_version_id where a.slug = $1 and a.deleted_at is null`, [KIT058])
-  igual([a.name, a.status, a.version_number, a.local], ['Diana · Prazos das publicações', 'ACTIVE', 1, KIT058], 'agente')
+  igual([a.name, a.status, a.version_number, a.local], ['Diana · Prazos das publicações', 'ACTIVE', 2, KIT058], 'agente')
   igual(a.description, 'Lê cada publicação nova do DJEN, diz se abre prazo para o cliente e propõe o prazo, com a contagem e o agente que faz a peça.', 'descrição')
   igual(a.purpose, "Nenhum prazo sem dono: toda publicação vira um prazo proposto ou um 'sem prazo' para a equipe conferir.", 'objetivo')
-  igual(a.instructions, ['Como entregar no DG Brasil:',
-    '- O agente termina a resposta com um bloco PROPOR (tipo, resumo, dados). Chame a ferramenta propor UMA vez, exatamente com esses dados.',
-    '- Nunca escreva ao cliente nem diga que algo foi protocolado: o prazo só vale depois que um advogado aprovar em Revisões.'].join('\n'), 'orientações')
-  const s = await um(db, `select deadline_agent_id, updated_by from judicial_settings where id`)
-  igual([s.deadline_agent_id, s.updated_by], [a.id, null], 'agente que propõe prazos (ninguém "escolheu": updated_by fica vazio)')
+  igual(a.instructions, DIANA059, 'orientações (059)')
+  const v = await linhas(db, `select version_number n, instructions i, configuration ->> 'local_agent' local from agent_versions where agent_id = $1 order by version_number`, [a.id])
+  igual(v.map((x) => [x.n, x.i, x.local]), [[1, DIANA058, KIT058], [2, DIANA059, KIT058]], 'a versão da 058 continua no histórico')
+  const s = await um(db, `select deadline_agent_id, updated_by, deadline_auto_apply from judicial_settings where id`)
+  igual([s.deadline_agent_id, s.updated_by, s.deadline_auto_apply], [a.id, null, true], 'agente que propõe prazos (ninguém "escolheu": updated_by fica vazio); prazo direto ligado')
 })
 // Os testes seguintes montam os próprios agentes e supõem o banco sem agentes do kit (modelo sem agente, sem
 // orquestrador, sem sequência automática, integração judicial sem agente de prazos): o kit sai de cena, como se
@@ -6162,6 +6169,329 @@ await deve('Diana pausada no site: a integração sem agente continua sem agente
   igual(await prazos058(), null, 'não aponta para agente pausado')
   // O kit sai de cena de novo, como no começo do arquivo.
   await db.query(`update agents set slug = slug || '-kit058', deleted_at = now() where slug = $1`, [KIT058])
+})
+
+// ═════════════════════════════ Prazo direto [059] ════════════════════════
+
+secao('Prazo direto: o prazo do agente de prazos entra na agenda sem passar por Revisões [059]')
+const d059 = {}
+// CNJs fictícios (TJRJ, 8.19, origem 0999) para os cenários da 059.
+const cnj059 = (n) => cnj(5900 + n, '2026', '8', '19', '0999')
+// As datas são relativas a hoje (Brasília): a regra recusa vencimento no passado.
+const dia059 = async (desloc = 0) => (await um(db, `select to_char((now() at time zone 'America/Sao_Paulo')::date + $1::int, 'YYYY-MM-DD') d`, [desloc])).d
+const mais059 = (dia, n) => new Date(Date.parse(`${dia}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10)
+const br059 = (dia) => dia.split('-').reverse().join('/')
+const fim059 = (dia) => `${dia}T23:59:00-03:00`
+const sabado059 = (dias) => {
+  for (let d = dias[0]; d < dias[dias.length - 1]; d = mais059(d, 1)) if (new Date(`${d}T12:00:00Z`).getUTCDay() === 6) return d
+  throw new Error('lista sem sábado no meio')
+}
+// As verificações da 058 rodaram a 058 de novo (e ela redefine o pedido ao agente): a 059 vem depois dela, como no banco de verdade.
+const rodar059 = async () => db.exec(await readFile(new URL('migrations/20261113000059_prazo_direto.sql', raiz), 'utf8'))
+let seq059 = 0
+// Publicação nova → trabalho do agente de prazos (o mesmo pedido que a busca do DJEN faz) → reservado pelo computador do escritório.
+async function trabalho059(proc, cnjN, disponibilizadaEm) {
+  const n = 59000 + ++seq059
+  const pub = (await um(db, `insert into judicial_publications (external_id, legal_process_id, cnj_number, court, organ, communication_type, available_on, content, link)
+    values ($1, $2, $3, 'TJRJ', '1ª Vara Cível Fictícia', 'Intimação', $4, $5, $6) returning id`,
+    [String(n), proc, cnjN, disponibilizadaEm, `Fica a parte autora intimada para réplica em 15 dias. (${n})`, `https://comunica.pje.jus.br/x/${n}`])).id
+  const run = (await um(db, `select private.judicial_request_deadline_proposal($1) r`, [pub])).r
+  if (!run) throw new Error(`agente não acionado: ${(await um(db, `select agent_error e from judicial_publications where id = $1`, [pub])).e}`)
+  const reserva = lease()
+  igual((await reservar040(hA, run, reserva)).claimed, true, 'trabalho reservado pelo computador do escritório')
+  const i = await um(db, `select parameters p, request_text t from agent_run_inputs where agent_run_id = $1`, [run])
+  return { pub, run, reserva, proc, dias: i.p.business_days, pedido: i.t }
+}
+const propor059 = (t, tipo, payload, chave) =>
+  ex(`select private.executor_create_proposal($1, $2, $3, $4, $5, $6) r`, [hA, t.run, t.reserva, tipo, JSON.stringify(payload), chave])
+const prazo059 = (dia, extra = {}) => ({ summary: 'Prazo de 15 dias úteis para réplica',
+  data: { title: 'Réplica à contestação', due_at: fim059(dia), description: 'CPC, art. 350: 15 dias úteis contados da publicação.', priority: 'HIGH', ...extra } })
+const proposta059 = (id) => um(db, `select p.status, p.requires_human_review rev, p.applied_entity_type ent, p.applied_entity_id prazo,
+    (select rv.status from reviews rv where rv.agent_proposal_id = p.id) revisao, (select rv.id from reviews rv where rv.agent_proposal_id = p.id) revisao_id
+  from agent_proposals p where p.id = $1`, [id])
+const publicacao059 = (t) => um(db, `select triage_status st, triage_outcome res, deadline_id prazo, triaged_by por, triage_notes nota from judicial_publications where id = $1`, [t.pub])
+const prazos059 = async (proc) => (await um(db, `select count(*)::int n from deadlines where legal_process_id = $1`, [proc])).n
+const motivos059 = async (t) => (await linhas(db, `select message m from agent_run_events where agent_run_id = $1 and message like 'Prazo não entrou direto na agenda (foi para Revisões): %' order by id`, [t.run])).map((x) => x.m)
+// Caminho antigo: proposta PENDING exigindo revisão, revisão PENDING em Revisões, nenhum prazo novo, o computador sabe que não foi aplicada.
+async function caminhoAntigo059(t, r, prazosAntes, rotulo) {
+  const p = await proposta059(r.proposal_id)
+  igual([r.created, r.applied, p.status, p.rev, p.revisao, p.prazo], [true, false, 'PENDING', true, 'PENDING', null], `${rotulo}: proposta em Revisões`)
+  igual(await prazos059(t.proc), prazosAntes, `${rotulo}: nenhum prazo criado`)
+  return p
+}
+
+await deve('cenário: caso do escritório (advogado: Lucas) com dois processos — um com responsável (Barbara), outro sem; a integração usa o agente do cenário, com o prazo direto ligado', async () => {
+  const cli = (await um(db, `select client_id from legal_cases where id = $1`, [j043.caso])).client_id
+  d059.caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Caso fictício 059', 'IN_PROGRESS', $3, $3, $4) returning id`, [cli, ids.banking, ids.owner, ids.lucas])).id
+  d059.procA = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court, responsible_user_id) values ($1, $2, 'Fictícia x Banco 059 A', 'TJRJ', $3) returning id`,
+    [d059.caso, cnj059(1), ids.barbara])).id
+  d059.procB = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court) values ($1, $2, 'Fictícia x Banco 059 B', 'TJRJ') returning id`, [d059.caso, cnj059(2)])).id
+  await rodar059()
+  await db.query(`update judicial_settings set deadline_agent_id = $1 where id`, [ids.agente])
+  igual((await um(db, `select deadline_auto_apply v from judicial_settings where id`)).v, true, 'ligado por padrão')
+  d059.hoje = await dia059()
+})
+await deve('pedido ao agente, com o prazo direto ligado: diz que o prazo ENTRA DIRETO NA AGENDA, que a data tem de ser da lista, o "CONFERIR:" na dúvida e que "Sem prazo:" continua indo para a equipe', async () => {
+  const t = d059.t1 = await trabalho059(d059.procA, cnj059(1), d059.hoje)
+  igual(t.dias.length, 30, 'lista de dias úteis no pedido')
+  igual([t.pedido.includes('ATENÇÃO: o prazo proposto ENTRA DIRETO NA AGENDA do processo, sem revisão de um advogado.'),
+    t.pedido.includes('a data de due_at tem de ser um dos dias da lista abaixo'),
+    t.pedido.includes('proponha o prazo mais curto cabível e comece a descrição com "CONFERIR:" — prazo a mais custa pouco, prazo perdido custa o processo.'),
+    t.pedido.includes('Só quando for claro que não há prazo para o nosso cliente, chame propor tipo OTHER, resumo começando com "Sem prazo:"'),
+    t.pedido.includes('esse continua indo para a equipe conferir.'), t.pedido.includes('quem decide é a equipe')], [true, true, true, true, true, false], 'O QUE FAZER')
+  // O resto do pedido é o da 058: cliente e polo antes, lista de dias úteis, link e teor depois.
+  igual([t.pedido.includes('\nNosso cliente: Odete Integração · polo não informado (do cadastro do processo)\n\nO QUE FAZER: leia o teor e diga se ele abre prazo para o nosso cliente. Se abrir, chame a ferramenta propor UMA vez, tipo CREATE_DEADLINE, dados {title, due_at'),
+    t.pedido.includes(`esse continua indo para a equipe conferir.\n\nDIAS ÚTEIS a partir da publicação`), t.pedido.includes(`\n  dia 15: ${br059(t.dias[14])}\n`),
+    t.pedido.includes('\n\nÍntegra: https://comunica.pje.jus.br/x/59001\n\nTEOR:\nFica a parte autora intimada para réplica em 15 dias. (59001)')], [true, true, true, true], 'resto do pedido')
+})
+await deve('prazo direto: CREATE_DEADLINE do trabalho da publicação, com data da lista → nenhuma revisão, proposta aprovada e aplicada na hora, prazo na agenda com caso, processo, título, data e responsável (o do processo)', async () => {
+  const t = d059.t1
+  const venc = d059.venc1 = t.dias[14]
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(venc), 'k-059-direto')
+  igual([r.created, r.applied], [true, true], 'resposta ao computador: criada e já aplicada')
+  d059.prop1 = r.proposal_id
+  const p = await um(db, `select status, requires_human_review rev, applied_entity_type ent, applied_entity_id prazo, decided_at is not null dec, applied_at is not null apl,
+      legal_case_id caso, legal_process_id proc, payload -> 'data' ->> 'responsible_user_id' resp, payload -> 'data' ->> 'legal_process_id' proc_dados, payload ->> 'summary' resumo
+    from agent_proposals where id = $1`, [r.proposal_id])
+  igual([p.status, p.rev, p.ent, p.dec, p.apl, p.caso, p.proc], ['APPLIED', false, 'deadlines', true, true, d059.caso, d059.procA], 'proposta: PENDING → APPROVED → APPLIED, sem exigir revisão')
+  igual([p.resp, p.proc_dados, p.resumo], [ids.barbara, d059.procA, 'Prazo de 15 dias úteis para réplica'], 'o que foi aplicado fica gravado na proposta')
+  igual((await um(db, `select count(*)::int n from reviews where agent_proposal_id = $1`, [r.proposal_id])).n, 0, 'nenhuma revisão criada')
+  const d = await um(db, `select legal_case_id, legal_process_id, title, description, priority, status, source, responsible_user_id,
+      to_char(due_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI') due from deadlines where id = $1`, [p.prazo])
+  igual([d.legal_case_id, d.legal_process_id, d.title, d.description, d.priority, d.status, d.source, d.responsible_user_id, d.due],
+    [d059.caso, d059.procA, 'Réplica à contestação', 'CPC, art. 350: 15 dias úteis contados da publicação.', 'HIGH', 'OPEN', 'AGENT', ids.barbara, `${venc} 23:59`], 'prazo')
+  igual(await prazos059(d059.procA), 1, 'um prazo no processo')
+  d059.prazo1 = p.prazo
+  const au = await um(db, `select actor_type, agent_run_id, metadata from audit_events where action = 'AGENT_PROPOSAL_EFFECT' and entity_id = $1`, [p.prazo])
+  igual([au.actor_type, au.agent_run_id, au.metadata.direct, au.metadata.agent_proposal_id, au.metadata.publication_id], ['AGENT', t.run, true, r.proposal_id, t.pub], 'auditoria: efeito do agente, marcado como prazo direto')
+})
+await deve('prazo direto: a publicação fica tratada (DONE/DEADLINE) com o prazo, sem revisor (triaged_by vazio) e com a nota de que entrou direto', async () => {
+  const p = await publicacao059(d059.t1)
+  igual([p.st, p.res, p.prazo, p.por, p.nota], ['DONE', 'DEADLINE', d059.prazo1, null, 'Prazo lançado direto pelo agente de prazos, sem revisão (prazo direto).'], 'triagem')
+  const tela = await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [d059.t1.pub])
+  igual([tela.triage_status, tela.triage_outcome, tela.deadline.id, tela.deadline.title, tela.pending_review_id], ['DONE', 'DEADLINE', d059.prazo1, 'Réplica à contestação', null], 'na tela da publicação')
+  const ev = await linhas(db, `select message m from agent_run_events where agent_run_id = $1 and kind = 'OUTPUT' order by id`, [d059.t1.run])
+  igual(ev.map((x) => x.m), [`Prazo lançado direto na agenda, sem revisão: Réplica à contestação — vence ${br059(d059.venc1)}`, 'Proposta: Prazo de 15 dias úteis para réplica'], 'linha do tempo do trabalho')
+})
+await deve('prazo direto: quem recebe o aviso da publicação (responsável do processo e advogado do caso) recebe UM aviso do prazo criado; o aviso genérico "Novo prazo" não sai em dobro', async () => {
+  const av = await linhas(db, `select user_id, type, title, message, severity, related_type, event_key, legal_case_id, legal_process_id from notifications where related_id = $1`, [d059.prazo1])
+  igual(av.map((x) => x.user_id).sort(), [ids.barbara, ids.lucas].sort(), 'um aviso para cada um')
+  for (const a of av) {
+    igual([a.type, a.title, a.severity, a.related_type, a.event_key, a.legal_case_id, a.legal_process_id],
+      ['DEADLINE_CREATED', `Prazo criado pelo agente: Réplica à contestação — vence ${br059(d059.venc1)}`, 'WARNING', 'deadline', 'prazo-direto:' + d059.prazo1, d059.caso, d059.procA], 'aviso')
+    igual(a.message, `Fictícia x Banco 059 A · publicação do DJEN de ${br059(d059.hoje)}. O prazo entrou direto na agenda, sem revisão de um advogado: confira a contagem.`, 'mensagem')
+  }
+  igual((await um(db, `select count(*)::int n from notifications where event_key = $1`, ['deadline-created:' + d059.prazo1])).n, 0, 'sem o aviso genérico em dobro')
+  igual((await um(db, `select coalesce(current_setting('dg.prazo_direto', true), '') v`)).v, '', 'o sinal do prazo direto não vaza da transação')
+})
+await deve('prazo direto: repetir a mesma chamada (mesma chave de idempotência) não cria segundo prazo, nem revisão, nem segundo aviso', async () => {
+  const r = await propor059(d059.t1, 'CREATE_DEADLINE', prazo059(d059.venc1), 'k-059-direto')
+  igual([r.created, r.applied, r.proposal_id], [false, true, d059.prop1], 'a mesma proposta, já aplicada')
+  igual(await prazos059(d059.procA), 1, 'um prazo só')
+  igual((await um(db, `select count(*)::int n from agent_proposals where agent_run_id = $1`, [d059.t1.run])).n, 1, 'uma proposta só')
+  igual((await um(db, `select count(*)::int n from reviews where agent_proposal_id = $1`, [d059.prop1])).n, 0, 'sem revisão')
+  igual((await um(db, `select count(*)::int n from notifications where related_id = $1`, [d059.prazo1])).n, 2, 'sem segundo aviso')
+  igual((await publicacao059(d059.t1)).prazo, d059.prazo1, 'publicação com o mesmo prazo')
+})
+await deve('só UMA proposta direta por publicação: uma segunda CREATE_DEADLINE do mesmo trabalho vai para Revisões, com o motivo na linha do tempo', async () => {
+  const t = d059.t1
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[4], { title: 'Segundo prazo do mesmo trabalho' }), 'k-059-segunda')
+  await caminhoAntigo059(t, r, 1, 'segunda proposta')
+  igual(await motivos059(t), ['Prazo não entrou direto na agenda (foi para Revisões): este trabalho já tem outra proposta de prazo (só uma entra direto por publicação)'], 'motivo registrado')
+  igual((await publicacao059(t)).prazo, d059.prazo1, 'a publicação continua com o primeiro prazo')
+  // Com proposta pendente, o trabalho termina aguardando a decisão humana, como sempre.
+  igual((await ex(`select private.executor_complete($1, $2, $3) r`, [hA, t.run, t.reserva])).status, 'WAITING_HUMAN', 'aguardando revisão')
+})
+await deve('data fora da lista (sábado) → caminho antigo; aprovada em Revisões, o prazo nasce pelo aplicador de sempre e a publicação fica tratada por quem aprovou', async () => {
+  const t = d059.t2 = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  const sab = sabado059(t.dias)
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(sab), 'k-059-sabado')
+  const p = await caminhoAntigo059(t, r, 0, 'sábado')
+  igual(await motivos059(t), [`Prazo não entrou direto na agenda (foi para Revisões): a data ${br059(sab)} não é um dos dias úteis da lista calculada para esta publicação`], 'motivo')
+  const pub = await publicacao059(t)
+  igual([pub.st, pub.prazo], ['WITH_AGENT', null], 'a publicação continua com o agente, esperando a revisão')
+  igual((await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [t.pub])).pending_review_id, p.revisao_id, 'a revisão pendente aparece na publicação')
+  igual((await ex(`select private.executor_complete($1, $2, $3) r`, [hA, t.run, t.reserva])).status, 'WAITING_HUMAN', 'aguardando revisão')
+  await decidir(ids.lucas, p.revisao_id, 'APPROVE')
+  await db.query(`select private.maintenance_tick()`)
+  const depois = await proposta059(r.proposal_id)
+  const pub2 = await publicacao059(t)
+  igual([depois.status, depois.rev, depois.ent, pub2.st, pub2.res, pub2.prazo, pub2.por, pub2.nota], ['APPLIED', true, 'deadlines', 'DONE', 'DEADLINE', depois.prazo, ids.lucas, null], 'aprovada por uma pessoa: tratada com o prazo')
+  igual(await prazos059(d059.procB), 1, 'o prazo só existe depois da aprovação')
+  // No caminho antigo o aviso é o genérico da 037, para o responsável do prazo (aqui, o advogado do caso).
+  igual((await linhas(db, `select event_key k from notifications where related_id = $1`, [depois.prazo])).map((x) => x.k), ['deadline-created:' + depois.prazo], 'aviso do caminho antigo')
+})
+await deve('data além da lista e vencimento sem hora e fuso → caminho antigo, cada um com o seu motivo', async () => {
+  const t = d059.t3 = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  const alem = mais059(t.dias[29], 40)
+  await caminhoAntigo059(t, await propor059(t, 'CREATE_DEADLINE', prazo059(alem), 'k-059-alem'), 1, 'além da lista')
+  igual(await motivos059(t), [`Prazo não entrou direto na agenda (foi para Revisões): a data ${br059(alem)} não é um dos dias úteis da lista calculada para esta publicação`], 'motivo')
+  // Com uma proposta de prazo já esperando revisão, a seguinte do mesmo trabalho também vai para Revisões, mesmo com data da lista.
+  await caminhoAntigo059(t, await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-059-depois-da-pendente'), 1, 'segunda proposta, a primeira pendente')
+  igual((await motivos059(t))[1], 'Prazo não entrou direto na agenda (foi para Revisões): este trabalho já tem outra proposta de prazo (só uma entra direto por publicação)', 'motivo')
+  igual((await publicacao059(t)).st, 'WITH_AGENT', 'com o agente')
+  const t4 = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  const semFuso = prazo059(t4.dias[14])
+  semFuso.data.due_at = t4.dias[14]
+  await caminhoAntigo059(t4, await propor059(t4, 'CREATE_DEADLINE', semFuso, 'k-059-sem-fuso'), 1, 'sem hora e fuso')
+  igual((await motivos059(t4))[0].includes('o vencimento (due_at) não veio com data, hora e fuso'), true, 'motivo')
+  const t5 = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  const semTitulo = prazo059(t5.dias[14], { title: '   ' })
+  await caminhoAntigo059(t5, await propor059(t5, 'CREATE_DEADLINE', semTitulo, 'k-059-sem-titulo'), 1, 'sem título')
+  igual(await motivos059(t5), ['Prazo não entrou direto na agenda (foi para Revisões): o prazo veio sem título'], 'motivo')
+})
+await deve('data no passado (mesmo sendo dia da lista) → caminho antigo', async () => {
+  // Publicação disponibilizada há 60 dias: o primeiro dia útil da lista já passou.
+  const t = await trabalho059(d059.procB, cnj059(2), await dia059(-60))
+  igual(t.dias[0] < d059.hoje, true, 'o dia 1 da lista já passou')
+  await caminhoAntigo059(t, await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[0]), 'k-059-passado'), 1, 'passado')
+  igual(await motivos059(t), [`Prazo não entrou direto na agenda (foi para Revisões): o vencimento (${br059(t.dias[0])}) já passou`], 'motivo')
+  igual((await publicacao059(t)).st, 'WITH_AGENT', 'com o agente')
+})
+await deve('publicação já tratada por uma pessoa (prazo criado pela tela) → a proposta do agente segue o caminho antigo e não cria segundo prazo', async () => {
+  const t = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  const h = await rpc043(ids.lucas, `select public.create_deadline_from_publication($1, $2) r`, [t.pub, JSON.stringify({ title: 'Réplica (criado pela equipe)', due_on: t.dias[14] })])
+  igual(await prazos059(d059.procB), 2, 'o prazo da equipe')
+  await caminhoAntigo059(t, await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-059-tratada'), 2, 'já tratada')
+  igual(await motivos059(t), ['Prazo não entrou direto na agenda (foi para Revisões): a publicação já foi tratada'], 'motivo')
+  const pub = await publicacao059(t)
+  igual([pub.st, pub.res, pub.prazo, pub.por], ['DONE', 'DEADLINE', h.deadline_id, ids.lucas], 'a triagem da pessoa não muda')
+})
+await deve('publicação cancelada pelo tribunal → caminho antigo', async () => {
+  const t = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  await db.query(`update judicial_publications set cancelled_at = now(), cancel_reason = 'Publicada por engano' where id = $1`, [t.pub])
+  await caminhoAntigo059(t, await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-059-cancelada'), 2, 'cancelada')
+  igual(await motivos059(t), ['Prazo não entrou direto na agenda (foi para Revisões): a publicação foi cancelada pelo tribunal'], 'motivo')
+})
+await deve('trabalho que NÃO nasceu de publicação → continua exigindo revisão, mesmo com data válida; pedido avulso que só imita o JSON de publicação também', async () => {
+  const avulso = async (params) => {
+    const run = (await como(ids.lucas, (tx) => um(tx, `select public.request_agent_run_once($1, $2, $3, $4, 'Conferir o prazo', $5, 'EXECUTE') r`,
+      [randomUUID(), ids.agente, d059.caso, d059.procB, JSON.stringify(params)]))).r.run_id
+    const reserva = lease()
+    igual((await reservar040(hA, run, reserva)).claimed, true, 'trabalho avulso reservado')
+    return { run, reserva, proc: d059.procB }
+  }
+  const venc = d059.t3.dias[14]
+  const a = await avulso({})
+  await caminhoAntigo059(a, await propor059(a, 'CREATE_DEADLINE', prazo059(venc), 'k-059-avulso'), 2, 'avulso')
+  igual(await motivos059(a), [], 'trabalho comum: nada a registrar')
+  // d059.t3 continua com o agente (WITH_AGENT): o pedido avulso copia o JSON dela, mas a publicação não aponta para ele.
+  const f = await avulso({ kind: 'JUDICIAL_PUBLICATION', publication_id: d059.t3.pub, business_days: [venc] })
+  await caminhoAntigo059(f, await propor059(f, 'CREATE_DEADLINE', prazo059(venc), 'k-059-imitado'), 2, 'JSON imitado')
+  igual(await motivos059(f), ['Prazo não entrou direto na agenda (foi para Revisões): a publicação não está ligada a este trabalho'], 'motivo')
+  const pub = await publicacao059(d059.t3)
+  igual([pub.st, pub.prazo], ['WITH_AGENT', null], 'a publicação imitada não é tocada')
+})
+await deve('"Sem prazo:" (OTHER) → como antes: vai para Revisões, nenhum prazo, e a publicação volta para a triagem da equipe quando o trabalho fecha', async () => {
+  const t = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  const r = await propor059(t, 'OTHER', { summary: 'Sem prazo: despacho de mero expediente', data: { description: 'O despacho só determina a juntada; não há prazo para o nosso cliente.' } }, 'k-059-sem-prazo')
+  const p = await proposta059(r.proposal_id)
+  igual([r.created, r.applied, p.status, p.rev, p.revisao, p.prazo], [true, false, 'PENDING', true, 'PENDING', null], 'proposta em Revisões')
+  igual([await prazos059(d059.procB), await motivos059(t), (await publicacao059(t)).st], [2, [], 'WITH_AGENT'], 'nenhum prazo; publicação com o agente até a decisão')
+  igual((await ex(`select private.executor_complete($1, $2, $3) r`, [hA, t.run, t.reserva])).status, 'WAITING_HUMAN', 'aguardando revisão')
+  await decidir(ids.lucas, p.revisao_id, 'APPROVE')
+  await db.query(`select private.maintenance_tick()`)
+  const pub = await publicacao059(t)
+  igual([(await um(db, `select status from agent_runs where id = $1`, [t.run])).status, pub.st, pub.res, pub.prazo, await prazos059(d059.procB)],
+    ['COMPLETED', 'PENDING', null, null, 2], 'de volta à triagem da equipe, sem prazo')
+})
+await deve('configuração: a tela lê e salva deadline_auto_apply; quem não manda a chave não muda nada; só ADMIN', async () => {
+  const antes = (await rpc043(ids.lucas, `select public.get_judicial_overview() r`)).settings
+  igual([antes.deadline_auto_apply, antes.deadline_agent_id], [true, ids.agente], 'lê (ligado)')
+  await como(ids.lucas, (tx) => tx.query(`select public.save_judicial_settings('{"deadline_auto_apply":false}')`)).then(
+    () => { throw new Error('advogado desligou o prazo direto') }, (e) => { if (!/Somente ADMIN/.test(e.message)) throw e })
+  igual((await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_apply":false}') r`)).ok, true, 'ADMIN salva')
+  const s = (await rpc043(ids.barbara, `select public.get_judicial_overview() r`)).settings
+  igual([s.deadline_auto_apply, s.deadline_agent_id, s.djen_enabled, s.datajud_enabled, s.lookback_days], [false, antes.deadline_agent_id, antes.djen_enabled, antes.datajud_enabled, antes.lookback_days], 'desligado; o resto como estava')
+  await rpc043(ids.barbara, `select public.save_judicial_settings($1) r`, [JSON.stringify({ lookback_days: antes.lookback_days })])
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_apply":null}') r`)
+  igual((await rpc043(ids.barbara, `select public.get_judicial_overview() r`)).settings.deadline_auto_apply, false, 'sem a chave (ou nula): continua desligado')
+})
+await deve('prazo direto desligado → caminho antigo (sem motivo a registrar), e o texto do pedido volta a ser o da 058', async () => {
+  const t = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  igual([t.pedido.includes('(fundamento legal e a contagem: quantos dias úteis e por quê), priority}. Se não houver prazo, chame propor tipo OTHER, resumo começando com "Sem prazo:" e o motivo em dados.description — quem decide é a equipe.\n\nDIAS ÚTEIS a partir da publicação'),
+    t.pedido.includes('ENTRA DIRETO'), t.pedido.includes('CONFERIR:')], [true, false, false], 'pedido da 058')
+  await caminhoAntigo059(t, await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-059-desligado'), 2, 'desligado')
+  igual([await motivos059(t), (await publicacao059(t)).st], [[], 'WITH_AGENT'], 'caminho normal, com o agente até a revisão')
+  await rpc043(ids.barbara, `select public.save_judicial_settings('{"deadline_auto_apply":true}') r`)
+  igual((await rpc043(ids.barbara, `select public.get_judicial_overview() r`)).settings.deadline_auto_apply, true, 'religado')
+})
+await deve('se a criação do prazo falhar, nada fica pela metade: a proposta passa a exigir revisão e vai para Revisões com o motivo', async () => {
+  const t = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  // Prioridade que a agenda não aceita: o aplicador recusa o prazo.
+  await caminhoAntigo059(t, await propor059(t, 'CREATE_DEADLINE', prazo059(t.dias[14], { priority: 'MUITO_ALTA' }), 'k-059-falha'), 2, 'falha ao criar')
+  igual((await motivos059(t))[0].startsWith('Prazo não entrou direto na agenda (foi para Revisões): não foi possível criar o prazo ('), true, 'motivo')
+  const pub = await publicacao059(t)
+  igual([pub.st, pub.prazo, pub.nota], ['WITH_AGENT', null, null], 'publicação intacta, com o agente')
+  igual((await um(db, `select coalesce(current_setting('dg.prazo_direto', true), '') v`)).v, '', 'o sinal do prazo direto não fica ligado')
+})
+await deve('orientações do kit: rodar a migration de novo só troca quem ainda tem exatamente o texto da 058 (pelo identificador ou pelo agente do computador); texto editado e agente arquivado ficam como estão; a configuração não volta ao padrão', async () => {
+  const versoes = async (slug) => (await linhas(db, `select v.version_number n, v.instructions i, v.configuration c, v.id = a.current_version_id atual
+    from agents a join agent_versions v on v.agent_id = a.id where a.slug = $1 order by v.version_number`, [slug]))
+  const agente = async (slug, orientacoes, conf) => {
+    const id = (await um(db, `insert into agents (slug, name, description, purpose, status) values ($1, $2, 'Agente fictício 059', 'Teste', 'DRAFT') returning id`, [slug, `Agente ${slug}`])).id
+    const v = (await um(db, `insert into agent_versions (agent_id, instructions, configuration) values ($1, $2, $3) returning id`, [id, orientacoes, JSON.stringify(conf)])).id
+    await db.query(`update agents set current_version_id = $2, status = 'ACTIVE' where id = $1`, [id, v])
+  }
+  // A Diana, recadastrada como a 058 cadastra (as de antes saíram de cena): versão 1, com o texto da 058.
+  await rodar058()
+  igual((await versoes(KIT058)).map((x) => [x.n, x.i]), [[1, DIANA058]], 'Diana com o texto da 058')
+  await agente('prazos-do-site-059', DIANA058, { local_agent: KIT058, model: 'modelo-do-site' })
+  await agente('prazos-editado-059', DIANA058 + '\n- Regra do escritório: avisar a Dra. Barbara por e-mail.', { local_agent: KIT058 })
+  await agente('outro-agente-059', DIANA058, { local_agent: 'outro-agente' })
+  await db.query(`update judicial_settings set deadline_auto_apply = false where id`)
+  await rodar059()
+  igual((await versoes(KIT058)).map((x) => [x.n, x.i, x.c.local_agent, x.atual]), [[1, DIANA058, KIT058, false], [2, DIANA059, KIT058, true]], 'Diana: versão nova, atual')
+  igual((await versoes('prazos-do-site-059')).map((x) => [x.n, x.i, x.c, x.atual]),
+    [[1, DIANA058, { model: 'modelo-do-site', local_agent: KIT058 }, false], [2, DIANA059, { model: 'modelo-do-site', local_agent: KIT058 }, true]], 'cadastrado pelo site: versão nova, mesma configuração (o jsonb devolve as chaves na ordem dele)')
+  igual((await versoes('prazos-editado-059')).map((x) => [x.n, x.atual]), [[1, true]], 'orientações editadas: não tocadas')
+  igual((await versoes('outro-agente-059')).map((x) => [x.n, x.atual]), [[1, true]], 'agente de outro agente do computador: não tocado')
+  igual((await versoes(KIT058 + '-kit058')).map((x) => [x.n, x.i]), [[1, DIANA058]], 'agente arquivado: não tocado')
+  await rodar059()
+  igual([(await versoes(KIT058)).length, (await versoes('prazos-do-site-059')).length, (await versoes('prazos-editado-059')).length], [2, 2, 1], 'rodar de novo não cria outra versão')
+  igual((await um(db, `select deadline_auto_apply v, deadline_agent_id a from judicial_settings where id`)), { v: false, a: ids.agente }, 'a configuração do escritório não volta ao padrão')
+  await db.query(`update judicial_settings set deadline_auto_apply = true where id`)
+  // Os agentes deste teste saem de cena.
+  await db.query(`update agents set slug = slug || '-fim059', status = 'INACTIVE', deleted_at = now() where slug = any($1)`,
+    [[KIT058, 'prazos-do-site-059', 'prazos-editado-059', 'outro-agente-059']])
+})
+await deve('depois de rodar a migration de novo, o prazo direto continua valendo: processo sem responsável → o prazo vai para o advogado do caso; sem nada pendente, o trabalho termina concluído', async () => {
+  const t = await trabalho059(d059.procB, cnj059(2), d059.hoje)
+  const antes = await prazos059(d059.procB)
+  const venc = t.dias[9]
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(venc, { title: 'Contrarrazões', priority: 'URGENT', responsible_user_id: ids.ana }), 'k-059-advogado-do-caso')
+  igual([r.created, r.applied], [true, true], 'aplicada na hora')
+  const p = await proposta059(r.proposal_id)
+  const d = await um(db, `select title, responsible_user_id resp, legal_process_id proc, source, to_char(due_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') dia from deadlines where id = $1`, [p.prazo])
+  igual([p.status, p.rev, p.revisao, d.title, d.resp, d.proc, d.source, d.dia], ['APPLIED', false, null, 'Contrarrazões', ids.lucas, d059.procB, 'AGENT', venc],
+    'responsável: o advogado do caso (o que o agente indicou não vale)')
+  igual(await prazos059(d059.procB), antes + 1, 'um prazo novo')
+  const av = await linhas(db, `select user_id, title, severity from notifications where related_id = $1`, [p.prazo])
+  igual(av.map((x) => [x.user_id, x.title, x.severity]), [[ids.lucas, `Prazo criado pelo agente: Contrarrazões — vence ${br059(venc)}`, 'URGENT']], 'um aviso, para o advogado do caso')
+  igual((await ex(`select private.executor_complete($1, $2, $3) r`, [hA, t.run, t.reserva])).status, 'COMPLETED', 'trabalho concluído: nada espera revisão')
+  const pub = await publicacao059(t)
+  igual([pub.st, pub.res, pub.prazo, pub.por], ['DONE', 'DEADLINE', p.prazo, null], 'a publicação continua tratada depois de o trabalho fechar')
+})
+await deve('catálogo [059]: funções com search_path fixo; nenhuma nova porta para usuário logado, anon ou backend; o computador do escritório só chama as portas de proposta', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = any ($1) order by 1`,
+    [['judicial_direct_deadline_check', 'judicial_direct_deadline_apply', 'judicial_request_deadline_proposal', 'notify_deadlines',
+      'worker_create_proposal', 'executor_create_proposal', 'get_judicial_overview', 'save_judicial_settings']])
+  igual(r.length, 8, 'uma versão de cada função')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || !x.def || x.anon || x.srv).map((x) => x.f), [], 'search_path, definer, sem anon nem service_role')
+  igual(r.filter((x) => x.usr).map((x) => x.f), ['private.get_judicial_overview', 'private.save_judicial_settings'], 'usuário logado: só as duas da tela, como na 043')
+  igual(r.filter((x) => x.wrk).map((x) => x.f), ['private.executor_create_proposal', 'private.worker_create_proposal'], 'dg_worker: só as portas de proposta')
+  await como(ids.barbara, (tx) => tx.query(`select private.judicial_direct_deadline_apply($1, '{"ok":true}')`, [d059.prop1])).then(
+    () => { throw new Error('usuário logado aplicou prazo direto') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  // A guarda da 012 continua valendo: a exigência de revisão humana não se desliga depois.
+  const pend = (await um(db, `select id from agent_proposals where requires_human_review and status = 'PENDING' and proposal_type = 'CREATE_DEADLINE' limit 1`)).id
+  await db.query(`update agent_proposals set requires_human_review = false where id = $1`, [pend]).then(
+    () => { throw new Error('a exigência de revisão foi desligada') }, (e) => { if (!/não pode ser desligado/.test(e.message)) throw e })
+  await db.query(`update judicial_settings set deadline_agent_id = null where id`)
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

@@ -140,7 +140,7 @@ function TriageBlock({ p }: { p: JudicialPublicationDetailDTO }) {
   const by = useDirectoryUser(p.triagedBy);
   if (p.triageStatus === "WITH_AGENT") {
     return (
-      <Callout tone="info" title="O agente está propondo o prazo">
+      <Callout tone="info" title="O agente está calculando o prazo">
         A publicação virou um trabalho do agente no computador do escritório.
         {p.pendingReviewId ? (
           <>
@@ -152,7 +152,7 @@ function TriageBlock({ p }: { p: JudicialPublicationDetailDTO }) {
             .
           </>
         ) : (
-          " Quando a proposta chegar, ela aparece em Revisões; você também pode criar o prazo aqui mesmo."
+          " O prazo que ele calcular entra na agenda do processo (ou aparece em Revisões, se o escritório preferiu revisar antes); você também pode criar o prazo aqui mesmo."
         )}
       </Callout>
     );
@@ -170,7 +170,7 @@ function TriageBlock({ p }: { p: JudicialPublicationDetailDTO }) {
         )}
         {p.triageNotes && <span className="block">{p.triageNotes}</span>}
         <span className="mt-1 block text-[12px] text-muted">
-          {by?.name ?? "—"} · {p.triagedAt ? formatEventTime(p.triagedAt) : ""}
+          {by?.name ?? (p.triageOutcome === "DEADLINE" ? "Criado pelo agente de prazos" : "—")} · {p.triagedAt ? formatEventTime(p.triagedAt) : ""}
         </span>
       </Callout>
     );
@@ -242,7 +242,7 @@ function DeadlineForm({ p, onCancel, onDone }: { p: JudicialPublicationDetailDTO
       <Field label="Observação" requirement="optional">
         {(a) => <Textarea {...a} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />}
       </Field>
-      {p.triageStatus === "WITH_AGENT" && <Callout tone="warning">O agente também está propondo um prazo para esta publicação. Se você criar aqui, rejeite a proposta dele em Revisões.</Callout>}
+      {p.triageStatus === "WITH_AGENT" && <Callout tone="warning">O agente também está calculando um prazo para esta publicação. Se você criar aqui, confira depois se não ficaram dois prazos (ou rejeite a proposta dele em Revisões).</Callout>}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>
           Cancelar

@@ -128,6 +128,8 @@ export interface DatajudClientOptions {
 
 /** Tentativa com menos tempo que isto nem começa (a consulta costuma levar dezenas de segundos). */
 const MIN_ATTEMPT_MS = 10_000;
+/** Recusa por sobrecarga (429/5xx) ou falha de rede: até 3 tentativas por consulta. */
+const MAX_ATTEMPTS = 3;
 
 export class DatajudClient {
   private readonly f: typeof fetch;
@@ -138,16 +140,18 @@ export class DatajudClient {
   constructor(opts: DatajudClientOptions = {}) {
     this.f = opts.fetch ?? fetch;
     this.key = opts.apiKey || process.env.DATAJUD_API_KEY || DATAJUD_PUBLIC_KEY;
-    // Medido em 2026-11-03: 30–54 s por consulta no TJRJ. O tempo de cada
-    // tentativa também é cortado no prazo da rodada (process(cnj, deadline)).
-    // Tempo esgotado não tenta de novo (comeria a rodada): volta em 1 h.
-    this.timeout = opts.timeoutMs ?? 45_000;
+    // Medido em 2026-11-03: 30–54 s por consulta no TJRJ; em 2026-11-13, 49 s
+    // e duas recusas por sobrecarga (429). Com 45 s o site desistia antes de
+    // o CNJ responder: agora cada tentativa espera até 2 min, cortada no
+    // prazo da rodada (process(cnj, deadline)). Tempo esgotado não tenta de
+    // novo (comeria a rodada): volta em 1 h.
+    this.timeout = opts.timeoutMs ?? 120_000;
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
   /**
-   * Um processo pelo CNJ. `deadline` (ms): nenhuma tentativa passa dele (a rota
-   * tem 60 s e a rodada precisa de tempo para gravar o fim — JUD-06).
+   * Um processo pelo CNJ. `deadline` (ms): nenhuma tentativa passa dele (a
+   * rodada precisa de tempo para gravar o fim — JUD-06).
    */
   async process(cnj: string, deadline?: number): Promise<DatajudResult> {
     const alias = datajudAlias(cnj);
@@ -173,14 +177,16 @@ export class DatajudClient {
         });
       } catch (e) {
         const timedOut = e instanceof Error && e.name === "TimeoutError";
-        if (attempt < 2 && !timedOut) {
-          await this.sleep(1500);
+        if (attempt < MAX_ATTEMPTS && !timedOut) {
+          await this.sleep(1500 * attempt);
           continue;
         }
         throw new DatajudError(`DataJud não respondeu (${timedOut ? "tempo esgotado" : "falha de rede"})`, true);
       }
-      if ((res.status === 429 || res.status >= 500) && attempt < 2) {
-        await this.sleep(3000);
+      // 429 e 5xx: o CNJ recusa quando a fila dele está cheia. Espera um pouco
+      // mais a cada vez (4 s, 12 s) e tenta de novo; o laço confere o prazo.
+      if ((res.status === 429 || res.status >= 500) && attempt < MAX_ATTEMPTS) {
+        await this.sleep(attempt === 1 ? 4_000 : 12_000);
         continue;
       }
       if (res.status === 401 || res.status === 403) throw new DatajudError("DataJud recusou a chave pública (o CNJ pode tê-la trocado: atualize DATAJUD_API_KEY)");

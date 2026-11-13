@@ -348,7 +348,9 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
     title: 'Propor uma providência',
     description: [
       'Registra uma proposta para um advogado aprovar em Revisões. É o ÚNICO jeito de mudar algo no sistema.',
-      'Nada acontece até a aprovação. dados por tipo: CREATE_DEADLINE {title, due_at (ISO 8601), priority?,',
+      'Nada acontece até a aprovação, com uma exceção: o prazo (CREATE_DEADLINE) de um trabalho que nasceu de uma',
+      'publicação do DJEN entra direto na agenda quando o escritório ligou o "prazo direto" (a resposta avisa).',
+      'dados por tipo: CREATE_DEADLINE {title, due_at (ISO 8601), priority?,',
       'legal_process_id?, description?}; REQUEST_DOCUMENT {category, label, required?, message_to_partner?, due_at?};',
       'UPDATE_CASE {title?, summary?, status?: WAITING_DOCUMENTS|READY_FOR_ANALYSIS|ANALYZING|WAITING_REVIEW};',
       'CREATE_PROCESS {cnj_number? (20 dígitos), court?, client_side?: ACTIVE|PASSIVE|THIRD_PARTY, ...};',
@@ -366,9 +368,10 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
     const t = trabalhos.obter(a.trabalho_id, true)
     const r = await api.propor(t.id, t.reserva, { type: a.tipo, summary: a.resumo, data: a.dados, priority: a.prioridade ?? 'NORMAL' })
     if (r.created) t.entregas++
-    return texto(r.created
-      ? 'Proposta registrada em Revisões. Ainda NÃO está aplicada: um advogado decide.'
-      : 'Essa proposta já estava registrada neste trabalho. Nada foi duplicado.')
+    if (!r.created) return texto('Essa proposta já estava registrada neste trabalho. Nada foi duplicado.')
+    return texto(r.applied
+      ? 'Prazo lançado DIRETO na agenda do processo (prazo direto: sem revisão). A equipe já foi avisada.'
+      : 'Proposta registrada em Revisões. Ainda NÃO está aplicada: um advogado decide.')
   }))
 
   // ── encerramento ────────────────────────────────────────────────────────
@@ -385,7 +388,7 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
     }))
     const msg: Record<string, string> = {
       WAITING_HUMAN: 'Trabalho concluído. As entregas estão em DG Brasil → Revisões, aguardando um advogado.',
-      COMPLETED: 'Trabalho concluído (sem entregas).',
+      COMPLETED: 'Trabalho concluído. Nada ficou aguardando revisão.',
       CANCELLED: 'Trabalho encerrado como INTERROMPIDO, a pedido. O que já tinha sido entregue continua em Revisões.',
       FAILED: r.error_code === 'NO_ANALYSIS_RESULT'
         ? 'Este trabalho era uma ANÁLISE e terminou sem entregar_analise: ficou registrado como falha.'

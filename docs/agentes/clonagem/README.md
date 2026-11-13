@@ -76,9 +76,11 @@ clones da esteira:
   publicação inteira, o lado do cliente e a lista de dias úteis). Não usa a
   pasta do cliente, por isso não entra no `ponte.json`; o instalador o copia da
   pasta `agentes/geral/` e o libera na sessão;
-- **não gera documento**: a entrega é UMA proposta em Revisões. "Prazo" (com
-  título, data e a contagem) ou "Sem prazo:" com o motivo. O prazo só existe
-  depois que um advogado aprova;
+- **não gera documento**: a entrega é UMA proposta. "Prazo" (com título, data
+  e a contagem) ou "Sem prazo:" com o motivo. Desde a migration 059 (decisão de
+  13/11/2026), o prazo entra **direto na agenda do processo**, sem Revisões;
+  o "Sem prazo" continua indo para a equipe conferir
+  ([judicial.md](../../judicial.md), "Prazo direto");
 - **confere a data duas vezes**: pela lista de dias úteis do pedido e pelo
   script de prazo. Se as duas divergirem, propõe a data mais cedo e avisa.
 
@@ -161,8 +163,9 @@ número CNJ) já guardava as publicações e os andamentos dos processos
 cadastrados. Faltava isso chegar aos agentes. Ficou assim:
 
 1. **Prazo de cada publicação, sozinho.** Publicação nova de processo
-   cadastrado vira um trabalho do agente de prazos, sem ninguém pedir; a
-   proposta chega em Revisões. Com a migration 058, o agente de prazos do kit
+   cadastrado vira um trabalho do agente de prazos, sem ninguém pedir; o prazo
+   entra direto na agenda (059) ou, se o escritório desligar o prazo direto,
+   a proposta chega em Revisões. Com a migration 058, o agente de prazos do kit
    passa a ser o escolhido quando o escritório ainda não escolheu nenhum
    (decisão de deixar a esteira mais automática). Para desligar: Integrações →
    "Agente que propõe prazos" → "Nenhum (a equipe trata)".

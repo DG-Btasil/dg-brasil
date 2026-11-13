@@ -385,8 +385,10 @@ acrescente:
      processo para os agentes; cadastra a Diana, agente de prazos, e, se a
      integração judicial ainda não tem "Agente que propõe prazos", passa a
      ser ela: cada publicação nova vira um trabalho dela, sem ninguém pedir)
-     no projeto de produção, **antes** de publicar o site;
-  2. rodar o instalador do conector de novo na máquina principal (versão 1.3.2);
+     e 059 (prazo direto: o prazo do agente de prazos entra na agenda sem
+     Revisões; desliga-se em Integrações) no projeto de produção, **antes** de
+     publicar o site;
+  2. rodar o instalador do conector de novo na máquina principal (versão 1.3.3);
   3. rodar o instalador dos clones a partir da pasta local `agentes/`
      ([instalacao.md](../mcp/instalacao.md), seção 5.0) e preencher o
      `C:\DGBrasil\agentes\escritorio.json` (quem assina);

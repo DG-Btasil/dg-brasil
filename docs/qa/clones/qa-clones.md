@@ -156,13 +156,35 @@ só para esta validação (a apagar depois). Rodada curta, de 00:05 a 00:35.
 | Publicação fictícia de réplica → proposta | Idem, com um ato ordinatório fictício de 15 dias | **Passou.** "Proposta de prazo" em Revisões: Réplica à contestação, vencimento 03/12/2026 às 23:59, prioridade alta, contagem conferida de duas formas (lista do pedido e script), agente indicado para a peça |
 | Testes em memória | `npm run verificar` e testes do conector | **Passou.** 907 verificações no banco; 71 testes no conector |
 
-Não coberto ao vivo, por depender da migration 058 no banco de teste:
+Depois da migration 058 aplicada no banco de teste (13/11/2026, 01:00):
 
-- a publicação nova virar trabalho do agente **sozinha** (nesta rodada a
-  publicação já estava guardada quando o agente foi escolhido, então o pedido
-  foi criado à mão, com o mesmo texto). Coberto pelos testes em memória;
-- o arquivo `PROCESSO_<CNJ>.txt` na pasta do cliente. Coberto pelos testes do
-  conector; falta uma passada curta da ponte depois da 058.
+| O que | Como | Resultado |
+|---|---|---|
+| Conector publicado | Comparação do pacote instalado com o do site | **Passou.** O 1.3.2 deste computador é idêntico ao que o site entrega |
+| `ver_processo` com as publicações | Sessão curta num trabalho do caso 17 | **Passou.** O processo veio com a publicação e o teor |
+| `PROCESSO_<CNJ>.txt` na pasta do cliente | A mesma sessão, parada de propósito depois do Arquivista | **Passou.** Arquivo gravado na pasta do cliente com cabeçalho, dados do processo, andamentos e a publicação (disponibilizada, publicada, tipo, órgão, link e teor). Apagado em seguida, por ter dado real |
+
+Achado: **caso sem nenhum documento não passa pela ponte.** O Porteiro não tem
+o que conferir, não grava a liberação e o Arquivista recusa a cópia. Na
+primeira tentativa o caso 17 não tinha documento; com um documento fictício
+anexado, passou. Na prática todo caso tem documento, mas a mensagem ao
+advogado deveria dizer "anexe os documentos do caso" (pós-MVP, item 5).
+
+**Mudanças de 13/11/2026, madrugada (pedidas pela dona depois da rodada):**
+
+- **Prazo direto (migration 059, conector 1.3.3):** o prazo do agente de prazos
+  entra na agenda sem Revisões. Testado em memória (928 verificações no banco);
+  **ao vivo, depende de aplicar a 059 no banco de teste**.
+- **DataJud com mais paciência:** cada consulta espera até 2 min e insiste 3
+  vezes na recusa; a rodada agendada trabalha 4 min. Testes do site passando.
+- **Prévia do arquivo em Revisões:** a tela da revisão mostra a primeira página
+  de PDF e de Word e a imagem; o botão diz o formato ("Baixar em Word",
+  "Baixar em PDF"). Não há conversão entre Word e PDF.
+
+Ainda não visto ao vivo: a publicação nova virar trabalho do agente
+**sozinha** (nesta rodada a publicação já estava guardada quando o agente foi
+escolhido, então o pedido foi criado à mão, com o mesmo texto). Coberto pelos
+testes em memória.
 
 Aprovar a proposta de prazo (para ver o prazo nascer no caso) ficou para uma
 pessoa: é a decisão humana que a esteira exige.

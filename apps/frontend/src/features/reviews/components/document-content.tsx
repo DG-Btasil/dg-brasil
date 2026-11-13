@@ -38,13 +38,8 @@ export function DocumentContentPanel({ reviewId, mimeType, canEdit }: { reviewId
     };
   }, [reviewId, textual, version]);
 
-  if (!textual) {
-    return (
-      <Callout tone="neutral" title="Conteúdo não editável aqui">
-        {contentNotEditableMessage("FORMAT")}
-      </Callout>
-    );
-  }
+  // PDF, Word e imagem não passam por aqui: têm a prévia do arquivo (DocumentPreviewPanel).
+  if (!textual) return null;
   if (!content) {
     return (
       <Panel>
@@ -56,7 +51,7 @@ export function DocumentContentPanel({ reviewId, mimeType, canEdit }: { reviewId
   const data = content.data;
   if (data.kind === "UNAVAILABLE") {
     return (
-      <Callout tone="neutral" title="Conteúdo não editável aqui">
+      <Callout tone="neutral" title="Este conteúdo não é editado na tela">
         {contentNotEditableMessage(data.reason)}
       </Callout>
     );

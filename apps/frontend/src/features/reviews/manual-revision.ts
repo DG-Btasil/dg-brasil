@@ -22,7 +22,7 @@ type NotEditable = Extract<ReviewContentDTO, { kind: "UNAVAILABLE" }>["reason"] 
 export function contentNotEditableMessage(reason: NotEditable): string {
   switch (reason) {
     case "FORMAT":
-      return "Este formato (PDF, DOCX ou imagem) não é editável aqui. Para corrigir, envie uma nova versão do arquivo na aba Documentos do caso — a versão atual continua no histórico.";
+      return "Este formato (PDF, Word ou imagem) não é editado na tela: veja a prévia ou baixe o arquivo. Para corrigir, envie uma nova versão do arquivo na aba Documentos do caso — a versão atual continua no histórico.";
     case "TOO_LARGE":
       return "O arquivo é grande demais para editar aqui. Envie uma nova versão do arquivo na aba Documentos do caso.";
     case "SUPERSEDED":
