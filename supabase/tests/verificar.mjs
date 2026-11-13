@@ -3458,8 +3458,9 @@ await deve('prazo novo → responsável; lembretes "próximo" e "vencido" uma ve
   igual((await avisos037(ids.almeidaAdm, 'DEADLINE_CREATED')).length, 0, 'prazo é interno: parceiro não recebe')
   await comoWorker((tx) => tx.query(`select private.notify_deadline_reminders()`))
   await comoWorker((tx) => tx.query(`select private.notify_deadline_reminders()`))
-  igual((await avisos037(ids.lucas, 'DEADLINE_DUE_SOON')).filter((a) => a.event_key === `deadline-due-soon:${proximo}`).length, 1, 'próximo, uma vez')
-  igual((await avisos037(ids.lucas, 'DEADLINE_OVERDUE')).filter((a) => a.event_key === `deadline-overdue:${vencido}`).length, 1, 'vencido, uma vez')
+  // 063: a chave do lembrete leva a data do vencimento e a etapa (ou o dia, no vencido). As etapas e os dias úteis são conferidos no bloco [063].
+  igual((await avisos037(ids.lucas, 'DEADLINE_DUE_SOON')).filter((a) => a.event_key.startsWith(`deadline-reminder:${proximo}:`)).length, 1, 'próximo, uma vez')
+  igual((await avisos037(ids.lucas, 'DEADLINE_OVERDUE')).filter((a) => a.event_key.startsWith(`deadline-overdue:${vencido}:`)).length, 1, 'vencido, uma vez')
 })
 await deve('documento pedido → escritório parceiro; recebido → advogado do caso', async () => {
   const req = (await como(ids.barbara, (tx) => um(tx, `insert into case_document_requirements (legal_case_id, requirement_label, category, status, requested_at)
@@ -3502,21 +3503,24 @@ await deve('repasse → só PARTNER_ADMIN do escritório (PARTNER_USER não vê 
   igual((await avisos037(ids.almeidaUsr, 'PARTNER_TRANSFER_REGISTERED')).length, 0, 'PARTNER_USER')
   igual((await avisos037(ids.ferreiraAdm, 'PARTNER_TRANSFER_REGISTERED')).filter((a) => a.event_key === `transfer:${t}:registered`).length, 0, 'outro parceiro')
 })
+// 063: Prazos deixou de poder ser desligada (como Segurança). A categoria desligada do teste passou a ser Revisões; Prazos é a que continua.
 await deve('preferência: categoria desligada não gera aviso; outras continuam', async () => {
-  await como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app, email) values ($1, 'DEADLINES', false, false)`, [ids.lucas]))
-  const d = (await como(ids.barbara, (tx) => um(tx, `insert into deadlines (legal_case_id, title, due_at, responsible_user_id) values ($1, 'Sem aviso 037', now() + interval '20 days', $2) returning id`, [ids.caso037, ids.lucas]))).id
-  igual((await avisos037(ids.lucas, 'DEADLINE_CREATED')).filter((a) => a.event_key === `deadline-created:${d}`).length, 0, 'desligado')
+  await como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app, email) values ($1, 'REVIEWS', false, false)`, [ids.lucas]))
   const an = (await um(db, `insert into legal_analyses (legal_case_id, analysis_template_id, started_by) values ($1, $2, $3) returning id`, [ids.caso037, ids.tpl029, ids.barbara])).id
   const rv = (await um(db, `insert into reviews (legal_case_id, legal_analysis_id, assigned_reviewer_id) values ($1, $2, $3) returning id`, [ids.caso037, an, ids.lucas])).id
-  igual((await avisos037(ids.lucas, 'REVIEW_ASSIGNED')).filter((a) => a.event_key.startsWith(`review-assigned:${rv}`)).length, 1, 'revisões seguem ligadas')
+  igual((await avisos037(ids.lucas, 'REVIEW_ASSIGNED')).filter((a) => a.event_key.startsWith(`review-assigned:${rv}`)).length, 0, 'desligado')
+  const d = (await como(ids.barbara, (tx) => um(tx, `insert into deadlines (legal_case_id, title, due_at, responsible_user_id) values ($1, 'Com aviso 037', now() + interval '20 days', $2) returning id`, [ids.caso037, ids.lucas]))).id
+  igual((await avisos037(ids.lucas, 'DEADLINE_CREATED')).filter((a) => a.event_key === `deadline-created:${d}`).length, 1, 'prazos seguem ligados')
   await db.query(`delete from user_notification_preferences where user_id = $1`, [ids.lucas])
 })
+await deveFalhar('prazos não se desliga na plataforma [063]', () =>
+  como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app) values ($1, 'DEADLINES', false)`, [ids.lucas])), /deadlines_in_app/)
 await deveFalhar('segurança não se desliga na plataforma', () =>
   como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app) values ($1, 'SECURITY', false)`, [ids.lucas])), /security_in_app/)
 await deveFalhar('categoria desconhecida é recusada', () =>
   como(ids.lucas, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type) values ($1, 'QUALQUER')`, [ids.lucas])), /category/)
 await deve('segurança: MFA redefinido e troca de perfil avisam a própria pessoa, mesmo com tudo desligado', async () => {
-  for (const cat of ['CASES', 'DEADLINES', 'DOCUMENTS', 'REVIEWS', 'PARTNER_REQUESTS', 'ANALYSES', 'FINANCE'])
+  for (const cat of ['CASES', 'DOCUMENTS', 'REVIEWS', 'PARTNER_REQUESTS', 'ANALYSES', 'FINANCE'])
     await como(ids.ana, (tx) => tx.query(`insert into user_notification_preferences (user_id, notification_type, in_app) values ($1, $2, false)`, [ids.ana, cat]))
   await db.query(`select private.record_auth_event('MFA_RESET_COMPLETED', $1, '{}', $2)`, [ids.ana, ids.barbara])
   igual((await avisos037(ids.ana, 'MFA_RESET')).length, 1, 'MFA')
@@ -6887,6 +6891,380 @@ await deve('catálogo [061]: funções com search_path fixo e sem porta nova (as
   await db.query(`update process_task_settings set orchestrator_agent_id = $1 where id`, [t061.orqAntes])
   await db.query(`update agents set slug = 'orquestrador-fim061', status = 'INACTIVE', deleted_at = now() where id = $1`, [t061.orq])
   await db.query(`update judicial_settings set deadline_agent_id = null where id`)
+})
+
+// ═════════════════════════════ Prazos: situação, lembretes, agenda [063] ══
+
+secao('Prazos: cumprir, cancelar e reabrir com motivo; conferência do prazo do agente; agenda; lembretes em dias úteis; aplicador mais firme [063]')
+const t063 = {}
+// As verificações da 059 rodaram aquela migration de novo (ela redefine private.notify_deadlines): a 063 vem depois, como no banco de verdade.
+const rodar063 = async () => db.exec(await readFile(new URL('migrations/20261113000063_prazos_agenda_lembretes.sql', raiz), 'utf8'))
+const cnj063 = (n) => cnj(6300 + n, '2026', '8', '19', '0998')
+const prazo063 = (id) => um(db, `select status, status_reason, status_changed_by, completed_at, checked_at, checked_by, deadline_type, source, legal_process_id,
+    to_char(due_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS') venc from deadlines where id = $1`, [id])
+const mudar063 = (uid, id, acao, motivo = null) => como(uid, async (tx) => (await um(tx, `select public.deadline_transition($1, $2, $3) r`, [id, acao, motivo])).r)
+const conferir063 = (uid, id) => como(uid, async (tx) => (await um(tx, `select public.deadline_mark_checked($1) r`, [id])).r)
+const criar063 = (uid, chave, prazo) => como(uid, async (tx) => (await um(tx, `select public.create_deadline_once($1, $2) r`, [chave, JSON.stringify(prazo)])).r)
+const novo063 = async (campos) => (await um(db, `insert into deadlines (legal_case_id, legal_process_id, title, due_at, responsible_user_id, source)
+    values ($1, $2, $3, $4, $5, $6) returning id`,
+    [campos.caso ?? t063.caso, campos.processo ?? null, campos.titulo, campos.venc, campos.resp ?? null, campos.origem ?? 'MANUAL'])).id
+const avisos063 = (prazo, uid = null) => linhas(db, `select user_id, type, title, message, severity, event_key from notifications
+    where related_type = 'deadline' and related_id = $1 and ($2::uuid is null or user_id = $2) order by created_at, event_key`, [prazo, uid])
+const lembretes063 = () => comoWorker((tx) => tx.query(`select private.notify_deadline_reminders()`))
+const auditoria063 = (prazo, acao) => linhas(db, `select actor_type, actor_user_id, metadata from audit_events where entity_type = 'deadlines' and entity_id = $1 and action = $2 order by created_at`, [prazo, acao])
+const recusa063 = (p, padrao) => p.then(() => { throw new Error('foi aceito') }, (e) => { if (!padrao.test(e.message)) throw new Error(`recusado pelo motivo errado: ${e.message}`) })
+// Fim do dia (Brasília) de uma data civil.
+const fimDoDia063 = (dia) => `${dia}T23:59:59-03:00`
+
+await deve('cenário: a 063 roda de novo sem quebrar nem duplicar; caso com advogado, processo com CNJ e caso sem advogado', async () => {
+  await rodar063()
+  igual((await um(db, `select count(*)::int n from pg_trigger where tgname = 'deadlines_transition_guard' and not tgisinternal`)).n, 1, 'um gatilho só')
+  igual((await um(db, `select count(*)::int n from pg_constraint where conname in ('deadlines_checked_pair', 'user_notification_preferences_deadlines_in_app')`)).n, 2, 'restrições uma vez')
+  const caso = async (titulo, advogado) => (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, $3, $6, $4, $4, $5) returning id`, [ids.joao, ids.banking, titulo, ids.owner, advogado, advogado ? 'IN_PROGRESS' : 'DRAFT'])).id
+  t063.caso = await caso('Caso fictício 063', ids.lucas)
+  t063.casoSemAdv = await caso('Caso fictício 063 (sem advogado)', null)
+  t063.cnj = cnj063(1)
+  t063.proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court, responsible_user_id) values ($1, $2, 'Fictícia x Banco 063', 'TJRJ', $3) returning id`,
+    [t063.caso, t063.cnj, ids.lucas])).id
+  t063.admins = (await linhas(db, `select private.active_admin_ids() u`)).map((x) => x.u).sort()
+  if (!t063.admins.includes(ids.barbara)) throw new Error('a ADMIN do cenário não está ativa')
+  t063.hoje = (await um(db, `select to_char((now() at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD') d`)).d
+  // Dias úteis de hoje em diante, pela mesma função dos lembretes (043).
+  t063.uteis = (await linhas(db, `select to_char(g::date, 'YYYY-MM-DD') d from generate_series($1::date::timestamp, $1::date + 75, interval '1 day') g
+    where private.non_business_reason(g::date, null) is null order by 1`, [t063.hoje])).map((x) => x.d)
+  t063.hojeUtil = t063.uteis[0] === t063.hoje
+})
+
+await deve('criar com chave de envio: a mesma chave com o mesmo pedido devolve o mesmo prazo; com outro pedido é conflito; a origem é sempre MANUAL', async () => {
+  const chave = randomUUID()
+  const pedido = { legal_case_id: t063.caso, legal_process_id: t063.proc, title: 'Réplica 063', deadline_type: 'REPLY', due_at: '2027-03-10T23:59:59-03:00',
+    priority: 'HIGH', responsible_user_id: ids.lucas, source: 'AGENT', status: 'COMPLETED' }
+  const a = await criar063(ids.barbara, chave, pedido)
+  const b = await criar063(ids.barbara, chave, pedido)
+  igual([a.deduplicated, b.deduplicated, a.deadline_id === b.deadline_id], [false, true, true], 'mesmo prazo')
+  igual((await um(db, `select count(*)::int n from deadlines where legal_case_id = $1 and title = 'Réplica 063'`, [t063.caso])).n, 1, 'um prazo só')
+  const d = await prazo063(a.deadline_id)
+  igual([d.status, d.source, d.deadline_type, d.venc], ['OPEN', 'MANUAL', 'REPLY', '2027-03-10 23:59:59'], 'origem e situação não vêm do pedido')
+  await recusa063(criar063(ids.barbara, chave, { ...pedido, title: 'Outro título' }), /chave de envio já foi usada/i)
+  t063.prazo = a.deadline_id
+  igual((await avisos063(t063.prazo, ids.lucas)).map((x) => x.event_key), [`deadline-created:${t063.prazo}`], 'o responsável recebe o "Novo prazo"')
+})
+await deve('criar: assistente e parceiro não criam prazo; audiência guarda modalidade, local e link (e recusa modalidade ou link inválidos)', async () => {
+  const base = { legal_case_id: t063.caso, legal_process_id: t063.proc, title: 'Audiência de instrução 063', deadline_type: 'HEARING', due_at: '2027-04-06T14:30:00-03:00', responsible_user_id: ids.lucas }
+  await recusa063(criar063(ids.ana, randomUUID(), base), /row-level security/)
+  await recusa063(criar063(ids.almeidaAdm, randomUUID(), base), /row-level security/)
+  await recusa063(criar063(ids.lucas, randomUUID(), { ...base, hearing_mode: 'TELEFONE' }), /hearing_mode/)
+  await recusa063(criar063(ids.lucas, randomUUID(), { ...base, hearing_mode: 'VIDEO', hearing_link: 'javascript:alert(1)' }), /hearing_link/)
+  const r = await criar063(ids.lucas, randomUUID(), { ...base, hearing_mode: 'VIDEO', hearing_location: 'Sala 2 do Fórum', hearing_link: 'https://exemplo.jus.br/sala/063' })
+  const d = await um(db, `select deadline_type, hearing_mode, hearing_location, hearing_link, to_char(due_at at time zone 'America/Sao_Paulo', 'HH24:MI') hora from deadlines where id = $1`, [r.deadline_id])
+  igual([d.deadline_type, d.hearing_mode, d.hearing_location, d.hearing_link, d.hora], ['HEARING', 'VIDEO', 'Sala 2 do Fórum', 'https://exemplo.jus.br/sala/063', '14:30'], 'audiência')
+  t063.audiencia = r.deadline_id
+})
+
+await deve('situação: só ADMIN e advogado mudam; cancelar exige motivo; cumprir grava quem e quando', async () => {
+  await recusa063(mudar063(ids.ana, t063.prazo, 'COMPLETE'), /Só administrador ou advogado/)
+  await recusa063(mudar063(ids.almeidaAdm, t063.prazo, 'COMPLETE'), /Só administrador ou advogado/)
+  await recusa063(mudar063(ids.lucas, t063.prazo, 'APAGAR'), /Ação de prazo desconhecida/)
+  await recusa063(mudar063(ids.lucas, t063.prazo, 'CANCEL'), /Informe o motivo do cancelamento/)
+  await recusa063(mudar063(ids.lucas, t063.prazo, 'CANCEL', '   '), /Informe o motivo do cancelamento/)
+  await recusa063(mudar063(ids.lucas, t063.prazo, 'REOPEN', 'Engano'), /já está em aberto/)
+  await recusa063(mudar063(ids.lucas, randomUUID(), 'COMPLETE'), /Prazo não encontrado/)
+  igual((await prazo063(t063.prazo)).status, 'OPEN', 'nada mudou')
+  const r = await mudar063(ids.lucas, t063.prazo, 'COMPLETE')
+  igual([r.from, r.status], ['OPEN', 'COMPLETED'], 'cumprido')
+  const d = await prazo063(t063.prazo)
+  igual([d.status, !!d.completed_at, d.status_changed_by, d.status_reason], ['COMPLETED', true, ids.lucas, null], 'cumprido, com data e autor')
+  igual((await auditoria063(t063.prazo, 'DEADLINE_COMPLETED')).map((e) => [e.actor_type, e.actor_user_id]), [['USER', ids.lucas]], 'auditoria da 014')
+})
+await deve('situação: prazo encerrado não muda de novo sem reabrir; reabrir exige motivo, limpa a data de cumprimento, fica na auditoria com o motivo e avisa o responsável', async () => {
+  await recusa063(mudar063(ids.barbara, t063.prazo, 'COMPLETE'), /Só é possível alterar um prazo em aberto/)
+  await recusa063(mudar063(ids.barbara, t063.prazo, 'CANCEL', 'Motivo'), /Só é possível alterar um prazo em aberto/)
+  await recusa063(mudar063(ids.barbara, t063.prazo, 'REOPEN'), /Informe o motivo para reabrir/)
+  const r = await mudar063(ids.barbara, t063.prazo, 'REOPEN', '  Marcado como cumprido por engano  ')
+  igual([r.from, r.status], ['COMPLETED', 'OPEN'], 'reaberto')
+  const d = await prazo063(t063.prazo)
+  igual([d.status, d.completed_at, d.status_reason, d.status_changed_by], ['OPEN', null, 'Marcado como cumprido por engano', ids.barbara], 'em aberto de novo')
+  const ev = await auditoria063(t063.prazo, 'DEADLINE_REOPENED')
+  igual(ev.map((e) => [e.actor_type, e.actor_user_id, e.metadata.from, e.metadata.to, e.metadata.reason]),
+    [['USER', ids.barbara, 'COMPLETED', 'OPEN', 'Marcado como cumprido por engano']], 'auditoria com o motivo')
+  const a = (await avisos063(t063.prazo, ids.lucas)).filter((x) => x.event_key.startsWith(`deadline-reopened:${t063.prazo}:`))
+  igual(a.map((x) => [x.type, x.title]), [['DEADLINE', 'Prazo reaberto: Réplica 063']], 'aviso ao responsável')
+  igual((await avisos063(t063.prazo, ids.barbara)).filter((x) => x.event_key.startsWith('deadline-reopened:')).length, 0, 'quem reabriu não recebe aviso de si')
+})
+await deve('situação: cancelar e marcar como perdido ficam na auditoria com o motivo; os dois podem ser reabertos', async () => {
+  igual((await mudar063(ids.lucas, t063.prazo, 'CANCEL', 'Acordo homologado')).status, 'CANCELLED', 'cancelado')
+  igual((await prazo063(t063.prazo)).status_reason, 'Acordo homologado', 'motivo no prazo')
+  igual((await auditoria063(t063.prazo, 'DEADLINE_CANCELLED')).map((e) => [e.actor_user_id, e.metadata.reason]), [[ids.lucas, 'Acordo homologado']], 'auditoria do cancelamento')
+  igual((await mudar063(ids.lucas, t063.prazo, 'REOPEN', 'O acordo não saiu')).status, 'OPEN', 'reaberto do cancelado')
+  igual((await mudar063(ids.lucas, t063.prazo, 'MISS', 'Petição não protocolada')).status, 'MISSED', 'perdido')
+  igual((await auditoria063(t063.prazo, 'DEADLINE_MISSED')).map((e) => e.metadata.reason), ['Petição não protocolada'], 'auditoria do perdido')
+  igual((await mudar063(ids.barbara, t063.prazo, 'REOPEN', 'Marcado como perdido por engano')).status, 'OPEN', 'reaberto do perdido')
+  igual((await auditoria063(t063.prazo, 'DEADLINE_REOPENED')).length, 3, 'três reaberturas auditadas')
+})
+await deve('situação: a regra vale também para UPDATE direto (sem a função): troca inválida, cancelar sem motivo e reabrir sem motivo são recusados', async () => {
+  const id = await novo063({ titulo: 'Direto 063', venc: '2027-05-10T23:59:59-03:00', resp: ids.lucas })
+  await recusa063(como(ids.barbara, (tx) => tx.query(`update deadlines set status = 'CANCELLED' where id = $1`, [id])), /Informe o motivo do cancelamento/)
+  await como(ids.barbara, (tx) => tx.query(`update deadlines set status = 'COMPLETED' where id = $1`, [id]))
+  await recusa063(como(ids.barbara, (tx) => tx.query(`update deadlines set status = 'CANCELLED', status_reason = 'x' where id = $1`, [id])), /Reabra o prazo antes/)
+  await recusa063(como(ids.barbara, (tx) => tx.query(`update deadlines set status = 'OPEN', completed_at = null where id = $1`, [id])), /Informe o motivo para reabrir/)
+  await recusa063(como(ids.ana, async (tx) => { if ((await tx.query(`update deadlines set status = 'OPEN', status_reason = 'x' where id = $1`, [id])).affectedRows === 0) throw new Error('assistente: nenhuma linha') }), /assistente: nenhuma linha/)
+  const d = await prazo063(id)
+  igual([d.status, d.status_changed_by, !!d.completed_at], ['COMPLETED', ids.barbara, true], 'continua cumprido, por quem cumpriu')
+})
+await deve('situação: prazo de processo excluído é "não encontrado" para as duas funções', async () => {
+  const proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court) values ($1, $2, 'Excluído 063', 'TJRJ') returning id`, [t063.caso, cnj063(2)])).id
+  t063.procExcluido = proc
+  t063.prazoExcluido = await novo063({ processo: proc, titulo: 'Em processo excluído 063', venc: (await um(db, `select (now() - interval '3 hours')::text v`)).v, resp: ids.lucas, origem: 'AGENT' })
+  await como(ids.barbara, (tx) => tx.query(`update legal_processes set deleted_at = now() where id = $1`, [proc]))
+  igual((await um(db, `select deleted_at is not null x from legal_processes where id = $1`, [proc])).x, true, 'processo excluído')
+  await recusa063(mudar063(ids.lucas, t063.prazoExcluido, 'COMPLETE'), /Prazo não encontrado/)
+  await recusa063(conferir063(ids.lucas, t063.prazoExcluido), /Prazo não encontrado/)
+})
+
+await deve('conferência: só prazo de agente; só ADMIN e advogado; grava quem e quando uma vez só e fica na auditoria', async () => {
+  t063.doAgente = await novo063({ processo: t063.proc, titulo: 'Do agente 063', venc: '2027-06-10T23:59:59-03:00', resp: ids.lucas, origem: 'AGENT' })
+  await recusa063(conferir063(ids.ana, t063.doAgente), /Só administrador ou advogado/)
+  await recusa063(conferir063(ids.almeidaAdm, t063.doAgente), /Só administrador ou advogado/)
+  await recusa063(conferir063(ids.lucas, t063.prazo), /Só o prazo criado por agente/)
+  const a = await conferir063(ids.lucas, t063.doAgente)
+  const b = await conferir063(ids.barbara, t063.doAgente)
+  igual([a.already, a.checked_by, b.already, b.checked_by, a.checked_at === b.checked_at], [false, ids.lucas, true, ids.lucas, true], 'uma conferência, de quem conferiu primeiro')
+  igual((await auditoria063(t063.doAgente, 'DEADLINE_CHECKED')).map((e) => [e.actor_type, e.actor_user_id]), [['USER', ids.lucas]], 'auditoria')
+  await recusa063(como(ids.barbara, (tx) => tx.query(`update deadlines set checked_by = $2 where id = $1`, [t063.doAgente, ids.barbara])), /já foi registrada/)
+  await recusa063(como(ids.barbara, (tx) => tx.query(`update deadlines set checked_at = null, checked_by = null where id = $1`, [t063.doAgente])), /já foi registrada/)
+  // Pela API direta, ninguém confere em nome de outra pessoa.
+  const outro = await novo063({ titulo: 'Do agente 063 (direto)', venc: '2027-06-11T23:59:59-03:00', origem: 'AGENT' })
+  await como(ids.barbara, (tx) => tx.query(`update deadlines set checked_at = '2020-01-01', checked_by = $2 where id = $1`, [outro, ids.lucas]))
+  const d = await um(db, `select checked_by, checked_at > now() - interval '1 minute' agora from deadlines where id = $1`, [outro])
+  igual([d.checked_by, d.agora], [ids.barbara, true], 'vale quem está logado, na hora')
+})
+
+await deve('agenda: uma linha por prazo com cliente, caso, processo e CNJ; vencido é derivado; marca o prazo de agente sem conferência e o de processo excluído; prazo só do caso aparece', async () => {
+  t063.soDoCaso = await novo063({ titulo: 'Prazo só do caso 063', venc: (await um(db, `select (now() - interval '2 hours')::text v`)).v, resp: ids.lucas })
+  t063.semConferir = await novo063({ processo: t063.proc, titulo: 'Do agente sem conferência 063', venc: '2027-06-12T23:59:59-03:00', resp: ids.lucas, origem: 'AGENT' })
+  const cliente = (await um(db, `select coalesce(i.full_name, c.legal_name) n from clients k left join individual_client_details i on i.client_id = k.id
+    left join company_client_details c on c.client_id = k.id where k.id = $1`, [ids.joao])).n
+  if (!cliente) throw new Error('cliente do cenário sem nome')
+  const ver = (uid) => como(uid, (tx) => linhas(tx, `select id, title, effective_status, status, to_char(due_date_local, 'YYYY-MM-DD') dia, client_name, case_title, process_title, process_cnj,
+      process_court, agent_unchecked, scope_deleted, hearing_mode, source from deadline_agenda where legal_case_id = $1 order by due_at, id`, [t063.caso]))
+  const linhasAdv = await ver(ids.lucas)
+  const por = (id) => linhasAdv.find((x) => x.id === id)
+  igual(linhasAdv.length, (await um(db, `select count(*)::int n from deadlines where legal_case_id = $1`, [t063.caso])).n, 'uma linha por prazo')
+  const p = por(t063.prazo)
+  igual([p.client_name, p.case_title, p.process_title, p.process_cnj, p.process_court, p.effective_status, p.dia, p.agent_unchecked, p.scope_deleted],
+    [cliente, 'Caso fictício 063', 'Fictícia x Banco 063', t063.cnj, 'TJRJ', 'OPEN', '2027-03-10', false, false], 'prazo de processo')
+  const c = por(t063.soDoCaso)
+  igual([c.client_name, c.case_title, c.process_title, c.process_cnj, c.status, c.effective_status, c.scope_deleted], [cliente, 'Caso fictício 063', null, null, 'OPEN', 'OVERDUE', false], 'prazo só do caso, vencido')
+  igual([por(t063.semConferir).agent_unchecked, por(t063.doAgente).agent_unchecked, por(t063.audiencia).hearing_mode], [true, false, 'VIDEO'], 'conferência e audiência')
+  igual(por(t063.prazoExcluido).scope_deleted, true, 'processo excluído fica marcado (as listagens tiram)')
+  igual((await ver(ids.ana)).length, linhasAdv.length, 'assistente lê (como lê os prazos)')
+  igual((await ver(ids.almeidaAdm)).length, 0, 'parceiro não lê')
+  await recusa063(db.transaction(async (tx) => { await tx.query('set local role anon'); await tx.query('select 1 from deadline_agenda limit 1') }), /permission denied/)
+})
+await deve('prazo só do caso (sem processo): cumprir, reabrir e cancelar funcionam pela mesma função', async () => {
+  igual((await mudar063(ids.lucas, t063.soDoCaso, 'COMPLETE')).status, 'COMPLETED', 'cumprido')
+  igual((await mudar063(ids.lucas, t063.soDoCaso, 'REOPEN', 'Faltou protocolar')).status, 'OPEN', 'reaberto')
+  igual((await mudar063(ids.lucas, t063.soDoCaso, 'CANCEL', 'Perdeu o objeto')).status, 'CANCELLED', 'cancelado')
+  igual((await mudar063(ids.lucas, t063.soDoCaso, 'REOPEN', 'Volta a valer')).status, 'OPEN', 'reaberto de novo')
+})
+
+await deve('lembretes: 5, 3 e 1 dia útil antes e no dia; com 6 dias úteis ainda não avisa; rodar de novo não duplica', async () => {
+  const u = t063.uteis
+  // Faltam k dias úteis (contando hoje, sem o dia do vencimento) quando o prazo vence no k-ésimo dia útil depois do primeiro.
+  const em = async (k, titulo) => novo063({ processo: t063.proc, titulo, venc: fimDoDia063(u[k]), resp: ids.lucas })
+  t063.l6 = await em(6, 'Faltam seis 063')
+  t063.l5 = await em(5, 'Faltam cinco 063')
+  t063.l2 = await em(2, 'Faltam dois 063')
+  t063.l1 = await em(1, 'Falta um 063')
+  t063.l0 = await novo063({ processo: t063.proc, titulo: 'Vence hoje 063', venc: fimDoDia063(t063.hoje), resp: ids.lucas })
+  await lembretes063()
+  await lembretes063()
+  const de = async (id) => (await avisos063(id, ids.lucas)).filter((x) => x.type === 'DEADLINE_DUE_SOON').map((x) => [x.event_key, x.title, x.severity])
+  igual(await de(t063.l6), [], 'seis dias úteis: ainda não')
+  igual(await de(t063.l5), [[`deadline-reminder:${t063.l5}:${u[5]}:D5`, 'Prazo vence em 5 dias úteis: Faltam cinco 063', 'WARNING']], 'D5')
+  igual(await de(t063.l2), [[`deadline-reminder:${t063.l2}:${u[2]}:D3`, 'Prazo vence em 2 dias úteis: Faltam dois 063', 'WARNING']], 'D3 (etapa atrasada sai com o número real)')
+  igual(await de(t063.l1), [[`deadline-reminder:${t063.l1}:${u[1]}:D1`, 'Prazo vence em 1 dia útil: Falta um 063', 'URGENT']], 'D1')
+  igual(await de(t063.l0), [[`deadline-reminder:${t063.l0}:${t063.hoje}:D0`, 'Prazo vence hoje: Vence hoje 063', 'URGENT']], 'no dia')
+  igual((await avisos063(t063.l5, ids.barbara)).filter((x) => x.type === 'DEADLINE_DUE_SOON').length, 0, 'antes do vencimento o ADMIN não é avisado quando há responsável ativo')
+})
+await deve('lembretes: a data entra na chave, então mudar o vencimento rearma o aviso', async () => {
+  const u = t063.uteis
+  await como(ids.lucas, (tx) => tx.query(`update deadlines set due_at = $2 where id = $1`, [t063.l5, fimDoDia063(u[1])]))
+  await lembretes063()
+  await como(ids.lucas, (tx) => tx.query(`update deadlines set due_at = $2 where id = $1`, [t063.l5, fimDoDia063(u[3])]))
+  await lembretes063()
+  await lembretes063()
+  igual((await avisos063(t063.l5, ids.lucas)).filter((x) => x.type === 'DEADLINE_DUE_SOON').map((x) => x.event_key).sort(),
+    [`deadline-reminder:${t063.l5}:${u[1]}:D1`, `deadline-reminder:${t063.l5}:${u[3]}:D3`, `deadline-reminder:${t063.l5}:${u[5]}:D5`].sort(), 'um aviso por data e etapa')
+})
+await deve('lembretes: destinatário de reserva — responsável inativo → advogado do caso; sem responsável nem advogado → ADMINs', async () => {
+  const u = t063.uteis
+  const daAna = await novo063({ titulo: 'Responsável inativa 063', venc: fimDoDia063(u[1]), resp: ids.ana })
+  const semNinguem = await novo063({ caso: t063.casoSemAdv, titulo: 'Sem responsável 063', venc: fimDoDia063(u[1]) })
+  igual((await avisos063(semNinguem)).filter((x) => x.type === 'DEADLINE_CREATED').map((x) => x.user_id).sort(), t063.admins, 'o "Novo prazo" sem responsável vai para os ADMINs')
+  await db.query(`update profiles set active = false where id = $1`, [ids.ana])
+  try {
+    igual((await linhas(db, `select private.deadline_recipients($1, $2) u`, [ids.ana, t063.caso])).map((x) => x.u), [ids.lucas], 'reserva: advogado do caso')
+    igual((await um(db, `select private.deadline_recipient($1, $2) u`, [ids.ana, t063.caso])).u, ids.lucas, 'a função de um destinatário segue a mesma ordem')
+    await lembretes063()
+  } finally {
+    await db.query(`update profiles set active = true where id = $1`, [ids.ana])
+  }
+  const a = (await avisos063(daAna)).filter((x) => x.type === 'DEADLINE_DUE_SOON')
+  igual(a.map((x) => [x.user_id, x.event_key]), [[ids.lucas, `deadline-reminder:${daAna}:${u[1]}:D1`]], 'responsável inativa: vai para o advogado do caso')
+  igual((await avisos063(semNinguem)).filter((x) => x.type === 'DEADLINE_DUE_SOON').map((x) => x.user_id).sort(), t063.admins, 'sem ninguém: ADMINs')
+  igual((await linhas(db, `select private.deadline_recipients($1, $2) u`, [ids.lucas, t063.casoSemAdv])).map((x) => x.u), [ids.lucas], 'responsável ativo é o único destinatário')
+})
+await deve('lembretes: prazo vencido avisa o responsável E os ADMINs, uma vez por dia; no dia útil seguinte repete; em dia não útil sai só o primeiro', async () => {
+  t063.vencido = await novo063({ processo: t063.proc, titulo: 'Vencido 063', venc: (await um(db, `select (now() - interval '26 hours')::text v`)).v, resp: ids.lucas })
+  const dia = (await um(db, `select to_char((due_at at time zone 'America/Sao_Paulo')::date, 'YYYY-MM-DD') d from deadlines where id = $1`, [t063.vencido])).d
+  await lembretes063()
+  await lembretes063()
+  const esperados = [...new Set([ids.lucas, ...t063.admins])].sort()
+  const hoje = async () => (await avisos063(t063.vencido)).filter((x) => x.type === 'DEADLINE_OVERDUE')
+  let a = await hoje()
+  igual(a.map((x) => x.user_id).sort(), esperados, 'responsável e ADMINs, uma vez')
+  igual([...new Set(a.map((x) => x.event_key))], [`deadline-overdue:${t063.vencido}:${dia}:${t063.hoje}`], 'chave com a data do vencimento e o dia do aviso')
+  igual([...new Set(a.map((x) => x.severity))], ['URGENT'], 'urgente')
+  // Simula "o aviso de hoje foi o de ontem": no dia útil seguinte o prazo, ainda em aberto, avisa de novo.
+  await db.query(`update notifications set event_key = replace(event_key, $2, ':2000-01-01') where related_id = $1 and type = 'DEADLINE_OVERDUE'`, [t063.vencido, `:${t063.hoje}`])
+  await lembretes063()
+  a = await hoje()
+  igual(a.length, t063.hojeUtil ? esperados.length * 2 : esperados.length, t063.hojeUtil ? 'dia útil: repete para todos' : 'dia não útil: só o primeiro aviso')
+  // Encerrado, para de avisar.
+  await mudar063(ids.lucas, t063.vencido, 'MISS', 'Fim do cenário 063')
+  await db.query(`update notifications set event_key = event_key || ':antigo' where related_id = $1 and type = 'DEADLINE_OVERDUE'`, [t063.vencido])
+  await lembretes063()
+  igual((await hoje()).length, a.length, 'prazo encerrado não avisa mais')
+  // Dia não útil forçado (suspensão cadastrada hoje para todos os tribunais): o primeiro aviso sai, a repetição não.
+  const susp = (await um(db, `insert into court_calendar_days (court, day, kind, description) values (null, $1, 'SUSPENSION', 'Suspensão fictícia 063') on conflict do nothing returning id`, [t063.hoje]))?.id
+  try {
+    igual((await um(db, `select private.non_business_reason($1::date, null) is not null x`, [t063.hoje])).x, true, 'hoje não é dia útil')
+    const outro = await novo063({ processo: t063.proc, titulo: 'Vencido em dia não útil 063', venc: (await um(db, `select (now() - interval '26 hours')::text v`)).v, resp: ids.lucas })
+    const doOutro = async () => (await avisos063(outro)).filter((x) => x.type === 'DEADLINE_OVERDUE').length
+    await lembretes063()
+    await lembretes063()
+    igual(await doOutro(), esperados.length, 'dia não útil: o primeiro aviso sai para todos')
+    await db.query(`update notifications set event_key = replace(event_key, $2, ':2000-01-01') where related_id = $1 and type = 'DEADLINE_OVERDUE'`, [outro, `:${t063.hoje}`])
+    await lembretes063()
+    igual(await doOutro(), esperados.length, 'dia não útil: não repete')
+    await mudar063(ids.lucas, outro, 'CANCEL', 'Fim do cenário 063')
+  } finally {
+    if (susp) await db.query(`delete from court_calendar_days where id = $1`, [susp])
+  }
+})
+await deve('lembretes: prazo de processo excluído e de caso excluído não avisa ninguém', async () => {
+  await lembretes063()
+  igual((await avisos063(t063.prazoExcluido)).filter((x) => x.type !== 'DEADLINE_CREATED').length, 0, 'processo excluído')
+  const caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Caso excluído 063', 'DRAFT', $3, $3, $4) returning id`, [ids.joao, ids.banking, ids.owner, ids.lucas])).id
+  const id = await novo063({ caso, titulo: 'Em caso excluído 063', venc: (await um(db, `select (now() - interval '3 hours')::text v`)).v, resp: ids.lucas })
+  await como(ids.barbara, (tx) => tx.query(`update legal_cases set deleted_at = now() where id = $1`, [caso]))
+  igual((await um(db, `select deleted_at is not null x from legal_cases where id = $1`, [caso])).x, true, 'caso excluído')
+  t063.casoExcluido = caso
+  await lembretes063()
+  igual((await avisos063(id)).filter((x) => x.type !== 'DEADLINE_CREATED').length, 0, 'caso excluído')
+})
+await deve('avisos de prazo ignoram a preferência: mesmo com uma linha antiga "desligada", o aviso sai (e a 063 religa a linha)', async () => {
+  // Estado de antes da 063: a restrição ainda não existia e a pessoa tinha desligado Prazos.
+  await db.exec(`alter table public.user_notification_preferences drop constraint user_notification_preferences_deadlines_in_app`)
+  await db.query(`insert into user_notification_preferences (user_id, notification_type, in_app, email) values ($1, 'DEADLINES', false, false)`, [ids.lucas])
+  try {
+    const id = (await como(ids.barbara, (tx) => um(tx, `insert into deadlines (legal_case_id, title, due_at, responsible_user_id) values ($1, 'Mesmo desligado 063', '2027-07-01T23:59:59-03:00', $2) returning id`, [t063.caso, ids.lucas]))).id
+    igual((await avisos063(id, ids.lucas)).map((x) => x.type), ['DEADLINE_CREATED'], 'o produtor ignora a preferência de Prazos')
+    await rodar063()
+    igual((await um(db, `select in_app from user_notification_preferences where user_id = $1 and notification_type = 'DEADLINES'`, [ids.lucas])).in_app, true, 'a migration religa')
+    igual((await um(db, `select count(*)::int n from pg_constraint where conname = 'user_notification_preferences_deadlines_in_app'`)).n, 1, 'e a restrição volta')
+  } finally {
+    await db.query(`delete from user_notification_preferences where user_id = $1`, [ids.lucas])
+  }
+})
+
+// Proposta de prazo aprovada em Revisões (018): proposta + revisão, o advogado aprova e o aplicador roda.
+async function aprovada063(dados, chave, processo = t063.proc) {
+  const prop = (await um(db, `insert into agent_proposals (agent_run_id, legal_case_id, legal_process_id, proposal_type, payload, idempotency_key)
+    values ($1, $2, $3, 'CREATE_DEADLINE', $4, $5) returning id`, [t063.run, t063.caso, processo, JSON.stringify({ summary: 'Prazo 063', data: dados }), chave])).id
+  const rev = (await um(db, `insert into reviews (agent_proposal_id, legal_case_id) values ($1, $2) returning id`, [prop, t063.caso])).id
+  await decidir(ids.lucas, rev, 'APPROVE')
+  for (let i = 0; i < 20; i++) {
+    const r = await comoWorker((tx) => linhas(tx, `select * from private.worker_apply_next_proposal('worker-063')`))
+    if (!r.length || r.some((x) => x.proposal_id === prop)) break
+  }
+  const p = await um(db, `select status, applied_entity_id prazo, application_error erro from agent_proposals where id = $1`, [prop])
+  return { prop, rev, ...p }
+}
+await deve('aplicador: grava o tipo do prazo que veio na proposta (tipo inválido ou ausente = prazo interno); o prazo nasce do agente, sem conferência', async () => {
+  t063.run = (await como(ids.lucas, (tx) => um(tx, `select public.request_agent_run($1, $2, null, 'Trabalho fictício 063') id`, [ids.agente, t063.caso]))).id
+  const a = await aprovada063({ title: 'Réplica pelo agente 063', due_at: '2027-08-10T23:59:00-03:00', deadline_type: 'REPLY' }, 'prop:063-tipo')
+  const b = await aprovada063({ title: 'Tipo inválido 063', due_at: '2027-08-11T23:59:00-03:00', deadline_type: 'QUALQUER' }, 'prop:063-tipo-invalido')
+  const c = await aprovada063({ title: 'Sem tipo 063', due_at: '2027-08-12T23:59:00-03:00' }, 'prop:063-sem-tipo')
+  igual([a.status, b.status, c.status], ['APPLIED', 'APPLIED', 'APPLIED'], 'aplicadas')
+  const tipos = []
+  for (const x of [a, b, c]) { const d = await prazo063(x.prazo); tipos.push([d.deadline_type, d.source, d.checked_at]) }
+  igual(tipos, [['REPLY', 'AGENT', null], ['INTERNAL', 'AGENT', null], ['INTERNAL', 'AGENT', null]], 'tipo, origem e conferência')
+  igual((await como(ids.lucas, (tx) => um(tx, `select agent_unchecked x from deadline_agenda where id = $1`, [a.prazo]))).x, true, 'aparece como "do agente, sem conferência"')
+})
+await deve('aplicador: vencimento só com a data = fim do dia em Brasília; data e hora sem fuso = horário de Brasília; com fuso, como veio', async () => {
+  const a = await aprovada063({ title: 'Só a data 063', due_at: '2027-12-01' }, 'prop:063-data')
+  const b = await aprovada063({ title: 'Sem fuso 063', due_at: '2027-12-02T14:30:00' }, 'prop:063-sem-fuso')
+  const c = await aprovada063({ title: 'Com fuso 063', due_at: '2027-12-03T02:00:00Z' }, 'prop:063-com-fuso')
+  igual([(await prazo063(a.prazo)).venc, (await prazo063(b.prazo)).venc, (await prazo063(c.prazo)).venc],
+    ['2027-12-01 23:59:59', '2027-12-02 14:30:00', '2027-12-02 23:00:00'], 'vencimentos em Brasília')
+  igual((await linhas(db, `select to_char(private.proposal_due_at(x) at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS') v from unnest(array['2027-12-01', ' 2027-12-01 ', '2027-12-01 08:00', '2027-12-01T08:00:00-03:00']) x`)).map((x) => x.v),
+    ['2027-12-02 02:59:59', '2027-12-02 02:59:59', '2027-12-01 11:00:00', '2027-12-01 11:00:00'], 'a mesma leitura, em UTC')
+})
+await deve('aplicador: proposta aprovada para processo excluído NÃO cria prazo, fica FAILED e avisa quem aprovou e os ADMINs (categoria Prazos, com a revisão)', async () => {
+  const antes = (await um(db, `select count(*)::int n from deadlines where legal_case_id = $1`, [t063.caso])).n
+  const proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court) values ($1, $2, 'A excluir 063', 'TJRJ') returning id`, [t063.caso, cnj063(3)])).id
+  const prop = (await um(db, `insert into agent_proposals (agent_run_id, legal_case_id, legal_process_id, proposal_type, payload, idempotency_key)
+    values ($1, $2, $3, 'CREATE_DEADLINE', $4, 'prop:063-excluido') returning id`,
+    [t063.run, t063.caso, proc, JSON.stringify({ summary: 'Prazo em processo que será excluído', data: { title: 'Contrarrazões 063', due_at: '2027-09-10T23:59:00-03:00' } })])).id
+  const rev = (await um(db, `insert into reviews (agent_proposal_id, legal_case_id, legal_process_id) values ($1, $2, $3) returning id`, [prop, t063.caso, proc])).id
+  await como(ids.barbara, (tx) => tx.query(`update legal_processes set deleted_at = now() where id = $1`, [proc]))
+  await decidir(ids.lucas, rev, 'APPROVE')
+  let r = []
+  for (let i = 0; i < 20 && !r.some((x) => x.proposal_id === prop); i++) {
+    r = await comoWorker((tx) => linhas(tx, `select * from private.worker_apply_next_proposal('worker-063')`))
+    if (!r.length) break
+  }
+  const p = await um(db, `select status, applied_entity_id prazo, application_error erro from agent_proposals where id = $1`, [prop])
+  igual([p.status, p.prazo, p.erro], ['FAILED', null, 'O processo deste prazo foi excluído ou não é deste caso: o prazo não foi criado'], 'falhou, sem prazo')
+  igual((await um(db, `select count(*)::int n from deadlines where legal_case_id = $1`, [t063.caso])).n, antes, 'nenhum prazo novo')
+  const a = await linhas(db, `select user_id, type, title, severity, related_type, related_id, message from notifications where event_key = $1 order by user_id`, [`proposal-failed:${prop}`])
+  igual(a.map((x) => x.user_id).sort(), [...new Set([ids.lucas, ...t063.admins])].sort(), 'quem aprovou e os ADMINs')
+  igual([...new Set(a.map((x) => [x.type, x.title, x.severity, x.related_type, x.related_id].join('|')))], [['DEADLINE', 'Prazo aprovado não foi criado: Contrarrazões 063', 'URGENT', 'review', rev].join('|')], 'aviso')
+  if (!a[0].message.includes('Crie o prazo à mão') || !a[0].message.includes('foi excluído')) throw new Error(`mensagem sem a orientação: ${a[0].message}`)
+  igual((await um(db, `select private.notification_category('DEADLINE') c`)).c, 'DEADLINES', 'categoria que não se desliga')
+  // Rodar o aviso de novo não duplica.
+  igual((await um(db, `select private.notify_proposal_failed($1, 'de novo') n`, [prop])).n, 0, 'sem aviso repetido')
+})
+await deve('aplicador: caso excluído também não recebe prazo; os outros tipos de proposta seguem como na 018', async () => {
+  await recusa063(db.query(`select * from private.apply_proposal_effect('CREATE_DEADLINE', $1, $2, null)`,
+    [JSON.stringify({ title: 'x', due_at: '2027-09-10' }), t063.casoExcluido]), /O caso deste prazo foi excluído/)
+  await recusa063(db.query(`select * from private.apply_proposal_effect('CREATE_DEADLINE', '{"title":"x"}', $1, null)`, [t063.caso]), /CREATE_DEADLINE exige title e due_at/)
+  igual((await linhas(db, `select * from private.apply_proposal_effect('OTHER', '{}', null, null)`)).length, 0, 'OTHER sem efeito')
+  await recusa063(db.query(`select * from private.apply_proposal_effect('APAGAR_TUDO', '{}', $1, null)`, [t063.caso]), /Tipo de proposta sem aplicador/)
+})
+
+await deve('catálogo [063]: funções novas com search_path fixo; anon não executa nenhuma; usuário logado só as três da tela (e as duas privadas que elas chamam); worker só o ciclo e os lembretes', async () => {
+  const novas = ['deadlines_transition_guard', 'deadline_recipients', 'deadline_recipient', 'deadline_transition', 'deadline_mark_checked', 'create_deadline_once',
+    'proposal_due_at', 'notify_proposal_failed', 'notify', 'notify_deadlines', 'notify_deadline_reminders', 'apply_proposal_effect', 'worker_apply_next_proposal']
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('authenticated', p.oid, 'execute') usr,
+      has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.proname = any ($1) order by 1`, [novas])
+  igual(r.length, 15, 'uma versão de cada função (duas têm porta pública e bloco privado)')
+  igual(r.filter((x) => !x.cfg.includes('search_path=')).map((x) => x.f), [], 'search_path fixo')
+  igual(r.filter((x) => x.anon).map((x) => x.f), [], 'anon')
+  igual(r.filter((x) => x.usr).map((x) => x.f),
+    ['private.deadline_mark_checked', 'private.deadline_transition', 'public.create_deadline_once', 'public.deadline_mark_checked', 'public.deadline_transition'], 'usuário logado')
+  igual(r.filter((x) => x.wrk).map((x) => x.f), ['private.notify_deadline_reminders', 'private.worker_apply_next_proposal'], 'worker')
+  await recusa063(comoWorker((tx) => tx.query(`select public.deadline_transition($1, 'COMPLETE', null)`, [t063.prazo])), /permission denied/)
+  await recusa063(db.transaction(async (tx) => { await tx.query('set local role anon'); await tx.query(`select public.deadline_mark_checked($1)`, [t063.doAgente]) }), /permission denied/)
+  // Fim do cenário: nada do cenário fica em aberto para os lembretes das próximas verificações.
+  await db.query(`update deadlines set status = 'CANCELLED', status_reason = 'Fim do cenário 063' where status = 'OPEN' and legal_case_id in (select id from legal_cases where title like '%063%')`)
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
