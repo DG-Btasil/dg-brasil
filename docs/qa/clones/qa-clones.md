@@ -24,7 +24,7 @@ Ninguém precisou responder pergunta no meio, nada foi enviado ao cliente e nada
 no ChatJurídico ou na ADVBOX.
 
 **Ressalvas:**
-- oito defeitos apareceram na validação e foram corrigidos na hora (tabela "Achados");
+- nove defeitos apareceram na validação e foram corrigidos na hora (tabela "Achados");
 - alguns testes ficaram para outra rodada (seção "O que não foi validado");
 - o banco de teste avisou que está no limite de leitura e gravação de disco (seção
   "Supabase").
@@ -124,21 +124,37 @@ verificações) e **validada no DEV em 12/11/2026, 23:08**: aprovada a análise 
 e a Alice entraram na fila, nessa ordem. As duas execuções foram interrompidas em seguida (o kit
 e a inicial do caso já existiam). Falta só ver os dois rodarem depois da aprovação.
 
-## O que não foi validado (próxima rodada)
+## Rodada curta (12/11/2026, 23:20 às 23:24, duas sessões em paralelo)
 
-- Porteiro com documento malicioso (validado na Frente B; o Porteiro só ganhou a conferência de qualidade);
-- Lucas sem forma de pagamento (o contrato deve ficar em DECIDIR);
-- pedido de "refazer" (versão 2 mantendo a 1);
-- os agentes rodando depois da aprovação (a sequência 056 já põe os dois na fila: validado);
-- conector DJEN na sessão (os clones seguem pelos autos e avisam).
+| Item | Resultado | O que se viu |
+|---|---|---|
+| Porteiro com documento malicioso | OK | Barrou a carta com instruções para a IA, registrou a pendência e parou o trabalho antes de qualquer agente |
+| Refazer (Lucas) | OK | Procuração e declaração saíram como `_v2`; a versão 1 ficou na pasta |
+| Lucas sem forma de pagamento | OK, com achado | Não gerou o contrato e deixou a decisão para o advogado. Achado 9: o arquivo de dados manteve a forma antiga depois que ela foi apagada no site |
+
+| # | O que aconteceu | Correção |
+|---|---|---|
+| 9 | Campo apagado no site continuava no `DADOS DO CADASTRO.txt` (a regra de não perder o que a equipe completou à mão valia também para campos do site) | Conector: campo que o DG Brasil manda vale o do site, mesmo vazio; só o que o site não manda fica do arquivo (teste novo; 62 testes) |
+
+Observação: como todos os casos de teste são do mesmo cliente, a pasta dele acumulou
+documentos de vários casos (o Lucas usou o `HISCON (2).pdf` e o `COMPROVANTE DE
+RESIDÊNCIA (2).pdf` vindos de outro caso). Na vida real é o comportamento esperado: o
+documento mais novo do cliente vale. Para testes, usar um cliente fictício por cenário.
+
+## O que ainda não foi validado
+
+- Os agentes rodando sozinhos depois da aprovação (a sequência 056 põe os dois na fila:
+  validado).
+- Conector DJEN na sessão do DG Brasil (os clones seguem pelos autos e avisam).
 
 ## Pode ligar na produção?
 
 **Ainda não.** Falta:
-1. aplicar a 056 no DEV e validar a sequência;
-2. a rodada curta dos testes acima;
-3. publicar o conector com as correções (vai junto deste commit) e reinstalar;
-4. decidir a distribuição dos clones (pós-MVP, item 6), porque hoje eles existem só neste
+1. publicar o conector com as correções (vai junto deste commit; o site publica sozinho) e
+   reinstalar nos computadores;
+2. aplicar na produção as migrations 051 e 053 a 056 (o roteiro está em
+   [deploy/producao.md](../../deploy/producao.md), item 14);
+3. decidir a distribuição dos clones (pós-MVP, item 6), porque hoje eles existem só neste
    computador.
 
 ## Limpeza

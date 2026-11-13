@@ -72,13 +72,24 @@ describe('Arquivista: nomes', () => {
     expect(injetado.match(/^dg_cliente_id:/gm)).toHaveLength(1)
   })
 
-  it('DADOS DO CADASTRO.txt: a forma de pagamento vem do cadastro do DG Brasil; sem ela, fica a que já estava no arquivo', () => {
+  it('DADOS DO CADASTRO.txt: a forma de pagamento vem do cadastro do DG Brasil; apagada no site, sai vazia', () => {
     const cliente = { id: 'c1', nome: 'Maria', email: null }
     const anterior = { forma_de_pagamento: '5x no boleto' }
     const forma = (t: string) => /^forma_de_pagamento: (.*)\r$/m.exec(t)?.[1]
     expect(forma(dadosDoCadastro({ cliente: { ...cliente, forma_de_pagamento: 'a_vista' }, pasta_drive: null }, 'job-1', anterior))).toBe('a_vista')
-    expect(forma(dadosDoCadastro({ cliente: { ...cliente, forma_de_pagamento: null }, pasta_drive: null }, 'job-1', anterior))).toBe('5x no boleto')
+    expect(forma(dadosDoCadastro({ cliente: { ...cliente, forma_de_pagamento: null }, pasta_drive: null }, 'job-1', anterior))).toBe('')
+    // Banco antigo (sem a 055): o campo nem vem do DG Brasil, e fica o que já estava no arquivo.
+    expect(forma(dadosDoCadastro({ cliente, pasta_drive: null }, 'job-1', anterior))).toBe('5x no boleto')
     expect(forma(dadosDoCadastro({ cliente, pasta_drive: null }, 'job-1'))).toBe('')
+  })
+
+  it('DADOS DO CADASTRO.txt: campo que o DG Brasil manda vale o do site, mesmo vazio; o que ele não manda fica', () => {
+    const anterior = { forma_de_pagamento: '5x_boleto', comprovante_residencia_em_nome_de: 'filha' }
+    const apagado = dadosDoCadastro({ cliente: { id: 'c1', nome: 'Maria', forma_de_pagamento: null }, pasta_drive: null }, 'job-1', anterior)
+    expect(apagado).toMatch(/^forma_de_pagamento: \r?$/m)
+    expect(apagado).toMatch(/^comprovante_residencia_em_nome_de: filha\r?$/m)
+    const semCampo = dadosDoCadastro({ cliente: { id: 'c1', nome: 'Maria' }, pasta_drive: null }, 'job-1', anterior)
+    expect(semCampo).toMatch(/^forma_de_pagamento: 5x_boleto\r?$/m)
   })
 
   it('ficha de revisão: só COMPLETAR, DECIDIR e CONFERIR viram pendência; "nada" não conta', () => {

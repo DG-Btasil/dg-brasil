@@ -446,9 +446,12 @@ export function lerCampos(texto: string): Record<string, string> {
 }
 
 /**
- * DADOS DO CADASTRO.txt: o que os agentes leem do cadastro do cliente. Campo sem
- * valor no DG Brasil fica vazio, a não ser que o arquivo que já está na pasta
- * tenha um valor (a equipe pode ter completado à mão: não se perde).
+ * DADOS DO CADASTRO.txt: o que os agentes leem do cadastro do cliente. Campo que o
+ * DG Brasil manda (mesmo vazio) vale o do DG Brasil: apagar no site apaga no arquivo
+ * (validação de 12/11/2026: a forma de pagamento apagada continuava no arquivo).
+ * Campo que o DG Brasil não manda (conector mais novo que o banco, ou campo que o
+ * site ainda não tem) fica com o que já estava no arquivo: a equipe pode ter
+ * completado à mão.
  */
 export function dadosDoCadastro(d: DadosPonte, trabalhoId: string, anterior: Record<string, string> = {}): string {
   const c = d.cliente
@@ -458,7 +461,10 @@ export function dadosDoCadastro(d: DadosPonte, trabalhoId: string, anterior: Rec
     forma_de_pagamento: c?.forma_de_pagamento,
   }
   return [
-    ...CAMPOS_DO_CADASTRO.map((k) => `${k}: ${umaLinha(doSite[k]) || umaLinha(anterior[k])}`),
+    ...CAMPOS_DO_CADASTRO.map((k) => {
+      const veioDoSite = c != null && k in doSite && (k === 'nome' || k in c)
+      return `${k}: ${veioDoSite ? umaLinha(doSite[k]) : umaLinha(doSite[k]) || umaLinha(anterior[k])}`
+    }),
     `salvo_em: ${agora()}`,
     `origem: DG Brasil, trabalho ${trabalhoId}`,
     `dg_cliente_id: ${c?.id ?? ''}`,
