@@ -4180,7 +4180,7 @@ await deve('manutenção (pg_cron): proposta aprovada vira prazo; execução fec
 })
 await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo; importações diária [042]; DataJud a cada 20 min [043])', async () => {
   const j = await linhas(db, `select jobname, schedule from cron.job where jobname like 'dg-%' order by jobname`)
-  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
+  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-limpeza-do-agendador', '43 6 * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
 })
 
 secao('Computador do escritório: interrupção, falha, devolução e queda [040]')
@@ -4745,6 +4745,9 @@ await deve('referência para o mapeamento: áreas ativas e equipe interna (sem p
 
 const rpc043 = async (uid, sql, params) => (await como(uid, (tx) => um(tx, sql, params))).r
 const worker043 = async (sql, params) => (await comoWorker((tx) => um(tx, sql, params))).r
+// 057: a chave do aviso de falha é o dia e o período (manhã/tarde, Brasília), não a rodada.
+const chaveJsync057 = async () => (await um(db, `select 'jsync:' || to_char(now() at time zone 'America/Sao_Paulo', 'YYYY-MM-DD')
+  || case when extract(hour from now() at time zone 'America/Sao_Paulo') < 12 then ':am' else ':pm' end k`)).k
 const j043 = {}
 // CNJs do TJSP (8.26) para os cenários da 043.
 const cnj043 = (n) => cnj(4300 + n, '2025', '8', '26', '0100')
@@ -4949,7 +4952,7 @@ await deveFalhar('assistente não pausa o acompanhamento', () => rpc043(ids.ana,
 await deve('rodada com falha avisa os ADMIN uma vez', async () => {
   await worker043(`select private.judicial_sync_finish($1, 'PARTIAL', '{"djen_errors":1}', 'OAB RJ 225006: HTTP 503') r`, [j043.run])
   await worker043(`select private.judicial_sync_finish($1, 'PARTIAL', '{}', 'de novo') r`, [j043.run])
-  igual((await um(db, `select count(*)::int n from notifications where event_key = $1`, ['jsync:' + j043.run])).n, 1, 'aviso')
+  igual((await um(db, `select count(*)::int n from notifications where event_key = $1 and user_id = $2`, [await chaveJsync057(), ids.barbara])).n, 1, 'aviso')
   igual((await um(db, `select status from judicial_sync_runs where id = $1`, [j043.run])).status, 'PARTIAL', 'situação')
 })
 
@@ -5939,6 +5942,67 @@ await deve('funções da 056 fixam search_path e ninguém as chama de fora (só 
   [['analysis_templates_validate_sequence', 'analysis_sequence_enqueue', 'reviews_analysis_sequence']])
   igual(r.length, 3, 'funções')
   igual(r.filter((x) => !x.cfg.includes('search_path=') || !x.d || x.anon || x.usr || x.srv || x.wrk).map((x) => x.f), [], 'permissões')
+})
+
+secao('Aviso da busca judicial no máximo duas vezes por dia; limpeza do histórico do agendador [057]')
+
+const avisos057 = async (chave) => (await um(db, `select count(*)::int n from notifications where type = 'JUDICIAL_SYNC_FAILED' and event_key = $1`, [chave])).n
+const rodada057 = async (situacao, erro = null) => {
+  await db.query(`update judicial_sync_runs set status = 'FAILED', finished_at = now() where status = 'RUNNING'`)
+  const r = await worker043(`select private.judicial_sync_begin('MANUAL', $1) r`, [ids.barbara])
+  if (!r.run_id) throw new Error('rodada não abriu: ' + JSON.stringify(r))
+  await worker043(`select private.judicial_sync_finish($1, $2, '{}', $3) r`, [r.run_id, situacao, erro])
+  return r.run_id
+}
+await deve('outra rodada com falha no mesmo período do dia não repete o aviso', async () => {
+  const chave = await chaveJsync057()
+  await rodada057('PARTIAL', 'DataJud: DataJud não respondeu (tempo esgotado)')
+  const antes = await avisos057(chave)
+  if (antes < 1) throw new Error('a primeira falha do período deveria avisar')
+  const run = await rodada057('FAILED', 'DataJud: DataJud respondeu HTTP 429')
+  await rodada057('PARTIAL', 'de novo')
+  igual(await avisos057(chave), antes, 'sem aviso novo')
+  igual((await um(db, `select count(*)::int n from notifications where event_key = $1`, ['jsync:' + run])).n, 0, 'a chave não é mais a rodada')
+  const r = await um(db, `select status, error from judicial_sync_runs where id = $1`, [run])
+  igual([r.status, r.error], ['FAILED', 'DataJud: DataJud respondeu HTTP 429'], 'a rodada continua registrada')
+})
+await deve('no período seguinte a falha avisa de novo (dois períodos por dia = no máximo dois avisos por pessoa)', async () => {
+  const chave = await chaveJsync057()
+  igual(/^jsync:\d{4}-\d{2}-\d{2}:(am|pm)$/.test(chave), true, 'formato da chave')
+  const antes = await avisos057(chave)
+  // Simula a virada do período: os avisos já dados passam a ser de um período anterior.
+  await db.query(`update notifications set event_key = 'jsync:2000-01-01:am:' || id where event_key = $1`, [chave])
+  await rodada057('PARTIAL', 'falha da tarde')
+  igual(await avisos057(chave), antes, 'um aviso por ADMIN no período novo')
+  const m = await um(db, `select message from notifications where event_key = $1 and user_id = $2`, [chave, ids.barbara])
+  igual(m.message, 'falha da tarde', 'mensagem da primeira falha do período')
+})
+await deve('rodada concluída sem falha não avisa', async () => {
+  const chave = await chaveJsync057()
+  await db.query(`delete from notifications where event_key = $1`, [chave])
+  await rodada057('COMPLETED')
+  igual(await avisos057(chave), 0, 'sem aviso')
+})
+await deve('limpeza do histórico do agendador: apaga o que passou do prazo, inclusive execução sem horário; o recente fica', async () => {
+  await db.query(`delete from cron.job_run_details`)
+  await db.query(`insert into cron.job_run_details (jobid, status, start_time, end_time) values
+    (1, 'succeeded', now() - interval '10 days', now() - interval '10 days'),
+    (1, 'failed',    null,                       null),
+    (1, 'succeeded', now() - interval '8 days',  now() - interval '8 days'),
+    (1, 'failed',    null,                       null),
+    (1, 'succeeded', now() - interval '2 days',  now() - interval '2 days'),
+    (1, 'running',   now(),                      null)`)
+  igual((await um(db, `select private.cron_history_housekeeping() n`)).n, 3, 'apagadas')
+  igual((await linhas(db, `select status from cron.job_run_details order by runid`)).map((x) => x.status), ['failed', 'succeeded', 'running'], 'ficaram')
+  igual((await um(db, `select private.cron_history_housekeeping() n`)).n, 0, 'nada a apagar')
+  igual((await um(db, `select private.cron_history_housekeeping(interval '1 day') n`)).n, 2, 'prazo menor')
+})
+await deveFalhar('limpeza do histórico não aceita guardar menos de 1 dia', () => db.query(`select private.cron_history_housekeeping(interval '1 hour')`), /pelo menos 1 dia/)
+await deve('limpeza do histórico não é chamável por usuário, backend nem worker', async () => {
+  const r = await um(db, `select has_function_privilege('authenticated', 'private.cron_history_housekeeping(interval)', 'execute') a,
+    has_function_privilege('service_role', 'private.cron_history_housekeeping(interval)', 'execute') s,
+    has_function_privilege('dg_worker', 'private.cron_history_housekeeping(interval)', 'execute') w`)
+  igual([r.a, r.s, r.w], [false, false, false], 'sem execute')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

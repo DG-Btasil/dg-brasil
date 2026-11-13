@@ -7,20 +7,22 @@ Uma organização OWNER (Bárbara Cardoso Advocacia) e escritórios PARTNER. Cin
 papéis: ADMIN, LAWYER, ASSISTANT (internos); PARTNER_ADMIN, PARTNER_USER.
 Domínio central: **Client → LegalCase → LegalProcess**.
 
-> **Regra de migrations.** As 19 migrations ainda não foram aplicadas em nenhum
-> Supabase real, por isso foram corrigidas no lugar. A partir do primeiro
-> `db push` real, migration aplicada **nunca mais** é reescrita: mudança nova é
-> `020+`.
+> **Regra de migrations.** Migration aplicada **nunca** é reescrita: mudança
+> nova é sempre um arquivo novo, com o número seguinte. As primeiras 19 foram
+> corrigidas no lugar só até 2026-10-09, antes do primeiro `db push` real. Em
+> 2026-11-12 o DEV tinha as 55 aplicadas, idênticas aos arquivos
+> ([conferência](../docs/deploy/organizacao-pre-producao.md)).
 
 ## Estrutura
 
 | Caminho | O que é |
 |---|---|
-| `migrations/` | As 19 migrations, na ordem da seção 100 da especificação |
+| `migrations/` | As migrations, em ordem. As 19 primeiras seguem a seção 100 da especificação |
 | `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 712 verificações (inclusive a importação de planilhas da 042 — simulação sem gravar, conflitos de CPF/CNJ/homônimo, prévia = resultado, gravação em lotes com falha por linha, processos sem CPF ligados pelo nome, retenção —  o computador do escritório da 040 — token só em hash, reserva exclusiva com token por trabalho, escopo do caso, minuta, propostas, queda e revogação, manutenção no pg_cron — e o Google Drive da 041 — pasta pelo ID, importação sem duplicata, exportação do aprovado; e a execução dos agentes da 039: interruptor, resultado estruturado de análise, área DG Brasil); (inclusive Auth/MFA da 022, convite da 023, preferências da 024, backend de domínio da 025/026, idempotência da 027, bloco societário de PJ da 028, início atômico de análise da 029, ciclo de vida do acordo financeiro da 030 resumos paginados de execução da 031, RLS dos caminhos quentes do portal da 032 e as funções da 4.3.1 — interrupção 033, edição manual 034, cronograma e valores 035, histórico/contagens do portal 036, notificações 037 — e as sessões da 4.3.2 (038), com conferência de catálogo), com a RLS testada por papel |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 | `scripts/usuarios-qa.mjs` | Usuários **fixos** para QA manual no DEV (LAWYER, ASSISTANT e PARTNER_ADMIN/PARTNER_USER de "Parceiro QA A/B"), senha em `QA_SENHA`; termos e MFA no primeiro login (`npm run usuarios:qa`) |
+| `scripts/limpar-contas-de-teste.mjs` | Apaga do DEV as contas das rodadas automáticas (`<rodada>.<papel>@dgbrasil.test`), os escritórios parceiros delas e tudo o que criaram. Sem argumento só **simula** e desfaz; `-- --executar` apaga. Preserva as contas reais e as de QA, e desfaz tudo se sobrar chave órfã ou se sumir linha criada por conta mantida (`npm run limpar:teste`) |
 
 ## Testar localmente
 

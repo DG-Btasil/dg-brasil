@@ -7,6 +7,7 @@
     "verificar": "node tests/verificar.mjs",
     "validar:real": "node --env-file=.env.real tests/real/validar-real.mjs",
     "usuarios:qa": "node --env-file=.env.real scripts/usuarios-qa.mjs",
+    "limpar:teste": "node --env-file=.env.real scripts/limpar-contas-de-teste.mjs",
     "emails": "node templates/build.mjs",
     "emails:check": "node templates/build.mjs --check",
     "emails:preview": "node templates/build.mjs --preview .preview-emails"

@@ -220,6 +220,15 @@ create table cron.job (
   schedule text not null,
   command  text not null
 );
+-- Histórico de execuções, com as colunas que a limpeza da 057 usa.
+create table cron.job_run_details (
+  runid          bigserial primary key,
+  jobid          bigint,
+  status         text,
+  return_message text,
+  start_time     timestamptz,
+  end_time       timestamptz
+);
 create function cron.schedule(job_name text, schedule text, command text) returns bigint
 language plpgsql as $$
 declare v bigint;
