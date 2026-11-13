@@ -13,10 +13,20 @@ const NAMED: Record<string, string> = {
   ocirc: "ô", Ocirc: "Ô", otilde: "õ", Otilde: "Õ", uacute: "ú", Uacute: "Ú", uuml: "ü", Uuml: "Ü",
   ccedil: "ç", Ccedil: "Ç", ndash: "–", mdash: "—", hellip: "…", laquo: "«", raquo: "»",
   ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", middot: "·", bull: "•",
+  // Espaços tipográficos (o DJEN usa &emsp; para recuo de parágrafo): viram espaço comum.
+  emsp: " ", ensp: " ", thinsp: " ", emsp13: " ", emsp14: " ", numsp: " ", puncsp: " ", hairsp: " ",
+  // Invisíveis: somem.
+  zwnj: "", zwj: "", shy: "", lrm: "", rlm: "",
+  egrave: "è", Egrave: "È", igrave: "ì", Igrave: "Ì", ograve: "ò", Ograve: "Ò", ugrave: "ù", Ugrave: "Ù",
+  icirc: "î", Icirc: "Î", ucirc: "û", Ucirc: "Û", auml: "ä", Auml: "Ä", euml: "ë", Euml: "Ë", iuml: "ï", Iuml: "Ï",
+  ouml: "ö", Ouml: "Ö", ntilde: "ñ", Ntilde: "Ñ", sbquo: "‚", bdquo: "„", dagger: "†", Dagger: "‡",
+  minus: "−", times: "×", divide: "÷", plusmn: "±", frac12: "½", frac14: "¼", frac34: "¾", sup1: "¹", sup2: "²", sup3: "³",
+  para: "¶", copy: "©", reg: "®", trade: "™", euro: "€", pound: "£", cent: "¢", iexcl: "¡", iquest: "¿", micro: "µ",
+  rarr: "→", larr: "←", prime: "′", Prime: "″", permil: "‰", acute: "´", cedil: "¸", uml: "¨", macr: "¯",
 };
 
 function decodeEntities(s: string): string {
-  return s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, e: string) => {
+  return s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z][a-z0-9]*);/gi, (m, e: string) => {
     if (e[0] === "#") {
       const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : m;
@@ -35,6 +45,9 @@ export function htmlToText(input: string | null | undefined): string {
   s = s.replace(/<li[^>]*>/gi, "• ");
   s = s.replace(/<[^>]+>/g, " ");
   s = decodeEntities(s);
+  // Invisíveis (largura zero, hífen opcional, marcas de direção, BOM) somem; espaço
+  // tipográfico que veio como número (&#8195;) ou já em Unicode vira espaço comum.
+  s = s.replace(/[­​-‏⁠﻿]/g, "").replace(/[  -   　]/g, " ");
   s = s.replace(/\r\n?/g, "\n").replace(/[ \t\f\v ]+/g, " ");
   s = s.split("\n").map((l) => l.trim()).join("\n");
   return s.replace(/\n{3,}/g, "\n\n").trim();

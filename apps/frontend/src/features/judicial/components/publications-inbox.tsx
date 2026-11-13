@@ -7,6 +7,7 @@ import { Newspaper } from "lucide-react";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { Badge, StatusBadge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
@@ -101,6 +102,7 @@ export function PublicationsInbox({ processId }: { processId?: string }) {
                 {!processId && <Th>Processo</Th>}
                 <Th>Publicação</Th>
                 <Th>Situação</Th>
+                <Th className="text-right">Ação</Th>
               </tr>
             </THead>
             <TBody>
@@ -129,6 +131,20 @@ export function PublicationsInbox({ processId }: { processId?: string }) {
                   </Td>
                   <Td>
                     <StatusBadge status={p.triageStatus} labels={TRIAGE_LABEL} tones={TRIAGE_TONE} />
+                  </Td>
+                  <Td className="text-right">
+                    {/* A linha inteira abre com o mouse; o botão abre pelo teclado e por leitor de tela. */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Abrir a publicação de ${formatDate(p.availableOn)}, ${p.processTitle || p.caseTitle || formatCNJ(p.cnjNumber)}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        open(p.id);
+                      }}
+                    >
+                      Abrir
+                    </Button>
                   </Td>
                 </Tr>
               ))}

@@ -9,7 +9,7 @@ import { DatajudClient } from "@/server/integrations/judicial/datajud";
 import { DjenClient } from "@/server/integrations/judicial/djen";
 import { JUDICIAL_DB_FUNCTIONS, runJudicialSync, type JudicialDbFunction, type JudicialSyncDeps } from "@/server/integrations/judicial/sync";
 import type {
-  CoverageDayDTO, DeadlineCountDTO, JudicialOverviewDTO, JudicialPublicationDetailDTO, JudicialSyncNowDTO,
+  CoverageDayDTO, DeadlineCountDTO, JudicialCaptureAlertDTO, JudicialOverviewDTO, JudicialPublicationDetailDTO, JudicialSyncNowDTO,
   MyJudicialMonitorsDTO, ProcessJudicialStatusDTO, PublicationPageDTO,
 } from "./dto";
 import type { z } from "zod";
@@ -58,6 +58,12 @@ export async function getOverview(ctx: ServiceContext): Promise<JudicialOverview
   return camel<JudicialOverviewDTO>(await rpc(ctx.db, "get_judicial_overview"));
 }
 
+/** Estado da captura do dia, para a faixa de alerta da Home (062). */
+export async function getCaptureAlert(ctx: ServiceContext): Promise<JudicialCaptureAlertDTO> {
+  requireRole(ctx, "ADMIN", "LAWYER");
+  return camel<JudicialCaptureAlertDTO>(await rpc(ctx.db, "get_judicial_capture_alert"));
+}
+
 export async function saveSettings(ctx: ServiceContext, v: z.infer<typeof settingsSchema>) {
   requireRole(ctx, "ADMIN");
   const p: Record<string, unknown> = {};
@@ -67,6 +73,7 @@ export async function saveSettings(ctx: ServiceContext, v: z.infer<typeof settin
   if (v.deadlineAgentId !== undefined) p.deadline_agent_id = v.deadlineAgentId;
   if (v.deadlineAutoApply !== undefined) p.deadline_auto_apply = v.deadlineAutoApply;
   if (v.deadlineAutoTask !== undefined) p.deadline_auto_task = v.deadlineAutoTask;
+  if (v.agentTimeoutHours !== undefined) p.agent_timeout_hours = v.agentTimeoutHours;
   return rpc<{ ok: boolean }>(ctx.db, "save_judicial_settings", { p_settings: p });
 }
 

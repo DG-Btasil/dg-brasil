@@ -39,6 +39,7 @@ export function ProcessJudicialCard({ processId }: { processId: string }) {
   const s = data.data;
 
   async function syncNow() {
+    if (busy) return;
     setBusy("sync");
     const r = await callAction(() => syncJudicialNowAction({ processId }));
     setBusy(null);
@@ -49,10 +50,17 @@ export function ProcessJudicialCard({ processId }: { processId: string }) {
   }
 
   async function toggle() {
+    if (busy) return;
     setBusy("toggle");
-    const r = await callAction(() => setProcessJudicialSyncAction({ processId, enabled: !s.syncEnabled }));
+    const enabled = !s.syncEnabled;
+    const r = await callAction(() => setProcessJudicialSyncAction({ processId, enabled }));
     setBusy(null);
     if (!r.ok) return failed(r, "Não foi possível alterar o acompanhamento.");
+    toast(
+      enabled
+        ? { tone: "success", title: "Acompanhamento retomado", description: "O processo volta a receber os andamentos do DataJud." }
+        : { tone: "success", title: "Acompanhamento pausado", description: "Os andamentos do DataJud deixam de ser buscados. As publicações do DJEN continuam chegando pelas OABs." },
+    );
     reload();
   }
 
@@ -82,11 +90,11 @@ export function ProcessJudicialCard({ processId }: { processId: string }) {
             {s.lastError && <Callout tone="warning">{s.lastError}</Callout>}
             {s.canManage && (
               <div className="flex flex-wrap gap-2 pt-1">
-                <Button size="sm" variant="secondary" icon={<RefreshCw className="size-3.5" aria-hidden />} loading={busy === "sync"} disabled={!s.syncEnabled} onClick={syncNow}>
+                <Button size="sm" variant="secondary" icon={<RefreshCw className="size-3.5" aria-hidden />} loading={busy === "sync"} disabled={!s.syncEnabled || busy !== null} onClick={syncNow}>
                   Buscar andamentos agora
                 </Button>
                 {busy === "sync" && <span className="self-center text-[12px] text-muted">O CNJ pode levar até 2 minutos para responder.</span>}
-                <Button size="sm" variant="ghost" icon={s.syncEnabled ? <Pause className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />} loading={busy === "toggle"} onClick={toggle}>
+                <Button size="sm" variant="ghost" icon={s.syncEnabled ? <Pause className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />} loading={busy === "toggle"} disabled={busy !== null} onClick={toggle}>
                   {s.syncEnabled ? "Pausar acompanhamento" : "Retomar acompanhamento"}
                 </Button>
               </div>

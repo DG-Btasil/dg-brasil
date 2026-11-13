@@ -11,7 +11,8 @@ import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { getMyJudicialMonitorsAction, setJudicialMonitorActiveAction } from "@/server/domain/judicial/actions";
 import type { JudicialMonitorDTO, MyJudicialMonitorsDTO } from "@/server/domain/judicial/dto";
 import { CoverageDialog } from "./coverage-dialog";
-import { AddMonitorDialog, MonitorTable } from "./judicial-settings-panel";
+import { useToast } from "@/store/ui-store";
+import { AddMonitorDialog, MonitorTable, monitorToggledToast } from "./judicial-settings-panel";
 
 /**
  * Portal do parceiro → Minha Conta (043): as OABs do PRÓPRIO escritório que o
@@ -21,6 +22,8 @@ import { AddMonitorDialog, MonitorTable } from "./judicial-settings-panel";
  */
 export function PartnerOabsPanel() {
   const failed = useActionFeedback();
+  const toast = useToast();
+  const [toggling, setToggling] = useState<string | null>(null);
   const [data, setData] = useState<ActionResult<MyJudicialMonitorsDTO> | null>(null);
   const [version, setVersion] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -36,8 +39,12 @@ export function PartnerOabsPanel() {
   }, [version]);
 
   async function toggle(m: JudicialMonitorDTO) {
+    if (toggling) return;
+    setToggling(m.id);
     const r = await callAction(() => setJudicialMonitorActiveAction({ id: m.id, active: !m.active }));
+    setToggling(null);
     if (!r.ok) return failed(r, "Não foi possível alterar a OAB.");
+    toast(monitorToggledToast(m));
     reload();
   }
 
@@ -61,7 +68,7 @@ export function PartnerOabsPanel() {
       {d.monitors.length === 0 ? (
         <EmptyState compact icon={Newspaper} title="Nenhuma OAB acompanhada." description={d.canManage ? "Cadastre a OAB de cada advogado do escritório." : "O administrador do escritório cadastra as OABs."} />
       ) : (
-        <MonitorTable rows={d.monitors} canManage={d.canManage} onToggle={toggle} onCoverage={setCoverage} showOrganization={false} />
+        <MonitorTable rows={d.monitors} canManage={d.canManage} onToggle={toggle} onCoverage={setCoverage} showOrganization={false} busyId={toggling} />
       )}
       {adding && <AddMonitorDialog partner onClose={() => setAdding(false)} onSaved={reload} />}
       {coverage && <CoverageDialog monitor={coverage} onClose={() => setCoverage(null)} />}

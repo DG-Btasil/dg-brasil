@@ -30,6 +30,7 @@ export const settingsSchema = z.object({
   deadlineAgentId: zUuid().nullable().optional(),
   deadlineAutoApply: z.boolean().optional(),
   deadlineAutoTask: z.boolean().optional(),
+  agentTimeoutHours: z.number().int().min(1, "De 1 a 72 horas.").max(72, "De 1 a 72 horas.").optional(),
 });
 
 export const calendarDaySchema = z.object({
@@ -53,7 +54,7 @@ export const listPublicationsSchema = z.object({
 
 export const decideSchema = z.object({
   id: zUuid(),
-  action: z.enum(["NO_DEADLINE", "REOPEN"]),
+  action: z.enum(["NO_DEADLINE", "REOPEN", "TAKE_OVER"]),
   notes: z.string().trim().max(2000).optional(),
 });
 
