@@ -7,6 +7,28 @@ function normalize(value: string): string {
   return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+/**
+ * Exceções de situação que o sistema aceita (private.case_status_override_allowed,
+ * migration 006): só Administrador, com motivo, registradas na auditoria.
+ */
+export const CASE_STATUS_OVERRIDES = {
+  reopen: { from: "CLOSED", to: "IN_PROGRESS" },
+  reconsider: { from: "REJECTED", to: "SUBMITTED" },
+} as const satisfies Record<string, { from: LegalCaseStatus; to: LegalCaseStatus }>;
+export type CaseStatusOverride = keyof typeof CASE_STATUS_OVERRIDES;
+
+/** Exceção disponível para a situação atual do caso (reabrir encerrado, reconsiderar rejeição). */
+export function caseStatusOverrideFor(status: LegalCaseStatus): CaseStatusOverride | undefined {
+  return (Object.keys(CASE_STATUS_OVERRIDES) as CaseStatusOverride[]).find((k) => CASE_STATUS_OVERRIDES[k].from === status);
+}
+
+/**
+ * Situações em que a equipe marca "Aguardando documentos" pela tela. O sistema
+ * aceita outras origens (rascunho, análise em curso), que seguem o fluxo próprio.
+ */
+const WAIT_DOCUMENTS_FROM: readonly LegalCaseStatus[] = ["SUBMITTED", "READY_FOR_ANALYSIS", "WAITING_REVIEW"];
+export const canMarkWaitingDocuments = (status: LegalCaseStatus) => WAIT_DOCUMENTS_FROM.includes(status);
+
 export interface CaseFilters {
   q: string;
   status: LegalCaseStatus | "";

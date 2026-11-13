@@ -38,6 +38,9 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
 
 10. **Nome do escritório:** "Barbara Cardoso Advocacia", sem acento (grafia confirmada pela dona). Em texto fixo da interface,
     use `OWNER_OFFICE_NAME` (`lib/constants/office.ts`); `office.test.ts` falha se o nome voltar com acento.
+11. **Ação de um clique que encerra, arquiva, exclui, rejeita ou tira acesso pede confirmação:** `ConfirmDialog`
+    (`components/ui/confirm-dialog.tsx`), nunca `window.confirm`. O botão fica ocupado durante o envio e o aviso de
+    sucesso vem do hook da feature. Exclusão usa `tone="dangerSolid"` (variante do `Button`).
 
 ## Next.js 16
 

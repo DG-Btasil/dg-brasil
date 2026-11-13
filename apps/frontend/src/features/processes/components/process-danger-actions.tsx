@@ -80,7 +80,7 @@ export function DeleteProcessDialog({ process, openDeadlines, onClose }: { proce
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="danger" className="border-danger bg-danger text-white hover:bg-danger/90" icon={<Trash2 className="size-4" aria-hidden />} loading={saving} onClick={confirm}>
+          <Button variant="dangerSolid" icon={<Trash2 className="size-4" aria-hidden />} loading={saving} onClick={confirm}>
             Excluir processo
           </Button>
         </>

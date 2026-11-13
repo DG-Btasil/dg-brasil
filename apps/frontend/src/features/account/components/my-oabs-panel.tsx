@@ -5,6 +5,7 @@ import { BadgeCheck, Plus, Star, Trash2 } from "lucide-react";
 import { SkeletonRows } from "@/components/feedback/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select } from "@/components/ui/form";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { OAB_UF_OPTIONS, formatOab, normalizeOab } from "@/lib/auth/oab";
@@ -27,6 +28,7 @@ export function MyOabsPanel() {
   const [state, setState] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<MyOabDTO | null>(null);
 
   const [version, setVersion] = useState(0);
   const load = () => setVersion((v) => v + 1);
@@ -52,12 +54,25 @@ export function MyOabsPanel() {
     load();
   }
 
-  async function act(id: string, kind: "primary" | "remove") {
-    setBusy(id);
-    const r = await callAction(() => (kind === "primary" ? setMyPrimaryOabAction({ id }) : removeMyOabAction({ id })));
+  async function makePrimary(oab: MyOabDTO) {
+    setBusy(oab.id);
+    const r = await callAction(() => setMyPrimaryOabAction({ id: oab.id }));
     setBusy(null);
     if (!r.ok) return failed(r, "Não foi possível atualizar a OAB.");
+    toast({ tone: "success", title: "OAB principal atualizada", description: formatOab(oab.number, oab.state) });
     load();
+  }
+
+  /** Chamado pela confirmação: devolve `false` para o diálogo continuar aberto quando falha. */
+  async function remove(oab: MyOabDTO): Promise<boolean> {
+    const r = await callAction(() => removeMyOabAction({ id: oab.id }));
+    if (!r.ok) {
+      failed(r, "Não foi possível remover a OAB.");
+      return false;
+    }
+    toast({ tone: "success", title: "OAB removida", description: formatOab(oab.number, oab.state) });
+    load();
+    return true;
   }
 
   const list = result?.ok ? result.data : [];
@@ -80,11 +95,11 @@ export function MyOabsPanel() {
                 {o.isPrimary && <Badge tone="gold">Principal</Badge>}
                 <span className="ml-auto flex gap-1">
                   {!o.isPrimary && (
-                    <Button size="sm" variant="ghost" icon={<Star className="size-3.5" aria-hidden />} loading={busy === o.id} disabled={!!busy} onClick={() => act(o.id, "primary")}>
+                    <Button size="sm" variant="ghost" icon={<Star className="size-3.5" aria-hidden />} loading={busy === o.id} disabled={!!busy} onClick={() => makePrimary(o)}>
                       Tornar principal
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" aria-hidden />} disabled={!!busy} onClick={() => act(o.id, "remove")}>
+                  <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" aria-hidden />} disabled={!!busy} onClick={() => setRemoving(o)}>
                     Remover
                   </Button>
                 </span>
@@ -104,6 +119,19 @@ export function MyOabsPanel() {
           </Button>
         </div>
       </div>
+      {removing && (
+        <ConfirmDialog
+          title="Remover esta OAB?"
+          description={`A inscrição ${formatOab(removing.number, removing.state)} sai do seu cadastro. Você pode cadastrar de novo quando quiser.`}
+          confirmLabel="Remover OAB"
+          tone="danger"
+          icon={<Trash2 className="size-4" aria-hidden />}
+          onConfirm={() => remove(removing)}
+          onClose={() => setRemoving(null)}
+        >
+          {removing.isPrimary && <p className="text-[13px] text-muted">Esta é a sua OAB principal, a que aparece no seu perfil.</p>}
+        </ConfirmDialog>
+      )}
     </Panel>
   );
 }

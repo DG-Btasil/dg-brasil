@@ -10,7 +10,9 @@ import {
   assignCaseLawyerAction,
   changeCaseOriginAction,
   closeCaseAction,
+  overrideCaseStatusAction,
   rejectCaseAction,
+  requestCaseDocumentsAction,
   startCaseAction,
   submitCaseAction,
   updateCaseAction,
@@ -60,6 +62,10 @@ export function useCaseActions() {
       start: (id: ID) => run(() => startCaseAction({ id }), { title: "Caso em andamento" }, "Não foi possível atualizar o caso."),
       close: (id: ID) => run(() => closeCaseAction({ id }), { title: "Caso encerrado" }, "Não foi possível encerrar o caso."),
       archive: (id: ID) => run(() => archiveCaseAction({ id }), { title: "Caso arquivado" }, "Não foi possível arquivar o caso."),
+      requestDocuments: (id: ID) => run(() => requestCaseDocumentsAction({ id }), { title: "Caso aguardando documentos" }, "Não foi possível atualizar o caso."),
+      /** Exceção de situação (reabrir encerrado, reconsiderar rejeição): só Administrador, com motivo. */
+      overrideStatus: (id: ID, status: string, reason: string, success: Notice) =>
+        run(() => overrideCaseStatusAction({ id, status, reason }), success, "Não foi possível alterar a situação do caso."),
       assignLawyer: (id: ID, lawyerId: ID) => run(() => assignCaseLawyerAction({ id, lawyerId }), { title: "Advogado responsável definido" }, "Não foi possível definir o responsável."),
       changeOrigin: (id: ID, input: { originOrganizationId: ID; reason?: string; linkPartner: boolean }) =>
         run(

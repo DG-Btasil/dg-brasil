@@ -10,6 +10,7 @@ import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState } from "@/components/feedback/states";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { Panel, PanelHeader } from "@/components/ui/panel";
@@ -46,6 +47,7 @@ export function RequirementsPanel({
   const canDecide = usePermission("reviews.decide");
   const [creating, setCreating] = useState(false);
   const [satisfying, setSatisfying] = useState<RequirementDTO | null>(null);
+  const [rejecting, setRejecting] = useState<RequirementDTO | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const byVersion = useMemo(() => {
     const map = new Map<string, DocumentListItem>();
@@ -145,12 +147,12 @@ export function RequirementsPanel({
                       )}
                       {canManage && (r.status === "MISSING" || r.status === "REQUESTED" || r.status === "REJECTED") && (
                         <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => setSatisfying(r)}>
-                          Registrar recebimento
+                          Registrar documento recebido
                         </Button>
                       )}
                       {canDecide && r.status === "RECEIVED" && (
                         <>
-                          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => act(r.id, () => actions.rejectRequirement(r.id))}>
+                          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => setRejecting(r)}>
                             Rejeitar
                           </Button>
                           <Button size="sm" variant="secondary" loading={busy === r.id} disabled={!!busy} onClick={() => act(r.id, () => actions.approveRequirement(r.id))}>
@@ -168,6 +170,16 @@ export function RequirementsPanel({
       )}
       {creating && <CreateRequirementDialog legalCaseId={legalCaseId} onClose={() => setCreating(false)} />}
       {satisfying && <SatisfyDialog requirement={satisfying} documents={documents} onClose={() => setSatisfying(null)} />}
+      {rejecting && (
+        <ConfirmDialog
+          title="Rejeitar o documento recebido?"
+          description={`Pendência “${rejecting.label}”. O arquivo recebido não serve para o caso. A pendência fica como rejeitada e pode ser solicitada de novo.`}
+          confirmLabel="Rejeitar documento"
+          tone="danger"
+          onConfirm={() => actions.rejectRequirement(rejecting.id)}
+          onClose={() => setRejecting(null)}
+        />
+      )}
     </Panel>
   );
 }
@@ -252,7 +264,7 @@ function SatisfyDialog({ requirement, documents, onClose }: { requirement: Requi
     <Dialog
       open
       onOpenChange={(o) => !o && !saving && onClose()}
-      title="Registrar recebimento"
+      title="Registrar documento recebido"
       description={`Pendência: “${requirement.label}”. Escolha o arquivo do caso que a atende.`}
       footer={
         <>
@@ -260,7 +272,7 @@ function SatisfyDialog({ requirement, documents, onClose }: { requirement: Requi
             Cancelar
           </Button>
           <Button onClick={save} loading={saving} disabled={!options.length}>
-            Registrar recebimento
+            Registrar documento recebido
           </Button>
         </>
       }
