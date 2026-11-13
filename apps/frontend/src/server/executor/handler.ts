@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+import { HOSTS } from "@/lib/hosts";
+import { isOurDbMessage } from "@/server/core/db-errors";
 import type { Logger } from "@/server/core/logger";
 import { SlidingWindowLimiter } from "@/server/core/rate-limit";
 import {
-  ANALYSIS_SCHEMA_VERSION, EXECUTOR_TOKEN, LEASE_TOKEN, PROPOSAL_DATA, analysisForStorage, completeSchema, configSchema,
-  createProposalSchema, failSchema, finalizeOutputSchema, heartbeatSchema, prepareOutputSchema, proposalKey, sha256Hex,
-  submitAnalysisSchema,
+  ANALYSIS_SCHEMA_VERSION, EXECUTOR_TOKEN, LEASE_TOKEN, MIN_EXECUTOR_VERSION, PROPOSAL_DATA, analysisForStorage, completeSchema,
+  configSchema, createProposalSchema, executorVersionAccepted, failSchema, finalizeOutputSchema, heartbeatSchema, parseExecutorVersion,
+  prepareOutputSchema, proposalKey, sha256Hex, submitAnalysisSchema,
 } from "./contract";
 import type { ExecutorDb, ExecutorFunction } from "./db";
 import type { ExecutorStorage } from "./storage";
@@ -18,6 +20,12 @@ import type { ExecutorStorage } from "./storage";
  * (private.executor_*); aqui: formato, limite de taxa, validação do conteúdo e
  * assinatura de URL do Storage para o caminho que o banco autorizou.
  *
+ * Ordem, de propósito: formato do token → limite de taxa → versão do conector
+ * → SÓ ENTÃO o corpo é lido (`readBody`) → banco. Quem não traz um token no
+ * formato certo, ou traz um conector antigo, não faz o servidor ler nem
+ * interpretar nada. (A validade do token em si é do banco, na mesma chamada
+ * que faz o trabalho: não há uma consulta só para isso.)
+ *
  * Respostas nunca carregam token, hash nem mensagem técnica de erro interno.
  */
 
@@ -26,7 +34,10 @@ export interface ExecutorRequest {
   segments: string[];
   headers: Headers;
   query: URLSearchParams;
-  body: unknown;
+  /** Corpo já lido (testes). A rota passa `readBody`, que só é chamado depois das conferências. */
+  body?: unknown;
+  /** Lê e interpreta o corpo (com limite de tamanho). Pode lançar HttpError 400/413. */
+  readBody?: () => Promise<unknown>;
 }
 
 export interface ExecutorResponse {
@@ -64,22 +75,42 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T {
   return r.data;
 }
 
-/** Erro do Postgres → HTTP. As mensagens das funções executor_* são nossas, em português e sem dado de cliente. */
+/**
+ * Erro do Postgres → HTTP. Só passa adiante a mensagem que NÓS escrevemos nas
+ * funções executor_* (português, sem dado de cliente): o agente precisa dela
+ * para se corrigir ("Minuta só em trabalho ligado a um caso"). Texto gerado
+ * pelo próprio Postgres (nome de tabela, de constraint, valor recusado) nunca
+ * sai: vira a frase fixa. No 22P02 ("invalid input syntax…") o texto é sempre
+ * do Postgres, então a frase é sempre a fixa.
+ */
 export function fromDbError(e: unknown): HttpError {
   if (e instanceof HttpError) return e;
   const err = e as { code?: string; message?: string };
-  const message = typeof err?.message === "string" ? err.message.slice(0, 300) : "";
+  const raw = typeof err?.message === "string" ? err.message : "";
+  const message = isOurDbMessage(raw) ? raw : "";
   switch (err?.code) {
     case "42501": return new HttpError(403, "FORBIDDEN", message || "Sem permissão.");
     case "P0002": return new HttpError(404, "NOT_FOUND", message || "Não encontrado.");
     case "22023":
-    case "23514":
-    case "22P02": return new HttpError(422, "VALIDATION", message || "Dados inválidos.");
+    case "23514": return new HttpError(422, "VALIDATION", message || INVALID_DATA);
+    case "22P02": return new HttpError(422, "VALIDATION", INVALID_DATA);
     case "55000": return new HttpError(409, "INTERRUPTED", message || "Trabalho interrompido a pedido.");
     case "23505": return new HttpError(409, "CONFLICT", "Já existe.");
     case "23503": return new HttpError(422, "VALIDATION", "Referência inexistente (categoria, processo ou documento).");
     default: return new HttpError(500, "INTERNAL", "Erro interno. Tente de novo em instantes.");
   }
+}
+
+const INVALID_DATA = "Dados inválidos. Confira o que foi enviado.";
+
+/** O que o computador com conector antigo recebe (o conector mostra a mensagem como veio). */
+export function outdatedClientMessage(header: string | null): string {
+  const v = parseExecutorVersion(header);
+  const atual = v ? `está na versão ${v.join(".")}` : "não informou a versão (ou ela é antiga demais)";
+  return (
+    `O conector do DG Brasil neste computador ${atual}, e a mínima aceita é a ${MIN_EXECUTOR_VERSION}. ` +
+    `Rode o instalador de novo neste computador: abra o PowerShell e cole  irm https://${HOSTS.OWNER}/executor/instalar.ps1 | iex`
+  );
 }
 
 export async function handleExecutorRequest(req: ExecutorRequest, deps: ExecutorDeps): Promise<ExecutorResponse> {
@@ -95,7 +126,15 @@ export async function handleExecutorRequest(req: ExecutorRequest, deps: Executor
     const rate = limiter.consume([{ key: `executor:${tokenHash.slice(0, 16)}`, limit: LIMIT_PER_MINUTE }]);
     if (!rate.allowed) return fail(429, "RATE_LIMITED", "Muitas chamadas seguidas. Espere um pouco.");
 
-    const res = await route_(req, tokenHash, deps);
+    // Conector antigo: recusa antes de ler o corpo e de tocar no banco. 426 = "atualize o cliente".
+    const client = req.headers.get("x-dg-client");
+    if (!executorVersionAccepted(client)) {
+      deps.log.warn("executor_api", { route, status: 426, code: "CLIENT_OUTDATED", client: (client ?? "").slice(0, 40) || null, durationMs: Date.now() - started });
+      return fail(426, "CLIENT_OUTDATED", outdatedClientMessage(client));
+    }
+
+    const body = req.readBody ? await req.readBody() : req.body;
+    const res = await route_({ ...req, body }, tokenHash, deps);
     deps.log.info("executor_api", { route, status: res.status, durationMs: Date.now() - started });
     return res;
   } catch (e) {

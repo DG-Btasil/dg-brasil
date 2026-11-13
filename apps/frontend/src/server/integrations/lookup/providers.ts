@@ -154,6 +154,9 @@ export async function lookupCnpj(cnpj: string): Promise<CompanyLookup | null> {
  *   - as chaves pagas só valem com DG_ENV=production;
  *   - fora da produção, só a demonstração do Serpro (SERPRO_CPF_TRIAL=1 e o
  *     token de demonstração em SERPRO_CPF_TRIAL_TOKEN), que usa dados fictícios.
+ *   - em produção (DG_ENV=production) a demonstração é IGNORADA, mesmo que as
+ *     variáveis dela tenham ficado por engano: senão ela venceria as chaves
+ *     pagas e o cadastro real receberia os dados fictícios do Serpro.
  * Documentação: https://apicenter.estaleiro.serpro.gov.br/documentacao/consulta-cpf/pt/
  */
 
@@ -181,10 +184,11 @@ const SERPRO_TOKEN_URL = "https://gateway.apiserpro.serpro.gov.br/token";
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
-const trialOn = () => process.env.SERPRO_CPF_TRIAL === "1" && !!process.env.SERPRO_CPF_TRIAL_TOKEN;
+const production = () => process.env.DG_ENV === "production";
+/** Demonstração do Serpro (dados fictícios): nunca em produção. */
+const trialOn = () => !production() && process.env.SERPRO_CPF_TRIAL === "1" && !!process.env.SERPRO_CPF_TRIAL_TOKEN;
 /** Chaves pagas só em produção: nos testes (DEV) nenhuma consulta é cobrada. */
-const paidOn = () =>
-  process.env.DG_ENV === "production" && !!process.env.SERPRO_CPF_CONSUMER_KEY && !!process.env.SERPRO_CPF_CONSUMER_SECRET;
+const paidOn = () => production() && !!process.env.SERPRO_CPF_CONSUMER_KEY && !!process.env.SERPRO_CPF_CONSUMER_SECRET;
 
 export function cpfLookupConfigured(): boolean {
   return trialOn() || paidOn();

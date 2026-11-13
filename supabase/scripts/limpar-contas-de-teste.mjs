@@ -302,10 +302,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!v) { console.error(`variável ausente: ${k}`); process.exit(2) }
     return v
   }
-  if (env('DG_ENV') !== 'development') {
-    console.error('Recusado: DG_ENV precisa ser "development". Este script nunca roda em produção.')
-    process.exit(2)
-  }
+  // Duas travas (scripts/trava-dev.mjs): DG_ENV=development E o banco tem de ser o do
+  // projeto de desenvolvimento declarado em DG_DEV_PROJECT_REF.
+  const { exigirProjetoDev } = await import('./trava-dev.mjs')
+  exigirProjetoDev(process.env, { obrigatorias: ['SUPABASE_DB_URL'] })
   const args = process.argv.slice(2)
   const executar = args.includes('--executar')
   const avisosDeTeste = args.includes('--avisos-de-teste')

@@ -125,6 +125,11 @@ Hobby, chama em algum momento entre 6h00 e 6h59). Cada rodada:
 > ficha do cliente. Na produção, a rodada volta a ser a cada 15 minutos: ver
 > [docs/deploy/producao.md](../deploy/producao.md).
 
+Se a rodada for chamada **sem o Drive configurado** (ou com a credencial
+ilegível), ela não passa em silêncio: registra um erro no log do servidor
+(`drive.cron_not_configured`) e responde 503. Com o aviso de erros ligado
+([docs/deploy/producao.md](../deploy/producao.md), item 16), alguém fica sabendo.
+
 ## 5. Ligar as pastas que já existem
 
 Em **Configurações → Integrações → Google Drive**:
@@ -136,6 +141,16 @@ Em **Configurações → Integrações → Google Drive**:
 3. Os casos com várias pastas parecidas, ou sem pasta de nome igual, se ligam pela
    **ficha do cliente → Documentos → Pasta no Google Drive → Ligar pasta**
    (procura pelo nome).
+
+**Quem pode ligar qual pasta (desde 13/11/2026).** A conta do Google do
+escritório enxerga mais do que as pastas dos clientes. Por isso:
+- pasta **dentro** da pasta dos clientes (`GOOGLE_DRIVE_ROOT_FOLDER_ID`), em
+  qualquer nível: administradora ou advogado;
+- pasta **de fora** dela, ou enquanto a pasta dos clientes não estiver
+  configurada: só a administradora;
+- a própria pasta dos clientes nunca é ligada a um cliente.
+
+A regra está em `apps/frontend/src/server/domain/drive/folder-scope.ts`.
 
 Na ficha do cliente aparecem:
 - a pasta ligada, com o link para abrir no Drive;

@@ -147,6 +147,12 @@ export class DriveClient {
     return { id: j.id, name: j.name, webViewLink: j.webViewLink };
   }
 
+  /** Pastas-mãe diretas de um item (para conferir se uma pasta está dentro da pasta dos clientes). */
+  async parents(id: string): Promise<string[]> {
+    const j = (await (await this.call(`${API}/files/${encodeURIComponent(id)}?fields=parents&supportsAllDrives=true`)).json()) as { parents?: string[] };
+    return Array.isArray(j.parents) ? j.parents.filter((p) => typeof p === "string") : [];
+  }
+
   /** true = qualquer pessoa com o link vê a pasta. Sem como ler as permissões: null. */
   async isPublic(id: string): Promise<boolean | null> {
     try {

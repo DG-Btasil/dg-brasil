@@ -40,6 +40,19 @@ Rodar de novo atualiza o conector e **mescla** o `deny`: regras acrescentadas à
 mão no computador não se perdem, e o arquivo anterior fica em
 `settings.json.anterior`. O passo a passo manual continua abaixo.
 
+**Rodar de novo com um token já guardado (desde 13/11/2026):** se este computador
+já tem um token para o mesmo endereço, o instalador mostra o começo dele e
+pergunta: **M** mantém, **T** troca por um novo (Enter = manter). Antes ele
+reaproveitava em silêncio; como o site de teste e o de uso real ficam no mesmo
+endereço, o token de teste era reaproveitado depois da virada e o computador
+parava de conectar. Sem ninguém para responder: `$env:DG_BRASIL_MANTER_TOKEN = '1'`
+mantém sem perguntar e `$env:DG_BRASIL_TOKEN = 'dgx_...'` troca sem perguntar.
+
+**Versão mínima do conector:** o site recusa conector abaixo da **1.3.4**
+(resposta 426, código `CLIENT_OUTDATED`), e a mensagem diz para rodar o
+instalador de novo. O número fica num lugar só:
+`MIN_EXECUTOR_VERSION`, em `apps/frontend/src/server/executor/contract.ts`.
+
 > Ao mudar o código de `apps/executor`, rode `npm run bundle` e faça commit do
 > `apps/frontend/public/executor/dg-executor.mjs` atualizado.
 

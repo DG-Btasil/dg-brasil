@@ -273,11 +273,19 @@ painel (ou `npx supabase config push`, que sobrescreve o painel com o arquivo):
 2. **Authentication → Policies (Password)**: mínimo **8**, *lowercase, uppercase,
    digits*. *Leaked password protection* (HaveIBeenPwned) quando o plano permitir.
 3. **Authentication → Multi-Factor**: **TOTP habilitado** (enroll + verify).
-4. **Authentication → URL Configuration**: Site URL `http://localhost:3000` (DEV);
-   Redirect URLs `http://localhost:3000/auth/confirm**` (e, em produção,
-   `https://app.barbaracardoso.adv.br/auth/confirm**` e
-   `https://portal.barbaracardoso.adv.br/auth/confirm**`). Se o destino não estiver
-   na lista, o Auth cai na Site URL e o link do e-mail quebra.
+4. **Authentication → URL Configuration**:
+   - **DEV:** Site URL `http://localhost:3000`; Redirect URLs
+     `http://localhost:3000/auth/confirm**` e os dois endereços abaixo (o site
+     de teste usa o projeto DEV).
+   - **Produção:** Site URL `https://app.dgbrasil.adv.br`; Redirect URLs **só**
+     `https://app.dgbrasil.adv.br/auth/confirm**` e
+     `https://portal.dgbrasil.adv.br/auth/confirm**`. Sem `localhost` e sem
+     curinga no nome do site (nada de `https://*.dgbrasil.adv.br/**` nem
+     `https://*.vercel.app/**`): cada endereço a mais na lista é um lugar para
+     onde um link de convite ou de redefinição de senha pode ser levado.
+
+   Se o destino não estiver na lista, o Auth cai na Site URL e o link do e-mail
+   quebra.
 5. **Authentication → Email Templates**: *Invite user* e *Reset password* com o
    conteúdo de `supabase/templates/invite.html` e `recovery.html` (links com
    `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=...`). Os templates padrão

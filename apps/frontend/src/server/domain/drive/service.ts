@@ -9,6 +9,7 @@ import { signedDocumentStorage } from "@/server/domain/documents/signed-storage"
 import { DriveClient, DriveError, driveConfigFromEnv } from "@/server/integrations/google-drive/client";
 import { DRIVE_DB_FUNCTIONS, runDriveSync, suggestLinks, type DriveDbFunction, type SyncDeps } from "@/server/integrations/google-drive/sync";
 import type { ClientDriveDTO, DriveFolderDTO, DriveStatusDTO, DriveSuggestionDTO, DriveSyncResultDTO } from "./dto";
+import { assertFolderAllowed } from "./folder-scope";
 
 /**
  * Google Drive do escritório (041). A credencial do Google fica só no
@@ -112,7 +113,9 @@ export async function getClientDrive(ctx: ServiceContext, clientId: string): Pro
 
 /**
  * Liga a pasta (pelo ID) ao cliente. Antes, confere no Drive que é uma pasta
- * ativa e que NÃO está aberta a "qualquer pessoa com o link".
+ * ativa, que NÃO está aberta a "qualquer pessoa com o link" e que está dentro
+ * da pasta dos clientes do escritório (regra em `folder-scope.ts`: de fora
+ * dela, ou sem ela configurada, só o ADMIN liga).
  */
 export async function linkFolder(ctx: ServiceContext, clientId: string, folderId: string): Promise<void> {
   requireRole(ctx, "ADMIN", "LAWYER");
@@ -120,6 +123,10 @@ export async function linkFolder(ctx: ServiceContext, clientId: string, folderId
   let name: string;
   try {
     const f = await c.folder(folderId);
+    const scope = await assertFolderAllowed({
+      role: ctx.session.role, folderId, rootFolderId: c.rootFolderId, parentsOf: (id) => c.parents(id),
+    });
+    if (scope === "OUTSIDE_ROOT_BY_ADMIN") ctx.log.warn("drive.folder_linked_outside_root", { clientId });
     if ((await c.isPublic(folderId)) === true) {
       throw new DomainError("INVALID_STATE", "Esta pasta está compartilhada com qualquer pessoa com o link. Tire o compartilhamento público no Drive antes de ligar.");
     }

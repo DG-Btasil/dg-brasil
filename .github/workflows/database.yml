@@ -22,4 +22,6 @@ jobs:
           cache-dependency-path: supabase/package-lock.json
       - run: npm ci
       - run: npm run verificar
+      # Trava dos scripts de teste e cópia de segurança dos documentos (sem rede).
+      - run: npm run test:scripts
       - run: npm run emails:check

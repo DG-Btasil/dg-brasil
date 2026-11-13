@@ -8,21 +8,27 @@ papéis: ADMIN, LAWYER, ASSISTANT (internos); PARTNER_ADMIN, PARTNER_USER.
 Domínio central: **Client → LegalCase → LegalProcess**.
 
 > **Regra de migrations.** Migration aplicada **nunca** é reescrita: mudança
-> nova é sempre um arquivo novo, com o número seguinte. As primeiras 19 foram
-> corrigidas no lugar só até 2026-10-09, antes do primeiro `db push` real. Em
-> 2026-11-12 o DEV tinha as 55 aplicadas, idênticas aos arquivos
-> ([conferência](../docs/deploy/organizacao-pre-producao.md)).
+> nova é sempre um arquivo novo, com o número seguinte. Em 13/11/2026 o Supabase
+> de desenvolvimento tem **61 aplicadas (001–061)**; as da revisão final
+> (062–067) estão no repositório e ainda não foram aplicadas em nenhum Supabase.
+> Nenhuma das aplicadas pode ser editada. (As 19 primeiras foram corrigidas no
+> lugar só até 2026-10-09, antes do primeiro `db push` real; a conferência de
+> que o DEV bate com os arquivos está em
+> [organizacao-pre-producao.md](../docs/deploy/organizacao-pre-producao.md).)
 
 ## Estrutura
 
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As migrations, em ordem. As 19 primeiras seguem a seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade: 712 verificações (inclusive a importação de planilhas da 042 — simulação sem gravar, conflitos de CPF/CNJ/homônimo, prévia = resultado, gravação em lotes com falha por linha, processos sem CPF ligados pelo nome, retenção —  o computador do escritório da 040 — token só em hash, reserva exclusiva com token por trabalho, escopo do caso, minuta, propostas, queda e revogação, manutenção no pg_cron — e o Google Drive da 041 — pasta pelo ID, importação sem duplicata, exportação do aprovado; e a execução dos agentes da 039: interruptor, resultado estruturado de análise, área DG Brasil); (inclusive Auth/MFA da 022, convite da 023, preferências da 024, backend de domínio da 025/026, idempotência da 027, bloco societário de PJ da 028, início atômico de análise da 029, ciclo de vida do acordo financeiro da 030 resumos paginados de execução da 031, RLS dos caminhos quentes do portal da 032 e as funções da 4.3.1 — interrupção 033, edição manual 034, cronograma e valores 035, histórico/contagens do portal 036, notificações 037 — e as sessões da 4.3.2 (038), com conferência de catálogo), com a RLS testada por papel |
-| `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq` e roles do Supabase para rodar no PGlite. **Só para teste local** |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade, com a RLS testada por papel: aplica **todas** as migrations do zero e confere cada uma (os blocos são marcados com o número da migration, de `[020]` a `[065]`). 951 verificações até a 061; cada migration nova acrescenta as suas, e o total aparece no fim de `npm run verificar` |
+| `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq`, `pg_cron` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 | `scripts/usuarios-qa.mjs` | Usuários **fixos** para QA manual no DEV (LAWYER, ASSISTANT e PARTNER_ADMIN/PARTNER_USER de "Parceiro QA A/B"), senha em `QA_SENHA`; termos e MFA no primeiro login (`npm run usuarios:qa`) |
 | `scripts/limpar-contas-de-teste.mjs` | Apaga do DEV as contas das rodadas automáticas (`<rodada>.<papel>@dgbrasil.test`), os escritórios parceiros delas e tudo o que criaram. Sem argumento só **simula** e desfaz; `-- --executar` apaga. Preserva as contas reais e as de QA, e desfaz tudo se sobrar chave órfã ou se sumir linha criada por conta mantida (`npm run limpar:teste`) |
+| `scripts/trava-dev.mjs` | A trava dos três scripts acima e dos testes de integração: só rodam com `DG_ENV=development` **e** com todo endereço apontando para o projeto declarado em `DG_DEV_PROJECT_REF` (o identificador do projeto de desenvolvimento). Sem a variável, ou com endereço de outro projeto, recusam |
+| `scripts/backup-documentos.mjs` | Cópia de segurança dos arquivos do Storage (o backup do Supabase não cobre): espelha os buckets para uma pasta, só o que é novo ou mudou, com simulação, relatório e restauração. Roteiro em [restauracao-dos-documentos.md](../docs/deploy/restauracao-dos-documentos.md) |
+| `scripts/*.test.mjs` | Testes da trava e da cópia de segurança, sem rede (`npm run test:scripts`) |
 
 ## Testar localmente
 
@@ -49,8 +55,18 @@ npx supabase link --project-ref <ref-do-projeto-sa-east-1>
 npx supabase db push
 ```
 
-Antes do `db push`, habilite a extensão **pgmq** (Dashboard → Database →
-Extensions). A migration 018 também tenta habilitar.
+Antes do `db push`, habilite as extensões (Dashboard → Database → Extensions):
+
+- **pgmq**: a fila dos agentes (a migration 018 também tenta habilitar);
+- **pg_cron**: os agendamentos do banco (manutenção a cada minuto, lembretes de
+  prazo, busca judicial, limpezas, vigia diária). A 040 tenta habilitar; sem
+  ele, nada roda sozinho;
+- **pg_net**: o agendador do banco chama a rota da busca judicial
+  ([producao.md](../docs/deploy/producao.md), item 10).
+
+Depois do `db push`, confira os agendamentos com
+`select jobname, schedule from cron.job order by jobname;`
+([checklist da virada](../docs/deploy/checklist-da-virada.md), passo 14).
 
 ### Primeira administradora
 
@@ -68,17 +84,24 @@ MFA (obrigatório: sem `aal2` a RLS não devolve nada). Configuração do Auth (
 cadastro público, senha 8+, TOTP, Redirect URLs, templates de e-mail em
 `templates/`): [docs/auth.md](../docs/auth.md).
 
-### Papel do worker (`dg_worker`)
+### Papel do servidor (`dg_worker`)
 
 A migration 016 cria `dg_worker` **sem login**, sem superuser e **sem
-BYPASSRLS**. Para o worker conectar, no SQL Editor (senha gerada na hora, guardada
-só no secret do Fly.io):
+BYPASSRLS**. É com ele que o **servidor do DG Brasil** (o painel, na Vercel)
+fala com o banco quando não há usuário logado: a API do computador do
+escritório, a busca judicial, o Google Drive e a rota `/api/health`. Para ele
+conectar, no SQL Editor (senha gerada na hora):
 
 ```sql
 alter role dg_worker with login password '<senha forte>';
 ```
 
-`DATABASE_URL` do worker usa esse usuário. Nunca `postgres`, nunca a service role.
+A senha fica **só** na variável `DG_WORKER_DB_URL` do servidor (Vercel, ambiente
+do projeto; no computador de desenvolvimento, em `apps/frontend/.env.local` e
+`supabase/.env.real`), pelo pooler do Supabase. Nunca `postgres`, nunca a
+service role. O computador do escritório não recebe essa senha: ele usa o token
+gerado no site. (O worker no Fly.io, para quem a senha foi pensada, foi removido
+na 040 sem nunca ter rodado.)
 
 ## Contrato para o backend (Next.js e worker)
 
@@ -173,7 +196,7 @@ Excluir/restaurar caso, processo ou cliente (soft delete) é de ADMIN.
 visibilidade), `origin_organization_id` (atribuição comercial / parceria),
 `created_by_organization_id` (auditoria) e `clients.origin_organization_id`
 (origem do cadastro) são conceitos diferentes. Parceiro que cria um caso com
-origem Barbara continua vendo o caso, sem parceria financeira.
+origem Barbara Cardoso Advocacia continua vendo o caso, sem parceria financeira.
 
 ### Financeiro
 
@@ -240,10 +263,20 @@ origem Barbara continua vendo o caso, sem parceria financeira.
 
 ### Agentes, fila e worker
 
+> **Desde a 040, não existe mais worker na nuvem.** Quem executa é o Claude Code
+> do computador do escritório, pelas portas `private.executor_*` (token do
+> computador e reserva por trabalho). O que o worker fazia sem IA (aplicar
+> proposta aprovada, fechar execução decidida, devolver à fila a reserva de um
+> computador que parou) roda no próprio banco, pelo `pg_cron`
+> (`private.maintenance_tick`). O texto abaixo descreve a base da 012 e da 018,
+> que continua valendo para a fila, as propostas e o papel `dg_worker`; a
+> arquitetura atual está em [docs/mcp/](../docs/mcp/).
+
 - `request_agent_run` (acima) é a única porta de entrada. ADMIN e LAWYER; LAWYER
   só com caso. ASSISTANT e parceiros, não.
 - O pedido em texto fica em `agent_run_inputs` (ADMIN e o próprio solicitante
-  leem; retenção de 180 dias, `private.purge_expired_agent_run_inputs()`).
+  leem; retenção de 180 dias: `private.purge_expired_agent_run_inputs()` apaga
+  o texto vencido todo dia, agendada pela 065 como `dg-expurgo-de-pedidos`).
   `agent_runs.metadata` recusa a chave `input`: só ids, contagens e nomes de
   ferramentas.
 - LAWYER acompanha execuções dos casos que acessa pela RPC
@@ -358,7 +391,8 @@ em `storage.objects`, pgmq real (assinaturas instaladas, tabelas `q_`/`a_`,
 grants do `dg_worker`), login do `dg_worker` pelo método de produção, trigger
 `on_auth_user_created`, RPCs pelo PostgREST com JWT real, signed URLs,
 isolamento de parceiros com sessões reais e claim concorrente de dois workers.
-Recusa rodar sem `DG_ENV=development` e só cria dados fictícios.
+Recusa rodar sem `DG_ENV=development` e fora do projeto declarado em
+`DG_DEV_PROJECT_REF` (`scripts/trava-dev.mjs`), e só cria dados fictícios.
 
 **Baseline: 001–019, aplicadas no Supabase real de desenvolvimento em
 2026-10-08.** Desde então nada nelas muda: correção é `020+`.
@@ -397,6 +431,31 @@ foi resetado em seguida.
 | `20261025000036_partner_timeline_and_client_counts` | Etapa 4.3.1 (H/I): `get_partner_case_timeline` — histórico sanitizado e paginado de caso do próprio escritório (fontes que o parceiro pode conhecer; status pela trilha só dentro da função, rótulo do parceiro; nunca nota/motivo interno, revisão, análise, execução, metadata). `get_partner_client_counts` — casos, processos, solicitações abertas e documentos pedidos SÓ no escopo do escritório. Testes `[036]` |
 | `20261026000037_notification_producer` | Etapa 4.3.1 (A/B): `private.notify` (único escritor: não avisa o autor, destinatário ativo, parceiro só de caso do próprio escritório, preferência da categoria, SECURITY não desliga, chave de evento única por usuário) + gatilhos de domínio na mesma transação (casos, prazos, pendências, revisões, solicitações, análises, execuções, repasses, segurança). `notify_deadline_reminders` (worker; pg_cron se houver). Preferências por categoria em `user_notification_preferences` (constraints). Testes `[037]` |
 | `20261027000038_account_session_security` | Etapa 4.3.2: `private.current_membership()` (base da RLS) passa a exigir que o `session_id` do JWT exista em `auth.sessions`, seja do usuário e não esteja vencido — sessão revogada perde o banco antes de o access token expirar; sessão anterior ao último reset de MFA também (`REAUTH_REQUIRED`). `get_my_session_context()` devolve `session_state`. `get_my_sessions()` (só as próprias, aal2, navegador/sistema/aparelho — user agent cru e IP não saem). `record_account_security_event` (lista fechada) + avisos de segurança para a própria pessoa. Trava: falha ao aplicar se o dono das funções não ler `auth.sessions`. Testes `[038]` |
+| `20261028000039_agents_runtime` | Etapa 5: interruptor geral da execução de IA (`ai_runtime_settings`), resultado estruturado de análise, área DG Brasil |
+| `20261029000040_office_executor` | **Troca de arquitetura:** o worker na nuvem sai; quem executa é o Claude Code do computador do escritório. Computadores autorizados (token só em hash), reserva por trabalho, portas `private.executor_*`, linha do tempo, manutenção no `pg_cron` (`dg-manutencao`, `dg-lembretes-de-prazo`) |
+| `20261030000041_google_drive` | Google Drive: pasta do cliente pelo ID, importação sem duplicata, exportação do aprovado, pelo servidor |
+| `20261031000042_spreadsheet_import` | Etapa 7: importação de planilhas CSV/XLSX de ponta a ponta (`import_*`, só ADMIN; `dg-importacoes`) |
+| `20261101000043_judicial_monitoring` | Etapa 8: DJEN e DataJud só para processos cadastrados, publicações, contagem de prazo em dias úteis, avisos da categoria JUDICIAL, `dg-judicial` |
+| `20261101000044_judicial_sync_fixes` | Correções da validação da Etapa 8 (nova tentativa do DataJud em 1 h, rodada que ficava presa) |
+| `20261106000045_roadmap2_registrations` | Roadmap 2.0: canal de aquisição, campos do cadastro, status e fases do processo, honorários |
+| `20261106000046_roadmap2_process_finance` | Roadmap 2.0: financeiro por processo (contrato e despesas do processo) |
+| `20261106000047_roadmap2_process_tasks` | Roadmap 2.0: lista de afazeres do processo para os agentes, com orquestrador |
+| `20261106000048_roadmap2_partners_team` | Roadmap 2.0: várias OABs por pessoa, convite de parceiro só com o e-mail, anexo nas pendências |
+| `20261106000049_roadmap2_metrics` | Roadmap 2.0: indicadores e séries para os números e gráficos |
+| `20261109000050_roadmap2_qa_fixes` | Correções da validação do Roadmap 2.0 (a divisão do parceiro vale pela criação do caso, entre outras) |
+| `20261110000051_ponte_agentes` | Ponte: o computador leva os documentos à pasta do cliente e traz o que os agentes geraram para Revisões |
+| `20261111000052_executor_wake` | "Verificar agora": a Vigia processa a fila na hora |
+| `20261112000053_ponte_cadastro_completo` | Ponte: cadastro completo do cliente e quem assina |
+| `20261112000054_kit_basico_agentes` | Cadastra no site os clones da esteira bancária e o orquestrador |
+| `20261112000055_forma_pagamento_contrato` | Forma de pagamento do contrato de honorários no cadastro do cliente |
+| `20261112000056_sequencia_automatica` | Análise aprovada em Revisões chama os próximos agentes do caso |
+| `20261112000057_judicial_notice_cap_and_cron_history` | Aviso de falha da busca judicial no máximo duas vezes por dia; limpeza do histórico do agendador (`dg-limpeza-do-agendador`); remove o agendamento duplicado |
+| `20261113000058_processo_para_agentes` | Publicações e andamentos do processo para os agentes; agente de prazos no kit |
+| `20261113000059_prazo_direto` | **Exceção ao gate humano, decidida pela dona:** o prazo do agente de prazos entra na agenda sem Revisões (desliga-se em Integrações) |
+| `20261113000060_ponte_origem_do_cliente` | Ponte: a pasta do cliente ganha o nível do escritório de origem |
+| `20261113000061_prazo_vira_tarefa` | O prazo do agente de prazos vira tarefa do processo e chama o orquestrador; a minuta continua parando em Revisões |
+| `062`–`064`, `066`, `067` | **Revisão final (13/11/2026), ainda não aplicadas em nenhum Supabase.** Uma por área da revisão; o cabeçalho de cada arquivo diz o que faz |
+| `20261113000065_vigia_da_plataforma` | **Revisão final, ainda não aplicada.** Vigia diária (`private.platform_watch`, `dg-vigia-da-plataforma`: avisa as administradoras de falha no agendador, fila de agentes parada e computador do escritório sem contato); agenda o expurgo dos pedidos vencidos (`dg-expurgo-de-pedidos`); contador de consultas de CPF no banco (`consume_rate_limit`). Testes `[065]` |
 
 ### Supabase Advisors (2026-10-09)
 

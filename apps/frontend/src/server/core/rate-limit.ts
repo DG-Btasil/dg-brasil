@@ -13,6 +13,11 @@ import { DomainError } from "./errors";
  *
  * Algoritmo: janela deslizante (registro dos instantes de cada uso, por
  * chave). Chaves só com IDs (usuário, escritório) — nunca o CPF/CNPJ.
+ *
+ * Exceção (migration 065): a consulta de CPF na Receita é PAGA por consulta,
+ * então o limite dela é contado no banco, somando todas as instâncias
+ * (`enforceSharedLimit`, no fim deste arquivo). Os outros limites continuam em
+ * memória.
  */
 
 export interface RateRule {
@@ -125,5 +130,47 @@ export function enforceAccountSecurityLimit(ctx: Pick<ServiceContext, "session" 
   if (!result.allowed) {
     ctx.log.warn("rate_limit.account_security", { retryAfterMs: result.retryAfterMs });
     throw new DomainError("RATE_LIMITED", ACCOUNT_SECURITY_RATE_LIMITED_MESSAGE);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Limite contado no banco (vale para todas as instâncias) — 065       */
+/* ------------------------------------------------------------------ */
+
+/** Limites que o banco conhece (lista fechada em private.consume_rate_limit). */
+export type SharedLimitScope = "lookup.cpf";
+
+/**
+ * Consome UM uso do limite no banco, com o JWT do usuário (a chave é o id da
+ * pessoa, decidido pelo banco). Excedeu → RATE_LIMITED.
+ *
+ * Se o banco não responder ou a função ainda não existir (migration 065 não
+ * aplicada), vale o `fallback`: o contador em memória de sempre. Nunca fica
+ * sem limite nenhum, e uma falha do contador não impede a consulta.
+ */
+export async function enforceSharedLimit(
+  ctx: Pick<ServiceContext, "db" | "log">,
+  scope: SharedLimitScope,
+  fallback: () => void,
+  message: string = RATE_LIMITED_MESSAGE,
+): Promise<void> {
+  let allowed: boolean | null = null;
+  let technicalCode: string | null = null;
+  try {
+    const { data, error } = await ctx.db.rpc("consume_rate_limit", { p_scope: scope });
+    const answer = data as { allowed?: unknown } | null;
+    if (!error && typeof answer?.allowed === "boolean") allowed = answer.allowed;
+    else technicalCode = error?.code ?? "sem_resposta";
+  } catch {
+    technicalCode = "excecao";
+  }
+  if (allowed === null) {
+    ctx.log.warn("rate_limit.shared_unavailable", { scope, technicalCode });
+    fallback();
+    return;
+  }
+  if (!allowed) {
+    ctx.log.warn("rate_limit.shared", { scope });
+    throw new DomainError("RATE_LIMITED", message);
   }
 }

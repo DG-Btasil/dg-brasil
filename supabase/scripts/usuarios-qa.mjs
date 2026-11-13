@@ -12,21 +12,22 @@
 // Os usuários das rodadas automáticas (validar:real, test:integration) têm
 // senha aleatória que nunca é gravada; estes aqui existem só para o QA.
 //
-// Regras: recusa rodar sem DG_ENV=development; nunca imprime senha nem chave.
+// Regras: recusa rodar sem DG_ENV=development e fora do projeto de desenvolvimento
+// (DG_DEV_PROJECT_REF, ver trava-dev.mjs); nunca imprime senha nem chave.
 // Variáveis: supabase/.env.real (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) e
 // QA_SENHA no ambiente do terminal.
 
 import { createClient } from '@supabase/supabase-js'
+import { exigirProjetoDev } from './trava-dev.mjs'
 
 const env = (k) => {
   const v = process.env[k]
   if (!v) { console.error(`variável ausente: ${k}`); process.exit(2) }
   return v
 }
-if (env('DG_ENV') !== 'development') {
-  console.error('Recusado: DG_ENV precisa ser "development". Este script nunca roda em produção.')
-  process.exit(2)
-}
+// Duas travas (trava-dev.mjs): DG_ENV=development E o endereço tem de ser o do
+// projeto de desenvolvimento declarado em DG_DEV_PROJECT_REF.
+exigirProjetoDev(process.env, { obrigatorias: ['SUPABASE_URL'] })
 const SENHA = env('QA_SENHA')
 // Mesma política do app (apps/frontend/src/lib/auth/password-policy.ts).
 if (SENHA.length < 8 || !/[a-z]/.test(SENHA) || !/[A-Z]/.test(SENHA) || !/[0-9]/.test(SENHA)) {

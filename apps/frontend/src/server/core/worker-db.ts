@@ -40,3 +40,8 @@ export async function callPrivate<T>(allowed: readonly string[], fn: string, arg
   const { rows } = await pool().query(`select private.${fn}(${placeholders}) as r`, params);
   return rows[0]?.r as T;
 }
+
+/** O banco responde? Usado só pela rota de situação (/api/health). Lança se não. */
+export async function pingDatabase(): Promise<void> {
+  await pool().query("select 1");
+}

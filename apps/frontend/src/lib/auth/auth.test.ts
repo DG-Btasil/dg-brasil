@@ -147,15 +147,15 @@ describe("superfície (interno x portal)", () => {
     expect(resolveAppSurface("localhost", "PARTNER_ADMIN")).toEqual({ surface: "PARTNER" });
   });
   it("host errado para o papel redireciona para o host certo", () => {
-    expect(resolveAppSurface("app.barbaracardoso.adv.br", "PARTNER_USER").redirectToHost).toBe("portal.barbaracardoso.adv.br");
-    expect(resolveAppSurface("portal.barbaracardoso.adv.br", "LAWYER").redirectToHost).toBe("app.barbaracardoso.adv.br");
-    expect(resolveAppSurface("app.barbaracardoso.adv.br", "ADMIN").redirectToHost).toBeUndefined();
+    expect(resolveAppSurface("app.dgbrasil.adv.br", "PARTNER_USER").redirectToHost).toBe("portal.dgbrasil.adv.br");
+    expect(resolveAppSurface("portal.dgbrasil.adv.br", "LAWYER").redirectToHost).toBe("app.dgbrasil.adv.br");
+    expect(resolveAppSurface("app.dgbrasil.adv.br", "ADMIN").redirectToHost).toBeUndefined();
   });
 });
 
 describe("salto entre app e portal (ERR_TOO_MANY_REDIRECTS)", () => {
-  const APP = "app.barbaracardoso.adv.br";
-  const PORTAL = "portal.barbaracardoso.adv.br";
+  const APP = "app.dgbrasil.adv.br";
+  const PORTAL = "portal.dgbrasil.adv.br";
   const CONFLITO = "/acesso?motivo=contas-em-conflito";
 
   it("host certo não redireciona, com ou sem marca", () => {

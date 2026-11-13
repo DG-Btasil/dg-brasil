@@ -21,6 +21,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/frontend/package-lock.json
       - run: npm ci
+      # Dependências que vão para produção: falha se houver vulnerabilidade alta ou crítica.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
