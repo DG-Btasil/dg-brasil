@@ -220,14 +220,17 @@ export function NotificationCenter() {
                           <span className="shrink-0 text-[11px] text-subtle tabular">{formatEventTime(n.createdAt)}</span>
                         </div>
                         {n.message && <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{n.message}</p>}
-                        <div className="mt-2 flex items-center gap-2">
+                        {/* Gravidade e tipo numa linha; as ações na linha de baixo, para nenhum texto quebrar. */}
+                        <div className="mt-2 flex min-w-0 items-center gap-2">
                           <Badge tone={tone} dot>
                             {NOTIFICATION_SEVERITY_LABEL[n.severity]}
                           </Badge>
-                          <span className="text-[11.5px] text-subtle">{notificationTypeLabel(n.type)}</span>
-                          <span className="ml-auto flex items-center gap-3">
+                          <span className="min-w-0 truncate text-[11.5px] text-subtle">{notificationTypeLabel(n.type)}</span>
+                        </div>
+                        {(!n.read || target) && (
+                          <div className="mt-2 flex items-center justify-end gap-4">
                             {!n.read && (
-                              <button type="button" onClick={() => markRead(n.id)} className="text-[12px] text-muted hover:text-foreground">
+                              <button type="button" onClick={() => markRead(n.id)} className="whitespace-nowrap text-[12px] text-muted hover:text-foreground">
                                 Marcar como lida
                               </button>
                             )}
@@ -238,13 +241,13 @@ export function NotificationCenter() {
                                   if (!n.read) void markRead(n.id);
                                   setOpen(false);
                                 }}
-                                className="text-[12px] font-semibold text-navy-700 hover:underline underline-offset-2"
+                                className="whitespace-nowrap text-[12px] font-semibold text-navy-700 hover:underline underline-offset-2"
                               >
                                 {target.label}
                               </Link>
                             )}
-                          </span>
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </li>
@@ -252,13 +255,16 @@ export function NotificationCenter() {
               })
             )}
           </ul>
-          {unread > 0 && (
-            <div className="border-t border-line bg-surface-muted px-4 py-2.5 text-right">
-              <button type="button" onClick={markAllRead} className="text-[12px] font-medium text-navy-700 hover:underline">
+          <div className="flex items-center justify-between gap-4 border-t border-line bg-surface-muted px-4 py-2.5">
+            <Link href="/notificacoes" onClick={() => setOpen(false)} className="whitespace-nowrap text-[12px] font-semibold text-navy-700 hover:underline underline-offset-2">
+              Ver todas
+            </Link>
+            {unread > 0 && (
+              <button type="button" onClick={markAllRead} className="whitespace-nowrap text-[12px] font-medium text-navy-700 hover:underline">
                 Marcar todas como lidas
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>

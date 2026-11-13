@@ -53,6 +53,11 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
   ```
   `PageProps`/`LayoutProps` são gerados por `npx next typegen` (rodado pelo `npm run typecheck`).
 - Componente que usa `useSearchParams` (ex.: `useUrlTab`) precisa estar dentro de `<Suspense>`.
+- Toda página de `app/(app)` declara o título da aba: `export const metadata: Metadata = { title: "Clientes" }` (o layout raiz
+  acrescenta "· DG Brasil"). Ficha usa título genérico ("Cliente"), sem consulta só para o título.
+  `components/navigation/page-titles.test.ts` falha quando uma página fica sem título.
+- Página que lê a sessão e não recebe `params` nem `searchParams` começa com `await connection()` (`next/server`), para o
+  build não tentar montá-la sem usuário (erro "Dynamic server usage" no log).
 - Lint: `npm run lint` (ESLint direto; `next lint` não existe mais). O React Compiler lint é rígido:
   sem `setState` síncrono dentro de `useEffect`, sem `Date.now()`/`Math.random()` em render (use `lib/clock`).
 
@@ -64,7 +69,7 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
 - Densidade de software de trabalho: tabelas boas, linhas finas, poucos cards.
 - Primitives disponíveis: `Button`, `ButtonLink`, `IconButton`, `Badge`, `StatusBadge`, `Panel*`, `DefinitionGrid`,
   `Field`, `Input`, `MaskedInput`, `Select`, `Textarea`, `Checkbox`, `ChoiceCards`, `FormSection`, `SearchInput`,
-  `Dialog`, `Drawer`, `Tooltip`, `NotAvailable`, `Tabs`/`TabPanel`, `Table`/`SortableTh`/`sortBy`, `PageHeader`,
+  `Dialog`, `ConfirmDialog`, `Drawer`, `Tooltip`, `NotAvailable`, `Tabs`/`TabPanel`, `Table`/`SortableTh`/`sortBy`, `PageHeader`,
   `Breadcrumbs`, `Stat`, `Avatar`, `DeadlineBadge`, `Timeline`, `Steps`, `DemoContentNotice`,
   `EmptyState`, `Skeleton`, `SkeletonRows`, `ErrorState`, `Callout`, `useToast()`.
 

@@ -27,7 +27,7 @@ const SECTION_COMPONENT: Record<SettingsSection, ComponentType> = {
 export function SettingsPage() {
   return (
     <PageContainer>
-      <PageHeader title="Configurações" description="Escritório, equipe, integrações e preferências. Cada seção aparece conforme o seu perfil." />
+      <PageHeader title="Configurações" description="Escritório, equipe, notificações, sua conta e segurança. Cada seção aparece conforme o seu perfil." />
       <Suspense fallback={<SettingsSkeleton />}>
         <SettingsContent />
       </Suspense>

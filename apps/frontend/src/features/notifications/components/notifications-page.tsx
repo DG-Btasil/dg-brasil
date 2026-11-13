@@ -54,7 +54,7 @@ export function NotificationsPage({ initialResult }: { initialResult: ActionResu
     <PageContainer>
       <PageHeader
         title="Notificações"
-        description="Solicitações, documentos, andamento e repasses dos seus casos."
+        description={audience === "PARTNER" ? "Solicitações, documentos, andamento e repasses dos seus casos." : "Prazos, revisões, publicações e os demais avisos enviados para você."}
         actions={
           <Button variant="secondary" onClick={() => run(() => markAllNotificationsReadAction(), "Não foi possível marcar as notificações.")}>
             Marcar todas como lidas

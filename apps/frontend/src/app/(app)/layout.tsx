@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import { AppShell } from "@/components/layout/app-shell";
 import { AuthProvider } from "@/features/auth/session-context";
 import { OrgDirectoryProvider } from "@/features/directory/directory-context";
@@ -7,6 +8,13 @@ import { ProductTourStateProvider } from "@/features/tour/product-tour-state";
 import { requireAppSession, toClientSession } from "@/server/auth/session";
 import { loadOrgDirectory } from "@/server/directory";
 import { getProductTourCompletedAt } from "@/server/onboarding";
+
+/**
+ * A área autenticada é feita para telas largas (o `body` tem largura mínima de
+ * 1024 px em globals.css). No celular, a página inteira aparece reduzida, em
+ * vez de cortada na lateral.
+ */
+export const viewport: Viewport = { width: 1024 };
 
 /**
  * Área autenticada. O servidor decide o acesso ANTES de qualquer render:

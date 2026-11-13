@@ -12,7 +12,8 @@ async function Notifications() {
 
 export default function NotificationsRoute() {
   return (
-    <RequirePermission permission="partnerPortal.view">
+    // Caixa do próprio usuário: parceiros e toda a equipe interna (quem recebe avisos tem a permissão das preferências).
+    <RequirePermission permission={["partnerPortal.view", "settings.notifications.edit"]}>
       <Notifications />
     </RequirePermission>
   );
