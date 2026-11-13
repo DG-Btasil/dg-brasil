@@ -22,9 +22,9 @@ obrigatório, termos, papel lido do banco a cada requisição) e todos os módul
 jurídicos leem e gravam no banco do projeto Supabase configurado. No
 desenvolvimento e no site de teste, esse projeto é o de **desenvolvimento**, só
 com dados fictícios. O estado de cada domínio está em
-[docs/frontend-integration.md](../../docs/frontend-integration.md). O que ainda
-é demonstração (parte das integrações em Configurações) traz o próprio aviso na
-tela.
+[docs/frontend-integration.md](../../docs/frontend-integration.md). O protótipo
+de demonstração (dados fictícios no navegador) foi removido na revisão final de
+13/11/2026.
 
 ## Como rodar
 
@@ -112,15 +112,10 @@ O mapa rota → feature → domínio está no [CLAUDE.md](../../CLAUDE.md) da ra
 
 ## O que sobrou da fase de protótipo
 
-- `src/mocks/`, `src/repositories/` e parte de `src/store/` vêm do protótipo.
-  Alguns tipos e utilitários deles ainda são usados. As telas de clientes,
-  casos, processos, documentos, revisões, financeiro e parceiros não leem dado
-  fictício deles. As áreas que ainda são demonstração mostram o aviso
-  `components/feedback/demo-area-notice.tsx`.
-- **Ferramentas de demonstração** (menu da administradora, "Restaurar áreas de
-  demonstração"): só aparecem com `NEXT_PUBLIC_DEMO_MODE=true`. Em produção essa
-  variável deve estar ausente; o servidor registra erro na subida se estiver
-  ligada.
+- O protótipo de demonstração (`src/mocks/`, o store com dados fictícios, a
+  persona de demonstração e a variável `NEXT_PUBLIC_DEMO_MODE`) foi removido na
+  revisão final de 13/11/2026. De `src/store/` sobraram o estado de interface
+  (`ui-store.ts`) e alguns tipos.
 - `docs/FRONTEND_ARCHITECTURE.md` e `docs/BACKEND_HANDOFF.md` descrevem o
   protótipo. Para o que vale hoje, use [docs/backend.md](../../docs/backend.md),
   [docs/auth.md](../../docs/auth.md) e

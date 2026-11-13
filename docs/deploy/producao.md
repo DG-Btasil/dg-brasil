@@ -239,7 +239,7 @@ estiver ligado (item 16), chega por lá.
 | Variável | Por quê |
 |---|---|
 | `SERPRO_CPF_TRIAL`, `SERPRO_CPF_TRIAL_TOKEN` | Demonstração do Serpro, com dados fictícios. O código já ignora as duas quando `DG_ENV=production`, mas não devem existir |
-| `NEXT_PUBLIC_DEMO_MODE` | Liga as ferramentas de demonstração no menu da administradora |
+| `NEXT_PUBLIC_DEMO_MODE` | Não é mais lida (o protótipo de demonstração foi removido em 13/11/2026); pode ser apagada |
 | `AUTH_FALLBACK_SITE_URL` | Só serve para endereço de prévia |
 
 **Computador do escritório:**
