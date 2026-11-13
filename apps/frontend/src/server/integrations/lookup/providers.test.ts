@@ -109,6 +109,31 @@ describe("preenchimento automático — CEP, CNPJ e CPF (Roadmap 2.0)", () => {
     ]);
   });
 
+  it("CPF em produção: a demonstração é ignorada, mesmo com as variáveis dela presentes", async () => {
+    vi.stubEnv("DG_ENV", "production");
+    vi.stubEnv("SERPRO_CPF_TRIAL", "1");
+    vi.stubEnv("SERPRO_CPF_TRIAL_TOKEN", "token-demo");
+    vi.stubEnv("SERPRO_CPF_CONSUMER_KEY", "");
+    vi.stubEnv("SERPRO_CPF_CONSUMER_SECRET", "");
+    // Só a demonstração, sem as chaves pagas: em produção não há consulta nenhuma.
+    expect(cpfLookupConfigured()).toBe(false);
+    const semChaves = respond({});
+    await expect(lookupCpf("40442820135", "1970-11-14")).rejects.toThrow("CPF_NOT_CONFIGURED");
+    expect(semChaves).not.toHaveBeenCalled();
+    clearCpfCache();
+    // Com as chaves pagas E a demonstração: valem as chaves pagas, no endereço de produção.
+    vi.stubEnv("SERPRO_CPF_CONSUMER_KEY", "chave");
+    vi.stubEnv("SERPRO_CPF_CONSUMER_SECRET", "segredo");
+    const fetchMock = respond({
+      "https://gateway.apiserpro.serpro.gov.br/token": { status: 200, body: { access_token: "abc", expires_in: 3600 } },
+      "https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df/v3/cpf/40442820135/14111970": { status: 200, body: { nome: "RONE PEREIRA", situacao: { descricao: "Regular" } } },
+    });
+    expect((await lookupCpf("40442820135", "1970-11-14"))?.fullName).toBe("Rone Pereira");
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("trial"))).toBe(false);
+    expect((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].headers).toMatchObject({ Authorization: "Bearer abc" });
+  });
+
   it("CPF v3: nascimento divergente vira aviso próprio; o mesmo par (achado, não achado ou divergente) não paga de novo em 10 minutos", async () => {
     vi.stubEnv("SERPRO_CPF_TRIAL", "1");
     vi.stubEnv("SERPRO_CPF_TRIAL_TOKEN", "token-demo");

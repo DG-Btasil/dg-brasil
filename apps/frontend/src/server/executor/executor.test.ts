@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { SlidingWindowLimiter } from "@/server/core/rate-limit";
 import { createLogger } from "@/server/core/logger";
-import { proposalKey, sha256Hex } from "./contract";
+import { readJsonBody } from "./body";
+import { MIN_EXECUTOR_VERSION, executorVersionAccepted, parseExecutorVersion, proposalKey, sha256Hex } from "./contract";
 import type { ExecutorDb, ExecutorFunction } from "./db";
-import { handleExecutorRequest, type ExecutorRequest } from "./handler";
+import { HttpError, fromDbError, handleExecutorRequest, type ExecutorRequest } from "./handler";
 
 const TOKEN = "dgx_" + "a".repeat(40);
+const CLIENT = `dg-executor/${MIN_EXECUTOR_VERSION}`;
 const LEASE = "dgl_" + "b".repeat(43);
 const JOB = "11111111-2222-4333-8444-555555555555";
 const THESIS = "21111111-2222-4333-8444-555555555555";
@@ -34,7 +36,7 @@ function setup(responses: Partial<Record<ExecutorFunction, unknown | ((args: unk
     const req: ExecutorRequest = {
       method,
       segments: path.split("/").filter(Boolean),
-      headers: new Headers({ authorization: `Bearer ${TOKEN}`, ...headers }),
+      headers: new Headers({ authorization: `Bearer ${TOKEN}`, "x-dg-client": CLIENT, ...headers }),
       query: new URLSearchParams(),
       body,
     };
@@ -66,10 +68,95 @@ describe("API do computador do escritório", () => {
 
   it("o banco recebe só o SHA-256 do token, nunca o token", async () => {
     const { calls, send } = setup({ executor_authenticate: { name: "Computador A" } });
-    const r = await send("GET", "me", undefined, { "x-dg-client": "dg-executor/1.0" });
+    const r = await send("GET", "me");
     expect(r.status).toBe(200);
-    expect(calls[0]).toEqual({ fn: "executor_authenticate", args: [sha256Hex(TOKEN), "dg-executor/1.0"] });
+    expect(calls[0]).toEqual({ fn: "executor_authenticate", args: [sha256Hex(TOKEN), CLIENT] });
     expect(JSON.stringify(calls)).not.toContain(TOKEN);
+  });
+
+  it("versão do conector: abaixo da mínima, sem cabeçalho ou ilegível → 426 com o que fazer, sem tocar no banco", async () => {
+    expect(MIN_EXECUTOR_VERSION).toBe("1.3.4");
+    expect(parseExecutorVersion("dg-executor/1.3.4")).toEqual([1, 3, 4]);
+    expect(parseExecutorVersion("dg-executor/2.0.0-beta.1")).toEqual([2, 0, 0]);
+    for (const bad of [null, "", "1.3.4", "dg-executor/1.3", "curl/8.0", "dg-executor/1.3.4; rm -rf"]) expect(parseExecutorVersion(bad)).toBeNull();
+    expect(["dg-executor/1.3.4", "dg-executor/1.3.5", "dg-executor/1.4.0", "dg-executor/2.0.0", "dg-executor/1.10.0"].map((v) => executorVersionAccepted(v))).toEqual([true, true, true, true, true]);
+    expect(["dg-executor/1.3.3", "dg-executor/1.2.9", "dg-executor/0.9.9", "dg-executor/1.0", null].map((v) => executorVersionAccepted(v))).toEqual([false, false, false, false, false]);
+
+    const { calls, send, log } = setup({ executor_authenticate: { name: "Computador A" }, executor_list_jobs: [] });
+    const antigo = await send("GET", "me", undefined, { "x-dg-client": "dg-executor/1.3.3" });
+    expect(antigo.status).toBe(426);
+    const erro = (antigo.body as { error: { code: string; message: string } }).error;
+    expect(erro.code).toBe("CLIENT_OUTDATED");
+    expect(erro.message).toBe(
+      "Este computador está com versão 1.3.3 do conector do DG Brasil, e a mínima aceita é a 1.3.4. " +
+        "Rode o instalador de novo neste computador: abra o PowerShell e cole  irm https://app.dgbrasil.adv.br/executor/instalar.ps1 | iex",
+    );
+    // Vale para qualquer rota, não só para a de identificação.
+    expect((await send("GET", "jobs", undefined, { "x-dg-client": "dg-executor/1.2.0" })).status).toBe(426);
+    expect((await send("POST", `jobs/${JOB}/claim`, undefined, { "x-dg-client": "" })).status).toBe(426);
+    expect(calls).toHaveLength(0);
+    expect(log.warn).toHaveBeenCalledWith("executor_api", expect.objectContaining({ status: 426, code: "CLIENT_OUTDATED" }));
+    expect((await send("GET", "me")).status).toBe(200);
+  });
+
+  it("o corpo só é lido depois do token, do limite de taxa e da versão", async () => {
+    const { deps, calls } = setup({ executor_heartbeat: { ok: true } });
+    const readBody = vi.fn(async () => ({ progress: "lendo" }));
+    const req = (headers: Record<string, string>): ExecutorRequest => ({
+      method: "POST", segments: ["jobs", JOB, "heartbeat"], headers: new Headers(headers), query: new URLSearchParams(), readBody,
+    });
+    expect((await handleExecutorRequest(req({}), deps)).status).toBe(401);
+    expect((await handleExecutorRequest(req({ authorization: "Bearer errado" }), deps)).status).toBe(401);
+    expect((await handleExecutorRequest(req({ authorization: `Bearer ${TOKEN}`, "x-dg-client": "dg-executor/1.0.0" }), deps)).status).toBe(426);
+    expect(readBody).not.toHaveBeenCalled();
+    const ok = await handleExecutorRequest(req({ authorization: `Bearer ${TOKEN}`, "x-dg-client": CLIENT, "x-dg-lease": LEASE }), deps);
+    expect(ok.status).toBe(200);
+    expect(readBody).toHaveBeenCalledTimes(1);
+    expect(calls.at(-1)?.args.at(-1)).toBe("lendo");
+    // Corpo recusado pelo leitor (grande demais, JSON inválido): a resposta é a dele, sem banco.
+    const antes = calls.length;
+    const grande = { ...req({ authorization: `Bearer ${TOKEN}`, "x-dg-client": CLIENT, "x-dg-lease": LEASE }), readBody: async () => { throw new HttpError(413, "TOO_LARGE", "Corpo da requisição grande demais."); } };
+    expect((await handleExecutorRequest(grande, deps)).status).toBe(413);
+    expect(calls).toHaveLength(antes);
+  });
+
+  it("leitor do corpo: limite pelo tamanho declarado e pelos bytes recebidos; JSON inválido → 400; vazio → sem corpo", async () => {
+    const post = (body: BodyInit | null, headers: Record<string, string> = {}) => new Request("https://dg.test/api/executor/v1/x", { method: "POST", body, headers });
+    expect(await readJsonBody(post(JSON.stringify({ a: 1 })), 100)).toEqual({ a: 1 });
+    expect(await readJsonBody(post("   "), 100)).toBeUndefined();
+    expect(await readJsonBody(new Request("https://dg.test/x"), 100)).toBeUndefined();
+    const status = (p: Promise<unknown>) => p.then(() => 200, (e: unknown) => (e instanceof HttpError ? e.status : -1));
+    expect(await status(readJsonBody(post("{não é json"), 100))).toBe(400);
+    expect(await status(readJsonBody(post("x".repeat(101)), 100))).toBe(413);
+    // Content-Length ausente (corpo em fluxo): para de ler quando passa do teto.
+    let enviados = 0;
+    const fluxo = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        enviados++;
+        controller.enqueue(new Uint8Array(60));
+      },
+    });
+    const emFluxo = new Request("https://dg.test/x", { method: "POST", body: fluxo, duplex: "half" } as RequestInit);
+    expect(await status(readJsonBody(emFluxo, 100))).toBe(413);
+    expect(enviados).toBeLessThan(10);
+  });
+
+  it("erro do banco: texto do Postgres nunca sai (23514 e 22P02); a nossa mensagem em português passa", async () => {
+    const check = fromDbError({ code: "23514", message: 'new row for relation "agent_proposals" violates check constraint "agent_proposals_payload_check"' });
+    expect([check.status, check.code, check.message]).toEqual([422, "VALIDATION", "Dados inválidos. Confira o que foi enviado."]);
+    const syntax = fromDbError({ code: "22P02", message: 'invalid input syntax for type uuid: "abc-do-cliente"' });
+    expect([syntax.status, syntax.message]).toEqual([422, "Dados inválidos. Confira o que foi enviado."]);
+    // 22P02 é sempre do Postgres: nem um texto "limpo" passa.
+    expect(fromDbError({ code: "22P02", message: "Texto qualquer" }).message).toBe("Dados inválidos. Confira o que foi enviado.");
+    const nosso = fromDbError({ code: "23514", message: "Minuta só em trabalho ligado a um caso" });
+    expect([nosso.status, nosso.message]).toEqual([422, "Minuta só em trabalho ligado a um caso"]);
+    expect(fromDbError({ code: "42501", message: "permission denied for function executor_claim" }).message).toBe("Sem permissão.");
+    expect(fromDbError({ code: "22023", message: 'column "x" does not exist' }).message).toBe("Dados inválidos. Confira o que foi enviado.");
+
+    const { job } = setup({ executor_create_proposal: Object.assign(new Error('new row for relation "agent_proposals" violates check constraint "x"'), { code: "23514" }) });
+    const r = await job("POST", "proposals", { type: "OTHER", summary: "Providência manual", data: { description: "Ligar para o banco" } });
+    expect(r.status).toBe(422);
+    expect(JSON.stringify(r.body)).not.toMatch(/agent_proposals|constraint|relation/);
   });
 
   it("reserva: o servidor cria o token de reserva, manda só o hash e devolve o token uma vez", async () => {

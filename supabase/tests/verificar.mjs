@@ -4203,7 +4203,7 @@ await deve('manutenção (pg_cron): proposta aprovada vira prazo; execução fec
 })
 await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo; importações diária [042]; DataJud a cada 20 min [043])', async () => {
   const j = await linhas(db, `select jobname, schedule from cron.job where jobname like 'dg-%' order by jobname`)
-  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-limpeza-do-agendador', '43 6 * * *'], ['dg-manutencao', '* * * * *']], 'jobs')
+  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-expurgo-de-pedidos', '27 6 * * *'], ['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-limpeza-do-agendador', '43 6 * * *'], ['dg-manutencao', '* * * * *'], ['dg-vigia-da-plataforma', '30 11 * * 1-5']], 'jobs')
 })
 
 secao('Computador do escritório: interrupção, falha, devolução e queda [040]')
@@ -6887,6 +6887,170 @@ await deve('catálogo [061]: funções com search_path fixo e sem porta nova (as
   await db.query(`update process_task_settings set orchestrator_agent_id = $1 where id`, [t061.orqAntes])
   await db.query(`update agents set slug = 'orquestrador-fim061', status = 'INACTIVE', deleted_at = now() where id = $1`, [t061.orq])
   await db.query(`update judicial_settings set deadline_agent_id = null where id`)
+})
+
+// ═════════════════════════════ Vigia da plataforma [065] ═════════════════
+
+secao('Vigia da plataforma, expurgo dos pedidos vencidos e contador de consultas [065]')
+const t065 = {}
+const avisos065 = (motivo) => linhas(db, `select user_id, type, severity, title, message from notifications where event_key like $1 order by user_id`, [`watch:${motivo}:%`])
+const limpar065 = () => db.query(`delete from notifications where event_key like 'watch:%'`)
+const vigia065 = async (args = '') => (await um(db, `select private.platform_watch(${args}) r`)).r
+const execucao065 = (ligada) => db.query(`update ai_runtime_settings set execution_enabled = $1 where id`, [ligada])
+const cancelar065 = (run) => como(ids.lucas, (tx) => tx.query(`select public.request_agent_run_cancel($1)`, [run]))
+await deve('agendamentos [065]: vigia de manhã em dia útil e expurgo diário dos pedidos vencidos', async () => {
+  const j = await linhas(db, `select jobname, schedule, command from cron.job where jobname in ('dg-vigia-da-plataforma', 'dg-expurgo-de-pedidos') order by jobname`)
+  igual(j.map((x) => [x.jobname, x.schedule, x.command]), [
+    ['dg-expurgo-de-pedidos', '27 6 * * *', 'select private.purge_expired_agent_run_inputs()'],
+    ['dg-vigia-da-plataforma', '30 11 * * 1-5', 'select private.platform_watch()']], 'jobs')
+})
+await deve('sem nada errado, a vigia não avisa ninguém', async () => {
+  t065.execAntes = (await um(db, `select execution_enabled e from ai_runtime_settings where id`)).e
+  t065.admins = (await linhas(db, `select a from private.active_admin_ids() a`)).map((x) => x.a).sort()
+  if (t065.admins.length < 1 || !t065.admins.includes(ids.barbara)) throw new Error('cenário sem ADMIN ativo')
+  await execucao065(false)
+  await limpar065()
+  await db.query(`delete from cron.job_run_details`)
+  const r = await vigia065()
+  igual([r.cron_failed, r.queue_stuck, r.executors_silent, r.execution_enabled, r.notified, r.errors], [0, 0, false, false, 0, []], 'resultado')
+  igual([24, 72].includes(r.window_hours), true, 'janela de 24 h (72 h na segunda-feira)')
+  igual((await linhas(db, `select 1 from notifications where event_key like 'watch:%'`)).length, 0, 'sem aviso')
+})
+await deve('falha no agendador: um aviso por ADMIN com a rotina e a contagem; falha antiga fica de fora; a que nem começou entra; no mesmo dia não repete', async () => {
+  const job = (await um(db, `select jobid from cron.job where jobname = 'dg-judicial'`)).jobid
+  await db.query(`insert into cron.job_run_details (jobid, status, start_time, end_time) values
+    ($1, 'failed',    now() - interval '100 hours', now() - interval '100 hours'),
+    ($1, 'succeeded', now() - interval '90 hours',  now() - interval '90 hours'),
+    ($1, 'failed',    now() - interval '2 hours',   now() - interval '2 hours'),
+    ($1, 'failed',    null,                         null),
+    ($1, 'succeeded', now() - interval '1 hour',    now() - interval '1 hour'),
+    (999999, 'failed', now() - interval '3 hours',  now() - interval '3 hours')`, [job])
+  const r = await vigia065()
+  igual([r.cron_failed, r.notified], [3, t065.admins.length], 'três falhas na janela; um aviso por ADMIN')
+  const a = await avisos065('cron')
+  igual(a.map((x) => x.user_id).sort(), t065.admins, 'cada ADMIN ativo do escritório')
+  igual([a[0].type, a[0].severity, a[0].title], ['SECURITY_NOTICE', 'WARNING', 'Rotinas automáticas do sistema falharam'], 'tipo que não se desliga')
+  igual(a[0].message, `3 execuções de rotinas automáticas falharam nas últimas ${r.window_hours} horas: dg-judicial (2), agendamento 999999 (1). Peça para o responsável técnico verificar.`, 'mensagem')
+  const r2 = await vigia065()
+  igual([r2.cron_failed, r2.notified, (await avisos065('cron')).length], [3, 0, t065.admins.length], 'um aviso por motivo por dia')
+  igual((await linhas(db, `select 1 from notifications where event_key like 'watch:%' and user_id = any ($1)`, [[ids.lucas, ids.ana, ids.almeidaAdm]])).length, 0, 'advogado, assistente e parceiro não recebem')
+  // No dia seguinte (chave de outro dia), a mesma situação avisa de novo.
+  await db.query(`update notifications set event_key = 'watch:cron:2000-01-01:' || id where event_key like 'watch:cron:%'`)
+  igual((await vigia065()).notified, t065.admins.length, 'dia novo, aviso novo')
+  await db.query(`delete from cron.job_run_details`)
+  await db.query(`delete from notifications where event_key like 'watch:cron:%'`)
+})
+await deve('fila parada: só com a execução ligada; trabalho recente ou com cancelamento pedido não conta', async () => {
+  await limpar065()
+  const velho = await avulsa040('Pedido antigo 065'), novo = await avulsa040('Pedido recente 065')
+  await db.query(`update agent_runs set created_at = now() - interval '200 hours' where id = $1`, [velho])
+  const naFila = async (horas) => (await um(db, `select count(*)::int n from agent_runs
+    where status = 'QUEUED' and cancel_requested_at is null and created_at < now() - make_interval(hours => $1)`, [horas])).n
+  const desligada = await vigia065()
+  igual([desligada.execution_enabled, desligada.queue_stuck, desligada.notified], [false, 0, 0], 'execução desligada: fila parada é o esperado')
+  await execucao065(true)
+  const r = await vigia065()
+  const n = await naFila(r.window_hours)
+  igual([r.execution_enabled, r.queue_stuck, n >= 1, r.executors_silent], [true, n, true, false], 'conta o trabalho antigo; os computadores fizeram contato agora')
+  const a = await avisos065('queue')
+  igual([a.map((x) => x.user_id).sort(), a[0].title], [t065.admins, 'Trabalhos de agente parados na fila'], 'um aviso por ADMIN')
+  igual(a[0].message.startsWith(n === 1 ? 'Há 1 trabalho de agente na fila há mais de 24 horas, com a execução ligada.' : `Há ${n} trabalhos de agente na fila há mais de 24 horas, com a execução ligada.`), true, 'mensagem')
+  igual(a[0].message.includes('Pedido antigo') || a[0].message.includes(velho), false, 'sem dado do trabalho')
+  // Limite maior (parâmetro): o de 200 horas deixa de contar.
+  igual((await vigia065('500')).queue_stuck, await naFila(r.window_hours - 24 + 500), 'limite por parâmetro')
+  await cancelar065(velho)
+  igual((await vigia065()).queue_stuck, n - 1, 'cancelamento pedido tira da conta')
+  await cancelar065(novo)
+})
+await deve('computador calado: avisa quando o último contato passou do limite; recém-autorizado conta da autorização; sem computador autorizado também avisa', async () => {
+  await limpar065()
+  const antes = await linhas(db, `select id, last_seen_at, created_at from executors`)
+  try {
+    await db.query(`update executors set last_seen_at = now() - interval '4 days', created_at = now() - interval '30 days' where revoked_at is null`)
+    igual((await vigia065()).executors_silent, true, 'calado há 4 dias')
+    const a = await avisos065('executor')
+    igual(a.map((x) => x.user_id).sort(), t065.admins, 'um aviso por ADMIN')
+    igual([a[0].type, a[0].title, a[0].message], ['SECURITY_NOTICE', 'O computador do escritório não faz contato',
+      'A execução está ligada, mas nenhum computador do escritório faz contato há mais de 3 dias. Abra a Vigia no computador do escritório ou confira em DG Brasil → Computador do escritório. Se o escritório não está usando os agentes, desligue a execução.'], 'mensagem')
+    igual((await vigia065('24, 5')).executors_silent, false, 'limite de 5 dias: ainda não')
+    await db.query(`update executors set last_seen_at = null, created_at = now() where id = (select id from executors where revoked_at is null order by id limit 1)`)
+    igual((await vigia065()).executors_silent, false, 'computador autorizado agora, ainda sem contato')
+    await db.query(`update executors set last_seen_at = now() - interval '9 days', created_at = now() - interval '30 days' where revoked_at is null`)
+    await execucao065(false)
+    await limpar065()
+    const desligada = await vigia065()
+    igual([desligada.executors_silent, desligada.notified], [false, 0], 'execução desligada: não avisa')
+    await execucao065(true)
+    // Nenhum computador autorizado: dentro de uma transação desfeita (acesso revogado não volta).
+    let semComputador
+    await db.transaction(async (tx) => {
+      await tx.query(`update executors set revoked_at = now(), revoked_by = $1 where revoked_at is null`, [ids.barbara])
+      const r = (await tx.query(`select private.platform_watch() r`)).rows[0].r
+      const m = (await tx.query(`select message from notifications where event_key like 'watch:executor:%' limit 1`)).rows[0]
+      semComputador = [r.executors_silent, m?.message.startsWith('A execução está ligada, mas não há nenhum computador autorizado.')]
+      await tx.rollback()
+    })
+    igual(semComputador, [true, true], 'sem computador autorizado')
+    igual((await um(db, `select count(*)::int n from executors where revoked_at is null`)).n >= 1, true, 'a revogação do teste foi desfeita')
+  } finally {
+    for (const e of antes) await db.query(`update executors set last_seen_at = $2, created_at = $3 where id = $1`, [e.id, e.last_seen_at, e.created_at])
+    await limpar065()
+  }
+})
+await deveFalhar('vigia recusa horas na fila fora da faixa', () => db.query(`select private.platform_watch(0, 3)`), /de 1 a 720/)
+await deveFalhar('vigia recusa dias sem contato fora da faixa', () => db.query(`select private.platform_watch(24, 61)`), /de 1 a 60/)
+await deve('expurgo dos pedidos vencidos: apaga o texto e os parâmetros, mantém a linha e a execução; o que não venceu fica', async () => {
+  const vencido = await avulsa040('Pedido com dado pessoal 065'), vigente = await avulsa040('Pedido vigente 065')
+  await db.query(`update agent_run_inputs set expires_at = now() - interval '1 day', parameters = '{"origem":"teste"}' where agent_run_id = $1`, [vencido])
+  igual((await um(db, `select private.purge_expired_agent_run_inputs() n`)).n >= 1, true, 'apagou')
+  const a = await um(db, `select request_text, parameters from agent_run_inputs where agent_run_id = $1`, [vencido])
+  igual([a.request_text, a.parameters], [null, {}], 'conteúdo vencido apagado, linha mantida')
+  igual((await um(db, `select request_text from agent_run_inputs where agent_run_id = $1`, [vigente])).request_text, 'Pedido vigente 065', 'o que não venceu fica')
+  igual((await um(db, `select count(*)::int n from agent_runs where id = any ($1)`, [[vencido, vigente]])).n, 2, 'as execuções continuam no histórico')
+  igual((await um(db, `select private.purge_expired_agent_run_inputs() n`)).n, 0, 'nada mais a apagar')
+  await cancelar065(vencido)
+  await cancelar065(vigente)
+})
+await deve('contador de consultas de CPF: 15 por minuto por pessoa; a 16ª é recusada com o tempo de espera e não grava uso; cada pessoa tem o seu', async () => {
+  await db.query(`delete from rate_limit_hits`)
+  const consumir = (uid) => como(uid, async (tx) => (await um(tx, `select public.consume_rate_limit('lookup.cpf') r`)).r)
+  for (let i = 1; i <= 15; i++) igual((await consumir(ids.lucas)).allowed, true, `uso ${i}`)
+  const recusa = await consumir(ids.lucas)
+  igual([recusa.allowed, recusa.retry_after_seconds >= 1 && recusa.retry_after_seconds <= 60], [false, true], '16ª recusada')
+  igual((await um(db, `select count(*)::int n from rate_limit_hits`)).n, 15, 'a recusa não grava uso')
+  igual((await consumir(ids.almeidaAdm)).allowed, true, 'outra pessoa (parceiro) tem o seu limite')
+  igual((await linhas(db, `select distinct bucket from rate_limit_hits`)).map((x) => x.bucket).sort(),
+    [`lookup.cpf:user:${ids.almeidaAdm}`, `lookup.cpf:user:${ids.lucas}`].sort(), 'a chave tem só o limite e o id da pessoa')
+  // Passada a janela de 1 minuto, libera de novo.
+  await db.query(`update rate_limit_hits set hit_at = hit_at - interval '61 seconds' where bucket = $1`, [`lookup.cpf:user:${ids.lucas}`])
+  igual((await consumir(ids.lucas)).allowed, true, 'janela nova')
+  // Uso com mais de 1 hora some no uso seguinte da mesma chave.
+  await db.query(`update rate_limit_hits set hit_at = hit_at - interval '2 hours' where bucket = $1`, [`lookup.cpf:user:${ids.lucas}`])
+  await consumir(ids.lucas)
+  igual((await um(db, `select count(*)::int n from rate_limit_hits where bucket = $1`, [`lookup.cpf:user:${ids.lucas}`])).n, 1, 'linhas antigas apagadas')
+  await db.query(`delete from rate_limit_hits`)
+})
+await deveFalhar('contador: limite que não está na lista é recusado', () => como(ids.lucas, (tx) => tx.query(`select public.consume_rate_limit('qualquer.coisa')`)), /Limite desconhecido/)
+await deveFalhar('contador: backend sem usuário não usa', () => comoServico((tx) => tx.query(`select public.consume_rate_limit('lookup.cpf')`)), /permission denied/)
+await deveFalhar('contador: a tabela de usos não é lida por usuário logado', () => como(ids.barbara, (tx) => tx.query(`select * from rate_limit_hits`)), /permission denied/)
+await deve('catálogo [065]: search_path fixo; a vigia só pelo agendador; o contador só por usuário logado; tabela de usos fechada com RLS', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname = 'private' and p.proname in ('platform_watch', 'consume_rate_limit')) or (n.nspname = 'public' and p.proname = 'consume_rate_limit')
+    order by 1`)
+  igual(r.map((x) => [x.f, x.def, x.usr]), [['private.consume_rate_limit', true, true], ['private.platform_watch', true, false], ['public.consume_rate_limit', false, true]], 'uma versão de cada; quem executa')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv || x.wrk).map((x) => x.f), [], 'search_path fixo; sem anon, service_role nem dg_worker')
+  await como(ids.barbara, (tx) => tx.query(`select private.platform_watch()`)).then(
+    () => { throw new Error('usuário logado chamou a vigia') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  const t = await um(db, `select c.relrowsecurity rls, has_table_privilege('authenticated', c.oid, 'select') a, has_table_privilege('authenticated', c.oid, 'insert') i,
+      has_table_privilege('service_role', c.oid, 'select') s, has_table_privilege('anon', c.oid, 'select') n
+    from pg_class c where c.oid = 'public.rate_limit_hits'::regclass`)
+  igual([t.rls, t.a, t.i, t.s, t.n], [true, false, false, false, false], 'tabela fechada')
+  // Fim do cenário: a execução volta ao que era.
+  await execucao065(t065.execAntes)
+  await limpar065()
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

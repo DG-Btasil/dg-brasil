@@ -5,20 +5,23 @@ import { runAction } from "@/server/core/action";
 import type { ServiceContext } from "@/server/core/context";
 import { DomainError } from "@/server/core/errors";
 import { cpfCheckDigitsOk } from "@/lib/validation";
-import { SlidingWindowLimiter } from "@/server/core/rate-limit";
+import { SlidingWindowLimiter, enforceSharedLimit } from "@/server/core/rate-limit";
 import { CpfBirthMismatch, cpfLookupConfigured, lookupCep, lookupCnpj, lookupCpf, type AddressLookup, type CompanyLookup, type PersonLookup } from "./providers";
 
 /**
  * Consultas do preenchimento automático (CEP, CNPJ, CPF). Qualquer sessão
  * liberada (equipe ou parceiro) pode consultar ao cadastrar. Limite por
- * usuário (memória da instância, best-effort) para não virar ferramenta de
- * varredura — a consulta de CPF é paga por chamada.
+ * usuário para não virar ferramenta de varredura. CEP e CNPJ (gratuitos): na
+ * memória da instância, best-effort. CPF (pago por consulta): contado no
+ * banco, somando todas as instâncias (migration 065), com o contador em
+ * memória como reserva se o banco não responder.
  */
 
+const TOO_MANY = "Muitas consultas em pouco tempo. Aguarde um minuto.";
 const limiter = new SlidingWindowLimiter(60_000);
 function throttle(ctx: ServiceContext, kind: string, perMinute: number) {
   const r = limiter.consume([{ key: `lookup:${kind}:${ctx.session.userId}`, limit: perMinute }]);
-  if (!r.allowed) throw new DomainError("RATE_LIMITED", "Muitas consultas em pouco tempo. Aguarde um minuto.");
+  if (!r.allowed) throw new DomainError("RATE_LIMITED", TOO_MANY);
 }
 
 export type LookupResult<T> = { found: true; data: T } | { found: false; reason: "NOT_FOUND" | "NOT_CONFIGURED" | "UNAVAILABLE" | "INVALID" | "BIRTH_MISMATCH" };
@@ -74,7 +77,8 @@ export async function lookupCpfAction(input: unknown) {
       if (!cpfLookupConfigured()) return { found: false, reason: "NOT_CONFIGURED" };
       // Dígito verificador errado: nem chega à Receita (a consulta é paga).
       if (!cpfCheckDigitsOk(cpf)) return { found: false, reason: "INVALID" };
-      throttle(ctx, "cpf", 15);
+      // 15 por minuto por pessoa, o mesmo número da lista do banco (private.consume_rate_limit).
+      await enforceSharedLimit(ctx, "lookup.cpf", () => throttle(ctx, "cpf", 15), TOO_MANY);
       try {
         const data = await lookupCpf(cpf, birthDate);
         return data ? { found: true, data } : { found: false, reason: "NOT_FOUND" };

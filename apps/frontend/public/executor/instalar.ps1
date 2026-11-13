@@ -52,17 +52,42 @@ Ok $Exe
 
 Passo 'Token deste computador'
 $token = $env:DG_BRASIL_TOKEN
-# Reinstalação: reaproveita o token que já está neste computador (ninguém precisa
-# colar de novo). Para trocar de token, rode com $env:DG_BRASIL_TOKEN.
+# Reinstalação: se este computador já tem um token para este endereço, a pessoa
+# escolhe entre MANTER e TROCAR. O site de teste e o de uso real ficam no mesmo
+# endereço: sem a pergunta, o token do teste era reaproveitado em silêncio depois
+# da virada e o computador parava de conectar sem ninguém saber por quê.
+# Sem ninguém para responder: $env:DG_BRASIL_MANTER_TOKEN = '1' mantém sem
+# perguntar; $env:DG_BRASIL_TOKEN = 'dgx_...' troca sem perguntar.
+# As frases novas abaixo não têm acento de propósito: o script chega por
+# "irm | iex" e o PowerShell 5.1 pode estragar os acentos na tela.
 if (-not $token -and (Test-Path $Cfg)) {
+  $tokenAnterior = $null
   try {
     $anteriorCfg = Get-Content -Raw -Encoding UTF8 $Cfg | ConvertFrom-Json
     if ($anteriorCfg.token -and "$($anteriorCfg.token)".StartsWith('dgx_') -and "$($anteriorCfg.url)".TrimEnd('/') -eq $Base) {
-      $token = "$($anteriorCfg.token)"
-      Ok 'Token deste computador reaproveitado da instalação anterior'
+      $tokenAnterior = "$($anteriorCfg.token)"
     }
   } catch { Aviso 'Não deu para ler a configuração anterior; o token será pedido.' }
   Remove-Variable anteriorCfg -ErrorAction SilentlyContinue
+  if ($tokenAnterior) {
+    $manter = $env:DG_BRASIL_MANTER_TOKEN -eq '1'
+    if (-not $manter) {
+      $inicio = $tokenAnterior.Substring(0, [Math]::Min(8, $tokenAnterior.Length))
+      Write-Host "    Este computador tem um token guardado ($inicio...)."
+      Write-Host '    Se o DG Brasil saiu do teste e entrou em uso real, o token de antes deixou de valer: escolha T.'
+      $resposta = ''
+      try { $resposta = Read-Host '    Tecle M para manter o token atual ou T para trocar por um novo [M]' } catch { $resposta = '' }
+      $manter = -not ("$resposta".Trim().ToUpper().StartsWith('T'))
+      Remove-Variable inicio, resposta -ErrorAction SilentlyContinue
+    }
+    if ($manter) {
+      $token = $tokenAnterior
+      Ok 'Token deste computador mantido'
+    } else {
+      Aviso 'O token guardado vai ser trocado pelo que for colado agora.'
+    }
+  }
+  Remove-Variable tokenAnterior, manter -ErrorAction SilentlyContinue
 }
 if (-not $token) {
   Write-Host '    No DG Brasil: DG Brasil → Computador do escritório → Autorizar computador → Gerar token.'

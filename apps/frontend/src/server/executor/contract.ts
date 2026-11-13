@@ -14,6 +14,31 @@ import { z } from "zod";
 export const EXECUTOR_TOKEN = /^dgx_[A-Za-z0-9_-]{20,100}$/;
 export const LEASE_TOKEN = /^dgl_[A-Za-z0-9_-]{20,100}$/;
 
+/**
+ * Versão mínima do conector (apps/executor) que este servidor aceita. Fonte
+ * única: quem sobe este número obriga os computadores a rodar o instalador de
+ * novo. 1.3.4 é a primeira que entende a pasta do cliente com o escritório de
+ * origem (060); as anteriores gravariam os arquivos na pasta errada.
+ */
+export const MIN_EXECUTOR_VERSION = "1.3.4";
+
+/** "dg-executor/1.3.4" → [1, 3, 4]; qualquer outro formato → null. */
+export function parseExecutorVersion(header: string | null | undefined): [number, number, number] | null {
+  const m = /^dg-executor\/(\d{1,4})\.(\d{1,4})\.(\d{1,4})(?:[-+][0-9A-Za-z.-]{1,40})?$/.exec((header ?? "").trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/** O conector que mandou este cabeçalho é aceito? Sem cabeçalho ou ilegível: não. */
+export function executorVersionAccepted(header: string | null | undefined, minimum: string = MIN_EXECUTOR_VERSION): boolean {
+  const got = parseExecutorVersion(header);
+  const min = parseExecutorVersion(`dg-executor/${minimum}`);
+  if (!got || !min) return false;
+  for (let i = 0; i < 3; i++) {
+    if (got[i] !== min[i]) return got[i] > min[i];
+  }
+  return true;
+}
+
 export const sha256Hex = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 
 const texto = (max: number) => z.string().trim().min(1).max(max);

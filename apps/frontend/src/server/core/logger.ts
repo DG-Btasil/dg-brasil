@@ -6,7 +6,9 @@
  * de documento, prompt, senha, token, chave, TOTP, payload jurídico.
  *
  * Campos são filtrados por NOME (denylist) e todo texto passa por redação.
- * `setLogSink` permite plugar Sentry/observabilidade depois sem mudar quem loga.
+ * `setLogSink` troca o destino sem mudar quem loga: `src/instrumentation.ts`
+ * liga o aviso de erros por webhook (`error-webhook.ts`) e é onde entra o
+ * Sentry (docs/deploy/producao.md, "Monitoramento").
  */
 
 export type LogLevel = "info" | "warn" | "error";
@@ -40,18 +42,24 @@ export function sanitizeFields(fields: LogFields): LogFields {
   return out;
 }
 
-const consoleSink: LogSink = (level, event, fields) => {
+/** Destino padrão: uma linha JSON no console (na Vercel, os logs da função). */
+export const consoleSink: LogSink = (level, event, fields) => {
   const line = JSON.stringify({ level, event, at: new Date().toISOString(), ...fields });
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.info(line);
 };
 
-let sink: LogSink = consoleSink;
+/**
+ * O destino fica em `globalThis`, não numa variável do módulo: o Next empacota
+ * `instrumentation.ts` separado das rotas e das Server Actions, e cada pacote
+ * teria a sua cópia deste arquivo. Assim, o que a subida registra vale para todos.
+ */
+const shared = globalThis as unknown as { __dgLogSink?: LogSink };
 
-/** Troca o destino dos logs (ex.: Sentry). Em testes, captura os eventos. */
+/** Troca o destino dos logs (ex.: webhook de erros, Sentry). Em testes, captura os eventos. `null` volta ao console. */
 export function setLogSink(next: LogSink | null) {
-  sink = next ?? consoleSink;
+  shared.__dgLogSink = next ?? undefined;
 }
 
 export interface Logger {
@@ -62,7 +70,8 @@ export interface Logger {
 }
 
 export function createLogger(base: LogFields = {}): Logger {
-  const emit = (level: LogLevel) => (event: string, fields: LogFields = {}) => sink(level, event, sanitizeFields({ ...base, ...fields }));
+  const emit = (level: LogLevel) => (event: string, fields: LogFields = {}) =>
+    (shared.__dgLogSink ?? consoleSink)(level, event, sanitizeFields({ ...base, ...fields }));
   return {
     info: emit("info"),
     warn: emit("warn"),

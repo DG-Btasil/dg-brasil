@@ -2,14 +2,14 @@ import type { Audience } from "@/lib/permissions";
 
 /**
  * Domínios do mesmo app (uma única base de código e um único deploy):
- * - app.barbaracardoso.adv.br    → ambiente interno (Bárbara Cardoso Advocacia)
- * - portal.barbaracardoso.adv.br → portal dos escritórios parceiros
+ * - app.dgbrasil.adv.br    → ambiente interno (Barbara Cardoso Advocacia)
+ * - portal.dgbrasil.adv.br → portal dos escritórios parceiros
  * Configuráveis por ambiente. O domínio só ajusta textos e atalhos do login:
  * quem decide o acesso é o papel do usuário (validado no backend), nunca o host.
  */
 export const HOSTS: Record<Audience, string> = {
-  OWNER: process.env.NEXT_PUBLIC_APP_HOST ?? "app.barbaracardoso.adv.br",
-  PARTNER: process.env.NEXT_PUBLIC_PORTAL_HOST ?? "portal.barbaracardoso.adv.br",
+  OWNER: process.env.NEXT_PUBLIC_APP_HOST ?? "app.dgbrasil.adv.br",
+  PARTNER: process.env.NEXT_PUBLIC_PORTAL_HOST ?? "portal.dgbrasil.adv.br",
 };
 
 /** Público associado ao host; undefined em localhost/preview (mostra os dois). */
