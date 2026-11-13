@@ -8356,6 +8356,26 @@ await deve('busca judicial que falha sem detalhe manda o ADMIN para DG Brasil �
   igual(n, [{ type: 'JUDICIAL_SYNC_FAILED', title: 'A busca de publicações e andamentos falhou', message: 'Veja os detalhes em DG Brasil → Integrações.' }], 'aviso')
 })
 
+// A 066 não restringe o tipo da exportação (só o formato do nome): os tipos novos não pedem migration.
+await deve('exportação em Prazos e nas cinco listas do Financeiro: o registro da 066 aceita os tipos novos com os filtros que as telas mandam', async () => {
+  const pedidos = [
+    ['deadlines', { responsibleUserId: ids.lucas, status: 'OPEN', effectiveStatus: 'OVERDUE', type: 'HEARING', fromDate: '2026-11-01', untilDate: '2026-11-30', agentUnchecked: true }],
+    ['finance_processes', { search: true, overdueOnly: true, openExpensesOnly: true, withoutAgreement: true }],
+    ['finance_agreements', { search: true, status: 'ACTIVE', periodFrom: '2026-10-01', periodTo: '2026-10-31', dueFrom: '2026-12-01', dueTo: '2026-12-31' }],
+    ['finance_receivables', { search: true, from: '2026-11-01', to: '2026-11-30', overdueOnly: true }],
+    ['finance_receipts', { search: true, from: '2026-11-01', to: '2026-11-13', method: 'PIX', kind: 'REVERSAL' }],
+    ['finance_expenses', { processId: ids.owner, category: 'COURT_COSTS', status: 'PAID', from: '2026-11-01', to: '2026-11-30' }],
+  ]
+  for (const [tipo, filtros] of pedidos) {
+    const ev = await um(db, `select action, actor_user_id, metadata from audit_events where id = $1`, [await exportar066(ids.barbara, tipo, filtros, 12)])
+    // O jsonb não guarda a ordem das chaves: compara os filtros em ordem alfabética.
+    const emOrdem = (o) => Object.entries(o).sort(([a], [b]) => a.localeCompare(b))
+    igual([ev.action, ev.actor_user_id, ev.metadata.kind, ev.metadata.total_rows, ev.metadata.truncated, emOrdem(ev.metadata.filters)],
+      ['DATA_EXPORTED', ids.barbara, tipo, 12, false, emOrdem(filtros)], tipo)
+  }
+  await deveFalhar('advogado não registra exportação do Financeiro', () => exportar066(ids.lucas, 'finance_receipts', {}, 1), /Somente o administrador exporta/)
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(
