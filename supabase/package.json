@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "verificar": "node tests/verificar.mjs",
+    "test:scripts": "node --test \"scripts/*.test.mjs\"",
     "validar:real": "node --env-file=.env.real tests/real/validar-real.mjs",
     "usuarios:qa": "node --env-file=.env.real scripts/usuarios-qa.mjs",
     "limpar:teste": "node --env-file=.env.real scripts/limpar-contas-de-teste.mjs",

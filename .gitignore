@@ -7,6 +7,8 @@ dist/
 .DS_Store
 *.tsbuildinfo
 supabase/.env.real
+# Chaves para a cópia de segurança dos documentos (supabase/scripts/backup-documentos.mjs)
+supabase/.env.backup
 supabase/.temp/
 supabase/.branches/
 supabase/.preview-emails/

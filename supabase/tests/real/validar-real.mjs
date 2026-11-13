@@ -23,6 +23,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import pg from 'pg'
+import { exigirProjetoDev } from '../../scripts/trava-dev.mjs'
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { readdir } from 'node:fs/promises'
 
@@ -33,10 +34,9 @@ const env = (k, obrigatorio = true) => {
   if (obrigatorio && !v) { console.error(`variável ausente: ${k}`); process.exit(2) }
   return v
 }
-if (env('DG_ENV') !== 'development') {
-  console.error('Recusado: DG_ENV precisa ser "development". Este script nunca roda em produção.')
-  process.exit(2)
-}
+// Duas travas (scripts/trava-dev.mjs): DG_ENV=development E todos os endereços têm
+// de ser do projeto de desenvolvimento declarado em DG_DEV_PROJECT_REF.
+exigirProjetoDev(process.env, { obrigatorias: ['SUPABASE_URL', 'SUPABASE_DB_URL', 'DG_WORKER_DB_URL'] })
 const URL_ = env('SUPABASE_URL'), ANON = env('SUPABASE_ANON_KEY'), SERVICE = env('SUPABASE_SERVICE_ROLE_KEY')
 const DB_URL = env('SUPABASE_DB_URL'), WORKER_URL = env('DG_WORKER_DB_URL')
 const ref = new URL(URL_).hostname.split('.')[0]
