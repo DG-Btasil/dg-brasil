@@ -85,6 +85,7 @@ export function ProcessJudicialCard({ processId }: { processId: string }) {
                 <Button size="sm" variant="secondary" icon={<RefreshCw className="size-3.5" aria-hidden />} loading={busy === "sync"} disabled={!s.syncEnabled} onClick={syncNow}>
                   Buscar andamentos agora
                 </Button>
+                {busy === "sync" && <span className="self-center text-[12px] text-muted">O CNJ pode levar até 2 minutos para responder.</span>}
                 <Button size="sm" variant="ghost" icon={s.syncEnabled ? <Pause className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />} loading={busy === "toggle"} onClick={toggle}>
                   {s.syncEnabled ? "Pausar acompanhamento" : "Retomar acompanhamento"}
                 </Button>

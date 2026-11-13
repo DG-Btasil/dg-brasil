@@ -164,12 +164,17 @@ export async function setProcessSync(ctx: ServiceContext, processId: string, ena
 /**
  * Rodada pedida na tela. Tudo: só ADMIN. Um processo: ADMIN ou advogado. O
  * banco confere de novo quem pediu (judicial_sync_begin).
+ *
+ * Tempo: a busca de tudo trabalha 45 s (o resto fica para os lotes). A de UM
+ * processo espera o DataJud até 2 min (o CNJ leva de 30 s a mais de 1 min; com
+ * 45 s o botão do processo quase sempre falhava). A página do processo declara
+ * maxDuration para a função aguentar esse tempo.
  */
 export async function syncNow(ctx: ServiceContext, processId?: string): Promise<JudicialSyncNowDTO> {
   if (processId) requireRole(ctx, "ADMIN", "LAWYER");
   else requireRole(ctx, "ADMIN");
   if (!process.env.DG_WORKER_DB_URL) throw new DomainError("INVALID_STATE", "Servidor sem DG_WORKER_DB_URL: a busca não pode rodar.");
-  const r = await runJudicialSync(judicialSyncDeps(ctx.log, Date.now() + 45_000), {
+  const r = await runJudicialSync(judicialSyncDeps(ctx.log, Date.now() + (processId ? 130_000 : 45_000)), {
     trigger: "MANUAL", requestedBy: ctx.session.userId, processId: processId ?? null,
   });
   if (r.busy) return { busy: true };

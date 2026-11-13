@@ -134,6 +134,20 @@ Ela está em quatro lugares e precisa continuar nos quatro:
    bypass de RLS e sem SELECT em dado de cliente: só enxerga, por funções
    escopadas, o contexto do trabalho que o computador reservou.
 
+**Uma exceção, decidida pela dona do escritório em 13/11/2026: o prazo direto**
+(migration 059, [docs/judicial.md](docs/judicial.md), "Prazo direto"). O prazo
+que o agente de prazos calcula a partir de uma publicação do DJEN entra na
+agenda do processo sem revisão humana. É a única proposta que se aplica
+sozinha, e só quando:
+
+- o trabalho nasceu daquela publicação (o banco confere o vínculo, não o texto
+  do pedido) e a data é um dos dias úteis que o próprio banco calculou;
+- a opção "Prazo entra direto na agenda" está ligada em DG Brasil →
+  Integrações (desligada, volta a valer a regra geral).
+
+"Sem prazo", minutas, análises e todas as outras propostas continuam presas à
+revisão. Não crie outra exceção sem decisão expressa da dona, registrada aqui.
+
 Se alguém der ao agente uma ferramenta que escreve direto, o sistema continua
 funcionando e a garantia some sem aviso. É o tipo de mudança que merece
 conversa, não commit.

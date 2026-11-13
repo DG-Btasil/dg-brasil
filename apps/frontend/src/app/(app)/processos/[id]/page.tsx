@@ -20,6 +20,9 @@ import { listReviewsAction } from "@/server/domain/reviews/actions";
 import { listPartnerRequestsAction } from "@/server/domain/partner-requests/actions";
 import { listProcessTasksAction } from "@/server/domain/process-tasks/actions";
 
+// "Buscar andamentos agora" (Server Action desta página) espera o DataJud até 2 min.
+export const maxDuration = 180;
+
 const fallback = (
   <PageContainer>
     <SkeletonRows rows={8} />
