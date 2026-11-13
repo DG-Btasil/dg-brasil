@@ -58,6 +58,14 @@ describe("CSV para o Excel brasileiro", () => {
     expect([csvNumber(1234567.891), csvNumber(0.5, 2), csvNumber(null), csvNumber(Number.NaN), csvMoney(1000)]).toEqual(["1234567,891", "0,50", "", "", "1000,00"]);
   });
 
+  it("valor negativo (estorno, resultado no vermelho) sai como número, sem apóstrofo; o que não é só número continua protegido", () => {
+    const csv = buildCsv(columns, [
+      { name: "Estorno", amount: -200, note: "-200,00" },
+      { name: "-1+1", amount: -0.5, note: "-2,5+cmd" },
+    ]);
+    expect(csv).toBe("Nome;Valor;Observação\r\nEstorno;-200,00;-200,00\r\n'-1+1;-0,50;'-2,5+cmd\r\n");
+  });
+
   it("datas dd/mm/aaaa: data sem hora não muda com o fuso; instante usa o fuso de São Paulo", () => {
     expect(csvDate("2026-11-13")).toBe("13/11/2026");
     // 01:30 UTC de 14/11 ainda é 22:30 de 13/11 em São Paulo.

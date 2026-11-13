@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import type { ServiceContext } from "@/server/core/context";
 import { DomainError } from "@/server/core/errors";
+import { buildCsv } from "@/server/domain/exports/csv";
+import { listProfileNames } from "../repository";
+import { DEADLINE_EXPORT_COLUMNS, type DeadlineExportRow } from "./export";
 import {
   addDays,
   deadlineCreatePayload,
@@ -26,6 +29,9 @@ import {
   updateDeadlineSchema,
 } from "./schemas";
 import * as service from "./service";
+
+// Nomes da equipe (planilha): o repositório de processos não chega ao banco neste teste.
+vi.mock("../repository", () => ({ listProfileNames: vi.fn(async (_db: unknown, ids: string[]) => ids.map((id) => ({ id, full_name: `Nome de ${id}` }))) }));
 
 const CASE = "00000000-0000-4000-8000-0000000000c1";
 const PROC = "00000000-0000-4000-8000-0000000000d1";
@@ -372,5 +378,90 @@ describe("service — situação do prazo passa pelo banco", () => {
     expect(calls.filters).toContainEqual(["eq", "status", "COMPLETED"]);
     expect(calls.order[0]).toEqual(["due_at", false]);
     expect(await rejected(service.listDeadlines(ctxFor("PARTNER_ADMIN", stubDb().db), listDeadlinesSchema.parse({})))).toBe("FORBIDDEN");
+  });
+});
+
+describe("planilha de prazos", () => {
+  const CHECKER = "00000000-0000-4000-8000-0000000000b2";
+
+  it("colunas: vencimento sem hora no prazo comum e com hora na audiência; vencido como na tela; CNJ com máscara; dados da audiência só na audiência", () => {
+    const common: DeadlineExportRow = { ...deadlineFromAgendaRow(row({ effective_status: "OVERDUE", description: "Conferir documentos" })), responsibleName: "Lucas Fictício" };
+    const hearing: DeadlineExportRow = {
+      ...deadlineFromAgendaRow(
+        row({
+          id: "d2",
+          title: "Audiência de instrução",
+          deadline_type: "HEARING",
+          due_at: "2026-11-20T17:30:00Z",
+          due_date_local: "2026-11-20",
+          source: "AGENT",
+          checked_at: "2026-11-13T15:00:00Z",
+          checked_by: CHECKER,
+          hearing_mode: "VIDEO",
+          hearing_location: "Sala 3; 2º andar",
+          hearing_link: "https://tribunal.test/sala",
+        }),
+      ),
+      responsibleName: "Lucas Fictício",
+      checkedByName: "Barbara Fictícia",
+    };
+    // Dado de audiência que sobrou num prazo de outro tipo não sai; motivo só em prazo encerrado.
+    const closed: DeadlineExportRow = deadlineFromAgendaRow(
+      row({ id: "d3", legal_process_id: null, process_title: null, process_cnj: null, status: "CANCELLED", effective_status: "CANCELLED", status_reason: "Acordo", hearing_location: "Fórum", responsible_user_id: null }),
+    );
+    const lines = buildCsv(DEADLINE_EXPORT_COLUMNS, [common, hearing, closed]).split("\r\n");
+    expect(lines[0]).toBe(
+      "Vencimento;Hora;Prazo;Tipo;Situação;Cliente;Número CNJ;Processo;Caso;Responsável;Origem;Conferido por;Conferido em;Modalidade da audiência;Local da audiência;Link da audiência;Descrição;Cumprido em;Motivo da situação",
+    );
+    expect(lines[1]).toBe("10/10/2026;;Réplica;Réplica;Vencido;Maria Fictícia;0001234-56.2026.8.19.0001;Maria x Banco;Revisional Maria;Lucas Fictício;Pessoa;;;;;;Conferir documentos;;");
+    expect(lines[2]).toBe(
+      '20/11/2026;14:30;Audiência de instrução;Audiência;Em aberto;Maria Fictícia;0001234-56.2026.8.19.0001;Maria x Banco;Revisional Maria;Lucas Fictício;Agente;Barbara Fictícia;13/11/2026 12:00;Videoconferência;"Sala 3; 2º andar";https://tribunal.test/sala;;;',
+    );
+    expect(lines[3]).toBe("10/10/2026;;Réplica;Réplica;Cancelado;Maria Fictícia;;;Revisional Maria;;Pessoa;;;;;;;;Acordo");
+  });
+
+  it("ADMIN: os filtros e a ordem da agenda chegam ao repositório (sem a página da tela), com os nomes; a auditoria leva só os filtros", async () => {
+    const { db, calls } = stubDb({ rows: [row({ source: "AGENT", checked_at: "2026-11-13T15:00:00Z", checked_by: CHECKER }), row({ id: "d2", responsible_user_id: null })] });
+    const input = listDeadlinesSchema.parse({ status: "OPEN", type: "REPLY", responsibleUserId: "me", fromDate: "2026-10-01", untilDate: "2026-10-31", agentUnchecked: true, sortDirection: "desc", page: 4, pageSize: 25 });
+    const file = await service.exportDeadlines(ctxFor("ADMIN", db), input);
+
+    expect(calls.table).toBe("deadline_agenda");
+    expect(calls.filters).toEqual([
+      ["eq", "scope_deleted", false],
+      ["eq", "status", "OPEN"],
+      ["eq", "responsible_user_id", USER],
+      ["eq", "deadline_type", "REPLY"],
+      ["gte", "due_date_local", "2026-10-01"],
+      ["lte", "due_date_local", "2026-10-31"],
+      ["eq", "agent_unchecked", true],
+    ]);
+    expect(calls.order[0]).toEqual(["due_at", false]);
+    // A planilha começa da primeira linha, em blocos de 500, qualquer que seja a página aberta na tela.
+    expect(calls.range).toEqual([0, 499]);
+    expect(vi.mocked(listProfileNames).mock.calls.at(-1)?.[1]).toEqual([USER, CHECKER]);
+    const lines = file.content.split("\r\n");
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toContain(";Nome de 00000000-0000-4000-8000-0000000000b1;Agente;Nome de 00000000-0000-4000-8000-0000000000b2;13/11/2026 12:00;");
+    expect([file.rowCount, file.total, file.truncated, file.fileName.startsWith("prazos-")]).toEqual([2, 2, false, true]);
+    expect(calls.rpc).toEqual([
+      [
+        "record_data_export",
+        {
+          p_kind: "deadlines",
+          p_filters: { responsibleUserId: USER, status: "OPEN", type: "REPLY", fromDate: "2026-10-01", untilDate: "2026-10-31", agentUnchecked: true },
+          p_row_count: 2,
+          p_truncated: false,
+        },
+      ],
+    ]);
+    expect(JSON.stringify(calls.rpc)).not.toContain("Maria");
+  });
+
+  it("quem não é ADMIN não exporta: a agenda nem é lida e nada é registrado", async () => {
+    for (const role of ["LAWYER", "ASSISTANT", "PARTNER_ADMIN"] as const) {
+      const { db, calls } = stubDb({ rows: [row()] });
+      expect(await rejected(service.exportDeadlines(ctxFor(role, db), listDeadlinesSchema.parse({})))).toBe("FORBIDDEN");
+      expect([calls.table, calls.rpc]).toEqual([undefined, []]);
+    }
   });
 });

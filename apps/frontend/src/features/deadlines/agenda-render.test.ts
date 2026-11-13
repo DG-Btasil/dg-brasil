@@ -17,6 +17,7 @@ vi.mock("@/server/domain/processes/deadlines/actions", () => {
   const ok = async () => ({ ok: true, data: undefined, requestId: "r" });
   return {
     listDeadlinesAction: ok,
+    exportDeadlinesAction: ok,
     createDeadlineAction: ok,
     updateDeadlineAction: ok,
     completeDeadlineAction: ok,
@@ -118,6 +119,11 @@ describe("agenda de prazos — tela", () => {
     expect(out).toContain(`href="/casos/${CASE}"`);
     // Contadores do escritório e filtros.
     for (const text of ["Vencidos, em aberto", "Vencem hoje", "Vencem em até 5 dias", "Do agente, sem conferência", "Do agente, não conferidos", "Em aberto (com os vencidos)", "Os meus prazos"]) expect(out).toContain(text);
+  });
+
+  it("exportar planilha: só o administrador vê o botão (o servidor confere de novo)", () => {
+    expect(agenda("ADMIN")).toContain("Exportar planilha");
+    for (const role of ["LAWYER", "ASSISTANT"] as const) expect(agenda(role)).not.toContain("Exportar planilha");
   });
 
   it("assistente só lê: vê os prazos e abre o processo, mas não cumpre nem confere", () => {

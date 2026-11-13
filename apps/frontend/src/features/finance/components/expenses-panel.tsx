@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 import { MoreHorizontal, Plus, ReceiptText } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatCNJ, formatCurrency, formatDate, pluralize } from "@/lib/formatting";
@@ -21,6 +21,7 @@ import type { Page } from "@/server/core/pagination";
 import { listExpensesAction } from "@/server/domain/finance/actions";
 import type { ExpenseCategory, ExpenseDTO, ExpenseStatus } from "@/server/domain/finance/dto";
 import { EXPENSE_CATEGORIES, EXPENSE_STATUSES } from "@/server/domain/finance/schemas";
+import { ExportButton, type ExportAction } from "@/features/export/export-button";
 import { EXPENSE_CATEGORY_LABEL, EXPENSE_STATUS_LABEL, EXPENSE_STATUS_TONE } from "../labels";
 import { DEFAULT_EXPENSE_QUERY, EXPENSE_PAGE_SIZE, expenseQueryToInput, expenseQueryToSearchParams, withFinanceTab, type ExpenseListQuery, type FinanceTab } from "../list-query";
 import { useFinanceActions } from "../use-finance-actions";
@@ -57,8 +58,8 @@ export function ExpensesPanel({
   urlTab?: FinanceTab;
   title?: string;
   description?: string;
-  /** EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (a infraestrutura vem de outro pacote de trabalho). */
-  exportAction?: ReactNode;
+  /** Server Action que exporta esta lista em planilha, com os filtros da tela. Sem ela, o botão não aparece. */
+  exportAction?: ExportAction;
 }) {
   const canManage = usePermission("finance.manage");
   const scope = processId ? { processId } : {};
@@ -77,6 +78,8 @@ export function ExpensesPanel({
   const page = result.ok ? result.data : undefined;
   const filtered = !!(query.category || query.status || query.from || query.to);
 
+  // Escopo montado de novo (e não o `scope` de cima): o mesmo objeto usado depois dos hooks impede o React Compiler de otimizar o painel.
+  const exportButton = exportAction ? <ExportButton action={exportAction} input={expenseQueryToInput(query, processId ? { processId } : {})} size="sm" /> : null;
   const newButton = canManage ? (
     <Button size="sm" icon={<Plus className="size-4" aria-hidden />} onClick={() => setModal({ kind: "new" })}>
       Nova despesa
@@ -90,8 +93,7 @@ export function ExpensesPanel({
         description={description}
         actions={
           <div className="flex items-center gap-2">
-            {/* EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (prop exportAction). */}
-            {exportAction}
+            {exportButton}
             {newButton}
           </div>
         }

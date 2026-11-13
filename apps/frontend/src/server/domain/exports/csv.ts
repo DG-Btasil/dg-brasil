@@ -5,7 +5,9 @@
  *
  * Puro e testado (exports.test.ts). Regras de segurança da planilha:
  *   - texto que começa com `=`, `+`, `-`, `@`, tabulação ou retorno ganha um
- *     apóstrofo na frente (o Excel não executa como fórmula);
+ *     apóstrofo na frente (o Excel não executa como fórmula). A exceção é o
+ *     número negativo já formatado (`csvMoney(-200)` → `-200,00`): só dígitos
+ *     e vírgula não formam fórmula, e com apóstrofo o Excel não somaria;
  *   - número vai como número; identificador comprido (CPF, CNPJ, CNJ) deve ir
  *     COM máscara, senão o Excel o trata como número e corta zeros.
  */
@@ -58,13 +60,15 @@ export function csvNumber(value: number | null | undefined, decimals?: number): 
 export const csvMoney = (value: number | null | undefined) => csvNumber(value, 2);
 
 const FORMULA_START = /^[=+\-@\t\r]/;
+/** Número negativo como `csvNumber` e `csvMoney` escrevem: sinal, dígitos e, se houver, vírgula e decimais. */
+const NEGATIVE_NUMBER = /^-\d+(,\d+)?$/;
 const NEEDS_QUOTES = /[";\r\n]|^\s|\s$/;
 
 function cellText(value: CsvCell): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "number") return csvNumber(value);
   if (typeof value === "boolean") return value ? "Sim" : "Não";
-  const text = FORMULA_START.test(value) ? `'${value}` : value;
+  const text = FORMULA_START.test(value) && !NEGATIVE_NUMBER.test(value) ? `'${value}` : value;
   return NEEDS_QUOTES.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

@@ -11,6 +11,9 @@ import { formatNumber, pluralize } from "@/lib/formatting";
 import type { ExportFileDTO } from "@/server/domain/exports/service";
 import { useToast } from "@/store/ui-store";
 
+/** Server Action de exportação de uma lista: recebe a MESMA entrada da listagem. */
+export type ExportAction = (input: unknown) => Promise<ActionResult<ExportFileDTO>>;
+
 /** Baixa o CSV no navegador, com o BOM UTF-8 que o Excel em português precisa. */
 export function downloadCsv(fileName: string, content: string) {
   const url = URL.createObjectURL(csvBlob(content));
@@ -54,7 +57,7 @@ export function ExportButton({
   variant = "secondary",
   size = "md",
 }: {
-  action: (input: unknown) => Promise<ActionResult<ExportFileDTO>>;
+  action: ExportAction;
   input: Record<string, unknown>;
   label?: string;
   variant?: ButtonVariant;

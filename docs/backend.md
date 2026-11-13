@@ -91,7 +91,16 @@ DTO de parceiro com menos colunas que o interno.
 
 ## Exportação de planilhas (CSV)
 
-Tela `/clientes` e `/processos`: botão "Exportar planilha" (só ADMIN). O
+Onde está ligada: Clientes (`/clientes`), Processos (`/processos`), Prazos
+(`/prazos`) e as cinco listas do Financeiro (`/financeiro`: por processo,
+contratos, a receber, recebimentos e despesas). As listas de contratos e de
+despesas dentro do caso e do processo não têm o botão. Colunas de cada
+planilha: `export.ts` do domínio (`clients`, `processes`, `processes/deadlines`,
+`finance`). Em recebimentos, cada lançamento sai com a parte do escritório e a
+do parceiro (a divisão que o banco gravou); estorno e ajuste para menos saem
+com valor negativo, como número.
+
+Em todas: botão "Exportar planilha" (só ADMIN). O
 arquivo sai com os filtros e a ordem da tela, em CSV que o Excel brasileiro
 abre direto (`;`, BOM UTF-8, datas dd/mm/aaaa, vírgula decimal). Limite de
 **5.000 linhas** por arquivo (`EXPORT_MAX_ROWS`); passou disso, sai cortado e a

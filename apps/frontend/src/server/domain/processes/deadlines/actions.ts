@@ -25,6 +25,11 @@ export async function listDeadlinesAction(input: unknown) {
   return runAction({ name: "deadlines.list", permission: "processes.view", schema: listDeadlinesSchema, input, handler: service.listDeadlines });
 }
 
+/** Planilha da agenda (só ADMIN): a MESMA entrada da listagem; fica registrada na auditoria. */
+export async function exportDeadlinesAction(input: unknown) {
+  return runAction({ name: "deadlines.export", permission: "data.export", schema: listDeadlinesSchema, input, handler: service.exportDeadlines });
+}
+
 export async function listUpcomingDeadlinesAction(input: unknown) {
   return runAction({
     name: "deadlines.upcoming",

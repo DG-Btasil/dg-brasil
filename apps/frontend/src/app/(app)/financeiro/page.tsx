@@ -27,6 +27,11 @@ import {
 import { PortalFinance } from "@/features/partner-portal/components/portal-finance";
 import { getCaseCatalogAction } from "@/server/domain/cases/actions";
 import {
+  exportAgreementsAction,
+  exportExpensesAction,
+  exportProcessFinanceAction,
+  exportReceiptStatementAction,
+  exportReceivablesAction,
   getExpenseSummaryAction,
   getFinanceSummaryAction,
   getMyPartnerFinanceAction,
@@ -52,7 +57,7 @@ async function InternalTab({ tab, searchParams }: { tab: FinanceTab; searchParam
   switch (tab) {
     case "processos": {
       const query = processFinanceQueryFromSearchParams(searchParams);
-      return <ProcessFinanceTable initialQuery={query} initialResult={await listProcessFinanceAction(processFinanceQueryToInput(query))} />;
+      return <ProcessFinanceTable initialQuery={query} initialResult={await listProcessFinanceAction(processFinanceQueryToInput(query))} exportAction={exportProcessFinanceAction} />;
     }
     case "contratos": {
       const query = agreementQueryFromSearchParams(searchParams);
@@ -63,22 +68,39 @@ async function InternalTab({ tab, searchParams }: { tab: FinanceTab; searchParam
           syncUrl
           urlTab="contratos"
           description="Contratos de honorários de cada processo. Abra um contrato para ver as parcelas e registrar recebimentos."
+          exportAction={exportAgreementsAction}
         />
       );
     }
     case "a-receber": {
       const query = receivableQueryFromSearchParams(searchParams);
-      return <ReceivablesPanel initialQuery={query} initialResult={await listReceivablesAction(receivableQueryToInput(query))} />;
+      return <ReceivablesPanel initialQuery={query} initialResult={await listReceivablesAction(receivableQueryToInput(query))} exportAction={exportReceivablesAction} />;
     }
     case "recebimentos": {
       // Sem período na URL, o extrato abre no mês corrente (dia de São Paulo, o mesmo no servidor e na tela).
       const today = todaySaoPaulo();
       const query = receiptStatementQueryFromSearchParams(searchParams, today);
-      return <ReceiptStatementPanel today={today} initialQuery={query} initialResult={await listReceiptStatementAction(receiptStatementQueryToInput(query))} />;
+      return (
+        <ReceiptStatementPanel
+          today={today}
+          initialQuery={query}
+          initialResult={await listReceiptStatementAction(receiptStatementQueryToInput(query))}
+          exportAction={exportReceiptStatementAction}
+        />
+      );
     }
     case "despesas": {
       const query = expenseQueryFromSearchParams(searchParams);
-      return <ExpensesPanel initialQuery={query} initialResult={await listExpensesAction(expenseQueryToInput(query))} syncUrl urlTab="despesas" title="Despesas dos processos" />;
+      return (
+        <ExpensesPanel
+          initialQuery={query}
+          initialResult={await listExpensesAction(expenseQueryToInput(query))}
+          syncUrl
+          urlTab="despesas"
+          title="Despesas dos processos"
+          exportAction={exportExpensesAction}
+        />
+      );
     }
     case "modelos": {
       const [models, catalog] = await Promise.all([loadAllPages((page, pageSize) => listFeeModelsAction({ page, pageSize })), getCaseCatalogAction()]);

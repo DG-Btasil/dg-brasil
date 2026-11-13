@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { CircleAlert, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatCNJ, formatCurrency, formatDate, pluralize } from "@/lib/formatting";
@@ -18,6 +18,7 @@ import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
 import type { Page } from "@/server/core/pagination";
 import { listReceivablesAction } from "@/server/domain/finance/actions";
 import type { ReceivableItemDTO, ReceivablesDTO } from "@/server/domain/finance/dto";
+import { ExportButton, type ExportAction } from "@/features/export/export-button";
 import { PAYMENT_DB_STATUS_LABEL, PAYMENT_DB_STATUS_TONE, PAYMENT_TYPE_LABEL } from "../labels";
 import {
   DEFAULT_RECEIVABLE_QUERY,
@@ -46,8 +47,8 @@ export function ReceivablesPanel({
 }: {
   initialQuery: ReceivableListQuery;
   initialResult: ActionResult<ReceivablesDTO>;
-  /** EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (a infraestrutura vem de outro pacote de trabalho). */
-  exportAction?: ReactNode;
+  /** Server Action que exporta esta lista em planilha, com os filtros da tela. Sem ela, o botão não aparece. */
+  exportAction?: ExportAction;
 }) {
   const { query, setQuery, result, pending, retry } = useServerList<ReceivableListQuery, ReceivableItemDTO>({
     initialQuery,
@@ -66,8 +67,7 @@ export function ReceivablesPanel({
       <PanelHeader
         title="A receber"
         description="Parcelas em aberto, da mais antiga para a mais distante. Para registrar o recebimento, abra o contrato do processo."
-        /* EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (prop exportAction). */
-        actions={exportAction}
+        actions={exportAction && <ExportButton action={exportAction} input={receivableQueryToInput(query)} size="sm" />}
       />
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-5 py-3" role="search" aria-label="Filtrar parcelas a receber">
         <SearchInput
