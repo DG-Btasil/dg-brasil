@@ -1,7 +1,7 @@
 import type { Address, ID, Timestamps } from "./common";
 
 /**
- * O escritório proprietário (OwnerOffice): Bárbara Cardoso Advocacia.
+ * O escritório proprietário (OwnerOffice): Barbara Cardoso Advocacia.
  * Existe exatamente um. Outras organizações são PartnerOffice.
  */
 export interface Office extends Timestamps {

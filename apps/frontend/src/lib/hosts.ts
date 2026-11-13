@@ -2,7 +2,7 @@ import type { Audience } from "@/lib/permissions";
 
 /**
  * Domínios do mesmo app (uma única base de código e um único deploy):
- * - app.barbaracardoso.adv.br    → ambiente interno (Bárbara Cardoso Advocacia)
+ * - app.barbaracardoso.adv.br    → ambiente interno (Barbara Cardoso Advocacia)
  * - portal.barbaracardoso.adv.br → portal dos escritórios parceiros
  * Configuráveis por ambiente. O domínio só ajusta textos e atalhos do login:
  * quem decide o acesso é o papel do usuário (validado no backend), nunca o host.

@@ -31,7 +31,7 @@ O banco (Postgres) é a fonte da verdade; o front foi alinhado ao vocabulário d
   `createdByOrganizationId` (quem operou o sistema na criação — auditoria),
   `partnerOrganizationId` (acesso operacional; nulo = caso interno) e
   `originOrganizationId` (atribuição comercial — divisão da parceria). A origem nunca dá
-  acesso. Ex.: o parceiro Almeida cria um caso com origem Bárbara → o Almeida continua
+  acesso. Ex.: o parceiro Almeida cria um caso com origem Barbara → o Almeida continua
   vendo o caso e não há divisão de parceria. Regra em `partnerCanSeeCase()`
   (`src/lib/permissions/partner-scope.ts`).
 - **Origem nunca implica acesso operacional.** Definir ou alterar `originOrganizationId`
@@ -97,7 +97,7 @@ Para o backend dos módulos (4.2/4.3):
 ## 2. Escritório proprietário único (não é multi-tenant)
 
 O DG Brasil **não** é mais um SaaS vendido para vários escritórios independentes. Existe
-um único escritório proprietário — **Bárbara Cardoso Advocacia** (`OwnerOffice`) — que
+um único escritório proprietário — **Barbara Cardoso Advocacia** (`OwnerOffice`) — que
 opera todo o sistema e trabalha com **escritórios parceiros**. As regras completas estão
 na seção **13. Parcerias**.
 
@@ -393,7 +393,7 @@ visibilidade, puras), `src/store/scope.ts` (recorte aplicado ao estado inteiro),
   - acordos financeiros do próprio parceiro **somente** para `PARTNER_ADMIN`;
   - auditoria: nunca. Apenas eventos com `partnerSummary` (texto seguro), sem `details`, e
     com autoria interna substituída pelo nome do escritório.
-- O que o parceiro **nunca** recebe: clientes exclusivos da Bárbara, dados de outros
+- O que o parceiro **nunca** recebe: clientes exclusivos da Barbara, dados de outros
   parceiros, revisões (conteúdo, comentários, versões internas), agentes, Skills, teses,
   prompts, configurações de IA, consumo de tokens, financeiro global, contratos de
   honorários internos, integrações, auditoria interna e configurações administrativas.
@@ -440,7 +440,7 @@ visibilidade, puras), `src/store/scope.ts` (recorte aplicado ao estado inteiro),
   **caso** (`legal_case.origin_office_id`). O processo guarda só a origem técnica
   (`origin` = `MANUAL | AGENT | INTEGRATION | IMPORT`) e `legal_case_id`.
 - Cliente e caso **não** compartilham automaticamente a mesma origem: um cliente próprio da
-  Bárbara pode ter um caso originado pelo Parceiro A.
+  Barbara pode ter um caso originado pelo Parceiro A.
 - Processo cadastrado pelo parceiro só pode ser vinculado a caso do próprio parceiro e
   aparece imediatamente para a equipe interna.
 
@@ -512,7 +512,7 @@ recebe valores de parceria (valor da causa continua visível como dado jurídico
 
 - `PartnerCaseSubmission` **deixou de existir**: o envio cria diretamente um `LegalCase`
   (seção 15). Fluxo do portal: Cliente (CPF/CNPJ, duplicidade, cadastro básico) → Novo caso
-  (com origem permitida) → documentos → revisar → **"Confirmar e enviar para Bárbara
+  (com origem permitida) → documentos → revisar → **"Confirmar e enviar para a Barbara
   Cardoso Advocacia"** → `SUBMITTED`. Em uma transação: cliente (se novo) + relacionamento +
   caso + documentos (com `legal_case_id`) + notificação interna + auditoria. Nenhum
   processo nem acordo é criado no envio.
@@ -559,12 +559,12 @@ visível ao parceiro, valor financeiro atualizado e repasse registrado. Cada eve
   - equipe interna com permissão de cadastro: escritório proprietário ou qualquer parceiro ATIVO;
   - `PARTNER_ADMIN` / `PARTNER_USER`: **somente** o próprio `PartnerOffice` ou o `OwnerOffice`.
   - Nunca aceitar arbitrariamente um `officeId` enviado pelo navegador: rejeitar com 422/403.
-- Padrão ao abrir o cadastro: o escritório do usuário (Bárbara para a equipe interna; o
+- Padrão ao abrir o cadastro: o escritório do usuário (Barbara para a equipe interna; o
   próprio parceiro para usuários de parceiro).
 - **Deduplicação não sobrescreve a origem histórica.** Se o CPF/CNPJ já existe, o cliente
   canônico mantém `origin_office_id` original; o novo vínculo/processo segue com a própria
-  origem de processo. Ex.: João foi cadastrado pela Bárbara; Almeida informa o CPF → origem
-  do cliente continua "Bárbara Cardoso Advocacia"; o novo processo tem origem Almeida.
+  origem de processo. Ex.: João foi cadastrado pela Barbara; Almeida informa o CPF → origem
+  do cliente continua "Barbara Cardoso Advocacia"; o novo processo tem origem Almeida.
 - Alteração posterior de origem é ação explícita, permitida a quem pode atribuir o novo
   valor, e sempre auditada (`CLIENT_ORIGIN_CHANGED`, antes/depois). A definição inicial gera
   `CLIENT_ORIGIN_SET`.
@@ -643,7 +643,7 @@ Rótulos em `src/lib/constants/legal.ts`.
 ```
 Client (canônico)
  └─ LegalCase (legal_case)         -- a demanda; existe antes (ou sem) processo
-     ├─ origin_organization_id      -- Bárbara ou parceiro (atribuição comercial; independe da origem do cliente)
+     ├─ origin_organization_id      -- Barbara ou parceiro (atribuição comercial; independe da origem do cliente)
      ├─ partner_organization_id NULL -- parceiro com acesso operacional (único critério de visibilidade)
      ├─ created_by_organization_id, created_by  -- auditoria
      ├─ assigned_lawyer_id NULL     -- obrigatório para aceitar
@@ -679,8 +679,8 @@ ACCEPTED | REJECTED → IN_PROGRESS → CLOSED → ARCHIVED`.
 4. A origem do caso é independente da origem do cliente; o mesmo cliente pode ter casos de
    origens diferentes.
 5. Origens permitidas na criação (`getAllowedClientOrigins`, mesma regra do cliente):
-   interno → Bárbara + parceiros ATIVOS (padrão Bárbara); parceiro → próprio escritório ou
-   Bárbara (padrão o próprio). Validar no servidor; rejeitar qualquer outro valor.
+   interno → Barbara + parceiros ATIVOS (padrão Barbara); parceiro → próprio escritório ou
+   Barbara (padrão o próprio). Validar no servidor; rejeitar qualquer outro valor.
 6. Antes do aceite, a origem pode ser corrigida por quem tem a origem nas opções permitidas.
 7. Depois do aceite, **somente Administrador** (`cases.origin.override`) altera a origem,
    com confirmação forte ("Alterar a origem de um caso aceito pode afetar regras financeiras

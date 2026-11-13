@@ -114,7 +114,7 @@ export function PartnerShareView({
       <Panel>
         <PanelHeader
           title="Repasses"
-          description={manage ? "Registro interno: nenhuma transferência é feita pelo sistema. O banco escolhe as divisões com saldo, das mais antigas." : "Registros informados pela Bárbara Cardoso Advocacia."}
+          description={manage ? "Registro interno: nenhuma transferência é feita pelo sistema. O banco escolhe as divisões com saldo, das mais antigas." : "Registros informados pela Barbara Cardoso Advocacia."}
           actions={
             manage ? (
               <Button size="sm" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => setCreating(true)}>

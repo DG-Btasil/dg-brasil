@@ -11,7 +11,7 @@ export function useRole(): Role | undefined {
 }
 
 /**
- * Público do usuário: OWNER (equipe da Bárbara Cardoso Advocacia) ou
+ * Público do usuário: OWNER (equipe da Barbara Cardoso Advocacia) ou
  * PARTNER (escritório parceiro). Componentes usam para escolher QUAL tela
  * montar; o que cada tela pode ver continua decidido por permissões e pelo
  * servidor.

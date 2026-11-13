@@ -54,7 +54,7 @@ const SERIF = "Georgia, 'Times New Roman', Times, serif";
 const SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 const BRAND = "DG Brasil";
-const INSTITUTION = "Bárbara Cardoso Advocacia";
+const INSTITUTION = "Barbara Cardoso Advocacia";
 const TAGLINE = `Plataforma de parceiros da ${INSTITUTION}`;
 
 /* ------------------------------------------------------------------ */
@@ -346,7 +346,7 @@ function perRole(vars, { internal, partnerAdmin, partnerUser, fallback }) {
 
 /**
  * Convite. Uma mensagem para cada público:
- *  - equipe da Bárbara Cardoso Advocacia (ADMIN, LAWYER, ASSISTANT);
+ *  - equipe da Barbara Cardoso Advocacia (ADMIN, LAWYER, ASSISTANT);
  *  - administrador(a) de escritório parceiro (PARTNER_ADMIN), que depois
  *    convida a própria equipe;
  *  - integrante de escritório parceiro (PARTNER_USER).
@@ -504,9 +504,9 @@ const SAMPLES = {
   invite: [
     { key: "parceiro-admin", label: "Administrador(a) de escritório parceiro", role: "PARTNER_ADMIN", firstName: "Mariana", org: PARTNER_SAMPLE_ORG, email: "mariana@almeidaprado.adv.br" },
     { key: "parceiro-usuario", label: "Integrante de escritório parceiro (convidado pelo administrador do parceiro)", role: "PARTNER_USER", firstName: "Juliana", org: PARTNER_SAMPLE_ORG, email: "juliana@almeidaprado.adv.br" },
-    { key: "advogado", label: "Advogado(a) da equipe da Bárbara Cardoso Advocacia", role: "LAWYER", firstName: "Rafael", org: INSTITUTION, email: "rafael@barbaracardoso.adv.br" },
-    { key: "assistente", label: "Assistente da equipe da Bárbara Cardoso Advocacia", role: "ASSISTANT", firstName: "Camila", org: INSTITUTION, email: "camila@barbaracardoso.adv.br" },
-    { key: "administrador", label: "Administrador(a) da Bárbara Cardoso Advocacia", role: "ADMIN", firstName: "Helena", org: INSTITUTION, email: "helena@barbaracardoso.adv.br" },
+    { key: "advogado", label: "Advogado(a) da equipe da Barbara Cardoso Advocacia", role: "LAWYER", firstName: "Rafael", org: INSTITUTION, email: "rafael@barbaracardoso.adv.br" },
+    { key: "assistente", label: "Assistente da equipe da Barbara Cardoso Advocacia", role: "ASSISTANT", firstName: "Camila", org: INSTITUTION, email: "camila@barbaracardoso.adv.br" },
+    { key: "administrador", label: "Administrador(a) da Barbara Cardoso Advocacia", role: "ADMIN", firstName: "Helena", org: INSTITUTION, email: "helena@barbaracardoso.adv.br" },
     { key: "sem-dados", label: "Sem nome nem papel (convite antigo — fallback)", role: "", firstName: "", org: "", email: "contato@escritorio-parceiro.com.br" },
   ],
   recovery: [
@@ -561,7 +561,7 @@ function writePreviews(outDir, config) {
 </style></head><body>
 <h1>DG Brasil — pré-visualização dos e-mails</h1>
 <p class="sub">Gerado por supabase/templates/build.mjs com dados de exemplo. Links desativados para envio real; ${config.supportEmail ? "seção de suporte ATIVA" : "sem e-mail de suporte configurado (seção oculta)"}.</p>
-${section("invite", "Convite de primeiro acesso — “Seu convite para o DG Brasil | Bárbara Cardoso Advocacia”")}
+${section("invite", "Convite de primeiro acesso — “Seu convite para o DG Brasil | Barbara Cardoso Advocacia”")}
 ${section("recovery", "Redefinição de senha — “Redefinição de senha | DG Brasil”")}
 </body></html>
 `,

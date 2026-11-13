@@ -7,7 +7,7 @@ export type ISODate = string;
 
 /**
  * Todo objeto de negócio pertence ao escritório proprietário (OwnerOffice:
- * Bárbara Cardoso Advocacia). Não há multi-tenant: escritórios parceiros
+ * Barbara Cardoso Advocacia). Não há multi-tenant: escritórios parceiros
  * são entidades DENTRO do escritório proprietário, com acesso recortado.
  */
 export interface OfficeScoped {

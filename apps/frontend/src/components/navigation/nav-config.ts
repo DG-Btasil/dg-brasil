@@ -36,7 +36,7 @@ export interface NavItem {
   description: string;
   icon: LucideIcon;
   permission: Permission;
-  /** Ambiente em que o item aparece: interno (Bárbara Cardoso Advocacia) ou portal do parceiro. */
+  /** Ambiente em que o item aparece: interno (Barbara Cardoso Advocacia) ou portal do parceiro. */
   audience: Audience;
 }
 

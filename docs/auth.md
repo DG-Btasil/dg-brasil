@@ -310,12 +310,12 @@ npm run emails:preview   # pré-visualização em supabase/.preview-emails/index
   e rode `npm run emails`. Vazio = a seção não aparece. Domínios de exemplo
   (`.test`, `.exemplo`, `example.com`…) são recusados.
 - **Aplicar no projeto remoto** (manual): Authentication → Email Templates →
-  *Invite user*: assunto `Seu convite para o DG Brasil | Bárbara Cardoso Advocacia`
+  *Invite user*: assunto `Seu convite para o DG Brasil | Barbara Cardoso Advocacia`
   e o conteúdo de `invite.html`; *Reset password*: assunto
   `Redefinição de senha | DG Brasil` e o conteúdo de `recovery.html`. (Ou
   `npx supabase config push`, que sobrescreve o painel inteiro com o `config.toml`.)
 - **Convite por público**: `user_metadata.invite_role` e `organization_name`
-  (gravados por `inviteUser`) escolhem o texto: equipe da Bárbara Cardoso
+  (gravados por `inviteUser`) escolhem o texto: equipe da Barbara Cardoso
   Advocacia (`ADMIN`/`LAWYER`/`ASSISTANT`), administrador(a) de escritório
   parceiro (`PARTNER_ADMIN`, que depois convida a própria equipe) e integrante
   do parceiro (`PARTNER_USER`), com o cartão "Escritório / Perfil de acesso".

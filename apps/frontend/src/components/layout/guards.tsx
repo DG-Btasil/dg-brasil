@@ -56,7 +56,7 @@ export function RequirePermission({ permission, children, fallback }: { permissi
 }
 
 /**
- * Escolhe a tela conforme o público: ambiente interno (Bárbara Cardoso
+ * Escolhe a tela conforme o público: ambiente interno (Barbara Cardoso
  * Advocacia) ou portal do parceiro. As duas árvores nunca são montadas
  * juntas, e cada uma lê apenas o estado já recortado para a sessão.
  */

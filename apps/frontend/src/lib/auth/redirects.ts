@@ -1,3 +1,4 @@
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import type { AuthOnboardingState, SessionResult } from "./types";
 
 /** Páginas do fluxo de identidade. Uma fonte só para servidor, proxy e telas. */
@@ -136,7 +137,7 @@ export const BLOCKED_MESSAGES: Record<string, { title: string; body: string }> =
   },
   "escritorio-suspenso": {
     title: "Escritório sem acesso",
-    body: "O acesso do seu escritório ao DG Brasil está suspenso. Fale com a administração da Bárbara Cardoso Advocacia.",
+    body: `O acesso do seu escritório ao DG Brasil está suspenso. Fale com a administração da ${OWNER_OFFICE_NAME}.`,
   },
   "escritorio-pendente": {
     title: "Escritório em ativação",

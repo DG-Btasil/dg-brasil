@@ -17,7 +17,7 @@ Regras práticas do dia a dia estão em [CONVENTIONS.md](CONVENTIONS.md).
 ## 1. Domínio
 
 ```
-BÁRBARA CARDOSO ADVOCACIA — escritório proprietário único (officeId)
+BARBARA CARDOSO ADVOCACIA — escritório proprietário único (officeId)
  └─ USUÁRIOS INTERNOS (Administrador · Advogado · Assistente)
  └─ ESCRITÓRIOS PARCEIROS (PartnerOffice)
      └─ USUÁRIOS PARCEIROS (Administrador do parceiro · Usuário do parceiro)

@@ -19,7 +19,7 @@ function ctx(over: Partial<SessionContextRow> = {}, org: Partial<NonNullable<Ses
       id: "m1",
       role: "LAWYER",
       status: "ACTIVE",
-      organization: { id: "o1", type: "OWNER", name: "Bárbara Cardoso Advocacia", status: "ACTIVE", deleted: false, ...org },
+      organization: { id: "o1", type: "OWNER", name: "Barbara Cardoso Advocacia", status: "ACTIVE", deleted: false, ...org },
     },
     legal_acceptances: ALL_ACCEPTED,
     aal: "aal2",

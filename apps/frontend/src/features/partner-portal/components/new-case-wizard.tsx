@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -97,7 +98,7 @@ const required = (message: string) => (x: string) => !!x.trim() || message;
 /**
  * Envio de caso pelo portal do parceiro (partnerSubmitCaseAction):
  * Cliente (CPF/CNPJ, duplicidade, cadastro básico) → Novo caso (com a origem
- * permitida) → documentos → revisão → envio à Bárbara Cardoso Advocacia.
+ * permitida) → documentos → revisão → envio à Barbara Cardoso Advocacia.
  * Cliente + caso nascem numa operação atômica e idempotente (mesma chave por
  * intenção de envio). Os arquivos sobem DEPOIS, para o caso criado, pelo
  * fluxo de upload assinado — falha num arquivo não desfaz o caso.
@@ -107,7 +108,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
   const failed = useActionFeedback();
   const idempotency = useIdempotencyKey();
   const { owner } = useOrgDirectory();
-  // Opções da regra central: somente o próprio escritório e a Bárbara Cardoso Advocacia.
+  // Opções da regra central: somente o próprio escritório e a Barbara Cardoso Advocacia.
   const originOptions = useOriginOptions();
   const defaultOrigin = useDefaultOrigin();
   const [step, setStep] = useState<StepKey>(presetClient ? "case" : "identify");
@@ -317,7 +318,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
           <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-success-soft text-success">
             <CheckCircle2 className="size-6" aria-hidden />
           </div>
-          <h1 className="font-serif text-[24px] text-navy">Enviado para Bárbara Cardoso Advocacia</h1>
+          <h1 className="font-serif text-[24px] text-navy">Enviado para a {OWNER_OFFICE_NAME}</h1>
           <p className="mx-auto mt-2 max-w-[440px] text-[13px] text-muted">
             O caso está com a situação <strong>Enviado</strong>. Você será notificado quando for analisado e poderá acompanhar em Casos.
             {result.clientExisted && " O cliente já tinha cadastro: o caso foi vinculado a ele, sem duplicar."}
@@ -687,7 +688,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
             <Field label="Relato do caso" requirement="required" error={errors.summary?.message} className="col-span-2">
               {(p) => <Textarea {...p} rows={4} maxLength={10_000} {...register("summary", { validate: (x) => !!x.trim() || "Descreva o caso." })} />}
             </Field>
-            <Field label="Observações" requirement="optional" hint="Visíveis para a Bárbara Cardoso Advocacia e para o seu escritório." className="col-span-2">
+            <Field label="Observações" requirement="optional" hint={`Visíveis para a ${OWNER_OFFICE_NAME} e para o seu escritório.`} className="col-span-2">
               {(p) => <Textarea {...p} rows={2} maxLength={5000} {...register("notes")} />}
             </Field>
           </PanelBody>
@@ -706,7 +707,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
           <PanelHeader title="Revisar envio" />
           <PanelBody className="space-y-5">
             <Callout tone="warning" title="Confira antes de enviar">
-              Confirme se os dados do cliente e os documentos estão corretos antes de enviá-los para Bárbara Cardoso Advocacia. Depois do envio, documentos não podem ser
+              Confirme se os dados do cliente e os documentos estão corretos antes de enviá-los para a {OWNER_OFFICE_NAME}. Depois do envio, documentos não podem ser
               editados nem apagados.
             </Callout>
             <section>
@@ -765,7 +766,7 @@ export function NewCaseWizard({ catalog, presetClient, mode = "client" }: { cata
               Voltar e revisar
             </Button>
             <Button onClick={submit} loading={sending}>
-              Confirmar e enviar para Bárbara Cardoso Advocacia
+              Confirmar e enviar para a {OWNER_OFFICE_NAME}
             </Button>
           </PanelFooter>
         </Panel>

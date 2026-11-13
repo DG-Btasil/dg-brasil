@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import Link from "next/link";
 import { useMemo, type ReactNode } from "react";
 import { FolderOpen, FolderPlus, Plus } from "lucide-react";
@@ -53,7 +54,7 @@ export function PortalCaseList({ insights, initialQuery, initialResult }: {
     <PortalServerList
       insights={insights}
       title="Casos"
-      description="Casos do seu escritório enviados à Bárbara Cardoso Advocacia."
+      description={`Casos do seu escritório enviados à ${OWNER_OFFICE_NAME}.`}
       cta={cta}
       initialQuery={initialQuery}
       initialResult={initialResult}
@@ -61,7 +62,7 @@ export function PortalCaseList({ insights, initialQuery, initialResult }: {
       noun={{ one: "caso", many: "casos" }}
       searchLabel="Buscar por caso ou parte contrária"
       statusOptions={STATUS_OPTIONS}
-      empty={{ icon: FolderOpen, title: "Nenhum caso ainda.", description: "Envie um caso para a Bárbara Cardoso Advocacia analisar." }}
+      empty={{ icon: FolderOpen, title: "Nenhum caso ainda.", description: `Envie um caso para a ${OWNER_OFFICE_NAME} analisar.` }}
       errorTitle="Não foi possível carregar os casos."
     >
       {(rows) => (
@@ -132,7 +133,7 @@ export function PortalCaseDetail({
           <div className="space-y-5">
             {legalCase.status === "REJECTED" && (
               <Callout tone="neutral" title="Caso não aceito">
-                {legalCase.rejectionReasonPublic ?? "A Bárbara Cardoso Advocacia não aceitou este caso."}
+                {legalCase.rejectionReasonPublic ?? `A ${OWNER_OFFICE_NAME} não aceitou este caso.`}
               </Callout>
             )}
             <Panel>
@@ -168,7 +169,7 @@ export function PortalCaseDetail({
           </div>
         )}
         {tab === "pendencias" && (
-          <RequestsPanel scope={{ legalCaseId: legalCase.id }} initial={requests} title="Pendências deste caso" description="Solicitações da Bárbara Cardoso Advocacia. Responda enquanto estiverem abertas." showCase={false} />
+          <RequestsPanel scope={{ legalCaseId: legalCase.id }} initial={requests} title="Pendências deste caso" description={`Solicitações da ${OWNER_OFFICE_NAME}. Responda enquanto estiverem abertas.`} showCase={false} />
         )}
         {tab === "processos" && <CaseProcesses legalCase={legalCase} processes={processes} closed={closed} />}
         {tab === "historico" && <PortalCaseHistory legalCaseId={legalCase.id} />}

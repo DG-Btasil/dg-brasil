@@ -50,7 +50,7 @@ papel real. O ADMIN tem **Restaurar dados de demonstração** no menu do avatar.
 
 | Papel | Persona mock | Acessa |
 |---|---|---|
-| Administrador | Bárbara Cardoso — `barbara@barbaracardoso.exemplo` | Tudo, inclusive Financeiro, DG Brasil (Referências) e alteração de origem de caso aceito |
+| Administrador | Barbara Cardoso — `barbara@barbaracardoso.exemplo` | Tudo, inclusive Financeiro, DG Brasil (Referências) e alteração de origem de caso aceito |
 | Advogado | Cláudio — `claudio@barbaracardoso.exemplo` | Home, Clientes, Casos (aceite/rejeição), Processos, Revisões |
 | Assistente | Renata — `renata@barbaracardoso.exemplo` | Home, Clientes, Casos, Processos |
 | Administrador do parceiro | Almeida Advocacia | Portal: Início, Clientes, Casos, Processos, Pendências, Financeiro |
@@ -67,7 +67,7 @@ Almeida Advocacia.
 4. *Aceitar* → modal "Definir advogado responsável" → caso aceito (origem parceiro cria o acordo de parceria)
 5. Aba Processos → *Cadastrar processo* (um caso pode ter vários processos)
 6. Caso de parceiro → *Rejeitar* com "Comunicação ao parceiro" e "Nota interna"
-7. Entrar com uma conta **Administrador do parceiro** → Casos → ver "Não aceito" com o motivo público; *Novo caso* → *Confirmar e enviar para Bárbara Cardoso Advocacia*
+7. Entrar com uma conta **Administrador do parceiro** → Casos → ver "Não aceito" com o motivo público; *Novo caso* → *Confirmar e enviar para a Barbara Cardoso Advocacia*
 8. DG Brasil → Referências → *Adicionar referência*
 
 ## Estrutura

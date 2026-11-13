@@ -11,7 +11,7 @@ export interface CaseFilters {
   q: string;
   status: LegalCaseStatus | "";
   area: LegalArea | "";
-  /** "INTERNAL" = Bárbara Cardoso Advocacia; "PARTNER" = qualquer parceiro. */
+  /** "INTERNAL" = Barbara Cardoso Advocacia; "PARTNER" = qualquer parceiro. */
   origin: "" | "INTERNAL" | "PARTNER";
   partnerOfficeId: string;
   lawyerId: string;

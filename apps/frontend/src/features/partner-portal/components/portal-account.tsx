@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import { formatCNPJ, formatDate, formatPhone } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { ROLE_LABEL } from "@/lib/permissions";
@@ -59,7 +60,7 @@ export function PortalAccount({
           </PanelBody>
         </Panel>
         <Panel className="col-span-12 xl:col-span-7">
-          <PanelHeader title="Escritório" description="Para alterar estes dados, fale com a Bárbara Cardoso Advocacia." />
+          <PanelHeader title="Escritório" description={`Para alterar estes dados, fale com a ${OWNER_OFFICE_NAME}.`} />
           {!office.ok ? (
             <ActionErrorState error={office} title="Não foi possível carregar o escritório." />
           ) : (
@@ -88,7 +89,7 @@ export function PortalAccount({
                   columns={2}
                   items={[
                     { label: "Seu escritório", value: `${settings.data.partnerPercentage}%` },
-                    { label: "Bárbara Cardoso Advocacia", value: `${settings.data.ownerPercentage}%` },
+                    { label: OWNER_OFFICE_NAME, value: `${settings.data.ownerPercentage}%` },
                   ]}
                 />
               </PanelBody>

@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -54,7 +55,7 @@ export function PortalProcessList({ insights, initialQuery, initialResult }: {
     <PortalServerList
       insights={insights}
       title="Processos"
-      description="Processos dos casos do seu escritório, conduzidos pela Bárbara Cardoso Advocacia."
+      description={`Processos dos casos do seu escritório, conduzidos pela ${OWNER_OFFICE_NAME}.`}
       cta={cta}
       initialQuery={initialQuery}
       initialResult={initialResult}
@@ -150,7 +151,7 @@ export function PortalProcessDetail({
                   { label: "Parte contrária", value: process.opposingParty },
                   { label: "Distribuição", value: process.distributionDate ? formatDate(process.distributionDate) : undefined },
                   ...(showCaseValue ? [{ label: "Valor da causa", value: process.caseValue !== undefined ? formatCurrency(process.caseValue) : undefined }] : []),
-                  { label: "Conduzido por", value: "Bárbara Cardoso Advocacia" },
+                  { label: "Conduzido por", value: OWNER_OFFICE_NAME },
                 ]}
               />
             </PanelBody>
@@ -171,7 +172,7 @@ export function PortalProcessDetail({
           />
         )}
         {tab === "pendencias" && (
-          <RequestsPanel scope={{ legalCaseId: process.legalCaseId }} initial={requests} title="Pendências do caso" description="Solicitações da Bárbara Cardoso Advocacia sobre o caso deste processo." showCase={false} />
+          <RequestsPanel scope={{ legalCaseId: process.legalCaseId }} initial={requests} title="Pendências do caso" description={`Solicitações da ${OWNER_OFFICE_NAME} sobre o caso deste processo.`} showCase={false} />
         )}
       </TabPanel>
     </PageContainer>

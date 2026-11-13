@@ -254,7 +254,7 @@ otp_expiry = 3600
 # templates/build.mjs (`npm run emails`). Em projeto remoto, copie assunto e
 # conteúdo para Authentication → Email Templates (ver docs/auth.md).
 [auth.email.template.invite]
-subject = "Seu convite para o DG Brasil | Bárbara Cardoso Advocacia"
+subject = "Seu convite para o DG Brasil | Barbara Cardoso Advocacia"
 content_path = "./supabase/templates/invite.html"
 
 [auth.email.template.recovery]

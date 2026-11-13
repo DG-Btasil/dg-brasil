@@ -80,11 +80,11 @@ describe("Configurações → Geral (escritório real)", () => {
   });
   it("vazio limpa (null); endereço vazio = null; passa no schema real", () => {
     const patch = officePatchToServer({
-      name: " Bárbara Cardoso Advocacia ",
+      name: " Barbara Cardoso Advocacia ",
       legalName: "",
       cnpj: "",
       oab: "OAB/SP 1",
-      principalLawyer: "Bárbara",
+      principalLawyer: "Barbara",
       email: "",
       phone: "",
       website: "",
@@ -98,7 +98,7 @@ describe("Configurações → Geral (escritório real)", () => {
       statesOfPractice: ["SP", "SP"],
       units: "Sede\n\nFilial ",
     } as Parameters<typeof officePatchToServer>[0]);
-    expect(patch).toMatchObject({ name: "Bárbara Cardoso Advocacia", legalName: null, email: null, address: null, units: ["Sede", "Filial"] });
+    expect(patch).toMatchObject({ name: "Barbara Cardoso Advocacia", legalName: null, email: null, address: null, units: ["Sede", "Filial"] });
     expect(updateOwnerOfficeSchema.parse(patch)).toMatchObject({ statesOfPractice: ["SP"], oab: { state: "SP", number: "1" } });
   });
 });
