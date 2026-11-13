@@ -78,7 +78,7 @@ export function AuditLog() {
     <Panel>
       <PanelHeader
         title="Registro de auditoria"
-        description="Ações relevantes feitas por pessoas, agentes e pelo sistema, registradas pelo banco."
+        description="Ações relevantes feitas por pessoas, agentes e pelo sistema, registradas automaticamente."
         actions={page ? <span className="text-[12px] text-muted tabular">{pluralize(page.total, "evento", "eventos")}</span> : undefined}
       />
       <div className="flex flex-wrap items-end gap-3 border-b border-line px-5 py-3" role="search" aria-label="Filtrar auditoria">

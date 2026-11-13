@@ -39,7 +39,6 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "settings.security.view": "Ver segurança e auditoria",
   "settings.notifications.edit": "Editar preferências de notificação",
   "audit.view": "Ver registro de auditoria",
-  "demo.tools": "Ferramentas de demonstração",
   "partnerPortal.view": "Portal do parceiro",
   "partnerPortal.clients.create": "Parceiro: cadastrar clientes",
   "partnerPortal.clients.edit": "Parceiro: editar dados básicos de clientes",
@@ -74,5 +73,5 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
       "settings.notifications.edit",
     ],
   },
-  { label: "Auditoria e demonstração", permissions: ["audit.view", "demo.tools"] },
+  { label: "Auditoria", permissions: ["audit.view"] },
 ];

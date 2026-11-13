@@ -2,7 +2,6 @@
 
 import { useCallback } from "react";
 import { audienceOf, can, type Audience, type Permission } from "@/lib/permissions";
-import { useAppStore } from "@/store/app-store";
 import type { Role } from "@/types";
 import { useClientSession } from "./session-context";
 
@@ -15,7 +14,7 @@ export function useRole(): Role | undefined {
  * Público do usuário: OWNER (equipe da Bárbara Cardoso Advocacia) ou
  * PARTNER (escritório parceiro). Componentes usam para escolher QUAL tela
  * montar; o que cada tela pode ver continua decidido por permissões e pelo
- * escopo de dados (store/scope.ts).
+ * servidor.
  */
 export function useAudience(): Audience | undefined {
   return audienceOf(useRole());
@@ -34,13 +33,4 @@ export function usePermission(permission: Permission): boolean {
 export function useCan(): (permission: Permission) => boolean {
   const role = useRole();
   return useCallback((permission: Permission) => can(role, permission), [role]);
-}
-
-/**
- * Ferramentas da demonstração (dados mock). Login/logout são do Supabase Auth;
- * a introdução do produto fica no banco (features/tour/product-tour-state).
- */
-export function useSessionActions() {
-  const resetDemo = useAppStore((s) => s.resetDemo);
-  return { resetDemo };
 }

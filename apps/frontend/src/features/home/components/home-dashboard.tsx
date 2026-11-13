@@ -286,7 +286,7 @@ function ProcessDistribution({ distribution }: { distribution: InternalHomeData[
   const total = slices.reduce((sum, s) => sum + s.count, 0);
   return (
     <Panel className="flex h-full flex-col">
-      <PanelHeader title="Distribuição dos processos" description="Por status, contada no banco" />
+      <PanelHeader title="Distribuição dos processos" description="Por situação" />
       {distribution === null ? (
         <EmptyState compact icon={PieIcon} title="Não foi possível contar os processos." />
       ) : total === 0 ? (

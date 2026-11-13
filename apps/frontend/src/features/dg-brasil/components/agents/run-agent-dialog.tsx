@@ -61,7 +61,7 @@ export function RunAgentDialog({ agent, onClose }: { agent: AgentDetailDTO; onCl
       open
       onOpenChange={(o) => !o && onClose()}
       title={`Executar ${agent.name} em um caso`}
-      description="Execução avulsa (fora de análise). Use só casos fictícios até a revisão LGPD do provedor."
+      description="Execução avulsa (fora de análise). Antes de enviar dados reais de clientes aos agentes, conclua a revisão LGPD do provedor de IA."
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>

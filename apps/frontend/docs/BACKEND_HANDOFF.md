@@ -91,7 +91,8 @@ Para o backend dos módulos (4.2/4.3):
   (`createSupabaseAdminClient`) só onde o contrato exige, com `p_actor` explícito.
 - Ainda pendente: tela de sessões ativas/revogação em Configurações (hoje mock),
   SMTP próprio, textos jurídicos definitivos dos termos.
-- `NEXT_PUBLIC_DEMO_MODE=false` desliga as ferramentas de demonstração (só ADMIN).
+- As ferramentas de demonstração e a variável `NEXT_PUBLIC_DEMO_MODE` foram removidas na
+  revisão final (13/11/2026).
 
 ## 2. Escritório proprietário único (não é multi-tenant)
 

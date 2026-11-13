@@ -108,7 +108,6 @@ export const ID_DOCUMENT_TYPE_LABEL: Record<IdDocumentType, string> = {
   OTHER: "Outro",
 };
 
-/** Marca textual para todo conteúdo jurídico de demonstração. */
 /** Gênero (opcional no cadastro de PF). Ausente = "Não informado". */
 export const GENDERS = ["MALE", "FEMALE", "OTHER"] as const;
 export type Gender = (typeof GENDERS)[number];
@@ -118,6 +117,3 @@ export const GENDER_LABEL: Record<Gender, string> = {
   OTHER: "Outro",
 };
 export const GENDER_NOT_INFORMED = "Não informado";
-
-export const DEMO_LEGAL_DISCLAIMER = "Conteúdo jurídico fictício para demonstração da interface.";
-export const DEMO_REFERENCE_LABEL = "Referência jurídica de demonstração";

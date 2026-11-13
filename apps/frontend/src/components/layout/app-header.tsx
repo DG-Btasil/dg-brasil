@@ -6,7 +6,7 @@ import { usePermission } from "@/features/auth/hooks";
 import { useClientSession } from "@/features/auth/session-context";
 import { HomeMenu } from "@/components/navigation/home-menu";
 import { NotificationCenter } from "./notification-center";
-import { DEMO_MODE, UserMenu } from "./user-menu";
+import { UserMenu } from "./user-menu";
 import { Wordmark } from "./wordmark";
 
 /** Header global persistente. Navegação no topo — sem sidebar. */
@@ -25,11 +25,6 @@ export function AppHeader() {
             <span className="hidden min-w-0 items-center gap-2 border-l border-white/15 pl-4 lg:flex">
               <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-gold-300">Portal do parceiro</span>
               <span className="truncate text-[12.5px] text-white/80">{partnerOffice.name}</span>
-            </span>
-          )}
-          {DEMO_MODE && (
-            <span className="hidden rounded-xs border border-gold/40 px-1.5 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-gold-300 lg:inline" title="Ferramentas de demonstração ligadas (NEXT_PUBLIC_DEMO_MODE=true)">
-              Demonstração
             </span>
           )}
         </div>

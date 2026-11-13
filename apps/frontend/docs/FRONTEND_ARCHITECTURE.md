@@ -3,6 +3,17 @@
 Este documento explica como o front-end do DG Brasil está organizado e por quê.
 Regras práticas do dia a dia estão em [CONVENTIONS.md](CONVENTIONS.md).
 
+> **Atualização (revisão final, 13/11/2026).** O protótipo de demonstração foi removido:
+> não existem mais `store/app-store.ts`, `store/scope.ts`, `store/slices/*`, `src/mocks/*`,
+> `repositories/mock`, `repositories/contracts.ts`, `services/judicial-integration.ts`,
+> `features/integrations`, `features/offices`, a persona de demonstração (`DemoPersonaGate`),
+> o item "Restaurar áreas de demonstração" nem a variável `NEXT_PUBLIC_DEMO_MODE`. Toda
+> tela lê o servidor (Server Actions em `src/server/domain/*`). Do Zustand sobrou só
+> `store/ui-store.ts` (avisos e tour, em memória). O `AppShell` monta a interface só no
+> navegador (`ClientGate` em `components/layout/guards.tsx`) e apaga a chave antiga
+> `dg-brasil:demo` do `localStorage`. As seções 3 (escopo de dados), 4, 5 e 7 abaixo
+> descrevem o protótipo e ficam como histórico.
+
 ## 1. Domínio
 
 ```

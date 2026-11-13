@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import { Wordmark } from "@/components/layout/wordmark";
 
-/** Rodapé: acesso real; módulos jurídicos ainda com dados fictícios até a Etapa 4.3. */
-const FOOTNOTE = "Acesso restrito por convite. Dados jurídicos de demonstração (fictícios).";
+const FOOTNOTE = "Acesso restrito por convite.";
 
 const FACTS = [
   "Clientes, documentos, processos e prazos em um único ambiente.",

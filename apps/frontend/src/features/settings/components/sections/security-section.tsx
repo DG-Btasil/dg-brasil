@@ -30,7 +30,7 @@ export function SecuritySection() {
             <PostureItem
               icon={ShieldCheck}
               title="Controle de acesso por papel"
-              description="Cada ação passa pela permissão no servidor e pela segurança de linha (RLS) no banco; parceiros só veem o próprio escritório."
+              description="O sistema confere a permissão de cada pessoa em toda ação. Parceiros só veem os dados do próprio escritório."
               status={<Badge tone="success" dot>Ativo</Badge>}
             />
             <PostureItem

@@ -106,8 +106,6 @@ export const OWNER_PERMISSIONS = [
   "settings.security.view",
   "settings.notifications.edit",
   "audit.view",
-  // Ferramentas da demonstração (mocks): só ADMIN, até a 4.3 trocar os mocks.
-  "demo.tools",
 ] as const;
 
 /** Permissões do Portal do Parceiro. Nunca concedidas a papéis internos. */
