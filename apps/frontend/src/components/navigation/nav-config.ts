@@ -36,7 +36,7 @@ export interface NavItem {
   description: string;
   icon: LucideIcon;
   permission: Permission;
-  /** Ambiente em que o item aparece: interno (Bárbara Cardoso Advocacia) ou portal do parceiro. */
+  /** Ambiente em que o item aparece: interno (Barbara Cardoso Advocacia) ou portal do parceiro. */
   audience: Audience;
 }
 
@@ -45,10 +45,10 @@ export interface NavItem {
  * a permissão decide o que aparece dentro dele.
  */
 export const NAV_ITEMS: NavItem[] = [
-  { key: "home", label: "Home", href: "/home", description: "Visão geral e o que precisa da sua atenção", icon: Home, permission: "home.view", audience: "OWNER" },
+  { key: "home", label: "Início", href: "/home", description: "Visão geral e o que precisa da sua atenção", icon: Home, permission: "home.view", audience: "OWNER" },
   { key: "clients", label: "Clientes", href: "/clientes", description: "Cadastro, documentos e casos de cada cliente", icon: Users, permission: "clients.view", audience: "OWNER" },
   { key: "cases", label: "Casos", href: "/casos", description: "Demandas dos clientes: origem, análise, aceite e processos", icon: FolderOpen, permission: "cases.view", audience: "OWNER" },
-  { key: "processes", label: "Processos", href: "/processos", description: "Acompanhamento, movimentações e prazos", icon: Briefcase, permission: "processes.view", audience: "OWNER" },
+  { key: "processes", label: "Processos", href: "/processos", description: "Acompanhamento, andamentos e prazos", icon: Briefcase, permission: "processes.view", audience: "OWNER" },
   { key: "publications", label: "Publicações", href: "/publicacoes", description: "Intimações do DJEN a tratar: prazo ou sem prazo", icon: Newspaper, permission: "processes.view", audience: "OWNER" },
   { key: "reviews", label: "Revisões", href: "/revisoes", description: "Materiais dos agentes aguardando decisão", icon: ClipboardCheck, permission: "reviews.view", audience: "OWNER" },
   { key: "finance", label: "Financeiro", href: "/financeiro", description: "Honorários, recebimentos e contratos", icon: Banknote, permission: "finance.view", audience: "OWNER" },

@@ -17,7 +17,7 @@ const ctxOf = (role: AppSession["role"], rpc: ReturnType<typeof vi.fn>) =>
     session: { userId: USER, organizationId: "o1", role, surface: role.startsWith("PARTNER") ? "PARTNER" : "INTERNAL" } as AppSession,
   });
 
-const base = { id: ID, deleted_at: "2026-11-13T12:00:00Z", deleted_by: USER, deleted_by_name: "Bárbara Cardoso", blocked: null };
+const base = { id: ID, deleted_at: "2026-11-13T12:00:00Z", deleted_by: USER, deleted_by_name: "Barbara Cardoso", blocked: null };
 
 describe("Lixeira — entrada", () => {
   it("só os três tipos; página padrão de 25 e no máximo 50; busca até 120 caracteres", () => {
@@ -35,7 +35,7 @@ describe("Lixeira — entrada", () => {
 describe("Lixeira — banco → tela", () => {
   it("cliente: nome, documento, tipo, quem excluiu e quando", () => {
     const row: TrashRow = { ...base, kind: "CLIENT", title: "Maria Teste", document: "99900011122", client_kind: "INDIVIDUAL" };
-    expect(trashItemFromRow(row)).toEqual({ id: ID, kind: "CLIENT", title: "Maria Teste", deletedAt: base.deleted_at, deletedByName: "Bárbara Cardoso", document: "99900011122", clientKind: "INDIVIDUAL" });
+    expect(trashItemFromRow(row)).toEqual({ id: ID, kind: "CLIENT", title: "Maria Teste", deletedAt: base.deleted_at, deletedByName: "Barbara Cardoso", document: "99900011122", clientKind: "INDIVIDUAL" });
   });
 
   it("processo: número que tinha, se já foi usado em outro cadastro, caso, cliente e o motivo do bloqueio", () => {

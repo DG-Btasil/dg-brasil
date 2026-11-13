@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { ImportJobView } from "@/features/data-import/components/import-job-view";
+
+export const metadata: Metadata = { title: "Importação" };
 
 /**
  * Uma importação: colunas → simulação e conflitos → gravação → relatório.

@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Callout } from "@/components/feedback/states";
@@ -63,7 +64,7 @@ export function LoginScreen({ next, notice }: { next?: string; notice?: string }
   return (
     <AuthLayout
       title={hostAudience === "PARTNER" ? "Portal do Parceiro" : "Entrar no DG Brasil"}
-      description={hostAudience === "PARTNER" ? "Acesse os casos do seu escritório com a Bárbara Cardoso Advocacia." : "Acesse o ambiente do seu escritório."}
+      description={hostAudience === "PARTNER" ? `Acesse os casos do seu escritório com a ${OWNER_OFFICE_NAME}.` : "Acesse o ambiente do seu escritório."}
     >
       <form onSubmit={onSubmit} noValidate className="space-y-4">
         {info && !error && <Callout tone={info.tone} title={info.text} />}

@@ -13,7 +13,7 @@ import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/p
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { runErrorLabel } from "@/lib/constants/ai";
-import { formatDateTime, formatEventTime, formatNumber } from "@/lib/formatting";
+import { formatDateTime, formatEventTime, formatNumber, formatUsd } from "@/lib/formatting";
 import { useAutoRefresh } from "@/lib/hooks/use-auto-refresh";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { cancelAgentRunAction, retryAgentRunAction } from "@/server/domain/agents/actions";
@@ -21,6 +21,7 @@ import type { AgentRunDetailDTO } from "@/server/domain/agents/dto";
 import { usePermission } from "@/features/auth/hooks";
 import { useToast } from "@/store/ui-store";
 import { canInterrupt } from "../interrupt";
+import { agentRunEventKindLabel, agentRunProviderLabel } from "../labels";
 import { AGENT_RUN_STATUS_LABEL, AGENT_RUN_STATUS_TONE } from "./agent-runs-panel";
 import { InterruptDialog } from "./interrupt-dialog";
 
@@ -104,7 +105,7 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
             )}
             {canRetry && (
               <Button icon={<RotateCcw className="size-4" aria-hidden />} loading={retrying} onClick={retry}>
-                Tentar de novo
+                Tentar novamente
               </Button>
             )}
           </div>
@@ -129,7 +130,7 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
             {error}
             {run.status === "QUEUED"
               ? " O trabalho já voltou sozinho para a fila e será retomado quando o computador do escritório processar a fila."
-              : run.analysisId && " Para tentar de novo, envie a análise pela tela do caso."}
+              : run.analysisId && " Para tentar novamente, envie a análise pela tela do caso."}
           </Callout>
         )}
         {run.status === "CANCELLED" && <Callout tone="neutral" title="Execução interrompida.">Nada novo foi entregue depois do pedido de interrupção.</Callout>}
@@ -155,7 +156,7 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
                 {run.proposals.map((p) => (
                   <Item
                     key={p.id}
-                    title={`Proposta: ${PROPOSAL_LABEL[p.type] ?? p.type}`}
+                    title={`Proposta: ${PROPOSAL_LABEL[p.type] ?? PROPOSAL_LABEL.OTHER}`}
                     detail={p.summary}
                     status={p.status}
                     note={p.applicationError}
@@ -184,7 +185,7 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
               )}
               {run.retriedByIds.map((id) => (
                 <p key={id}>
-                  Tentada de novo em{" "}
+                  Tentada novamente em{" "}
                   <Link href={`/execucoes/${id}`} className="font-medium text-navy hover:underline underline-offset-2">
                     outra execução
                   </Link>
@@ -202,10 +203,10 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
               <DefinitionGrid
                 columns={4}
                 items={[
-                  { label: "Executado por", value: run.usage.provider === "CLAUDE_CODE" ? `Claude Code${run.executorName ? ` · ${run.executorName}` : ""}` : run.usage.provider },
+                  { label: "Executado por", value: `${agentRunProviderLabel(run.usage.provider)}${run.usage.provider === "CLAUDE_CODE" && run.executorName ? ` · ${run.executorName}` : ""}` },
                   { label: "Modelo", value: run.usage.model },
                   { label: "Tokens (entrada / saída)", value: run.usage.inputTokens !== undefined ? `${formatNumber(run.usage.inputTokens)} / ${formatNumber(run.usage.outputTokens ?? 0)}` : undefined },
-                  { label: "Custo estimado", value: run.usage.estimatedCost !== undefined ? `US$ ${run.usage.estimatedCost.toFixed(4)}` : undefined },
+                  { label: "Custo estimado", value: run.usage.estimatedCost !== undefined ? formatUsd(run.usage.estimatedCost, 4) : undefined },
                   { label: "Ferramentas usadas", value: run.usage.toolsUsed ? Object.entries(run.usage.toolsUsed).map(([k, v]) => `${k} ×${v}`).join(", ") : undefined, wide: true },
                   { label: "Mensagem técnica (sanitizada)", value: run.usage.errorMessage, wide: true },
                   {
@@ -242,7 +243,7 @@ function Item({ title, detail, status, href, note }: { title: string; detail?: s
         {note && <p className="mt-0.5 text-[12px] text-danger">{note}</p>}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
-        {status && <Badge tone={status === "APPROVED" || status === "APPLIED" ? "success" : status === "REJECTED" || status === "FAILED" ? "danger" : "gold"}>{DECISION_LABEL[status] ?? status}</Badge>}
+        {status && <Badge tone={status === "APPROVED" || status === "APPLIED" ? "success" : status === "REJECTED" || status === "FAILED" ? "danger" : "gold"}>{DECISION_LABEL[status] ?? "Situação não reconhecida"}</Badge>}
         {href && (
           <Link href={href} className="text-[12px] font-medium text-navy hover:underline underline-offset-2">
             Abrir revisão
@@ -260,9 +261,9 @@ const EVENT_STATUS_LABEL: Record<string, string> = {
 /** Linha do tempo (agent_run_events, 040): situação, reserva, documentos abertos (com a versão), entregas. */
 function Timeline({ events }: { events: AgentRunDetailDTO["events"] }) {
   const text = (e: AgentRunDetailDTO["events"][number]) => {
-    if (e.kind === "STATUS") return `${EVENT_STATUS_LABEL[e.to ?? ""] ?? e.to}${e.message ? ` · ${runErrorLabel(e.message) ?? e.message}` : ""}`;
+    if (e.kind === "STATUS") return `${EVENT_STATUS_LABEL[e.to ?? ""] ?? agentRunEventKindLabel("STATUS")}${e.message ? ` · ${runErrorLabel(e.message) ?? e.message}` : ""}`;
     if (e.kind === "DOCUMENT_OPENED") return `Documento aberto: ${e.message ?? "documento do caso"}`;
-    return e.message ?? e.kind;
+    return e.message ?? agentRunEventKindLabel(e.kind);
   };
   return (
     <Panel>

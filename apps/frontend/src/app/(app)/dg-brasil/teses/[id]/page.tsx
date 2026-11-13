@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { DgNotFound } from "@/features/dg-brasil/components/shared/not-found";
 import { ThesisDetail } from "@/features/dg-brasil/components/theses/thesis-views";
 import { dgRoutes } from "@/features/dg-brasil/utils";
 import { getDgCatalogAction, getDgThesisAction } from "@/server/domain/dg/actions";
+
+export const metadata: Metadata = { title: "Tese" };
 
 export default async function ThesisPage({ params }: PageProps<"/dg-brasil/teses/[id]">) {
   const { id } = await params;

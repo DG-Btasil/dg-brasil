@@ -6,7 +6,7 @@
  * Para mudar o que um papel enxerga, altere apenas ROLE_PERMISSIONS.
  *
  * Existem dois públicos (audiences):
- * - OWNER: equipe da Bárbara Cardoso Advocacia (escritório proprietário), visão global;
+ * - OWNER: equipe da Barbara Cardoso Advocacia (escritório proprietário), visão global;
  * - PARTNER: usuários de um escritório parceiro, que veem apenas os dados da
  *   própria relação com o DG Brasil. O recorte de DADOS do parceiro fica em
  *   `./partner-scope.ts`; aqui ficam apenas os papéis e as permissões.
@@ -15,7 +15,7 @@
  * interface não é autorização. Aqui ela só decide o que renderizar.
  */
 
-/** Papéis internos (Bárbara Cardoso Advocacia). Usados na gestão da equipe interna. */
+/** Papéis internos (Barbara Cardoso Advocacia). Usados na gestão da equipe interna. */
 export const ROLES = ["ADMIN", "LAWYER", "ASSISTANT"] as const;
 export const INTERNAL_ROLES = ROLES;
 export type InternalRole = (typeof ROLES)[number];
@@ -109,8 +109,6 @@ export const OWNER_PERMISSIONS = [
   // Lixeira (restaurar excluídos) e exportação de planilhas: só ADMIN — o banco (066) também confere.
   "trash.manage",
   "data.export",
-  // Ferramentas da demonstração (mocks): só ADMIN, até a 4.3 trocar os mocks.
-  "demo.tools",
 ] as const;
 
 /** Permissões do Portal do Parceiro. Nunca concedidas a papéis internos. */

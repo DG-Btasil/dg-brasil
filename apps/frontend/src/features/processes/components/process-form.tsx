@@ -4,7 +4,8 @@ import { useCallback, useRef, useState } from "react";
 import { FormProvider, useForm, useFormContext, useWatch, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CLIENT_POLE_LABEL, CLIENT_POLES, LEGAL_CASE_STATUSES, PROCESS_PHASE_LABEL, PROCESS_PHASES, PROCESS_STATUS_LABEL, PROCESS_STATUSES } from "@/lib/constants/status";
-import { BRAZILIAN_STATES, COURTS } from "@/lib/constants/legal";
+import { courtName, searchCourts } from "@/lib/constants/courts";
+import { BRAZILIAN_STATES } from "@/lib/constants/legal";
 import { onlyDigits } from "@/lib/formatting";
 import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/result";
 import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
@@ -34,6 +35,35 @@ function useCaseSearch(lawyerOf: React.MutableRefObject<Map<string, string | und
   );
 }
 
+/** Todos os tribunais cabem na lista aberta; a busca só filtra. */
+const searchCourtOptions = async (q: string) => ({
+  ok: true as const,
+  options: searchCourts(q, 100).map((c): PickerOption => ({ id: c.code, label: c.code, description: c.name })),
+});
+
+/**
+ * Tribunal com busca por sigla ou nome. Grava a sigla. Texto fora da lista
+ * (processo importado de planilha) aparece como está e só muda se a pessoa trocar.
+ */
+function CourtField() {
+  const { control, setValue } = useFormContext<ProcessFormInput>();
+  const court = useWatch({ control, name: "court" });
+  return (
+    <Field label="Tribunal" requirement="optional" hint="Busque pela sigla ou pelo nome. Ex.: TJRJ, trabalho 1, federal 2.">
+      {(a) => (
+        <AsyncPicker
+          {...a}
+          value={court ? { id: court, label: court, description: courtName(court) } : null}
+          search={searchCourtOptions}
+          placeholder="Buscar tribunal"
+          emptyText="Nenhum tribunal encontrado."
+          onChange={(o) => setValue("court", o?.id ?? "", { shouldDirty: true })}
+        />
+      )}
+    </Field>
+  );
+}
+
 /** Valor em reais para o campo de texto ("1234.5" → "1234,50"). */
 const currencyField = (v: number | undefined) => (v === undefined ? "" : v.toFixed(2).replace(".", ","));
 
@@ -46,9 +76,7 @@ function ProcessFieldSections({ cnjHint }: { cnjHint: boolean }) {
   return (
     <>
       <FormSection title="Juízo" description="Onde o processo tramita ou tramitará.">
-        <Field label="Tribunal" requirement="optional">
-          {(a) => <Select {...a} {...register("court")} options={opts(COURTS)} placeholder="Selecione" />}
-        </Field>
+        <CourtField />
         <Field label="Unidade / vara" requirement="optional">
           {(a) => <Input {...a} {...register("unit")} maxLength={200} placeholder="Ex.: 2ª Vara Cível" />}
         </Field>
@@ -76,13 +104,13 @@ function ProcessFieldSections({ cnjHint }: { cnjHint: boolean }) {
       </FormSection>
 
       <FormSection title="Condução" description="Responsável, situação atual, distribuição, valor da causa e honorários (dados internos, que o parceiro não vê).">
-        <Field label="Advogado responsável" requirement="required" error={errors.responsibleUserId?.message}>
+        <Field label="Advogado responsável" requirement="required" hint="Administrador aparece aqui depois de cadastrar a OAB em Sua conta." error={errors.responsibleUserId?.message}>
           {(a) => <Select {...a} {...register("responsibleUserId")} options={lawyers} placeholder="Selecione" />}
         </Field>
         <Field label="Data de distribuição" requirement="optional" error={errors.distributionDate?.message}>
           {(a) => <Input {...a} type="date" {...register("distributionDate")} />}
         </Field>
-        <Field label="Status" requirement="required" hint={cnjHint ? "Sugerido a partir do número CNJ." : undefined} error={errors.status?.message}>
+        <Field label="Situação" requirement="required" hint={cnjHint ? "Sugerido a partir do número CNJ." : undefined} error={errors.status?.message}>
           {(a) => <Select {...a} {...register("status")} options={opts(PROCESS_STATUSES, PROCESS_STATUS_LABEL)} />}
         </Field>
         <Field label="Fase processual" requirement="required" error={errors.phase?.message}>

@@ -32,12 +32,8 @@ export const BRAZILIAN_STATES = [
 ] as const;
 export type BrazilianState = (typeof BRAZILIAN_STATES)[number];
 
-export const COURTS = [
-  "TJSP", "TJRJ", "TJMG", "TJPR", "TJRS", "TJSC", "TJBA", "TJDFT", "TJGO", "TJPE",
-  "TRF1", "TRF2", "TRF3", "TRF4", "TRF5", "TRF6",
-  "TRT2", "TRT15",
-  "STJ",
-] as const;
+/** Tribunais do cadastro de processo: lista completa, nomes e busca em `./courts`. */
+export { COURTS } from "./courts";
 
 export const MARITAL_STATUSES = ["SINGLE", "MARRIED", "DIVORCED", "WIDOWED", "SEPARATED"] as const;
 export type MaritalStatus = (typeof MARITAL_STATUSES)[number];
@@ -108,7 +104,6 @@ export const ID_DOCUMENT_TYPE_LABEL: Record<IdDocumentType, string> = {
   OTHER: "Outro",
 };
 
-/** Marca textual para todo conteúdo jurídico de demonstração. */
 /** Gênero (opcional no cadastro de PF). Ausente = "Não informado". */
 export const GENDERS = ["MALE", "FEMALE", "OTHER"] as const;
 export type Gender = (typeof GENDERS)[number];
@@ -118,6 +113,3 @@ export const GENDER_LABEL: Record<Gender, string> = {
   OTHER: "Outro",
 };
 export const GENDER_NOT_INFORMED = "Não informado";
-
-export const DEMO_LEGAL_DISCLAIMER = "Conteúdo jurídico fictício para demonstração da interface.";
-export const DEMO_REFERENCE_LABEL = "Referência jurídica de demonstração";

@@ -34,8 +34,15 @@ export function formatCurrencyCompact(value: number): string {
   return currencyCompactFmt.format(value);
 }
 
-export function formatUsd(value: number): string {
-  return usdFmt.format(value);
+/** Valor em dólar, no padrão brasileiro (vírgula decimal). `fractionDigits` para custos pequenos (ex.: 4 casas). */
+export function formatUsd(value: number, fractionDigits = 2): string {
+  if (fractionDigits === 2) return usdFmt.format(value);
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD", minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits }).format(value);
+}
+
+/** Só a primeira letra em maiúscula ("sexta-feira" → "Sexta-feira"). O `capitalize` do CSS erra depois do hífen. */
+export function capitalizeFirst(text: string): string {
+  return text.charAt(0).toLocaleUpperCase("pt-BR") + text.slice(1);
 }
 
 export function formatNumber(value: number): string {

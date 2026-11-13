@@ -17,6 +17,3 @@ export function NavCountsProvider({ counts, children }: { counts: NavCounts; chi
 export function useNavCounts(): NavCounts {
   return useContext(NavCountsContext);
 }
-
-/** true quando o store já leu o localStorage. */
-export { useHydrated } from "@/store/hydration";

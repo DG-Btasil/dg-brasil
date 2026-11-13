@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { loadAllPages } from "@/lib/actions/all-pages";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -5,6 +6,8 @@ import { NewAgreementView } from "@/features/finance/components/new-agreement-vi
 import { processPickerOption } from "@/features/finance/process-label";
 import { getCaseAction } from "@/server/domain/cases/actions";
 import { getProcessFinanceAction, listFeeModelsAction, listProcessFinanceAction } from "@/server/domain/finance/actions";
+
+export const metadata: Metadata = { title: "Novo contrato" };
 
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -58,7 +59,7 @@ export function PortalClientList({ insights, initialQuery, initialResult }: {
     <PortalServerList
       insights={insights}
       title="Clientes"
-      description="Clientes do seu escritório enviados à Bárbara Cardoso Advocacia."
+      description={`Clientes do seu escritório enviados à ${OWNER_OFFICE_NAME}.`}
       cta={newClientCta}
       initialQuery={initialQuery}
       initialResult={initialResult}
@@ -213,7 +214,7 @@ export function PortalClientDetail({
             scope={{ clientId: client.id }}
             initial={documents}
             title="Documentos compartilhados"
-            description="Documentos enviados por você e documentos que a Bárbara Cardoso Advocacia disponibilizou. Para enviar, abra o caso."
+            description={`Documentos enviados por você e documentos que a ${OWNER_OFFICE_NAME} disponibilizou. Para enviar, abra o caso.`}
           />
         </div>
       </div>
@@ -269,7 +270,7 @@ function EditBasicsDrawer({ client, onClose }: { client: ClientPartnerDTO; onClo
       onOpenChange={(o) => !o && !isSubmitting && onClose()}
       width={680}
       title="Editar dados de contato"
-      description="Alterações ficam registradas e são vistas pela Bárbara Cardoso Advocacia."
+      description={`Alterações ficam registradas e são vistas pela ${OWNER_OFFICE_NAME}.`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>

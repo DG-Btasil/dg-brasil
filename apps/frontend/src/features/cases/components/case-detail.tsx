@@ -14,6 +14,7 @@ import { ActionErrorState } from "@/components/feedback/action-error";
 import { Callout, EmptyState } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Avatar, Breadcrumbs } from "@/components/ui/display";
 import { MenuButton } from "@/components/ui/menu";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
@@ -42,11 +43,12 @@ import type { AuditEventDTO } from "@/server/domain/audit/dto";
 import type { AgreementListItemDTO, CasePartnershipDTO } from "@/server/domain/finance/dto";
 import { isOpen, ReviewTable } from "@/features/reviews/components/review-table";
 import { useCaseActions } from "../use-case-actions";
-import { AcceptCaseDialog, AssignLawyerDialog, ChangeOriginDialog, EditCaseDialog, RejectCaseDialog } from "./case-dialogs";
+import { canMarkWaitingDocuments, caseStatusOverrideFor } from "../utils";
+import { AcceptCaseDialog, AssignLawyerDialog, ChangeOriginDialog, EditCaseDialog, OverrideCaseStatusDialog, RejectCaseDialog } from "./case-dialogs";
 
 const TAB_KEYS = ["visao-geral", "documentos", "analise", "revisoes", "processos", "financeiro", "atividade"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
-type DialogKey = "accept" | "reject" | "origin" | "lawyer" | "edit";
+type DialogKey = "accept" | "reject" | "origin" | "lawyer" | "edit" | "close" | "archive" | "wait-documents" | "reopen" | "reconsider";
 
 /**
  * Página do caso (equipe interna), com dados do servidor (getCaseAction):
@@ -92,6 +94,7 @@ export function CaseDetail({
   const canFinance = usePermission("finance.view");
   const [tab, setTab] = useUrlTab<TabKey>(TAB_KEYS, "visao-geral");
   const [dialog, setDialog] = useState<DialogKey | null>(null);
+  const actions = useCaseActions();
   const processCount = processes.ok ? processes.data.total : undefined;
 
   const items = useMemo<TabItem<TabKey>[]>(
@@ -165,6 +168,38 @@ export function CaseDetail({
       {dialog === "lawyer" && <AssignLawyerDialog legalCase={legalCase} open onOpenChange={close} />}
       {dialog === "edit" && <EditCaseDialog legalCase={legalCase} catalog={catalog} open onOpenChange={close} />}
       {dialog === "origin" && <OriginDialog legalCase={legalCase} onOpenChange={close} />}
+      {(dialog === "reopen" || dialog === "reconsider") && <OverrideCaseStatusDialog legalCase={legalCase} kind={dialog} open onOpenChange={close} />}
+      {dialog === "close" && (
+        <ConfirmDialog
+          title="Encerrar caso?"
+          description={`“${legalCase.title}” passa para Encerrado. Depois disso, só o Administrador reabre o caso, informando o motivo.`}
+          confirmLabel="Encerrar caso"
+          onConfirm={() => actions.close(legalCase.id)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "archive" && (
+        <ConfirmDialog
+          title="Arquivar caso?"
+          description={`“${legalCase.title}” sai das listas de casos ativos e não volta a ser editado. O histórico, os documentos e os processos continuam guardados.`}
+          confirmLabel="Arquivar caso"
+          tone="danger"
+          icon={<Archive className="size-4" aria-hidden />}
+          onConfirm={() => actions.archive(legalCase.id)}
+          onClose={() => setDialog(null)}
+        >
+          <Callout tone="warning">Arquivar não pode ser desfeito pela tela.</Callout>
+        </ConfirmDialog>
+      )}
+      {dialog === "wait-documents" && (
+        <ConfirmDialog
+          title="Marcar como aguardando documentos?"
+          description={`“${legalCase.title}” fica em Aguardando documentos até a documentação chegar. Registre o que falta em Documentos → Pendências documentais.`}
+          confirmLabel="Marcar como aguardando"
+          onConfirm={() => actions.requestDocuments(legalCase.id)}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </>
   );
 }
@@ -211,9 +246,11 @@ function CaseHeader({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onDia
   const actions = useCaseActions();
   const canEdit = usePermission("cases.edit");
   const canDecide = usePermission("cases.decide");
+  // Exceções do caso (origem de caso aceito, reabrir, reconsiderar): só Administrador; o servidor confere o papel.
   const canOverride = usePermission("cases.origin.override");
   const [busy, setBusy] = useState<string | null>(null);
   const status = legalCase.status;
+  const override = canOverride ? caseStatusOverrideFor(status) : undefined;
   const accepted = isAccepted(status);
   const locked = status === "ARCHIVED" || status === "REJECTED";
 
@@ -229,6 +266,9 @@ function CaseHeader({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onDia
       ? [{ key: "origin", label: "Alterar origem", description: accepted ? "Somente Administrador, com motivo e confirmação." : undefined, onSelect: () => onDialog("origin") }]
       : []),
     ...(canEdit && !locked ? [{ key: "lawyer", label: "Definir advogado responsável", onSelect: () => onDialog("lawyer") }] : []),
+    ...(canEdit && canMarkWaitingDocuments(status)
+      ? [{ key: "wait-documents", label: "Marcar como aguardando documentos", description: "Quando falta documento para analisar o caso.", onSelect: () => onDialog("wait-documents") }]
+      : []),
   ];
 
   return (
@@ -287,18 +327,17 @@ function CaseHeader({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onDia
             </Button>
           )}
           {(status === "ACCEPTED" || status === "IN_PROGRESS") && canDecide && (
-            <Button variant="secondary" loading={busy === "close"} disabled={!!busy} onClick={() => act("close", () => actions.close(legalCase.id))}>
+            <Button variant="secondary" disabled={!!busy} onClick={() => onDialog("close")}>
               Encerrar caso
             </Button>
           )}
+          {override && (
+            <Button variant="secondary" disabled={!!busy} onClick={() => onDialog(override)}>
+              {override === "reopen" ? "Reabrir caso" : "Reconsiderar rejeição"}
+            </Button>
+          )}
           {(status === "DRAFT" || status === "CLOSED" || status === "REJECTED") && canDecide && (
-            <Button
-              variant="secondary"
-              icon={<Archive className="size-4" aria-hidden />}
-              loading={busy === "archive"}
-              disabled={!!busy}
-              onClick={() => act("archive", () => actions.archive(legalCase.id))}
-            >
+            <Button variant="secondary" icon={<Archive className="size-4" aria-hidden />} disabled={!!busy} onClick={() => onDialog("archive")}>
               Arquivar
             </Button>
           )}

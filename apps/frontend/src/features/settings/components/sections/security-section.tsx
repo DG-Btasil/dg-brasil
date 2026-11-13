@@ -7,10 +7,11 @@ import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { TrashLinkPanel } from "@/features/trash/components/trash-page";
 import { SectionHeader } from "../section-header";
 import { AuditLog } from "./audit-log";
+import { PersonalDataAccessLog } from "./personal-data-access-log";
 
 /**
- * Segurança e auditoria (ADMIN): postura REAL da plataforma e o registro de
- * auditoria do banco. As sessões de cada pessoa ficam em "Sua conta e
+ * Segurança e auditoria (ADMIN): postura REAL da plataforma, o registro de
+ * auditoria do banco e os acessos a dados pessoais (LGPD). As sessões de cada pessoa ficam em "Sua conta e
  * sessões" (só as próprias): o administrador não vê sessões de terceiros.
  */
 export function SecuritySection() {
@@ -31,7 +32,7 @@ export function SecuritySection() {
             <PostureItem
               icon={ShieldCheck}
               title="Controle de acesso por papel"
-              description="Cada ação passa pela permissão no servidor e pela segurança de linha (RLS) no banco; parceiros só veem o próprio escritório."
+              description="O sistema confere a permissão de cada pessoa em toda ação. Parceiros só veem os dados do próprio escritório."
               status={<Badge tone="success" dot>Ativo</Badge>}
             />
             <PostureItem
@@ -48,6 +49,7 @@ export function SecuritySection() {
       <TrashLinkPanel />
 
       <AuditLog />
+      <PersonalDataAccessLog />
     </div>
   );
 }

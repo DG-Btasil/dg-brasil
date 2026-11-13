@@ -29,12 +29,18 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
 3. **Valor da causa ≠ honorários.** `caseValue` é jurídico (advogado vê). Honorários, pagamentos e contratos só com `finance.view`.
 4. **IA executa, humano decide.** Nenhuma ação de agente vira efeito externo sem passar por Revisões ou confirmação explícita.
    Nunca exibir "raciocínio" do modelo — só resumo, evidências e ações propostas.
-5. **Nada de conteúdo jurídico inventado.** Textos jurídicos de exemplo levam `<DemoContentNotice />` ou `DEMO_LEGAL_DISCLAIMER`.
+5. **Nada de conteúdo jurídico inventado.** Textos jurídicos de exemplo levam `<DemoContentNotice />`.
 6. **Botão sem função não existe.** Se não está implementado: `<NotAvailable>` (desabilitado + "Disponível em uma próxima etapa").
 7. **Prioridade nunca só por cor:** sempre ícone e/ou texto junto (`Badge` com texto, `DeadlineBadge`).
 8. **Parceiro vê só a própria relação.** Visibilidade de parceiro se decide em `lib/permissions/partner-scope.ts`, nunca no componente.
    Portal do parceiro não usa vocabulário interno ("agente", "Skill", "tenant", "workflow de IA").
-9. **Origens, nunca misturar:** `Process.origin` (técnica: Manual/Integração/DG Brasil/Importação) ≠ `LegalCase.originOfficeId` (origem do caso: Bárbara ou parceiro) ≠ `Client.originOfficeId` (origem histórica do cliente).
+9. **Origens, nunca misturar:** `Process.origin` (técnica: Manual/Integração/DG Brasil/Importação) ≠ `LegalCase.originOfficeId` (origem do caso: Barbara ou parceiro) ≠ `Client.originOfficeId` (origem histórica do cliente).
+
+10. **Nome do escritório:** "Barbara Cardoso Advocacia", sem acento (grafia confirmada pela dona). Em texto fixo da interface,
+    use `OWNER_OFFICE_NAME` (`lib/constants/office.ts`); `office.test.ts` falha se o nome voltar com acento.
+11. **Ação de um clique que encerra, arquiva, exclui, rejeita ou tira acesso pede confirmação:** `ConfirmDialog`
+    (`components/ui/confirm-dialog.tsx`), nunca `window.confirm`. O botão fica ocupado durante o envio e o aviso de
+    sucesso vem do hook da feature. Exclusão usa `tone="dangerSolid"` (variante do `Button`).
 
 ## Next.js 16
 
@@ -47,6 +53,11 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
   ```
   `PageProps`/`LayoutProps` são gerados por `npx next typegen` (rodado pelo `npm run typecheck`).
 - Componente que usa `useSearchParams` (ex.: `useUrlTab`) precisa estar dentro de `<Suspense>`.
+- Toda página de `app/(app)` declara o título da aba: `export const metadata: Metadata = { title: "Clientes" }` (o layout raiz
+  acrescenta "· DG Brasil"). Ficha usa título genérico ("Cliente"), sem consulta só para o título.
+  `components/navigation/page-titles.test.ts` falha quando uma página fica sem título.
+- Página que lê a sessão e não recebe `params` nem `searchParams` começa com `await connection()` (`next/server`), para o
+  build não tentar montá-la sem usuário (erro "Dynamic server usage" no log).
 - Lint: `npm run lint` (ESLint direto; `next lint` não existe mais). O React Compiler lint é rígido:
   sem `setState` síncrono dentro de `useEffect`, sem `Date.now()`/`Math.random()` em render (use `lib/clock`).
 
@@ -58,7 +69,7 @@ A visão de arquitetura completa está em [FRONTEND_ARCHITECTURE.md](FRONTEND_AR
 - Densidade de software de trabalho: tabelas boas, linhas finas, poucos cards.
 - Primitives disponíveis: `Button`, `ButtonLink`, `IconButton`, `Badge`, `StatusBadge`, `Panel*`, `DefinitionGrid`,
   `Field`, `Input`, `MaskedInput`, `Select`, `Textarea`, `Checkbox`, `ChoiceCards`, `FormSection`, `SearchInput`,
-  `Dialog`, `Drawer`, `Tooltip`, `NotAvailable`, `Tabs`/`TabPanel`, `Table`/`SortableTh`/`sortBy`, `PageHeader`,
+  `Dialog`, `ConfirmDialog`, `Drawer`, `Tooltip`, `NotAvailable`, `Tabs`/`TabPanel`, `Table`/`SortableTh`/`sortBy`, `PageHeader`,
   `Breadcrumbs`, `Stat`, `Avatar`, `DeadlineBadge`, `Timeline`, `Steps`, `DemoContentNotice`,
   `EmptyState`, `Skeleton`, `SkeletonRows`, `ErrorState`, `Callout`, `useToast()`.
 

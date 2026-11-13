@@ -9,7 +9,7 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import type { CaseCatalogDTO, CaseInternalDTO } from "@/server/domain/cases/dto";
 import { useLawyerOptions, useOrganizationName, useOrgDirectory } from "@/features/directory/directory-context";
 import { useCaseActions } from "../use-case-actions";
-import { LINK_PARTNER_LABEL } from "../utils";
+import { CASE_STATUS_OVERRIDES, LINK_PARTNER_LABEL, type CaseStatusOverride } from "../utils";
 import { ACQUISITION_CHANNEL_OPTIONS } from "@/lib/constants/legal";
 
 interface DialogBase {
@@ -150,6 +150,79 @@ export function RejectCaseDialog({ legalCase, open, onOpenChange }: DialogBase) 
           {(p) => <Textarea {...p} rows={3} value={internalNote} onChange={(e) => setInternalNote(e.target.value)} />}
         </Field>
       </div>
+    </Dialog>
+  );
+}
+
+const OVERRIDE_COPY: Record<CaseStatusOverride, { title: string; effect: string; confirm: string; success: { title: string; description: string } }> = {
+  reopen: {
+    title: "Reabrir caso",
+    effect: "O caso volta para Em andamento.",
+    confirm: "Reabrir caso",
+    success: { title: "Caso reaberto", description: "Voltou para Em andamento. O motivo ficou registrado na auditoria." },
+  },
+  reconsider: {
+    title: "Reconsiderar rejeição",
+    effect: "O caso volta para a fila de análise, para ser aceito ou rejeitado de novo.",
+    confirm: "Reconsiderar rejeição",
+    success: { title: "Rejeição reconsiderada", description: "O caso voltou para a análise. O motivo ficou registrado na auditoria." },
+  },
+};
+
+/**
+ * Exceção de situação: reabrir caso encerrado ou reconsiderar rejeição. Só
+ * Administrador, com motivo obrigatório (o servidor confere e audita).
+ */
+export function OverrideCaseStatusDialog({ legalCase, kind, open, onOpenChange }: DialogBase & { kind: CaseStatusOverride }) {
+  const actions = useCaseActions();
+  const copy = OVERRIDE_COPY[kind];
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string>();
+  const [saving, setSaving] = useState(false);
+
+  async function confirm() {
+    if (!reason.trim()) {
+      setError("Informe o motivo.");
+      return;
+    }
+    setSaving(true);
+    const result = await actions.overrideStatus(legalCase.id, CASE_STATUS_OVERRIDES[kind].to, reason.trim(), copy.success);
+    setSaving(false);
+    if (result.ok) onOpenChange(false);
+    else setError(firstError(result.error.fieldErrors, "reason"));
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => (o || !saving) && onOpenChange(o)}
+      title={copy.title}
+      description={`Caso “${legalCase.title}”. ${copy.effect}`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button onClick={confirm} loading={saving}>
+            {copy.confirm}
+          </Button>
+        </>
+      }
+    >
+      <Field label="Motivo" requirement="required" error={error} hint="Fica registrado na auditoria. Só o Administrador faz esta exceção.">
+        {(p) => (
+          <Textarea
+            {...p}
+            rows={3}
+            maxLength={1000}
+            value={reason}
+            onChange={(e) => {
+              setReason(e.target.value);
+              setError(undefined);
+            }}
+          />
+        )}
+      </Field>
     </Dialog>
   );
 }

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -5,6 +6,8 @@ import { CaseForm } from "@/features/cases/components/case-form";
 import { NewCaseWizard } from "@/features/partner-portal/components/new-case-wizard";
 import { getClientAction } from "@/server/domain/clients/actions";
 import { getCaseCatalogAction } from "@/server/domain/cases/actions";
+
+export const metadata: Metadata = { title: "Novo caso" };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 

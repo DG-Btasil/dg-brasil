@@ -47,7 +47,7 @@ export function EventsTab({ processId, initial, onAdd }: { processId: string; in
   const available = useMemo(() => PROCESS_EVENT_SOURCES.filter((s) => events.some((e) => e.source === s)), [events]);
   const visible = useMemo(() => (source === "ALL" ? events : events.filter((e) => e.source === source)), [events, source]);
 
-  if (!initial.ok) return <ActionErrorState error={initial} title="Não foi possível carregar as movimentações." />;
+  if (!initial.ok) return <ActionErrorState error={initial} title="Não foi possível carregar os andamentos." />;
 
   async function loadMore() {
     if (!current) return;
@@ -55,7 +55,7 @@ export function EventsTab({ processId, initial, onAdd }: { processId: string; in
     const next = await callAction(() => listProcessEventsAction({ processId, page: current.page + 1, pageSize: initial.ok ? initial.data.pageSize : 50 }));
     setLoadingMore(false);
     if (!next.ok) {
-      failed(next, "Não foi possível carregar mais movimentações.");
+      failed(next, "Não foi possível carregar mais andamentos.");
       return;
     }
     const seen = new Set(current.items.map((e) => e.id));
@@ -70,7 +70,7 @@ export function EventsTab({ processId, initial, onAdd }: { processId: string; in
   return (
     <Panel>
       <PanelHeader
-        title="Movimentações"
+        title="Andamentos"
         as="h3"
         description="Mais recentes primeiro. Andamentos relevantes aparecem destacados."
         actions={
@@ -82,7 +82,7 @@ export function EventsTab({ processId, initial, onAdd }: { processId: string; in
         }
       />
       {events.length === 0 ? (
-        <EmptyState compact icon={History} title="Nenhuma movimentação registrada." description="Andamentos do tribunal, da integração e da equipe aparecerão aqui." />
+        <EmptyState compact icon={History} title="Nenhum andamento registrado." description="Andamentos do tribunal, da integração e da equipe aparecerão aqui." />
       ) : (
         <PanelBody>
           <div role="group" aria-label="Filtrar por origem" className="mb-5 flex flex-wrap gap-1.5">

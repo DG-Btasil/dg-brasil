@@ -33,7 +33,7 @@ export function ForgotPasswordScreen() {
     });
     setSubmitting(false);
     if (authError?.status === 429) {
-      setError("Muitas solicitações. Aguarde alguns minutos antes de tentar de novo.");
+      setError("Muitas solicitações. Aguarde alguns minutos antes de tentar novamente.");
       return;
     }
     setSent(true);

@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { ShieldAlert } from "lucide-react";
 import type { Permission } from "@/lib/permissions";
 import { useIsPartner, usePermission } from "@/features/auth/hooks";
-import { useHydrated, useRehydrateOnMount } from "@/store/hydration";
 import { Skeleton } from "@/components/feedback/states";
 import { buttonClasses } from "@/components/ui/button";
 
-/** Tela neutra enquanto o estado local é carregado. */
+/** Tela neutra enquanto a interface é montada no navegador. */
 export function ShellSkeleton() {
   return (
     <div className="min-h-screen bg-background" role="status" aria-label="Carregando o DG Brasil">
@@ -28,11 +27,20 @@ export function ShellSkeleton() {
   );
 }
 
-/** Aguarda a hidratação do localStorage antes de renderizar a aplicação. */
-export function HydrationGate({ children, fallback = <ShellSkeleton /> }: { children: ReactNode; fallback?: ReactNode }) {
-  useRehydrateOnMount();
-  const hydrated = useHydrated();
-  return hydrated ? <>{children}</> : <>{fallback}</>;
+const subscribeNever = () => () => {};
+
+/**
+ * Monta a aplicação só no navegador (no servidor sai o esqueleto). As telas
+ * mostram datas e horas no fuso de quem usa; montadas no servidor, sairiam no
+ * fuso do servidor e trocariam de valor ao abrir.
+ */
+export function ClientGate({ children, fallback = <ShellSkeleton /> }: { children: ReactNode; fallback?: ReactNode }) {
+  const mounted = useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
+  return mounted ? <>{children}</> : <>{fallback}</>;
 }
 
 /**
@@ -48,7 +56,7 @@ export function RequirePermission({ permission, children, fallback }: { permissi
 }
 
 /**
- * Escolhe a tela conforme o público: ambiente interno (Bárbara Cardoso
+ * Escolhe a tela conforme o público: ambiente interno (Barbara Cardoso
  * Advocacia) ou portal do parceiro. As duas árvores nunca são montadas
  * juntas, e cada uma lê apenas o estado já recortado para a sessão.
  */
@@ -72,7 +80,7 @@ export function AccessDenied() {
         Seu perfil não tem permissão para acessar esta área. Se precisar dela, fale com o administrador do seu escritório.
       </p>
       <Link href="/home" className={buttonClasses("secondary", "md", "mt-5")}>
-        Voltar para a Home
+        Voltar para o Início
       </Link>
     </div>
   );

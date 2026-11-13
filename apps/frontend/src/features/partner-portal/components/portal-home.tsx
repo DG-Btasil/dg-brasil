@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import Link from "next/link";
 import { Briefcase, CheckCircle2, FolderPlus, Hourglass, Inbox, Info } from "lucide-react";
 import { now } from "@/lib/clock";
@@ -30,7 +31,7 @@ export function PortalHome({ data, metrics }: { data: PartnerHomeData; metrics?:
         serif
         eyebrow={data.officeName}
         title={`${greeting(now())}, ${data.firstName}`}
-        description="Acompanhe os casos do seu escritório com a Bárbara Cardoso Advocacia."
+        description={`Acompanhe os casos do seu escritório com a ${OWNER_OFFICE_NAME}.`}
         actions={
           <Can permission="partnerPortal.cases.create">
             <ButtonLink href="/casos/novo" icon={<FolderPlus className="size-4" aria-hidden />}>
@@ -70,7 +71,7 @@ export function PortalHome({ data, metrics }: { data: PartnerHomeData; metrics?:
 
       <div className="mt-6 grid grid-cols-12 gap-5">
         <Panel className="col-span-12 xl:col-span-7">
-          <PanelHeader title="Precisa da sua atenção" description="Solicitações da Bárbara Cardoso Advocacia aguardando o seu escritório." />
+          <PanelHeader title="Precisa da sua atenção" description={`Solicitações da ${OWNER_OFFICE_NAME} aguardando o seu escritório.`} />
           {!data.openRequests.ok ? (
             <ActionErrorState error={data.openRequests} title="Não foi possível carregar as solicitações." />
           ) : data.openRequests.data.items.length === 0 ? (

@@ -1,7 +1,7 @@
 /**
  * Regras de visibilidade do PARCEIRO (fonte única, pura).
  *
- * O escritório proprietário (Bárbara Cardoso Advocacia) enxerga tudo. Um
+ * O escritório proprietário (Barbara Cardoso Advocacia) enxerga tudo. Um
  * escritório parceiro enxerga SOMENTE o que pertence à sua relação com o
  * DG Brasil. Estas funções decidem, registro a registro, o que o parceiro
  * pode receber — e removem campos internos dos registros que ele recebe.
@@ -28,9 +28,9 @@ import type {
  * (`partnerOrganizationId`). A origem comercial do caso
  * (`originOrganizationId`) e a origem do CLIENTE nunca dão acesso.
  *
- * Exemplo: o parceiro Almeida cria um caso e escolhe a Bárbara (proprietária)
+ * Exemplo: o parceiro Almeida cria um caso e escolhe a Barbara (proprietária)
  * como origem → partnerOrganizationId = Almeida, originOrganizationId =
- * Bárbara. O Almeida continua vendo o caso, e não há divisão de parceria
+ * Barbara. O Almeida continua vendo o caso, e não há divisão de parceria
  * (a origem é a proprietária). Já um caso criado pela equipe interna com
  * origem Almeida nasce interno (partnerOrganizationId = null): o Almeida só o
  * vê se a equipe vincular o parceiro explicitamente.

@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import { useState, type FormEvent } from "react";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
@@ -116,7 +117,7 @@ export function FirstAccessScreen({
         {needsOffice && (
           <fieldset className="space-y-3 rounded-lg border border-line p-4">
             <legend className="px-1 text-[12.5px] font-semibold text-foreground">Seu escritório</legend>
-            <p className="text-[12.5px] text-muted">Estes dados identificam o seu escritório na parceria com a Bárbara Cardoso Advocacia.</p>
+            <p className="text-[12.5px] text-muted">Estes dados identificam o seu escritório na parceria com a {OWNER_OFFICE_NAME}.</p>
             <Field label="Nome do escritório" requirement="required">
               {(p) => <Input {...p} value={office.name} onChange={(e) => setOfficeField("name", e.target.value)} maxLength={200} />}
             </Field>

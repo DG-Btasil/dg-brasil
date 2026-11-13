@@ -163,7 +163,7 @@ export interface ClientDocument extends OfficeScoped {
   versionGroupId?: ID;
   version?: number;
   supersededAt?: ISODateTime;
-  /** Enviado oficialmente à Bárbara Cardoso Advocacia: a partir daqui o parceiro não edita nem apaga. */
+  /** Enviado oficialmente à Barbara Cardoso Advocacia: a partir daqui o parceiro não edita nem apaga. */
   submittedAt?: ISODateTime;
   /** Revisão de origem (documento produzido internamente e aprovado). */
   sourceReviewId?: ID;

@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
@@ -100,7 +101,7 @@ export function MfaEnrollScreen({ next }: { next?: string }) {
       <OnboardingSteps current="mfa" withPassword={false} />
       {fatal || !enrollment ? (
         <Callout tone="danger" title={error ?? "Não foi possível iniciar o cadastro."} action={<SignOutButton />}>
-          Recarregue a página para tentar de novo.
+          Recarregue a página para tentar novamente.
         </Callout>
       ) : (
         <form onSubmit={onSubmit} noValidate className="space-y-4">
@@ -174,7 +175,7 @@ export function MfaVerifyScreen({ next, returnTo }: { next?: string; returnTo?: 
         </Button>
       </form>
       <p className="mt-6 text-[12.5px] leading-relaxed text-muted">
-        Perdeu acesso ao aplicativo? Peça a um administrador do escritório Bárbara Cardoso para redefinir sua verificação em duas etapas.
+        Perdeu acesso ao aplicativo? Peça a um administrador da {OWNER_OFFICE_NAME} para redefinir sua verificação em duas etapas.
         Por segurança, não é possível desativá-la por aqui.
       </p>
       <div className="mt-4 text-center">

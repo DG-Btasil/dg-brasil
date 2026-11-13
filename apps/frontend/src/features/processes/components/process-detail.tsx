@@ -92,7 +92,7 @@ export function ProcessDetail({
             },
           ]
         : []),
-      { key: "movimentacoes", label: "Movimentações", count: events.ok ? events.data.total : undefined },
+      { key: "movimentacoes", label: "Andamentos", count: events.ok ? events.data.total : undefined },
       { key: "publicacoes", label: "Publicações" },
       { key: "documentos", label: "Documentos", count: documents.ok ? documents.data.total : undefined },
       { key: "prazos", label: "Prazos", count: openDeadlines.length, attention: urgent },

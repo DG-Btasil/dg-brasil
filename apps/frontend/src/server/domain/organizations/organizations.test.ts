@@ -127,8 +127,8 @@ describe("payloads de gravação", () => {
   });
 
   it("escritório proprietário: separa organização e configurações", () => {
-    const patch = updateOwnerOfficeSchema.parse({ name: "Bárbara", oab: { number: "123.456", state: "sp" }, statesOfPractice: ["SP", "SP", "RJ"] });
-    expect(organizationPatchPayload(patch)).toEqual({ name: "Bárbara" });
+    const patch = updateOwnerOfficeSchema.parse({ name: "Barbara", oab: { number: "123.456", state: "sp" }, statesOfPractice: ["SP", "SP", "RJ"] });
+    expect(organizationPatchPayload(patch)).toEqual({ name: "Barbara" });
     expect(ownerSettingsPatchPayload(patch)).toEqual({ principal_oab_number: "123456", principal_oab_state: "SP", states_of_practice: ["SP", "RJ"] });
   });
 });

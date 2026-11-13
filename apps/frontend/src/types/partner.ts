@@ -33,7 +33,7 @@ export interface PartnerOffice extends OfficeScoped {
   status: PartnerOfficeStatus;
   /** Participação do parceiro nos honorários de novos casos (0–100). */
   partnershipPercentage: number;
-  /** Participação da Bárbara Cardoso Advocacia (0–100). Soma sempre 100. */
+  /** Participação da Barbara Cardoso Advocacia (0–100). Soma sempre 100. */
   ownerPercentage: number;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
@@ -54,7 +54,7 @@ export type PartnerUser = User & { role: PartnerRole; partnerOfficeId: ID };
  */
 export interface ClientOfficeRelationship extends OfficeScoped {
   clientId: ID;
-  /** OWNER = Bárbara Cardoso Advocacia; PARTNER = escritório parceiro. */
+  /** OWNER = Barbara Cardoso Advocacia; PARTNER = escritório parceiro. */
   officeType: "OWNER" | "PARTNER";
   partnerOfficeId?: ID;
   status: ClientRelationshipStatus;
@@ -138,7 +138,7 @@ export interface PartnershipAgreementView extends CasePartnershipAgreement {
   pendingPartnerAmount: number;
 }
 
-/** Consolidado financeiro de um parceiro (visão do próprio parceiro ou da Bárbara). */
+/** Consolidado financeiro de um parceiro (visão do próprio parceiro ou da Barbara). */
 export interface PartnerFinancialSummary {
   partnerOfficeId: ID;
   /** Participação sobre honorários realizados. */

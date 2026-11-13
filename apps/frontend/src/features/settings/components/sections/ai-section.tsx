@@ -144,7 +144,7 @@ function KillSwitch({ status, canToggle, onChanged }: { status: AiRuntimeStatusD
         description={
           on
             ? "Nenhum trabalho novo é reservado. O que estiver em andamento termina; os pedidos ficam na fila até religar."
-            : "Computadores autorizados passam a poder reservar trabalhos da fila. Use dados fictícios até a revisão LGPD do provedor de IA."
+            : "Computadores autorizados passam a poder reservar trabalhos da fila. Antes de enviar dados reais de clientes aos agentes, conclua a revisão LGPD do provedor de IA."
         }
         footer={
           <>
@@ -158,7 +158,7 @@ function KillSwitch({ status, canToggle, onChanged }: { status: AiRuntimeStatusD
         }
       >
         <Field label="Motivo" requirement="optional">
-          {(a) => <Input {...a} value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: teste controlado no DEV" />}
+          {(a) => <Input {...a} value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: manutenção do computador do escritório" />}
         </Field>
       </Dialog>
     </Panel>
@@ -180,7 +180,7 @@ function Executors({ list, onChanged }: { list: ExecutorDTO[]; onChanged: () => 
         }
       />
       {list.length === 0 ? (
-        <EmptyState icon={Monitor} title="Nenhum computador autorizado." description="Autorize o computador do escritório e siga o guia de instalação (docs/mcp/instalacao.md)." />
+        <EmptyState icon={Monitor} title="Nenhum computador autorizado." description="Autorize o computador do escritório. Os passos da instalação aparecem logo depois de gerar o token." />
       ) : (
         <Table caption="Computadores autorizados">
           <THead>
@@ -314,7 +314,7 @@ function CreateExecutorDialog({ onClose, onCreated }: { onClose: () => void; onC
           <details className="text-[12.5px] text-muted">
             <summary className="cursor-pointer">Instalação manual (sem o comando)</summary>
             <p className="mt-2">
-              Conteúdo do arquivo <code className="font-mono">%APPDATA%\DGBrasil\executor.json</code> (guia em docs/mcp/instalacao.md):
+              Conteúdo do arquivo <code className="font-mono">%APPDATA%\DGBrasil\executor.json</code> (use só se o comando acima não funcionar):
             </p>
             <pre className="mt-1.5 overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[11.5px] text-foreground">{config}</pre>
           </details>

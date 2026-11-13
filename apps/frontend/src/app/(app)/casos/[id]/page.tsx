@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PageContainer } from "@/components/layout/guards";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
@@ -25,6 +26,8 @@ import { auditTimelineInput } from "@/features/audit/query";
 import { listAuditEventsAction } from "@/server/domain/audit/actions";
 import { DEFAULT_AGREEMENT_QUERY, agreementQueryToInput } from "@/features/finance/list-query";
 import { listAgreementRowsAction, listCasePartnershipsAction } from "@/server/domain/finance/actions";
+
+export const metadata: Metadata = { title: "Caso" };
 
 /**
  * Ficha do caso, lida no servidor a cada acesso (rota direta, nova aba e

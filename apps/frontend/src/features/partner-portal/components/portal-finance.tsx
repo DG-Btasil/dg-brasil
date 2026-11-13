@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import type { ActionResult } from "@/lib/actions/result";
 import { PageContainer } from "@/components/layout/guards";
 import { PageHeader } from "@/components/ui/display";
@@ -29,7 +30,7 @@ export function PortalFinance({
 }) {
   return (
     <PageContainer>
-      <PageHeader title="Financeiro" description="Sua participação nos honorários dos casos enviados à Bárbara Cardoso Advocacia." />
+      <PageHeader title="Financeiro" description={`Sua participação nos honorários dos casos enviados à ${OWNER_OFFICE_NAME}.`} />
       {metrics && <MetricsBoard variant="portal-finance" initial={metrics} initialPeriod="365" title="Participação no período" />}
       <PartnerShareView summary={summary} shares={shares} transfers={transfers} />
     </PageContainer>

@@ -3,7 +3,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ComponentProps, type ReactN
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type ButtonVariant = "primary" | "accent" | "secondary" | "ghost" | "danger" | "link";
+export type ButtonVariant = "primary" | "accent" | "secondary" | "ghost" | "danger" | "dangerSolid" | "link";
 export type ButtonSize = "sm" | "md" | "lg";
 
 const base =
@@ -16,6 +16,8 @@ const variants: Record<ButtonVariant, string> = {
   secondary: "bg-surface text-foreground border border-line-strong hover:bg-surface-muted hover:border-navy-600/40",
   ghost: "text-muted hover:text-foreground hover:bg-surface-sunken",
   danger: "bg-surface text-danger border border-danger-line hover:bg-danger-soft",
+  // Vermelho cheio: só para confirmar exclusão, dentro do diálogo.
+  dangerSolid: "bg-danger text-white border border-danger hover:bg-danger/90 shadow-hairline",
   link: "text-navy-700 underline-offset-4 hover:underline px-0 h-auto",
 };
 

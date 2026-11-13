@@ -1,5 +1,6 @@
 "use server";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import { createHash, randomBytes } from "node:crypto";
 import { normalizeOab, OAB_OPTIONAL_ROLES, OAB_REQUIRED_ROLES } from "@/lib/auth/oab";
 import { sanitizeForLog } from "@/lib/auth/errors";
@@ -89,7 +90,7 @@ function dbErrorMessage(error: { message?: string; code?: string } | null, sessi
     // O parceiro não descobre se um e-mail já tem conta em outro escritório.
     return session.role === "ADMIN"
       ? "Este e-mail já tem acesso ativo ao DG Brasil."
-      : "Não foi possível convidar este e-mail. Se o problema continuar, fale com o escritório Bárbara Cardoso.";
+      : `Não foi possível convidar este e-mail. Se o problema continuar, fale com a ${OWNER_OFFICE_NAME}.`;
   }
   if (SAFE_DB_MESSAGES.has(message)) return message;
   return GENERIC;

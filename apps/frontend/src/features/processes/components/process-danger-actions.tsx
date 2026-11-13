@@ -83,7 +83,7 @@ export function DeleteProcessDialog({ process, openDeadlines, onClose }: { proce
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="danger" className="border-danger bg-danger text-white hover:bg-danger/90" icon={<Trash2 className="size-4" aria-hidden />} loading={saving} onClick={confirm}>
+          <Button variant="dangerSolid" icon={<Trash2 className="size-4" aria-hidden />} loading={saving} onClick={confirm}>
             Excluir processo
           </Button>
         </>
@@ -95,7 +95,7 @@ export function DeleteProcessDialog({ process, openDeadlines, onClose }: { proce
             Depois da exclusão, os prazos deixam de aparecer nas listagens. Confira antes de confirmar. A exclusão fica registrada na auditoria.
           </Callout>
         ) : (
-          <Callout tone="neutral">A exclusão fica registrada na auditoria. Movimentações e documentos continuam no histórico.</Callout>
+          <Callout tone="neutral">A exclusão fica registrada na auditoria. Andamentos e documentos continuam no histórico.</Callout>
         )}
         <p className="text-muted">
           O caso <strong className="text-foreground">{process.caseTitle || "vinculado"}</strong> e o cliente{" "}

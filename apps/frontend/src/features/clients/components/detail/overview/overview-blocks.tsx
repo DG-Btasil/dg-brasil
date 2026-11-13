@@ -8,7 +8,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { ACQUISITION_CHANNEL_LABEL, GENDER_LABEL, GENDER_NOT_INFORMED, ID_DOCUMENT_TYPE_LABEL, MARITAL_STATUS_LABEL } from "@/lib/constants/legal";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE } from "@/lib/constants/status";
-import { formatDate, formatDateTime } from "@/lib/formatting";
+import { formatCEP, formatDate, formatDateTime, formatPhone } from "@/lib/formatting";
 import { useOrganizationName } from "@/features/directory/directory-context";
 import type { Client, CompanyClient, IndividualClient } from "@/types";
 import { clientDocumentLabel, countryLabel, maskClientDocument } from "../../../utils";
@@ -78,9 +78,9 @@ export function ContactBlock({ client }: { client: Client }) {
       <DefinitionGrid
         items={[
           { label: "E-mail", value: c.email },
-          { label: client.kind === "INDIVIDUAL" ? "Telefone principal" : "Telefone", value: c.phone ? <span className="tabular">{c.phone}</span> : undefined },
+          { label: client.kind === "INDIVIDUAL" ? "Telefone principal" : "Telefone", value: c.phone ? <span className="tabular">{formatPhone(c.phone)}</span> : undefined },
           ...(client.kind === "INDIVIDUAL"
-            ? [{ label: "Telefone secundário / WhatsApp", value: c.secondaryPhone ? <span className="tabular">{c.secondaryPhone}</span> : undefined }]
+            ? [{ label: "Telefone secundário / WhatsApp", value: c.secondaryPhone ? <span className="tabular">{formatPhone(c.secondaryPhone)}</span> : undefined }]
             : [{ label: "Site", value: c.website }]),
         ]}
       />
@@ -98,7 +98,7 @@ export function AddressBlock({ client }: { client: Client }) {
             { label: "Logradouro", value: `${a.street}${a.number ? `, ${a.number}` : ""}${a.complement ? ` — ${a.complement}` : ""}`, wide: true },
             { label: "Bairro", value: a.district },
             { label: "Município/UF", value: [a.city, a.state].filter(Boolean).join("/") || undefined },
-            { label: "CEP", value: a.zipCode ? <span className="tabular">{a.zipCode}</span> : undefined },
+            { label: "CEP", value: a.zipCode ? <span className="tabular">{formatCEP(a.zipCode)}</span> : undefined },
             { label: "País", value: countryLabel(a.country) },
           ]}
         />
@@ -116,7 +116,7 @@ export function ResponsibleBlock({ client }: { client: Client }) {
     <Block title="Origem e situação" clientId={client.id}>
       <DefinitionGrid
         items={[
-          { label: "Status", value: <StatusBadge status={client.status} labels={CLIENT_STATUS_LABEL} tones={CLIENT_STATUS_TONE} /> },
+          { label: "Situação", value: <StatusBadge status={client.status} labels={CLIENT_STATUS_LABEL} tones={CLIENT_STATUS_TONE} /> },
           { label: "Escritório de origem", value: origin },
           { label: "Canal (como chegou)", value: client.acquisitionChannel ? ACQUISITION_CHANNEL_LABEL[client.acquisitionChannel] : undefined },
           ...(client.acquisitionDetail ? [{ label: "Detalhe do canal", value: client.acquisitionDetail }] : []),

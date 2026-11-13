@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { SearchX } from "lucide-react";
 import { PageContainer } from "@/components/layout/guards";
 import { RequirePermission } from "@/components/layout/server-guards";
@@ -17,6 +18,8 @@ import { can } from "@/lib/permissions";
 import { requireAppSession } from "@/server/auth/session";
 import { auditTimelineInput } from "@/features/audit/query";
 import { listAuditEventsAction } from "@/server/domain/audit/actions";
+
+export const metadata: Metadata = { title: "Parceiro" };
 
 function PartnerNotFound() {
   return (

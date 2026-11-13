@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { MetricsBoard } from "@/features/metrics/components/metrics-board";
 import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 import { AudienceSwitch, RequirePermission } from "@/components/layout/server-guards";
@@ -9,6 +10,7 @@ import { getProcessSummaryAction, listProcessesAction } from "@/server/domain/pr
 
 /** A exportação de planilha (até 5.000 linhas) roda como Server Action desta rota. */
 export const maxDuration = 60;
+export const metadata: Metadata = { title: "Processos" };
 
 /** Primeira página carregada no servidor, já com os filtros da URL. */
 async function InternalProcessList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {

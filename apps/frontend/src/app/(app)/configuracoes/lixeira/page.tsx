@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { TrashPage } from "@/features/trash/components/trash-page";
 import { TRASH_PAGE_SIZE } from "@/features/trash/labels";
 import { listTrashAction } from "@/server/domain/trash/actions";
+
+export const metadata: Metadata = { title: "Lixeira" };
 
 /** Primeira página (clientes excluídos) carregada no servidor. */
 async function Trash() {

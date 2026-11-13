@@ -3,7 +3,7 @@
 Implementação da *DG Brasil — Database Architecture Specification V1*, consolidada
 na Etapa 3.2. Postgres no Supabase (São Paulo), com Auth, Storage, RLS e Queues (pgmq).
 
-Uma organização OWNER (Bárbara Cardoso Advocacia) e escritórios PARTNER. Cinco
+Uma organização OWNER (Barbara Cardoso Advocacia) e escritórios PARTNER. Cinco
 papéis: ADMIN, LAWYER, ASSISTANT (internos); PARTNER_ADMIN, PARTNER_USER.
 Domínio central: **Client → LegalCase → LegalProcess**.
 
@@ -56,7 +56,7 @@ Extensions). A migration 018 também tenta habilitar.
 
 Nenhuma senha fica no código. Depois do `db push`:
 
-1. Dashboard → Authentication → **Add user** (e-mail da Bárbara).
+1. Dashboard → Authentication → **Add user** (e-mail da Barbara).
 2. SQL Editor, como `postgres`:
    ```sql
    select private.bootstrap_owner_admin('<uuid do usuário>');
@@ -173,7 +173,7 @@ Excluir/restaurar caso, processo ou cliente (soft delete) é de ADMIN.
 visibilidade), `origin_organization_id` (atribuição comercial / parceria),
 `created_by_organization_id` (auditoria) e `clients.origin_organization_id`
 (origem do cadastro) são conceitos diferentes. Parceiro que cria um caso com
-origem Bárbara continua vendo o caso, sem parceria financeira.
+origem Barbara continua vendo o caso, sem parceria financeira.
 
 ### Financeiro
 

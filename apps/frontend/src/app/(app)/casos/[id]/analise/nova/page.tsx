@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/guards";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -6,6 +7,8 @@ import { AnalysisWizard } from "@/features/analyses/components/wizard/analysis-w
 import { IN_FLIGHT_STATUSES } from "@/features/analyses/fields";
 import { getAnalysisSetupAction, listAnalysesAction } from "@/server/domain/analyses/actions";
 import { getCaseAction } from "@/server/domain/cases/actions";
+
+export const metadata: Metadata = { title: "Nova análise" };
 
 /** Caso, modelos ativos da área (com checklist do caso) e análises existentes — tudo do servidor. */
 async function Wizard({ id }: { id: string }) {

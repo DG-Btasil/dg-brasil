@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { displayCNJ } from "@/lib/formatting";
 
 /**
  * Número CNJ em fonte tabular; "Sem número CNJ" quando ainda não existe. Não
@@ -7,5 +8,5 @@ import { cn } from "@/lib/cn";
  */
 export function CnjText({ cnj, className }: { cnj?: string; className?: string }) {
   if (!cnj) return <span className={cn("italic text-muted", className)}>Sem número CNJ</span>;
-  return <span className={cn("font-mono text-[12.5px] tabular tracking-tight", className)}>{cnj}</span>;
+  return <span className={cn("font-mono text-[12.5px] tabular tracking-tight", className)}>{displayCNJ(cnj)}</span>;
 }

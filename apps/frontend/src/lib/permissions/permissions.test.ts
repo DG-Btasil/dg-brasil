@@ -21,7 +21,6 @@ const EXPECTED: Record<string, Role[]> = {
   "audit.view": ["ADMIN"],
   "trash.manage": ["ADMIN"],
   "data.export": ["ADMIN"],
-  "demo.tools": ["ADMIN"],
   "analyses.start": ["ADMIN", "LAWYER"],
   "office.wake": ["ADMIN", "LAWYER"],
   "cases.decide": ["ADMIN", "LAWYER"],

@@ -17,6 +17,7 @@ import { ActionErrorState } from "@/components/feedback/action-error";
 import { Callout, EmptyState } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Avatar, PageHeader, Stat } from "@/components/ui/display";
 import { Select } from "@/components/ui/form";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
@@ -45,6 +46,25 @@ const STATUS_TARGETS = [
   { value: "SUSPENDED", label: PARTNER_OFFICE_STATUS_LABEL.SUSPENDED },
   { value: "INACTIVE", label: PARTNER_OFFICE_STATUS_LABEL.INACTIVE },
 ] as const;
+
+type StatusTarget = (typeof STATUS_TARGETS)[number]["value"];
+
+/** Texto da confirmação ao mudar a situação da parceria (o Select não grava mais ao mudar). */
+const STATUS_CONFIRM: Record<StatusTarget, { title: string; effect: (name: string) => string; confirm: string; tone: "primary" | "danger" }> = {
+  ACTIVE: { title: "Reativar a parceria?", effect: (name) => `As pessoas de ${name} voltam a acessar o portal do parceiro.`, confirm: "Reativar parceria", tone: "primary" },
+  SUSPENDED: {
+    title: "Suspender a parceria?",
+    effect: (name) => `As pessoas de ${name} deixam de acessar o portal até a parceria ser reativada. Casos, documentos e histórico continuam guardados.`,
+    confirm: "Suspender parceria",
+    tone: "danger",
+  },
+  INACTIVE: {
+    title: "Inativar a parceria?",
+    effect: (name) => `As pessoas de ${name} deixam de acessar o portal. Casos, documentos e histórico continuam guardados, e a parceria pode ser reativada depois.`,
+    confirm: "Inativar parceria",
+    tone: "danger",
+  },
+};
 
 type PageResult<T> = ActionResult<Page<T>>;
 
@@ -175,7 +195,7 @@ function OverviewTab({
   const actions = usePartnerOfficeActions();
   const { owner } = useOrgDirectory();
   const can = useCan();
-  const [saving, setSaving] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<StatusTarget | null>(null);
   const partner = detail.partner;
   const admin = detail.access === "ADMIN" ? detail.partner : undefined;
   const a = partner.address;
@@ -247,12 +267,10 @@ function OverviewTab({
               <Select
                 aria-label="Situação da parceria"
                 value={partner.status}
-                disabled={saving}
                 options={STATUS_TARGETS}
-                onChange={async (e) => {
-                  setSaving(true);
-                  await actions.setStatus(partner.id, e.target.value as (typeof STATUS_TARGETS)[number]["value"]);
-                  setSaving(false);
+                onChange={(e) => {
+                  const target = e.target.value as StatusTarget;
+                  if (target !== partner.status) setPendingStatus(target);
                 }}
                 className="w-[220px]"
               />
@@ -276,6 +294,16 @@ function OverviewTab({
           newRequest={{ partnerOrganizationId: partner.id }}
         />
       </div>
+      {pendingStatus && (
+        <ConfirmDialog
+          title={STATUS_CONFIRM[pendingStatus].title}
+          description={STATUS_CONFIRM[pendingStatus].effect(partner.name)}
+          confirmLabel={STATUS_CONFIRM[pendingStatus].confirm}
+          tone={STATUS_CONFIRM[pendingStatus].tone}
+          onConfirm={() => actions.setStatus(partner.id, pendingStatus)}
+          onClose={() => setPendingStatus(null)}
+        />
+      )}
     </div>
   );
 }

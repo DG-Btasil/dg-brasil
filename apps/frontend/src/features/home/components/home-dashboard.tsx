@@ -6,7 +6,7 @@ import { Activity, AlarmClock, ArrowRight, Bot, Briefcase, BriefcaseBusiness, Ca
 import { cn } from "@/lib/cn";
 import { now } from "@/lib/clock";
 import { CLIENT_KIND_LABEL, CLIENT_STATUS_LABEL, PRIORITY_LABEL, PRIORITY_TONE, PROCESS_STATUS_LABEL, type ProcessStatus } from "@/lib/constants/status";
-import { formatCurrency, formatDateLong, formatEventTime, formatNumber, formatPercent, formatWaitingTime, greeting, pluralize } from "@/lib/formatting";
+import { capitalizeFirst, formatCurrency, formatDateLong, formatEventTime, formatNumber, formatPercent, formatWaitingTime, greeting, pluralize } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState } from "@/components/feedback/states";
@@ -19,6 +19,7 @@ import { TONE_BORDER_LEFT } from "@/components/ui/tone";
 import type { Page } from "@/server/core/pagination";
 import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
 import { AGENT_RUN_STATUS_LABEL, AGENT_RUN_STATUS_TONE } from "@/features/agent-runs/components/agent-runs-panel";
+import { agentRunOperationLabel } from "@/features/agent-runs/labels";
 import { ACTOR_TYPE_LABEL, actionLabel, eventDetail } from "@/features/audit/humanize";
 import { useOrganizationNames } from "@/features/directory/directory-context";
 import { JudicialCaptureAlert } from "@/features/judicial/components/judicial-capture-alert";
@@ -59,7 +60,7 @@ export function HomeDashboard({ data, metrics }: { data: InternalHomeData; metri
           {greeting(today)}, {data.firstName}.
         </h1>
         <p className="mt-1.5 text-[13px] text-muted">
-          <span className="capitalize">{weekdayFmt.format(today)}</span>, {formatDateLong(today)}
+          {capitalizeFirst(weekdayFmt.format(today))}, {formatDateLong(today)}
           <span aria-hidden className="mx-2 text-subtle">
             ·
           </span>
@@ -73,7 +74,7 @@ export function HomeDashboard({ data, metrics }: { data: InternalHomeData; metri
       <section aria-label="Indicadores do escritório" data-tour="home-kpis" className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat label="Casos ativos" value={num(k.activeCases)} icon={FolderOpen} href="/casos?situacao=ativos" hint="Em análise, aceitos e em andamento" />
         <Stat label="Casos aguardando a equipe" value={num(k.awaitingCases)} icon={Hourglass} href="/casos?situacao=aguardando" hint="Enviados ou aguardando documentos" />
-        <Stat label="Processos ativos" value={num(k.activeProcesses)} icon={Briefcase} href="/processos" hint="Todos os status, exceto recebidos e arquivados" />
+        <Stat label="Processos ativos" value={num(k.activeProcesses)} icon={Briefcase} href="/processos" hint="Todas as situações, exceto recebidos e arquivados" />
         {k.pendingReviews !== undefined ? (
           <Stat
             label="Revisões pendentes"
@@ -290,7 +291,7 @@ function ProcessDistribution({ distribution }: { distribution: InternalHomeData[
   const total = slices.reduce((sum, s) => sum + s.count, 0);
   return (
     <Panel className="flex h-full flex-col">
-      <PanelHeader title="Distribuição dos processos" description="Por status, contada no banco" />
+      <PanelHeader title="Distribuição dos processos" description="Por situação" />
       {distribution === null ? (
         <EmptyState compact icon={PieIcon} title="Não foi possível contar os processos." />
       ) : total === 0 ? (
@@ -469,14 +470,14 @@ function AgentActivity({ runs }: { runs: NonNullable<InternalHomeData["runs"]> }
       {!runs.ok ? (
         <ActionErrorState error={runs} title="Não foi possível carregar as execuções." />
       ) : runs.data.items.length === 0 ? (
-        <EmptyState compact icon={Bot} title="Nenhuma execução registrada" description="As execuções dos agentes aparecerão aqui, com status e horário." />
+        <EmptyState compact icon={Bot} title="Nenhuma execução registrada" description="As execuções dos agentes aparecerão aqui, com situação e horário." />
       ) : (
         <ul className="divide-y divide-line">
           {runs.data.items.map((r) => (
             <li key={r.id} className="flex items-start gap-3 px-5 py-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] text-foreground">{r.agentName}</p>
-                <p className="mt-0.5 truncate text-[12px] text-muted">{r.operation}</p>
+                <p className="mt-0.5 truncate text-[12px] text-muted">{agentRunOperationLabel(r.operation)}</p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
                 <StatusBadge status={r.status} labels={AGENT_RUN_STATUS_LABEL} tones={AGENT_RUN_STATUS_TONE} />

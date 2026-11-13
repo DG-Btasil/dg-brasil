@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { MetricsBoard } from "@/features/metrics/components/metrics-board";
 import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 import { PageContainer } from "@/components/layout/guards";
@@ -10,6 +11,7 @@ import { listClientsAction } from "@/server/domain/clients/actions";
 
 /** A exportação de planilha (até 5.000 linhas) roda como Server Action desta rota. */
 export const maxDuration = 60;
+export const metadata: Metadata = { title: "Clientes" };
 
 /** Primeira página carregada no servidor, já com os filtros da URL. */
 async function InternalClientList({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import { useFormContext, useWatch } from "react-hook-form";
 import { CheckCircle2, CircleAlert } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -44,7 +45,7 @@ export function ShareFields({ partnerField, ownerField }: { partnerField: string
           </div>
         )}
       </Field>
-      <Field label="Participação Bárbara Cardoso Advocacia" requirement="required" error={errors[ownerField]?.message}>
+      <Field label={`Participação da ${OWNER_OFFICE_NAME}`} requirement="required" error={errors[ownerField]?.message}>
         {(p) => (
           <div className="relative">
             <Input

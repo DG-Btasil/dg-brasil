@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type DragEvent } from "react";
-import { Download, FileStack, MoreHorizontal, SearchX, UploadCloud } from "lucide-react";
+import { Download, FileStack, MoreHorizontal, SearchX, Trash2, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABEL, DOCUMENT_VISIBILITY_LABEL, type DocumentCategory } from "@/lib/constants/status";
 import { formatDate } from "@/lib/formatting";
@@ -11,6 +11,7 @@ import { ActionErrorState } from "@/components/feedback/action-error";
 import { EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Select, Textarea } from "@/components/ui/form";
 import { MenuButton } from "@/components/ui/menu";
@@ -68,6 +69,7 @@ export function DocumentsPanel({
   const [upload, setUpload] = useState<{ target: UploadTarget; file?: File } | null>(null);
   const [versionsOf, setVersionsOf] = useState<string | null>(null);
   const [failing, setFailing] = useState<{ versionId: string; title: string } | null>(null);
+  const [confirming, setConfirming] = useState<{ kind: "archive" | "remove"; id: string; title: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const page = result.ok ? result.data : undefined;
   const newTarget: UploadTarget = { kind: "new", ...scope };
@@ -157,11 +159,11 @@ export function DocumentsPanel({
                       ...(canManage
                         ? [
                             doc.status === "ACTIVE"
-                              ? { key: "archive", label: "Arquivar", onSelect: () => act(doc.id, () => actions.setArchived(doc.id, true)) }
+                              ? { key: "archive", label: "Arquivar", onSelect: () => setConfirming({ kind: "archive", id: doc.id, title: doc.title }) }
                               : { key: "unarchive", label: "Reativar", onSelect: () => act(doc.id, () => actions.setArchived(doc.id, false)) },
                           ]
                         : []),
-                      ...(canDelete && canManage ? [{ key: "remove", label: "Excluir documento", description: "As versões ficam no histórico.", onSelect: () => act(doc.id, () => actions.remove(doc.id)) }] : []),
+                      ...(canDelete && canManage ? [{ key: "remove", label: "Excluir documento", description: "As versões ficam no histórico.", onSelect: () => setConfirming({ kind: "remove", id: doc.id, title: doc.title }) }] : []),
                     ];
                     return (
                       <Tr key={doc.id} className={doc.status === "ARCHIVED" ? "text-muted" : undefined}>
@@ -217,6 +219,28 @@ export function DocumentsPanel({
       {upload && <UploadDialog target={upload.target} initialFile={upload.file} onClose={() => setUpload(null)} />}
       {versionsOf && <DocumentVersionsDialog documentId={versionsOf} onClose={() => setVersionsOf(null)} />}
       {failing && <FailVerificationDialog {...failing} onClose={() => setFailing(null)} />}
+      {confirming?.kind === "archive" && (
+        <ConfirmDialog
+          title="Arquivar documento?"
+          description={`“${confirming.title}” sai da lista de documentos ativos. Ele continua guardado: para ver ou reativar, escolha “Arquivados” no filtro.`}
+          confirmLabel="Arquivar"
+          onConfirm={() => actions.setArchived(confirming.id, true)}
+          onClose={() => setConfirming(null)}
+        />
+      )}
+      {confirming?.kind === "remove" && (
+        <ConfirmDialog
+          title="Excluir documento?"
+          description={`“${confirming.title}” deixa de aparecer nas listas. As versões ficam guardadas no histórico e a exclusão fica registrada na auditoria.`}
+          confirmLabel="Excluir documento"
+          tone="dangerSolid"
+          icon={<Trash2 className="size-4" aria-hidden />}
+          onConfirm={() => actions.remove(confirming.id)}
+          onClose={() => setConfirming(null)}
+        >
+          <p className="text-[13px] text-muted">A exclusão não pode ser desfeita pela tela. Se o documento atende a uma pendência do caso, troque o arquivo da pendência antes.</p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

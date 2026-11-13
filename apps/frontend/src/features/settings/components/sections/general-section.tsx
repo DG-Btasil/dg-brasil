@@ -1,9 +1,7 @@
 "use client";
 
 import { Wordmark } from "@/components/layout/wordmark";
-import { Button } from "@/components/ui/button";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
-import { NotAvailable } from "@/components/ui/tooltip";
 import { Callout } from "@/components/feedback/states";
 import { usePermission } from "@/features/auth/hooks";
 import { useCallback, useEffect, useState } from "react";
@@ -61,16 +59,7 @@ function General({ office, onSaved }: { office: Office; onSaved: () => void }) {
 
       <div className="grid grid-cols-2 gap-6">
         <Panel>
-          <PanelHeader
-            title="Preferências regionais"
-            actions={
-              <NotAvailable>
-                <Button size="sm" variant="secondary">
-                  Alterar
-                </Button>
-              </NotAvailable>
-            }
-          />
+          <PanelHeader title="Preferências regionais" />
           <PanelBody>
             <DefinitionGrid
               items={[
@@ -83,17 +72,7 @@ function General({ office, onSaved }: { office: Office; onSaved: () => void }) {
           </PanelBody>
         </Panel>
         <Panel>
-          <PanelHeader
-            title="Identidade"
-            description="Prévia da marca exibida na interface."
-            actions={
-              <NotAvailable message="Personalização de marca disponível em uma próxima etapa">
-                <Button size="sm" variant="secondary">
-                  Enviar logotipo
-                </Button>
-              </NotAvailable>
-            }
-          />
+          <PanelHeader title="Identidade" description="Prévia da marca exibida na interface." />
           <PanelBody className="space-y-3">
             <div className="flex items-center rounded-md bg-navy px-4 py-3.5">
               <Wordmark tone="light" />

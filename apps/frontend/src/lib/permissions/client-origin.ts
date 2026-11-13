@@ -1,10 +1,10 @@
 /**
  * Origem do cliente: quais escritórios o usuário pode atribuir (fonte única).
  *
- * - Equipe interna com permissão de cadastro: Bárbara Cardoso Advocacia ou
+ * - Equipe interna com permissão de cadastro: Barbara Cardoso Advocacia ou
  *   qualquer escritório parceiro ATIVO (permite corrigir/atribuir a origem).
  * - Usuário de parceiro (admin ou usuário): SOMENTE o próprio escritório ou
- *   Bárbara Cardoso Advocacia. Nunca outro parceiro.
+ *   Barbara Cardoso Advocacia. Nunca outro parceiro.
  *
  * Usado pelos formulários (opções do Select) e pelas ações do store (que
  * recusam qualquer outro valor, mesmo se o estado da tela for manipulado).

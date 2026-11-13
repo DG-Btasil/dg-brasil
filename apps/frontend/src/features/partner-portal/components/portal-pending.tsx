@@ -1,5 +1,6 @@
 "use client";
 
+import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import type { ActionResult } from "@/lib/actions/result";
 import { PageContainer } from "@/components/layout/guards";
 import { PageHeader } from "@/components/ui/display";
@@ -8,14 +9,14 @@ import type { PartnerRequestListItem } from "@/server/domain/partner-requests/dt
 import { RequestsPanel } from "@/features/partner-requests/components/requests-panel";
 
 /**
- * Pendências: solicitações da Bárbara Cardoso Advocacia ao escritório
+ * Pendências: solicitações da Barbara Cardoso Advocacia ao escritório
  * parceiro (RLS recorta ao próprio escritório; escopo vazio = "as minhas").
  * Documentos são enviados na aba Documentos do caso.
  */
 export function PortalPending({ initial }: { initial: ActionResult<Page<PartnerRequestListItem>> }) {
   return (
     <PageContainer>
-      <PageHeader title="Pendências" description="Solicitações da Bárbara Cardoso Advocacia. Abra a conversa para responder e anexar o documento pedido — ele vai direto para o caso." />
+      <PageHeader title="Pendências" description={`Solicitações da ${OWNER_OFFICE_NAME}. Abra a conversa para responder e anexar o documento pedido — ele vai direto para o caso.`} />
       <RequestsPanel scope={{}} initial={initial} title="Solicitações" />
     </PageContainer>
   );

@@ -95,7 +95,7 @@ export function DriveSettingsPanel() {
         <PanelBody className="space-y-3">
           {!s.configured ? (
             <Callout tone="info">
-              A conexão é feita no servidor (variáveis <code className="font-mono">GOOGLE_DRIVE_*</code>), nunca pelo navegador nem pelo computador do escritório. Veja o guia em docs/mcp/google-drive.md.
+              O Google Drive ainda não foi conectado. A conexão é feita uma única vez por quem cuida da instalação do sistema, nunca pelo navegador nem pelo computador do escritório.
             </Callout>
           ) : (
             <DefinitionGrid
@@ -109,7 +109,7 @@ export function DriveSettingsPanel() {
             />
           )}
           {s.configured && !s.rootFolderConfigured && (
-            <Callout tone="warning">Falta indicar a pasta que contém as pastas dos clientes (GOOGLE_DRIVE_ROOT_FOLDER_ID). Sem ela, a busca procura no Drive inteiro e não há sugestões.</Callout>
+            <Callout tone="warning">Falta indicar a pasta que contém as pastas dos clientes. Sem ela, a busca procura no Drive inteiro e não há sugestões. Peça o ajuste a quem cuida da instalação do sistema.</Callout>
           )}
           {s.syncErrors > 0 && <Callout tone="warning">{s.syncErrors} pasta(s) com aviso na última sincronização. Abra o cliente para ver o detalhe.</Callout>}
           <div className="flex flex-wrap gap-2">

@@ -3,40 +3,27 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { Compass, LogOut, RotateCcw, Settings, UserRound } from "lucide-react";
+import { Compass, LogOut, Settings, UserRound } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
-import { useIsPartner, usePermission, useSessionActions } from "@/features/auth/hooks";
+import { useIsPartner, usePermission } from "@/features/auth/hooks";
 import { useClientSession } from "@/features/auth/session-context";
 import { signOut } from "@/server/auth/actions";
-import { useToast, useUiStore } from "@/store/ui-store";
+import { useUiStore } from "@/store/ui-store";
 import { Avatar } from "@/components/ui/display";
-import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
-
-/**
- * Ferramentas da demonstração — só ADMIN e só com NEXT_PUBLIC_DEMO_MODE=true.
- * Desligado por padrão desde que as telas jurídicas leem o banco real (QA 4.3,
- * OBS-03); as áreas ainda de demonstração mostram o próprio aviso.
- */
-export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export function UserMenu() {
   const session = useClientSession();
-  // Identidade SEMPRE da sessão validada no servidor (nunca de persona de demonstração).
+  // Identidade SEMPRE da sessão validada no servidor.
   const user = session ? { name: session.fullName, displayName: session.displayName, email: session.email, role: session.role } : undefined;
   const router = useRouter();
-  const toast = useToast();
   const startTour = useUiStore((s) => s.startTour);
-  const { resetDemo } = useSessionActions();
   const canSettings = usePermission("settings.view");
   const canNotifications = usePermission("settings.notifications.edit");
-  const canDemo = usePermission("demo.tools");
   const isPartner = useIsPartner();
   const [signingOut, startSignOut] = useTransition();
   const [open, setOpen] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -111,23 +98,6 @@ export function UserMenu() {
             )}
           </div>
 
-          {DEMO_MODE && canDemo && (
-            <div className="border-t border-line bg-surface-muted/60 py-1.5">
-              <p className="px-4 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-muted">Demonstração</p>
-              <button
-                role="menuitem"
-                type="button"
-                className={item}
-                onClick={() => {
-                  setOpen(false);
-                  setConfirmReset(true);
-                }}
-              >
-                <RotateCcw className="size-4 text-subtle" aria-hidden /> Restaurar áreas de demonstração
-              </button>
-            </div>
-          )}
-
           <div className="border-t border-line py-1.5">
             <button
               role="menuitem"
@@ -143,31 +113,6 @@ export function UserMenu() {
           </div>
         </div>
       )}
-
-      <Dialog
-        open={confirmReset}
-        onOpenChange={setConfirmReset}
-        size="sm"
-        title="Restaurar áreas de demonstração?"
-        description="Restaura só o que ainda é demonstração e fica neste navegador (configuração da área DG Brasil, integrações, importação e uso de IA). Clientes, casos, processos e os demais dados reais estão no servidor e não são afetados."
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirmReset(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={() => {
-                resetDemo();
-                setConfirmReset(false);
-                toast({ tone: "success", title: "Dados de demonstração restaurados" });
-                router.push("/home");
-              }}
-            >
-              Restaurar
-            </Button>
-          </>
-        }
-      />
     </div>
   );
 }

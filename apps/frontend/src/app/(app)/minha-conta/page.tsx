@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { RequirePermission } from "@/components/layout/server-guards";
 import { PortalAccount } from "@/features/partner-portal/components/portal-account";
 import { can } from "@/lib/permissions";
 import { requireAppSession } from "@/server/auth/session";
 import { getMyPartnerOfficeAction, getMyPartnerSettingsAction } from "@/server/domain/organizations/actions";
+
+export const metadata: Metadata = { title: "Minha conta" };
 
 /** Escritório da SESSÃO (nunca da URL); a divisão só para quem tem partnerPortal.finance.view (PARTNER_ADMIN). */
 async function Account() {

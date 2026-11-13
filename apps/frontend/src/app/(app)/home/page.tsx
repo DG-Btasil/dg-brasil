@@ -7,7 +7,7 @@ import { loadInternalHome, loadPartnerHome } from "@/features/home/load";
 import { PortalHome } from "@/features/partner-portal/components/portal-home";
 import { getDashboardMetricsAction } from "@/server/domain/metrics/actions";
 
-export const metadata: Metadata = { title: "Home" };
+export const metadata: Metadata = { title: "Início" };
 
 /** Painel interno: dados do servidor, só os blocos que o papel pode ver. */
 async function Internal() {

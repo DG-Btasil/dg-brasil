@@ -2,7 +2,7 @@ import type { Permission } from "@/lib/permissions";
 
 /** Rótulos legíveis de cada permissão (matriz somente leitura). */
 export const PERMISSION_LABEL: Record<Permission, string> = {
-  "home.view": "Ver a Home",
+  "home.view": "Ver o Início",
   "clients.view": "Ver clientes",
   "clients.edit": "Cadastrar e editar clientes",
   "clients.delete": "Excluir clientes",
@@ -41,7 +41,6 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "audit.view": "Ver registro de auditoria",
   "trash.manage": "Abrir a Lixeira e restaurar excluídos",
   "data.export": "Exportar planilhas",
-  "demo.tools": "Ferramentas de demonstração",
   "partnerPortal.view": "Portal do parceiro",
   "partnerPortal.clients.create": "Parceiro: cadastrar clientes",
   "partnerPortal.clients.edit": "Parceiro: editar dados básicos de clientes",
@@ -76,5 +75,5 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
       "settings.notifications.edit",
     ],
   },
-  { label: "Auditoria, dados e demonstração", permissions: ["audit.view", "trash.manage", "data.export", "demo.tools"] },
+  { label: "Auditoria e dados", permissions: ["audit.view", "trash.manage", "data.export"] },
 ];
