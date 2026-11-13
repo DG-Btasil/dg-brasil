@@ -5,8 +5,9 @@ Revisão do banco antes do lançamento, feita em 2026-11-12 a partir do alerta d
 perguntas: o que é o alerta e como resolver sem pagar agora, se as migrations
 precisam de arrumação, e o que dá para tirar do DEV.
 
-Tudo aqui foi medido só com leitura: estatísticas do Postgres, métricas de
-sistema do projeto e os arquivos do repositório. **Nada foi alterado no DEV.**
+A medição foi feita só com leitura: estatísticas do Postgres, métricas de
+sistema do projeto e os arquivos do repositório. As medidas aplicadas depois
+estão na primeira seção.
 
 ## Resumo
 
@@ -25,6 +26,41 @@ sistema do projeto e os arquivos do repositório. **Nada foi alterado no DEV.**
 5. **A investigação achou um defeito que iria para a produção:** a busca
    judicial avisa todos os administradores a cada rodada com falha, de 5 em 5
    minutos ([seção 6](#6-achados-que-valem-para-a-produção)).
+
+## Situação depois das medidas (2026-11-12, noite)
+
+Feito no DEV, com autorização do Miguel:
+
+| Medida | Resultado |
+|---|---|
+| Migrations 056 e 057 aplicadas | 57 migrations no DEV; `verificar` com 893 conferências |
+| Contas das rodadas automáticas apagadas (`npm run limpar:teste`) | 484 contas e 298 escritórios parceiros a menos. Ficaram 14 contas e 11 escritórios |
+| Avisos de falha da busca judicial apagados | Notificações: de 143.906 para 84 |
+| DJEN e DataJud desligados no DEV | O agendador responde "nada a ler". Religar em Configurações → Integrações para testar |
+| Histórico do agendador limpo | 11.622 execuções antigas apagadas |
+
+| Medida | Antes | Depois |
+|---|---|---|
+| Tamanho do banco | 131 MB | 52 MB |
+| Administradores ativos (recebem cada aviso) | 64 | 3 |
+| Carga da máquina (load) | 14 | 0,7 |
+| Swap em uso | 680 a 750 MB | 521 MB |
+
+**Falta o reinício do projeto** (seção 2, item 1), que só o dono faz pelo painel:
+é ele que zera o swap que sobrou.
+
+Contas que ficaram: `adm@dgbrasil.com`, a conta Gmail do Miguel, as seis `qa.*`,
+cinco contas das rodadas de QA das etapas 7 e 8 (`qa7…` e `qa8…`) e uma conta
+`qa.r2.retrynjte` sem vínculo. As seis últimas não são usadas por nenhum
+roteiro atual; saem com um pedido.
+
+A limpeza levou junto um acordo de parceria e um pagamento que a conta `adm`
+tinha lançado em casos criados pelas rodadas automáticas. Os dados da validação
+dos clones (cliente "DG Teste - José da Silva Fictício") e o computador
+principal não foram tocados.
+
+Não foram limpos: os 452 arquivos de teste no Storage (6 MB) e as 2.027 rodadas
+antigas em `judicial_sync_runs`.
 
 ## 1. O alerta do Supabase
 
@@ -224,7 +260,7 @@ como melhoria para depois do lançamento.
 
 Os itens 1, 3 e 4 estão na migration 057
 (`20261112000057_judicial_notice_cap_and_cron_history.sql`), com 6 conferências
-novas no `verificar` (877 no total). O item 6 foi corrigido. Os itens 2 e 5
+novas no `verificar`. O item 6 foi corrigido. Os itens 2 e 5
 seguem abertos.
 
 ### Observado, sem ação agora

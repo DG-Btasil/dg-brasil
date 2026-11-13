@@ -31,6 +31,9 @@
 //     4. religa as chaves e apaga as contas no Auth;
 //     5. confere: nenhuma chave estrangeira órfã e nenhuma linha criada por
 //        conta mantida a menos. Se alguma conferência falhar, desfaz tudo.
+//        A segunda acusa quando uma conta mantida lançou algo num caso das
+//        rodadas automáticas (o caso sai e leva o lançamento junto). Depois de
+//        olhar essas linhas na simulação, --aceitar-perdas deixa seguir.
 //
 // Regras: recusa rodar sem DG_ENV=development; nunca imprime senha nem chave.
 // Variáveis: supabase/.env.real (SUPABASE_DB_URL, papel postgres).
@@ -181,6 +184,7 @@ $$`
  * @param opcoes.escritorios   ids dos escritórios a apagar; sem isso, usa PADRAO_ESCRITORIO
  * @param opcoes.herdeiro      id da conta que herda a configuração compartilhada; sem isso, o ADMIN ativo mais antigo
  * @param opcoes.avisosDeTeste também apaga JUDICIAL_SYNC_FAILED das contas mantidas
+ * @param opcoes.aceitarPerdas a conferência 2 vira aviso (depois de olhar as linhas na simulação)
  */
 export async function limpar(q, opcoes = {}) {
   await q(`create temp table _g (id uuid primary key) on commit drop`)
@@ -259,13 +263,13 @@ export async function limpar(q, opcoes = {}) {
 
   const orfaos = await q(`select fk, n from _orphans order by fk`)
   const perdas = await q(`select a.tbl, a.n antes, d.n depois from _kept a join _kept d on d.tbl = a.tbl and d.fase = 'depois'
-                           where a.fase = 'antes' and a.n <> d.n order by a.tbl`)
+                           where a.fase = 'antes' and d.n < a.n order by a.tbl`)
   const tabelas = await q(`select a.tbl, a.n antes, d.n depois, a.n - d.n apagadas from _sizes a join _sizes d on d.tbl = a.tbl and d.fase = 'depois'
                             where a.fase = 'antes' and a.n <> d.n order by a.n - d.n desc`)
   const acoes = await q(`select tbl, col, action, sum(n)::bigint n from _log where action in ('herdeiro', 'esvaziada') group by 1, 2, 3 order by 4 desc`)
   const voltas = (await q(`select n from _log where tbl = '(voltas da varredura)'`))[0]?.n
   const restam = await q(`select o.name, o.status from public.organizations o where o.type = 'PARTNER' order by o.name`)
-  return { ok: orfaos.length === 0 && perdas.length === 0, contas, escritorios, herdeiro: herdeiro.email ?? herdeiro.id, mantidas, tabelas, acoes, orfaos, perdas, voltas, parceirosQueFicam: restam }
+  return { ok: orfaos.length === 0 && (perdas.length === 0 || opcoes.aceitarPerdas === true), contas, escritorios, herdeiro: herdeiro.email ?? herdeiro.id, mantidas, tabelas, acoes, orfaos, perdas, voltas, parceirosQueFicam: restam }
 }
 
 export function imprimir(r) {
@@ -286,7 +290,7 @@ export function imprimir(r) {
   }
   console.log(`\nConferência 1, chaves estrangeiras órfãs: ${r.orfaos.length === 0 ? 'nenhuma' : 'FALHOU'}`)
   for (const o of r.orfaos) console.log(`  ${o.fk}: ${n(o.n)}`)
-  console.log(`Conferência 2, linhas criadas por contas mantidas: ${r.perdas.length === 0 ? 'todas preservadas' : 'FALHOU'}`)
+  console.log(`Conferência 2, linhas criadas por contas mantidas: ${r.perdas.length === 0 ? 'todas preservadas' : r.ok ? 'há perdas, aceitas com --aceitar-perdas' : 'FALHOU'}`)
   for (const p of r.perdas) console.log(`  ${p.tbl}: ${n(p.antes)} → ${n(p.depois)}`)
 }
 
@@ -305,6 +309,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const args = process.argv.slice(2)
   const executar = args.includes('--executar')
   const avisosDeTeste = args.includes('--avisos-de-teste')
+  const aceitarPerdas = args.includes('--aceitar-perdas')
   const emailHerdeiro = args.includes('--herdeiro') ? args[args.indexOf('--herdeiro') + 1] : null
 
   const { default: pg } = await import('pg')
@@ -321,7 +326,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       herdeiro = (await q(`select id from auth.users where lower(email) = lower($1)`, [emailHerdeiro]))[0]?.id
       if (!herdeiro) throw new Error(`--herdeiro: não existe conta com o e-mail ${emailHerdeiro}`)
     }
-    const r = await limpar(q, { herdeiro, avisosDeTeste })
+    const r = await limpar(q, { herdeiro, avisosDeTeste, aceitarPerdas })
     imprimir(r)
     if (!r.ok) {
       await q(`rollback`)
