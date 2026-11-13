@@ -9,6 +9,7 @@ import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { Callout, SkeletonRows } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { Tooltip } from "@/components/ui/tooltip";
 import { getReviewContentAction, saveManualRevisionAction } from "@/server/domain/reviews/actions";
@@ -102,6 +103,7 @@ function ManualEditor({ reviewId, content, onCancel }: { reviewId: string; conte
   const [draft, setDraft] = useState(content.text);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  const [discarding, setDiscarding] = useState(false);
   const dirty = draft !== content.text;
 
   async function save() {
@@ -120,9 +122,10 @@ function ManualEditor({ reviewId, content, onCancel }: { reviewId: string; conte
     router.push(`/revisoes/${r.data.reviewId}`);
   }
 
+  /** Sem alteração, sai direto; com texto alterado, pergunta antes (no diálogo do sistema, nunca no do navegador). */
   function cancel() {
-    if (dirty && !window.confirm("Descartar as alterações não salvas?")) return;
-    onCancel();
+    if (dirty) setDiscarding(true);
+    else onCancel();
   }
 
   return (
@@ -164,6 +167,31 @@ function ManualEditor({ reviewId, content, onCancel }: { reviewId: string; conte
           </label>
         </div>
       </div>
+      {discarding && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setDiscarding(false)}
+          title="Descartar as alterações?"
+          description={`O texto que você alterou não foi salvo. A versão ${content.versionNumber} continua como está.`}
+          size="sm"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setDiscarding(false)}>
+                Continuar editando
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setDiscarding(false);
+                  onCancel();
+                }}
+              >
+                Descartar alterações
+              </Button>
+            </>
+          }
+        />
+      )}
     </article>
   );
 }

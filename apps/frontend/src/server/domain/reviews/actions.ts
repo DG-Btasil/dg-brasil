@@ -4,7 +4,16 @@ import { z } from "zod";
 import { runAction } from "@/server/core/action";
 import * as manual from "./manual-revision";
 import * as service from "./service";
-import { assignReviewSchema, decideReviewSchema, listReviewsSchema, reopenReviewSchema, reviewIdSchema, saveManualRevisionSchema } from "./schemas";
+import {
+  assignReviewSchema,
+  decideReviewSchema,
+  decideReviewsBulkSchema,
+  listReviewGroupsSchema,
+  listReviewsSchema,
+  reopenReviewSchema,
+  reviewIdSchema,
+  saveManualRevisionSchema,
+} from "./schemas";
 
 /**
  * Server Actions de revisão humana. Ler: `reviews.view`; atribuir, decidir e
@@ -13,6 +22,11 @@ import { assignReviewSchema, decideReviewSchema, listReviewsSchema, reopenReview
 
 export async function listReviewsAction(input: unknown) {
   return runAction({ name: "reviews.list", permission: "reviews.view", schema: listReviewsSchema, input, handler: service.listReviews });
+}
+
+/** A fila agrupada por execução do agente (067): grupos com rótulos e contagens, paginados no banco. */
+export async function listReviewGroupsAction(input: unknown) {
+  return runAction({ name: "reviews.groups", permission: "reviews.view", schema: listReviewGroupsSchema, input, handler: service.listReviewGroups });
 }
 
 /** Indicadores da fila (aguardando, urgentes/alta, vencendo em 7 dias, sem responsável), contados no banco. */
@@ -30,6 +44,11 @@ export async function assignReviewAction(input: unknown) {
 
 export async function decideReviewAction(input: unknown) {
   return runAction({ name: "reviews.decide", permission: "reviews.decide", schema: decideReviewSchema, input, handler: service.decideReview });
+}
+
+/** Aprovar ou rejeitar vários itens de uma vez: um laço sobre decide_review, com o resultado item a item (067). */
+export async function decideReviewsBulkAction(input: unknown) {
+  return runAction({ name: "reviews.decide_bulk", permission: "reviews.decide", schema: decideReviewsBulkSchema, input, handler: service.decideReviewsBulk });
 }
 
 export async function reopenReviewAction(input: unknown) {

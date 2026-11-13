@@ -23,6 +23,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { PageHeader, Timeline } from "@/components/ui/display";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
+import { canRequestChanges } from "@/server/domain/reviews/bulk-rules";
 import type { ReviewDetailDTO, ReviewTargetDTO } from "@/server/domain/reviews/dto";
 import { PROPOSAL_TYPE_LABEL } from "@/server/domain/reviews/labels";
 import { usePermission, useRole } from "@/features/auth/hooks";
@@ -62,7 +63,8 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
   const [reopening, setReopening] = useState(false);
   const open = isOpen(review);
   const allowed = canDecide && (!review.requiresAdmin || isAdmin);
-  const last = [...review.decisions].reverse().find((d) => d.decision !== null);
+  const changesAllowed = canRequestChanges(review.targetKind);
+  const last =[...review.decisions].reverse().find((d) => d.decision !== null);
 
   return (
     <PageContainer>
@@ -86,23 +88,36 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
       />
 
       <div className="mb-5 space-y-3">
-        {review.dbStatus === "REOPENED" && (
-          <Callout tone="warning" title="Revisão reaberta">
-            A decisão anterior continua no histórico. Efeitos já aplicados por ela não são desfeitos automaticamente.
-          </Callout>
-        )}
+        {review.dbStatus === "REOPENED" &&
+          (changesAllowed ? (
+            <Callout tone="warning" title="Revisão reaberta">
+              A decisão anterior continua no histórico. Efeitos já aplicados por ela não são desfeitos automaticamente.
+            </Callout>
+          ) : (
+            // Proposta só volta para a fila pela correção das que estavam paradas em "alterações solicitadas" (067).
+            <Callout tone="warning" title="Esta proposta voltou para a fila">
+              Ela tinha recebido “alterações solicitadas”, que não vale para proposta do agente, e ficou parada. Nada foi aplicado. Aprove ou rejeite.
+            </Callout>
+          ))}
         {open ? (
           allowed ? (
             <Panel>
               <PanelBody className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-[13px] text-muted">Leia o material ao lado e decida. Pedir alterações e rejeitar exigem justificativa.</p>
+                <p className="text-[13px] text-muted">
+                  {changesAllowed
+                    ? "Leia o material ao lado e decida. Pedir alterações e rejeitar exigem justificativa."
+                    : "Leia a proposta ao lado e decida: aprovar ou rejeitar. Rejeitar exige justificativa."}
+                </p>
                 <div className="flex gap-2">
                   <Button variant="danger" icon={<XCircle className="size-4" aria-hidden />} onClick={() => setDeciding("REJECTED")}>
                     Rejeitar
                   </Button>
-                  <Button variant="secondary" icon={<MessageSquareWarning className="size-4" aria-hidden />} onClick={() => setDeciding("CHANGES_REQUESTED")}>
-                    Solicitar alterações
-                  </Button>
+                  {/* Proposta do agente só se aprova ou rejeita (067): não há o que o agente alterar. */}
+                  {changesAllowed && (
+                    <Button variant="secondary" icon={<MessageSquareWarning className="size-4" aria-hidden />} onClick={() => setDeciding("CHANGES_REQUESTED")}>
+                      Solicitar alterações
+                    </Button>
+                  )}
                   <Button icon={<CheckCircle2 className="size-4" aria-hidden />} onClick={() => setDeciding("APPROVED")}>
                     Aprovar
                   </Button>

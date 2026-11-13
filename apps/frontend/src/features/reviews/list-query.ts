@@ -1,9 +1,16 @@
 import { PRIORITIES, PRIORITY_LABEL, type Priority } from "@/lib/constants/status";
 
 /**
- * Fila de revisões ↔ URL ↔ entrada de `listReviewsAction`. A URL guarda só
- * visão, filtros e página (nenhum conteúdo revisado nem dado pessoal).
+ * Fila de revisões ↔ URL ↔ entrada de `listReviewsAction` e de
+ * `listReviewGroupsAction`. A URL guarda só modo, visão, filtros e página
+ * (nenhum conteúdo revisado). A busca por texto vai para a URL quando não tem
+ * dígito, como nas outras listas (CPF e número de processo ficam de fora).
  */
+
+/** Como a fila aparece: agrupada por execução do agente (padrão) ou em lista, item a item. */
+export const REVIEW_MODES = ["grupos", "lista"] as const;
+export type ReviewMode = (typeof REVIEW_MODES)[number];
+export const REVIEW_MODE_LABEL: Record<ReviewMode, string> = { grupos: "Agrupar por execução", lista: "Lista" };
 
 export const REVIEW_VIEWS = ["abertas", "minhas", "todas"] as const;
 export type ReviewView = (typeof REVIEW_VIEWS)[number];
@@ -30,7 +37,10 @@ export const REVIEW_DUE_LABEL: Record<ReviewDueQuery, string> = { NEXT_7_DAYS: "
 const DUE_PARAM: Record<ReviewDueQuery, string> = { NEXT_7_DAYS: "7dias" };
 
 export interface ReviewListQuery {
+  mode: ReviewMode;
   view: ReviewView;
+  /** Texto livre: cliente, caso, título do item ou agente. */
+  search: string;
   priority: ReviewPriorityFilter | "";
   kind: ReviewKind | "";
   status: ReviewDbStatusFilter | "";
@@ -40,17 +50,24 @@ export interface ReviewListQuery {
 }
 
 export const REVIEW_PAGE_SIZE = 25;
-export const DEFAULT_REVIEW_QUERY: ReviewListQuery = { view: "abertas", priority: "", kind: "", status: "", due: "", unassigned: false, page: 1 };
+/** Itens carregados ao abrir um grupo (o teto de uma página no servidor; também o teto da decisão em conjunto). */
+export const REVIEW_GROUP_ITEMS_PAGE_SIZE = 50;
+export const REVIEW_SEARCH_MAX = 120;
+export const DEFAULT_REVIEW_QUERY: ReviewListQuery = { mode: "grupos", view: "abertas", search: "", priority: "", kind: "", status: "", due: "", unassigned: false, page: 1 };
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 const oneOf = <T extends string>(list: readonly T[], v: string): T | "" => ((list as readonly string[]).includes(v) ? (v as T) : "");
+const isUrlSafe = (s: string) => !/\d/.test(s);
 
 export function reviewQueryFromSearchParams(params: Record<string, string | string[] | undefined>): ReviewListQuery {
   const view = oneOf(REVIEW_VIEWS, first(params.visao)) || "abertas";
   const page = Number.parseInt(first(params.pagina), 10);
   const due = REVIEW_DUE_FILTERS.find((d) => DUE_PARAM[d] === first(params.prazo)) ?? "";
+  const search = first(params.busca).trim().slice(0, REVIEW_SEARCH_MAX);
   return {
+    mode: oneOf(REVIEW_MODES, first(params.modo)) || "grupos",
     view,
+    search: isUrlSafe(search) ? search : "",
     priority: oneOf(REVIEW_PRIORITY_FILTERS, first(params.prioridade)),
     kind: oneOf(REVIEW_KINDS, first(params.tipo)),
     status: view === "todas" ? oneOf(REVIEW_DB_STATUSES, first(params.situacao)) : "",
@@ -62,7 +79,9 @@ export function reviewQueryFromSearchParams(params: Record<string, string | stri
 
 export function reviewQueryToSearchParams(q: ReviewListQuery): URLSearchParams {
   const p = new URLSearchParams();
+  if (q.mode !== "grupos") p.set("modo", q.mode);
   if (q.view !== "abertas") p.set("visao", q.view);
+  if (q.search && isUrlSafe(q.search)) p.set("busca", q.search);
   if (q.priority) p.set("prioridade", q.priority);
   if (q.kind) p.set("tipo", q.kind);
   if (q.view === "todas" && q.status) p.set("situacao", q.status);
@@ -72,8 +91,8 @@ export function reviewQueryToSearchParams(q: ReviewListQuery): URLSearchParams {
   return p;
 }
 
-/** Abertas: urgentes primeiro não é ordenável no banco — ordem por prazo e depois criação (mais antigas primeiro). */
-export function reviewQueryToInput(q: ReviewListQuery): Record<string, unknown> {
+/** Os filtros, iguais para a lista e para os grupos. Abertas: mais antigas primeiro; "Todas": mais recentes primeiro. */
+function filterInput(q: ReviewListQuery): Record<string, unknown> {
   const open = q.view !== "todas";
   return {
     status: open ? "OPEN" : q.status || undefined,
@@ -81,15 +100,44 @@ export function reviewQueryToInput(q: ReviewListQuery): Record<string, unknown> 
     targetKind: q.kind || undefined,
     due: q.due || undefined,
     assignee: q.view === "minhas" ? "me" : q.unassigned ? "unassigned" : undefined,
-    sortBy: "createdAt",
+    search: q.search.trim() || undefined,
     sortDirection: open ? "asc" : "desc",
-    page: q.page,
-    pageSize: REVIEW_PAGE_SIZE,
   };
 }
 
+/** Abertas: urgentes primeiro não é ordenável no banco — ordem por prazo e depois criação (mais antigas primeiro). */
+export function reviewQueryToInput(q: ReviewListQuery): Record<string, unknown> {
+  return { ...filterInput(q), sortBy: "createdAt", page: q.page, pageSize: REVIEW_PAGE_SIZE };
+}
+
+/** Entrada de `listReviewGroupsAction`: os mesmos filtros, paginando grupos. */
+export function reviewQueryToGroupInput(q: ReviewListQuery): Record<string, unknown> {
+  return { ...filterInput(q), page: q.page, pageSize: REVIEW_PAGE_SIZE };
+}
+
+/** Itens de UM grupo, com os filtros da fila: os de uma execução ou, sem execução, os de um caso. */
+export function reviewGroupItemsInput(q: ReviewListQuery, group: { agentRunId?: string; legalCaseId?: string }, page = 1): Record<string, unknown> {
+  return {
+    ...filterInput(q),
+    ...(group.agentRunId ? { groupRunId: group.agentRunId } : { groupCaseId: group.legalCaseId }),
+    sortBy: "createdAt",
+    page,
+    pageSize: REVIEW_GROUP_ITEMS_PAGE_SIZE,
+  };
+}
+
+/** A consulta inteira cabe na URL? (Busca com dígito fica só na tela: recarregar a página a perderia.) */
+export function reviewQueryFitsUrl(q: ReviewListQuery): boolean {
+  return isUrlSafe(q.search);
+}
+
 export function countReviewFilters(q: ReviewListQuery): number {
-  return [q.priority, q.kind, q.status, q.due, q.unassigned].filter(Boolean).length;
+  return [q.search.trim(), q.priority, q.kind, q.status, q.due, q.unassigned].filter(Boolean).length;
+}
+
+/** Sem filtros, mantendo o modo (agrupado ou lista) e a visão escolhidos. */
+export function clearReviewFilters(q: ReviewListQuery, view: ReviewView = q.view): ReviewListQuery {
+  return { ...DEFAULT_REVIEW_QUERY, mode: q.mode, view };
 }
 
 /* ------------------------------------------------------------------ */
@@ -130,7 +178,7 @@ export function toggleReviewCounter(q: ReviewListQuery, counter: ReviewCounter):
   const openView = (view: ReviewView): Pick<ReviewListQuery, "view" | "status"> => (view === "todas" ? { view: "abertas", status: "" } : { view, status: q.status });
   switch (counter) {
     case "open":
-      return { ...DEFAULT_REVIEW_QUERY };
+      return clearReviewFilters(q, "abertas");
     case "topPriority":
       return active ? { ...q, priority: "", page: 1 } : { ...q, ...openView(q.view), priority: REVIEW_TOP_PRIORITY, page: 1 };
     case "dueSoon":

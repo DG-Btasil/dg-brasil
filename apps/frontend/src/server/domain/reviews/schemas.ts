@@ -2,6 +2,7 @@ import { z } from "zod";
 import { PRIORITIES, REVIEW_DECISIONS } from "@/lib/constants/status";
 import { pageInputSchema, sortSchema } from "@/server/core/pagination";
 import { zIsoDateTime, zOptionalText, zUuid } from "@/server/core/validation";
+import { BULK_DECISIONS, MAX_BULK_REVIEWS } from "./bulk-rules";
 
 /**
  * Entrada das operações de revisão humana. Decisão no vocabulário do FRONT
@@ -21,20 +22,41 @@ export const REVIEW_STATUS_FILTERS = ["OPEN", "PENDING", "REOPENED", "CHANGES_RE
 export const REVIEW_DUE_FILTERS = ["NEXT_7_DAYS"] as const;
 export type ReviewDueFilter = (typeof REVIEW_DUE_FILTERS)[number];
 
+/** Busca por texto: cliente, caso, título do item ou agente (o banco ignora acento e maiúscula). */
+export const REVIEW_SEARCH_MAX = 120;
+
+/** Filtros comuns à fila plana e à fila agrupada. */
+const reviewFilterShape = {
+  status: z.enum(REVIEW_STATUS_FILTERS).optional(),
+  /** Uma prioridade ou várias (o indicador "Urgentes e alta prioridade" manda URGENT + HIGH). */
+  priority: z.union([z.enum(PRIORITIES), z.array(z.enum(PRIORITIES)).min(1).max(PRIORITIES.length)]).optional(),
+  due: z.enum(REVIEW_DUE_FILTERS).optional(),
+  /** "me" = atribuídas a mim; "unassigned" = sem responsável; ou o id do revisor. */
+  assignee: z.union([z.literal("me"), z.literal("unassigned"), zUuid()]).optional(),
+  legalCaseId: zUuid().optional(),
+  processId: zUuid().optional(),
+  targetKind: z.enum(REVIEW_TARGET_KINDS).optional(),
+  search: z.string().trim().max(REVIEW_SEARCH_MAX).optional(),
+};
+
 export const listReviewsSchema = pageInputSchema
   .extend({
-    status: z.enum(REVIEW_STATUS_FILTERS).optional(),
-    /** Uma prioridade ou várias (o indicador "Urgentes e alta prioridade" manda URGENT + HIGH). */
-    priority: z.union([z.enum(PRIORITIES), z.array(z.enum(PRIORITIES)).min(1).max(PRIORITIES.length)]).optional(),
-    due: z.enum(REVIEW_DUE_FILTERS).optional(),
-    /** "me" = atribuídas a mim; "unassigned" = sem responsável; ou o id do revisor. */
-    assignee: z.union([z.literal("me"), z.literal("unassigned"), zUuid()]).optional(),
-    legalCaseId: zUuid().optional(),
-    processId: zUuid().optional(),
-    targetKind: z.enum(REVIEW_TARGET_KINDS).optional(),
+    ...reviewFilterShape,
+    /** Itens de UM grupo da fila agrupada: os de uma execução do agente… */
+    groupRunId: zUuid().optional(),
+    /** …ou os que não vieram de execução (enviados por pessoas), de um caso. */
+    groupCaseId: zUuid().optional(),
   })
+  .refine((v) => !(v.groupRunId && v.groupCaseId), { message: "Escolha um grupo só.", path: ["groupRunId"] })
   .and(sortSchema(REVIEW_SORT_FIELDS, "createdAt"));
 export type ListReviewsInput = z.infer<typeof listReviewsSchema>;
+
+/** Fila agrupada por execução do agente (067). A ordem é a da fila: mais antigos ou mais recentes primeiro. */
+export const listReviewGroupsSchema = pageInputSchema.extend({
+  ...reviewFilterShape,
+  sortDirection: z.enum(["asc", "desc"]).default("asc"),
+});
+export type ListReviewGroupsInput = z.infer<typeof listReviewGroupsSchema>;
 
 export const reviewIdSchema = z.object({ id: zUuid() });
 
@@ -73,6 +95,19 @@ export const decideReviewSchema = z
   })
   .refine((v) => v.decision === "APPROVED" || !!v.notes, { message: "Informe a justificativa.", path: ["notes"] });
 export type DecideReviewInput = z.infer<typeof decideReviewSchema>;
+
+/**
+ * Decisão em conjunto: só aprovar ou rejeitar, até 50 itens por vez. A
+ * justificativa da rejeição vale para todos. Cada item é decidido um a um.
+ */
+export const decideReviewsBulkSchema = z
+  .object({
+    ids: z.array(zUuid()).min(1, "Marque pelo menos um item.").max(MAX_BULK_REVIEWS, `No máximo ${MAX_BULK_REVIEWS} itens por vez.`),
+    decision: z.enum(BULK_DECISIONS),
+    notes: zOptionalText(5000),
+  })
+  .refine((v) => v.decision === "APPROVED" || !!v.notes, { message: "Informe a justificativa.", path: ["notes"] });
+export type DecideReviewsBulkInput = z.infer<typeof decideReviewsBulkSchema>;
 
 export const reopenReviewSchema = z.object({
   id: zUuid(),

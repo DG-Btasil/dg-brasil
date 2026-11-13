@@ -1,8 +1,9 @@
 import { hasRole, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
-import { businessRule, forbidden, invalidState, notFound } from "@/server/core/errors";
+import { businessRule, DomainError, forbidden, invalidState, notFound } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
 import type { DbReviewStatus } from "@/repositories/api/db-mappings";
-import type { ReviewDetailDTO, ReviewListItem, ReviewSummaryDTO, ReviewTargetDTO } from "./dto";
+import { planBulkDecision, PROPOSAL_CHANGES_MESSAGE } from "./bulk-rules";
+import type { BulkDecisionItemDTO, BulkDecisionResultDTO, ReviewDetailDTO, ReviewGroupPage, ReviewListItem, ReviewSummaryDTO, ReviewTargetDTO } from "./dto";
 import {
   analysisTargetFromRow,
   assignPayload,
@@ -10,6 +11,7 @@ import {
   decisionToDb,
   documentVersionTargetFromRow,
   dueStatuses,
+  groupFromRow,
   listItemFromRow,
   priorityFilterToDb,
   proposalTargetFromRow,
@@ -20,7 +22,7 @@ import {
   type ReviewRow,
 } from "./mappers";
 import * as repo from "./repository";
-import type { AssignReviewInput, DecideReviewInput, ListReviewsInput, ReopenReviewInput } from "./schemas";
+import type { AssignReviewInput, DecideReviewInput, DecideReviewsBulkInput, ListReviewGroupsInput, ListReviewsInput, ReopenReviewInput } from "./schemas";
 
 /**
  * Revisão humana — "IA executa. Humano decide." Só ADMIN e LAWYER
@@ -28,6 +30,9 @@ import type { AssignReviewInput, DecideReviewInput, ListReviewsInput, ReopenRevi
  * parceiros não acessam. Decidir é SÓ pela RPC decide_review: este service
  * nunca grava status. Proposta estrutural (UPDATE_AGENT, UPDATE_SKILL…) só
  * ADMIN decide — o banco recusa; aqui é só a mensagem amigável.
+ * Proposta do agente só se aprova ou rejeita (067): "solicitar alterações"
+ * vale para documento e análise. A decisão em conjunto é um laço sobre a
+ * mesma RPC, item a item (regras em bulk-rules.ts).
  * Nunca logar conteúdo revisado nem justificativa: só ids.
  */
 
@@ -45,8 +50,8 @@ async function loadReview(ctx: ServiceContext, id: string): Promise<ReviewRow> {
   return row;
 }
 
-export async function listReviews(ctx: ServiceContext, input: ListReviewsInput): Promise<Page<ReviewListItem>> {
-  requireReviewer(ctx, "reviews.view");
+/** Filtros da tela → filtros do repositório (os mesmos para a fila plana e a agrupada). */
+function queueFilters(ctx: ServiceContext, input: ListReviewGroupsInput | ListReviewsInput): repo.ReviewFilters {
   const assignee =
     input.assignee === "me"
       ? { kind: "user" as const, id: ctx.session.userId }
@@ -56,22 +61,36 @@ export async function listReviews(ctx: ServiceContext, input: ListReviewsInput):
           ? { kind: "user" as const, id: input.assignee }
           : undefined;
   const statuses = statusFilterToDb(input.status);
-  const { rows, total } = await repo.list(
-    ctx.db,
-    {
-      // Prazo só corre em revisão aberta: com o filtro de prazo, as decididas saem.
-      statuses: input.due ? dueStatuses(statuses) : statuses,
-      priorities: priorityFilterToDb(input.priority),
-      assignee,
-      legalCaseId: input.legalCaseId,
-      processId: input.processId,
-      targetKind: input.targetKind,
-      dueBefore: input.due ? reviewDueCutoff(input.due) : undefined,
-    },
-    input,
-    { column: input.column, ascending: input.ascending },
-  );
+  return {
+    // Prazo só corre em revisão aberta: com o filtro de prazo, as decididas saem.
+    statuses: input.due ? dueStatuses(statuses) : statuses,
+    priorities: priorityFilterToDb(input.priority),
+    assignee,
+    legalCaseId: input.legalCaseId,
+    processId: input.processId,
+    targetKind: input.targetKind,
+    dueBefore: input.due ? reviewDueCutoff(input.due) : undefined,
+    search: input.search || undefined,
+  };
+}
+
+export async function listReviews(ctx: ServiceContext, input: ListReviewsInput): Promise<Page<ReviewListItem>> {
+  requireReviewer(ctx, "reviews.view");
+  const group = input.groupRunId ? { kind: "run" as const, id: input.groupRunId } : input.groupCaseId ? { kind: "case" as const, id: input.groupCaseId } : undefined;
+  const { rows, total } = await repo.list(ctx.db, { ...queueFilters(ctx, input), group }, input, { column: input.column, ascending: input.ascending });
   return toPage(rows.map(listItemFromRow), total, input);
+}
+
+/**
+ * A fila agrupada por execução do agente (067): cada grupo traz o agente, o
+ * caso, o cliente, quando chegou, quantos itens tem por tipo e a prioridade
+ * mais alta. O que foi enviado por pessoas forma um grupo por caso. Filtros e
+ * página no banco, como a fila plana.
+ */
+export async function listReviewGroups(ctx: ServiceContext, input: ListReviewGroupsInput): Promise<ReviewGroupPage> {
+  requireReviewer(ctx, "reviews.view");
+  const { rows, total, totalItems } = await repo.listGroups(ctx.db, queueFilters(ctx, input), input, input.sortDirection === "asc");
+  return { ...toPage(rows.map(groupFromRow), total, input), totalItems };
 }
 
 /**
@@ -137,10 +156,46 @@ export async function decideReview(ctx: ServiceContext, input: DecideReviewInput
   const item = listItemFromRow(await loadReview(ctx, input.id));
   if (item.requiresAdmin && !hasRole(ctx, "ADMIN")) throw forbidden("Somente ADMIN decide proposta que altera a configuração do DG Brasil.");
   if (!OPEN.includes(item.dbStatus)) throw invalidState("Esta revisão já foi decidida.");
+  // Proposta não tem o que "alterar": o banco recusa (067); aqui é só a mensagem amigável.
+  if (item.targetKind === "AGENT_PROPOSAL" && input.decision === "CHANGES_REQUESTED") throw invalidState(PROPOSAL_CHANGES_MESSAGE);
   const decisionId = await repo.decide(ctx.db, input.id, decisionToDb(input.decision), input.notes ?? null);
   const after = listItemFromRow(await loadReview(ctx, input.id));
   ctx.log.info("review.decided", { reviewId: input.id, reviewDecisionId: decisionId, decision: input.decision });
   return { decisionId, status: after.status };
+}
+
+/**
+ * Decisão em conjunto (067). É só um laço: cada item é decidido UM A UM pela
+ * mesma RPC decide_review, na sessão de quem clicou, com a decisão e a
+ * auditoria de cada um. O que não pode entrar (documento, análise, proposta
+ * que precisa ser aberta, proposta só de ADMIN, item já decidido) fica de
+ * fora com o motivo. A falha de um item não desfaz os outros: o resultado
+ * volta item a item, na ordem pedida.
+ */
+export async function decideReviewsBulk(ctx: ServiceContext, input: DecideReviewsBulkInput): Promise<BulkDecisionResultDTO> {
+  requireReviewer(ctx, "reviews.decide");
+  const ids = [...new Set(input.ids)];
+  const rows = await repo.listByIds(ctx.db, ids);
+  const plan = planBulkDecision(ids, rows.map(listItemFromRow), input.decision, hasRole(ctx, "ADMIN"));
+  const items: BulkDecisionItemDTO[] = [];
+  for (const step of plan) {
+    if (step.outcome !== "DECIDE") {
+      items.push(step.item);
+      continue;
+    }
+    try {
+      const decisionId = await repo.decide(ctx.db, step.item.id, decisionToDb(input.decision), input.notes ?? null);
+      ctx.log.info("review.decided", { reviewId: step.item.id, reviewDecisionId: decisionId, decision: input.decision, bulk: true });
+      items.push({ ...step.item, outcome: "DECIDED" });
+    } catch (error) {
+      // Mensagem segura (DomainError); o erro bruto do banco nunca sai daqui.
+      const safe = error instanceof DomainError ? error : new DomainError("INTERNAL");
+      ctx.log.warn("review.bulk_item_failed", { reviewId: step.item.id, code: safe.code, technicalCode: safe.technicalCode });
+      items.push({ ...step.item, outcome: "FAILED", message: safe.publicMessage });
+    }
+  }
+  const count = (outcome: BulkDecisionItemDTO["outcome"]) => items.filter((i) => i.outcome === outcome).length;
+  return { decision: input.decision, decided: count("DECIDED"), skipped: count("SKIPPED"), failed: count("FAILED"), items };
 }
 
 /** Reabre revisão decidida (decisão REOPEN). Proposta de agente não se reabre: o agente gera outra. */

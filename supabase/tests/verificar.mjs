@@ -7248,7 +7248,7 @@ await deve('tempo de espera configurável pelo ADMIN: com 8 h, a publicação s�
 })
 await deveFalhar('tempo de espera fora de 1 a 72 h é recusado', () => rpc043(ids.barbara, `select public.save_judicial_settings('{"agent_timeout_hours":0}') r`), /1 a 72 horas/)
 await deveFalhar('advogado não muda o tempo de espera', () => rpc043(ids.lucas, `select public.save_judicial_settings('{"agent_timeout_hours":2}') r`), /Somente ADMIN/)
-await deve('proposta do agente em Revisões: com a revisão em aberto a publicação fica com o agente, mesmo depois do tempo de espera; "alterações solicitadas" (a revisão termina sem prazo) → a vigia devolve para a triagem na hora e avisa', async () => {
+await deve('proposta do agente em Revisões: com a revisão em aberto a publicação fica com o agente, mesmo depois do tempo de espera; "alterações solicitadas" é recusada (067); rejeitada, volta para a triagem na hora, sem prazo', async () => {
   const t = r062.d = await reservar062(await pedido062(r062.procA, cnj062(1)))
   const antes = await prazos059(r062.procA)
   const r = await propor059(t, 'CREATE_DEADLINE', prazo059(sabado059(t.dias)), 'k-062-sabado')
@@ -7256,15 +7256,14 @@ await deve('proposta do agente em Revisões: com a revisão em aberto a publica�
   igual((await concluir062(t)).status, 'WAITING_HUMAN', 'trabalho aguardando a revisão')
   igual(await soltar062(`now() + interval '30 hours'`), 0, 'revisão em aberto: não solta')
   igual((await pub062(t)).st, 'WITH_AGENT', 'segue com o agente (a proposta está em Revisões)')
-  await decidir(ids.lucas, p.revisao_id, 'REQUEST_CHANGES', 'O vencimento caiu num sábado.')
+  // Desde a 067, proposta do agente não aceita "alterações solicitadas": só aprovar ou rejeitar.
+  await decidir(ids.lucas, p.revisao_id, 'REQUEST_CHANGES', 'O vencimento caiu num sábado.').then(
+    () => { throw new Error('proposta aceitou alterações solicitadas') }, (e) => { if (!/só pode ser aprovada ou rejeitada/.test(e.message)) throw e })
+  igual((await pub062(t)).st, 'WITH_AGENT', 'a recusa não mexe na publicação')
+  await decidir(ids.lucas, p.revisao_id, 'REJECT', 'O vencimento caiu num sábado.')
   await db.query(`select private.maintenance_tick()`)
-  igual([(await pub062(t)).st, (await proposta059(r.proposal_id)).status], ['WITH_AGENT', 'PENDING'], 'sem a vigia a publicação ficaria presa: a proposta fica pendente para sempre')
-  igual(await soltar062(), 1, 'a vigia solta na hora, sem esperar o tempo')
-  const pub = await pub062(t)
-  igual([pub.st, pub.aviso], ['PENDING', 'A revisão da proposta do agente terminou sem criar prazo.' + SOLTA_FIM062], 'de volta à triagem, com o motivo')
-  const av = await avisos062(t)
-  igual(av.map((x) => x.user_id).sort(), r062.avisados, 'avisados')
-  igual(av[0].message, `A revisão da proposta do agente terminou sem criar prazo. Publicação de ${br059(r062.hoje)}: crie o prazo ou registre que não há prazo.`, 'mensagem')
+  igual([(await pub062(t)).st, (await proposta059(r.proposal_id)).status], ['PENDING', 'REJECTED'], 'rejeitada: a publicação volta para a triagem na hora (gatilho da 043)')
+  igual(await soltar062(), 0, 'nada sobra para a vigia soltar')
   igual(await prazos059(r062.procA), antes, 'nenhum prazo criado')
   igual((await rpc043(ids.lucas, `select public.get_judicial_publication($1) r`, [t.pub])).pending_review_id, null, 'a tela não aponta mais a revisão encerrada como pendente')
 })
@@ -8538,6 +8537,276 @@ await deve('exportação em Prazos e nas cinco listas do Financeiro: o registro 
       ['DATA_EXPORTED', ids.barbara, tipo, 12, false, emOrdem(filtros)], tipo)
   }
   await deveFalhar('advogado não registra exportação do Financeiro', () => exportar066(ids.lucas, 'finance_receipts', {}, 1), /Somente o administrador exporta/)
+})
+
+// ═════════════════════════════ Revisões por execução [067] ═══════════════
+
+secao('Revisões: fila por execução do agente, responsável ao nascer e proposta sem "solicitar alterações" [067]')
+const t067 = {}
+const rodar067 = async () => db.exec(await readFile(new URL('migrations/20261113000067_revisoes_por_execucao.sql', raiz), 'utf8'))
+const revisao067 = (id) => um(db, `select status, agent_run_id run, assigned_reviewer_id resp, decided_at, updated_at::text upd from reviews where id = $1`, [id])
+const avisos067 = async (uid, padrao) => (await linhas(db, `select event_key k, title t, message m, severity s from notifications
+    where user_id = $1 and type = 'REVIEW_ASSIGNED' and event_key like $2 order by created_at, event_key`, [uid, padrao]))
+const proposta067 = (t, tipo, payload, chave, prioridade = 'NORMAL') =>
+  ex(`select private.executor_create_proposal($1, $2, $3, $4, $5, $6, $7) r`, [hA, t.run, t.reserva, tipo, JSON.stringify(payload), chave, prioridade])
+const revDaProposta067 = async (p) => (await um(db, `select id from reviews where agent_proposal_id = $1 order by created_at desc limit 1`, [p])).id
+// Documento enviado por uma pessoa (origem UPLOAD) num caso, com a versão pronta para ir à revisão.
+async function versaoDePessoa067(caso, titulo) {
+  const cli = (await um(db, `select client_id from legal_cases where id = $1`, [caso])).client_id
+  const doc = randomUUID(), v = randomUUID()
+  await db.query(`insert into documents (id, client_id, category, title) values ($1, $2, 'OTHER', $3)`, [doc, cli, titulo])
+  await db.query(`insert into case_documents (legal_case_id, document_id) values ($1, $2)`, [caso, doc])
+  await db.query(`insert into document_versions (id, document_id, storage_object_name, source) values ($1, $2, $3, 'UPLOAD')`, [v, doc, `clients/${cli}/documents/${doc}/${v}/arquivo.pdf`])
+  return v
+}
+const fila067 = async (uid, filtros, extra = `'created_at', true, 50, 0`) =>
+  (await como(uid, (tx) => um(tx, `select public.list_review_queue($1, ${extra}) r`, [JSON.stringify(filtros)]))).r
+const grupos067 = async (uid, filtros, extra = `true, 50, 0`) =>
+  (await como(uid, (tx) => um(tx, `select public.list_review_groups($1, ${extra}) r`, [JSON.stringify(filtros)]))).r
+
+await deve('cenário: caso com advogado responsável, caso sem advogado e caso com advogado que saiu do escritório', async () => {
+  const cliente = async (cpf, nome) => {
+    const id = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', $1, $2) returning id`, [cpf, ids.owner])).id
+    await db.query(`insert into individual_client_details (client_id, full_name) values ($1, $2)`, [id, nome])
+    return id
+  }
+  const caso = async (cli, titulo, adv) => (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, $3, 'IN_PROGRESS', $4, $4, $5) returning id`, [cli, ids.banking, titulo, ids.owner, adv])).id
+  t067.cli = await cliente('99906700001', 'José Fictício Conceição 067')
+  t067.caso = await caso(t067.cli, 'Caso fictício 067 (com advogado)', ids.lucas)
+  t067.casoAdmin = await caso(t067.cli, 'Caso fictício 067 (advogada administradora)', ids.barbara)
+  t067.casoSem = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, origin_organization_id, created_by_organization_id)
+    values ($1, $2, 'Caso fictício 067 (sem advogado)', $3, $3) returning id`, [t067.cli, ids.banking, ids.owner])).id
+  t067.saiu = await usuario('Saiu067', ids.owner, 'LAWYER')
+  t067.casoSaiu = await caso(t067.cli, 'Caso fictício 067 (advogado saiu)', t067.saiu)
+  await db.query(`update organization_memberships set status = 'SUSPENDED' where user_id = $1`, [t067.saiu])
+  igual((await um(db, `select private.user_internal_role($1) r`, [t067.saiu])).r, null, 'advogado inativo')
+})
+
+await deve('trabalho de agente: cada item nasce ligado à execução e atribuído ao advogado do caso; UM aviso de atribuição por execução (o item urgente tem o seu)', async () => {
+  t067.t = await trabalho060(t067.caso, 'Trabalho 067: várias entregas')
+  const p = async (tipo, dados, chave, prioridade) => (await proposta067(t067.t, tipo, { summary: `Resumo ${chave}`, data: dados }, chave, prioridade)).proposal_id
+  t067.pDoc1 = await p('REQUEST_DOCUMENT', { label: 'Extrato do benefício 067', category: 'OTHER' }, 'k-067-doc-1')
+  t067.pDoc2 = await p('REQUEST_DOCUMENT', { label: 'Comprovante de residência 067', category: 'OTHER' }, 'k-067-doc-2')
+  t067.pOutra = await p('OTHER', { title: 'Ligar para a cliente 067' }, 'k-067-outra')
+  t067.pPrazo = await p('CREATE_DEADLINE', { title: 'Réplica 067', due_at: '2027-01-20T12:00:00Z' }, 'k-067-prazo')
+  t067.pUrgente = await p('OTHER', { title: 'Providência urgente 067' }, 'k-067-urgente', 'URGENT')
+  const prep = await ex(`select private.executor_prepare_output($1, $2, $3, 'minuta-067.pdf', 'application/pdf', 1200) r`, [hA, t067.t.run, t067.t.reserva])
+  await db.query(`insert into storage.objects (bucket_id, name) values ('legal-documents', $1)`, [prep.storage_object_name])
+  await ex(`select private.executor_finalize_output($1, $2, $3, $4, $5, $6, 'minuta-067.pdf', 'application/pdf', 1200, $7, 'Minuta da inicial 067', 'OTHER') r`,
+    [hA, t067.t.run, t067.t.reserva, prep.document_id, prep.document_version_id, prep.storage_object_name, sha64])
+  t067.vMinuta = prep.document_version_id
+  const rs = await linhas(db, `select agent_run_id run, assigned_reviewer_id resp, status from reviews
+     where agent_proposal_id = any ($1) or document_version_id = $2`, [[t067.pDoc1, t067.pDoc2, t067.pOutra, t067.pPrazo, t067.pUrgente], t067.vMinuta])
+  igual(rs.length, 6, 'seis itens em revisão')
+  igual(rs.filter((r) => r.run !== t067.t.run || r.resp !== ids.lucas || r.status !== 'PENDING').length, 0, 'todos da execução, com o advogado do caso, pendentes')
+  const porExecucao = await avisos067(ids.lucas, `review-assigned-run:${t067.t.run}:%`)
+  igual(porExecucao.map((a) => [a.t, a.m, a.s]), [['Revisões atribuídas a você', 'Análise bancária: novo trabalho para revisar', 'INFO']], 'um aviso pela execução inteira')
+  const rvUrgente = await revDaProposta067(t067.pUrgente)
+  igual((await avisos067(ids.lucas, `review-assigned:${rvUrgente}:%`)).map((a) => [a.t, a.s]), [['Revisão atribuída a você', 'URGENT']], 'o urgente avisa por conta própria')
+  const outros = await linhas(db, `select n.event_key from notifications n where n.user_id = $1 and n.type = 'REVIEW_ASSIGNED'
+     and n.related_id in (select id from reviews where agent_run_id = $2)`, [ids.lucas, t067.t.run])
+  igual(outros.length, 2, 'nenhum aviso em dobro: um da execução e um do urgente')
+})
+
+await deve('análise entregue pelo agente: a revisão aponta a execução do resultado', async () => {
+  const a = await analise056(ids.tpl039)
+  t067.revAnalise = a.revisao
+  const run = (await um(db, `select agent_run_id r from legal_analysis_results where id = $1`, [a.resultado])).r
+  igual((await revisao067(a.revisao)).run, run, 'execução do resultado')
+})
+
+await deve('item enviado por pessoa: sem execução; o advogado do caso é avisado uma vez; quem cria não escolhe a execução', async () => {
+  const v = await versaoDePessoa067(t067.caso, 'Petição enviada pela equipe 067')
+  t067.revPessoa = (await como(ids.barbara, (tx) => um(tx, `insert into reviews (legal_case_id, document_version_id) values ($1, $2) returning id`, [t067.caso, v]))).id
+  const r = await revisao067(t067.revPessoa)
+  igual([r.run, r.resp], [null, ids.lucas], 'sem execução, com o advogado do caso')
+  igual((await avisos067(ids.lucas, `review-assigned:${t067.revPessoa}:%`)).length, 1, 'um aviso')
+  const v2 = await versaoDePessoa067(t067.caso, 'Outro documento da equipe 067')
+  await como(ids.barbara, (tx) => tx.query(`insert into reviews (legal_case_id, document_version_id, agent_run_id) values ($1, $2, $3)`, [t067.caso, v2, t067.t.run])).then(
+    () => { throw new Error('usuário logado escolheu a execução') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  // Mesmo quem passa por cima do grant (serviço) não escolhe: o banco ignora o valor informado.
+  const forcada = (await um(db, `insert into reviews (legal_case_id, document_version_id, agent_run_id) values ($1, $2, $3) returning id`, [t067.caso, v2, t067.t.run])).id
+  igual((await revisao067(forcada)).run, null, 'execução informada é ignorada')
+  t067.revPessoa2 = forcada
+  // Quem já escolheu o responsável não é trocado.
+  const v3 = await versaoDePessoa067(t067.caso, 'Documento com responsável escolhido 067')
+  const escolhida = (await como(ids.lucas, (tx) => um(tx, `insert into reviews (legal_case_id, document_version_id, assigned_reviewer_id) values ($1, $2, $3) returning id`, [t067.caso, v3, ids.barbara]))).id
+  igual((await revisao067(escolhida)).resp, ids.barbara, 'responsável escolhido fica')
+  t067.revEscolhida = escolhida
+})
+
+await deve('sem advogado no caso, ou com advogado que saiu: nasce sem responsável, como antes', async () => {
+  const a = (await um(db, `insert into reviews (legal_case_id, document_version_id) values ($1, $2) returning id`, [t067.casoSem, await versaoDePessoa067(t067.casoSem, 'Documento 067 sem advogado')])).id
+  const b = (await um(db, `insert into reviews (legal_case_id, document_version_id) values ($1, $2) returning id`, [t067.casoSaiu, await versaoDePessoa067(t067.casoSaiu, 'Documento 067 advogado saiu')])).id
+  igual([(await revisao067(a)).resp, (await revisao067(b)).resp], [null, null], 'sem responsável')
+  igual((await linhas(db, `select 1 from notifications where related_id = any ($1)`, [[a, b]])).length, 0, 'ninguém é avisado')
+})
+
+await deve('proposta estrutural (agente, skill): só é atribuída a ADMIN; advogado do caso não recebe', async () => {
+  const run = (await um(db, `insert into agent_runs (agent_id, agent_version_id, requested_by, legal_case_id) values ($1, $2, $3, $4) returning id`,
+    [ids.agente, ids.agenteV, ids.barbara, t067.caso])).id
+  const nova = async (caso, chave) => {
+    const p = (await um(db, `insert into agent_proposals (agent_run_id, legal_case_id, proposal_type, payload, idempotency_key)
+      values ($1, $2, 'UPDATE_AGENT', '{"summary":"x","data":{}}', $3) returning id`, [caso === t067.caso ? run : t067.runAdmin, caso, chave])).id
+    return (await um(db, `insert into reviews (legal_case_id, agent_proposal_id) values ($1, $2) returning id`, [caso, p])).id
+  }
+  t067.runAdmin = (await um(db, `insert into agent_runs (agent_id, agent_version_id, requested_by, legal_case_id) values ($1, $2, $3, $4) returning id`,
+    [ids.agente, ids.agenteV, ids.lucas, t067.casoAdmin])).id
+  const doAdvogado = await revisao067(await nova(t067.caso, 'k-067-estrutural-1'))
+  const daAdmin = await revisao067(await nova(t067.casoAdmin, 'k-067-estrutural-2'))
+  igual([doAdvogado.resp, doAdvogado.run, daAdmin.resp, daAdmin.run], [null, run, ids.barbara, t067.runAdmin], 'advogado não; administradora sim')
+})
+
+await deve('"solicitar alterações" numa proposta é recusado, com mensagem clara; a revisão continua pendente e aceita aprovar ou rejeitar', async () => {
+  const rv = await revDaProposta067(t067.pDoc2)
+  await decidir(ids.lucas, rv, 'REQUEST_CHANGES', 'Mudar o pedido').then(
+    () => { throw new Error('proposta aceitou alterações solicitadas') },
+    (e) => { if (!/Proposta do agente só pode ser aprovada ou rejeitada/.test(e.message)) throw e })
+  igual([(await revisao067(rv)).status, (await um(db, `select count(*)::int n from review_decisions where review_id = $1`, [rv])).n], ['PENDING', 0], 'nada mudou')
+  await decidir(ids.lucas, rv, 'REJECT', 'Documento já está na pasta')
+  igual([(await revisao067(rv)).status, (await um(db, `select status from agent_proposals where id = $1`, [t067.pDoc2])).status], ['REJECTED', 'REJECTED'], 'rejeitada com justificativa')
+  // Documento e análise continuam aceitando "solicitar alterações".
+  await decidir(ids.barbara, t067.revPessoa2, 'REQUEST_CHANGES', 'Ajustar o endereçamento')
+  igual((await revisao067(t067.revPessoa2)).status, 'CHANGES_REQUESTED', 'documento aceita')
+  await decidir(ids.lucas, t067.revAnalise, 'REQUEST_CHANGES', 'Faltou um bloco')
+  igual((await revisao067(t067.revAnalise)).status, 'CHANGES_REQUESTED', 'análise aceita')
+})
+
+await deve('as que já estavam paradas: a 067, rodada de novo, devolve à fila só a revisão de PROPOSTA em "alterações solicitadas"; ninguém decide por ela', async () => {
+  // Estado antigo (antes da 067): revisão de proposta em "alterações solicitadas" com a proposta ainda pendente.
+  const rv = await revDaProposta067(t067.pPrazo)
+  await db.transaction(async (tx) => {
+    await tx.query(`select set_config('dg.review_decision_review_id', $1, true)`, [rv])
+    await tx.query(`update reviews set status = 'CHANGES_REQUESTED', decided_at = now() where id = $1`, [rv])
+  })
+  const antes = { doc: await revisao067(t067.revPessoa2), analise: await revisao067(t067.revAnalise), outra: await revisao067(await revDaProposta067(t067.pOutra)),
+    total: (await um(db, `select count(*)::int n from reviews`)).n, decisoes: (await um(db, `select count(*)::int n from review_decisions`)).n }
+  await rodar067()
+  const r = await revisao067(rv)
+  igual([r.status, r.decided_at, r.resp], ['REOPENED', null, ids.lucas], 'de volta à fila, com o mesmo responsável')
+  igual((await um(db, `select status from agent_proposals where id = $1`, [t067.pPrazo])).status, 'PENDING', 'a proposta continua pendente: nada foi aprovado nem rejeitado')
+  const ev = await linhas(db, `select actor_type a, metadata ->> 'migration' m from audit_events where action = 'REVIEW_REOPENED' and entity_id = $1`, [rv])
+  igual(ev.map((e) => e.m), ['067'], 'a volta fica na auditoria')
+  igual([(await um(db, `select count(*)::int n from reviews`)).n, (await um(db, `select count(*)::int n from review_decisions`)).n], [antes.total, antes.decisoes], 'nenhuma revisão nem decisão criada')
+  igual([await revisao067(t067.revPessoa2), await revisao067(t067.revAnalise), await revisao067(await revDaProposta067(t067.pOutra))], [antes.doc, antes.analise, antes.outra],
+    'documento e análise em "alterações solicitadas" e proposta pendente não mudam')
+  // Rodar mais uma vez não mexe em nada.
+  const depois = await revisao067(rv)
+  await rodar067()
+  igual(await revisao067(rv), depois, 'rodar de novo não muda')
+  igual((await um(db, `select count(*)::int n from audit_events where action = 'REVIEW_REOPENED' and entity_id = $1`, [rv])).n, 1, 'sem evento repetido')
+  // A pessoa decide: aprovar segue o caminho normal da proposta.
+  await decidir(ids.lucas, rv, 'APPROVE')
+  igual([(await revisao067(rv)).status, (await um(db, `select status from agent_proposals where id = $1`, [t067.pPrazo])).status], ['APPROVED', 'APPROVED'], 'decidida por uma pessoa')
+})
+
+await deve('revisões antigas (sem a execução gravada): a 067 preenche proposta, análise e minuta do agente, sem tocar em data nem gerar evento', async () => {
+  const alvo = { proposta: await revDaProposta067(t067.pOutra), analise: t067.revAnalise,
+    minuta: (await um(db, `select id from reviews where document_version_id = $1`, [t067.vMinuta])).id, pessoa: t067.revPessoa }
+  const esperado = Object.fromEntries(await Promise.all(Object.entries(alvo).map(async ([k, id]) => [k, (await revisao067(id)).run])))
+  igual([esperado.proposta, esperado.minuta, esperado.pessoa, esperado.analise !== null], [t067.t.run, t067.t.run, null, true], 'ponto de partida')
+  await db.query(`alter table reviews disable trigger user`)
+  await db.query(`update reviews set agent_run_id = null where id = any ($1)`, [Object.values(alvo)])
+  await db.query(`alter table reviews enable trigger user`)
+  const antes = Object.fromEntries(await Promise.all(Object.entries(alvo).map(async ([k, id]) => [k, await revisao067(id)])))
+  igual(Object.values(antes).filter((r) => r.run !== null).length, 0, 'como antes da 067')
+  const eventos = (await um(db, `select count(*)::int n from audit_events where entity_type = 'reviews'`)).n
+  await rodar067()
+  for (const [k, id] of Object.entries(alvo)) {
+    const r = await revisao067(id)
+    igual([r.run, r.upd, r.resp, r.status], [esperado[k], antes[k].upd, antes[k].resp, antes[k].status], `${k}: execução preenchida, o resto igual`)
+  }
+  igual((await um(db, `select count(*)::int n from audit_events where entity_type = 'reviews'`)).n, eventos, 'sem evento de auditoria')
+  igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.reviews'::regclass and not tgisinternal and tgenabled <> 'O'`)).n, 0, 'os gatilhos da tabela voltam ligados')
+})
+
+await deve('fila agrupada: um grupo por execução (com agente, caso, cliente, contagens por tipo e a prioridade mais alta) e um grupo do caso para o que veio de pessoas', async () => {
+  const abertos = { statuses: ['PENDING', 'REOPENED'], legal_case_id: t067.caso }
+  const g = await grupos067(ids.lucas, abertos)
+  const exec = g.groups.find((x) => x.key === `run:${t067.t.run}`)
+  const pessoas = g.groups.find((x) => x.key === `case:${t067.caso}`)
+  // Em aberto na execução: pedido de documento 1, proposta "outra", urgente e a minuta (o pedido 2 foi rejeitado; o prazo, aprovado).
+  igual([exec.agent_run_id, exec.legal_case_id, exec.agent_name, exec.case_title, exec.client_name],
+    [t067.t.run, t067.caso, 'Análise bancária', 'Caso fictício 067 (com advogado)', 'José Fictício Conceição 067'], 'rótulos do grupo')
+  igual([exec.total, exec.documents, exec.proposals, exec.analyses, exec.open, exec.unassigned, exec.top_priority, exec.reviewer_ids],
+    [4, 1, 3, 0, 4, 0, 'URGENT', [ids.lucas]], 'contagens da execução')
+  igual([pessoas.agent_run_id, pessoas.agent_name, pessoas.legal_case_id, pessoas.total, pessoas.documents, pessoas.proposals, pessoas.top_priority],
+    [null, null, t067.caso, 2, 2, 0, 'NORMAL'], 'grupo do caso: os dois documentos da equipe ainda em aberto')
+  igual([g.total, g.total_items], [g.groups.length, g.groups.reduce((s, x) => s + x.total, 0)], 'totais')
+  // A proposta estrutural do caso é de OUTRA execução: grupo próprio.
+  igual(g.groups.length, 3, 'três grupos no caso')
+  // Mais antigos primeiro ou mais recentes primeiro; página de um grupo.
+  const asc = g.groups.map((x) => x.key)
+  const desc = (await grupos067(ids.lucas, abertos, `false, 50, 0`)).groups.map((x) => x.key)
+  igual(desc[0] !== asc[0] && desc.length === asc.length, true, 'ordem invertida')
+  const pagina = await grupos067(ids.lucas, abertos, `true, 1, 1`)
+  igual([pagina.total, pagina.groups.map((x) => x.key)], [3, [asc[1]]], 'paginação no banco')
+  // Todas as situações: o grupo passa a contar os decididos.
+  const todas = (await grupos067(ids.lucas, { legal_case_id: t067.caso })).groups.find((x) => x.key === `run:${t067.t.run}`)
+  igual([todas.total, todas.open, todas.proposals], [6, 4, 5], 'com os decididos')
+})
+
+await deve('itens de um grupo e busca por texto (cliente, caso, título, agente), sem diferenciar acento nem maiúscula', async () => {
+  const doGrupo = await fila067(ids.lucas, { statuses: ['PENDING', 'REOPENED'], group_run: t067.t.run })
+  const esperados = (await linhas(db, `select id from reviews where agent_run_id = $1 and status in ('PENDING', 'REOPENED') order by created_at, id`, [t067.t.run])).map((x) => x.id)
+  igual([doGrupo.total, doGrupo.ids], [4, esperados], 'itens da execução, mais antigos primeiro')
+  igual((await fila067(ids.lucas, { statuses: ['PENDING', 'REOPENED'], group_run: t067.t.run }, `'created_at', false, 50, 0`)).ids, [...esperados].reverse(), 'mais recentes primeiro')
+  igual((await fila067(ids.lucas, { statuses: ['PENDING', 'REOPENED'], group_run: t067.t.run }, `'created_at', true, 2, 2`)).ids, esperados.slice(2, 4), 'página')
+  const doCaso = await fila067(ids.lucas, { statuses: ['PENDING', 'REOPENED'], group_case: t067.caso })
+  igual([doCaso.total, [...doCaso.ids].sort()], [2, [t067.revPessoa, t067.revEscolhida].sort()], 'grupo do caso: só o que não tem execução')
+  const n = async (filtros) => (await fila067(ids.lucas, filtros)).total
+  igual(await n({ search: 'jose ficticio conceicao 067' }), await n({ search: 'José Fictício Conceição 067' }), 'acento não importa')
+  igual(await n({ search: 'JOSE FICTICIO CONCEICAO 067' }) > 0, true, 'maiúscula não importa; acha pelo cliente')
+  igual(await n({ search: 'JOSÉ FICTÍCIO CONCEIÇÃO 067' }), await n({ search: 'jose ficticio conceicao 067' }), 'maiúscula com acento também')
+  igual((await um(db, `select private.review_fold('  ÁÉÍÓÚ Çã Ñ ') r`)).r, 'aeiou ca n', 'texto de busca sem acento, minúsculo e sem espaço nas pontas')
+  igual(await n({ search: 'caso ficticio 067 (advogada' }), 1, 'pelo título do caso')
+  igual((await fila067(ids.lucas, { search: 'minuta da inicial 067' })).ids, [(await um(db, `select id from reviews where document_version_id = $1`, [t067.vMinuta])).id], 'pelo título do documento')
+  igual((await fila067(ids.lucas, { search: 'extrato do beneficio 067' })).ids, [await revDaProposta067(t067.pDoc1)], 'pelo que a proposta pede')
+  igual(await n({ search: 'pedido de documento', legal_case_id: t067.caso }), 2, 'pelo tipo da proposta')
+  igual(await n({ search: 'analise bancaria', legal_case_id: t067.caso, target_kind: 'DOCUMENT_VERSION' }), 1, 'pelo agente, com outro filtro junto')
+  igual(await n({ search: 'não existe nada assim 067' }), 0, 'sem resultado')
+  igual(await n({ search: '100%_' }), 0, 'curinga digitado é texto comum')
+  igual(await n({ search: '   ', legal_case_id: t067.caso }), await n({ legal_case_id: t067.caso }), 'busca em branco não filtra')
+  // A busca vale para os grupos também.
+  const g = await grupos067(ids.lucas, { statuses: ['PENDING', 'REOPENED'], search: 'minuta da inicial 067' })
+  igual([g.total, g.total_items, g.groups[0].key, g.groups[0].total], [1, 1, `run:${t067.t.run}`, 1], 'grupo com o item achado')
+  // Os outros filtros: responsável, sem responsável, prioridade e tipo.
+  igual(await n({ legal_case_id: t067.caso, assignee: ids.barbara }), 1, 'por responsável')
+  igual(await n({ legal_case_id: t067.casoSem, unassigned: true }), 1, 'sem responsável')
+  igual(await n({ legal_case_id: t067.caso, priorities: ['URGENT', 'HIGH'], statuses: ['PENDING'] }), 1, 'por prioridade')
+  igual(await n({ legal_case_id: t067.caso, target_kind: 'AGENT_PROPOSAL', statuses: ['REJECTED', 'APPROVED'] }), 2, 'por tipo e situação')
+})
+
+await deve('fila [067]: só ADMIN e advogado; assistente, parceiro e visitante não leem; a coluna nova é lida pela equipe e não se escreve', async () => {
+  for (const uid of [ids.ana, ids.almeidaAdm]) {
+    for (const sql of [`select public.list_review_groups('{}')`, `select public.list_review_queue('{}')`]) {
+      await como(uid, (tx) => tx.query(sql)).then(
+        () => { throw new Error('leu a fila sem poder') }, (e) => { if (!/Revisões são visíveis só a ADMIN e LAWYER/.test(e.message)) throw e })
+    }
+  }
+  igual((await grupos067(ids.barbara, { legal_case_id: t067.caso })).total, 3, 'ADMIN lê')
+  const rvDoc1 = await revDaProposta067(t067.pDoc1)
+  igual((await como(ids.lucas, (tx) => um(tx, `select agent_run_id r from reviews where id = $1`, [rvDoc1]))).r, t067.t.run, 'a equipe lê a execução')
+  await como(ids.lucas, (tx) => tx.query(`update reviews set agent_run_id = null where id = $1`, [t067.revPessoa])).then(
+    () => { throw new Error('usuário logado mexeu na execução') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  await como(ids.lucas, (tx) => tx.query(`select public.list_review_queue('[]')`)).then(
+    () => { throw new Error('filtro inválido aceito') }, (e) => { if (!/Filtros inválidos/.test(e.message)) throw e })
+})
+
+await deve('catálogo [067]: funções com search_path fixo; blocos internos e gatilhos fechados; as duas da tela só para usuário logado', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname = 'private' and p.proname = any ($1)) or (n.nspname = 'public' and p.proname = any ($2)) order by 1`,
+    [['reviews_fill_on_insert', 'notify_reviews', 'review_decisions_apply', 'review_fold', 'review_search_text', 'review_queue_rows', 'list_review_queue', 'list_review_groups'],
+     ['list_review_queue', 'list_review_groups']])
+  igual(r.length, 10, 'uma versão de cada função')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv || x.wrk).map((x) => x.f), [], 'search_path fixo; sem visitante, service_role nem dg_worker')
+  igual(r.filter((x) => x.usr).map((x) => x.f), ['private.list_review_groups', 'private.list_review_queue', 'public.list_review_groups', 'public.list_review_queue'], 'usuário logado: só as duas da tela')
+  igual(r.filter((x) => x.f.startsWith('public.') && x.def).length, 0, 'as públicas rodam como quem chama')
+  igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.reviews'::regclass and tgname = 'reviews_fill_on_insert'`)).n, 1, 'um gatilho de nascimento')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
