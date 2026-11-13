@@ -3,7 +3,7 @@ import type { ActorType, ID, ISODateTime } from "@/types";
 /**
  * DTOs da leitura de auditoria (só ADMIN). `action` e `entityType` ficam no
  * vocabulário do BANCO (ex.: PARTNER_SHARE_CHANGED, organizations): a trilha
- * é a do banco, não a dos mocks (AUDIT_ACTIONS do front).
+ * é a do banco. Os rótulos que a pessoa lê ficam em features/audit/humanize.ts.
  *
  * Fora do DTO, de propósito: `ip_address` e `user_agent`. São dado pessoal
  * (LGPD) e não servem à leitura da trilha (quem fez o quê, quando, em qual

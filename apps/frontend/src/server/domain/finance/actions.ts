@@ -259,3 +259,25 @@ export async function updateExpenseAction(input: unknown) {
 export async function cancelExpenseAction(input: unknown) {
   return runAction({ name: "finance.expenses.cancel", permission: "finance.manage", schema: cancelExpenseSchema, input, handler: service.cancelExpense });
 }
+
+/* Planilhas do Financeiro (só ADMIN): a MESMA entrada da listagem; cada exportação fica na auditoria. */
+
+export async function exportAgreementsAction(input: unknown) {
+  return runAction({ name: "finance.agreements.export", permission: "data.export", schema: listAgreementRowsSchema, input, handler: service.exportAgreements });
+}
+
+export async function exportReceivablesAction(input: unknown) {
+  return runAction({ name: "finance.receivables.export", permission: "data.export", schema: listReceivablesSchema, input, handler: service.exportReceivables });
+}
+
+export async function exportReceiptStatementAction(input: unknown) {
+  return runAction({ name: "finance.receipts.export", permission: "data.export", schema: listReceiptStatementSchema, input, handler: service.exportReceiptStatement });
+}
+
+export async function exportExpensesAction(input: unknown) {
+  return runAction({ name: "finance.expenses.export", permission: "data.export", schema: listExpensesSchema, input, handler: service.exportExpenses });
+}
+
+export async function exportProcessFinanceAction(input: unknown) {
+  return runAction({ name: "finance.processes.export", permission: "data.export", schema: listProcessFinanceSchema, input, handler: service.exportProcessFinance });
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { HandCoins } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatCNJ, formatCurrency, formatDate, pluralize } from "@/lib/formatting";
@@ -19,6 +19,7 @@ import type { Page } from "@/server/core/pagination";
 import { listReceiptStatementAction } from "@/server/domain/finance/actions";
 import type { ReceiptKind, ReceiptStatementDTO, ReceiptStatementItemDTO } from "@/server/domain/finance/dto";
 import { RECEIPT_KINDS, RECEIPT_METHODS } from "@/server/domain/finance/schemas";
+import { ExportButton, type ExportAction } from "@/features/export/export-button";
 import { PAYMENT_TYPE_LABEL, RECEIPT_KIND_LABEL, RECEIPT_METHOD_LABEL } from "../labels";
 import {
   RECEIPT_STATEMENT_PAGE_SIZE,
@@ -60,8 +61,8 @@ export function ReceiptStatementPanel({
   initialResult: ActionResult<ReceiptStatementDTO>;
   /** Hoje em São Paulo (YYYY-MM-DD), vindo do servidor: o mesmo dia na primeira pintura e no navegador. */
   today: string;
-  /** EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (a infraestrutura vem de outro pacote de trabalho). */
-  exportAction?: ReactNode;
+  /** Server Action que exporta esta lista em planilha, com os filtros da tela. Sem ela, o botão não aparece. */
+  exportAction?: ExportAction;
 }) {
   const { query, setQuery, result, pending, retry } = useServerList<ReceiptStatementQuery, ReceiptStatementItemDTO>({
     initialQuery,
@@ -81,8 +82,7 @@ export function ReceiptStatementPanel({
       <PanelHeader
         title="Recebimentos"
         description="Extrato do que entrou, por período: recebimentos, ajustes e estornos, com cliente, processo e forma."
-        /* EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (prop exportAction). */
-        actions={exportAction}
+        actions={exportAction && <ExportButton action={exportAction} input={receiptStatementQueryToInput(query)} size="sm" />}
       />
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-5 py-3" role="search" aria-label="Filtrar recebimentos">
         <PeriodFilter label="Período" from={query.from} to={query.to} max={today} onChange={(from, to) => setQuery({ ...query, from, to, page: 1 })} />

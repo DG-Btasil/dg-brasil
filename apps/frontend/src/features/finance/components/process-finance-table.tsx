@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { ChevronRight, Scale } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatCNJ, formatCurrency, pluralize } from "@/lib/formatting";
@@ -31,6 +31,7 @@ import {
   type ProcessFinanceSort,
 } from "../list-query";
 import { percentLabel } from "../labels";
+import { ExportButton, type ExportAction } from "@/features/export/export-button";
 
 const FILTER_OPTIONS = PROCESS_FINANCE_FILTERS.map((f) => ({ value: f, label: PROCESS_FINANCE_FILTER_LABEL[f] }));
 const SORT_OPTIONS = PROCESS_FINANCE_SORTS.map((s) => ({ value: s, label: PROCESS_FINANCE_SORT_LABEL[s] }));
@@ -49,8 +50,8 @@ export function ProcessFinanceTable({
 }: {
   initialQuery: ProcessFinanceListQuery;
   initialResult: ActionResult<Page<ProcessFinanceDTO>>;
-  /** EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (a infraestrutura vem de outro pacote de trabalho). */
-  exportAction?: ReactNode;
+  /** Server Action que exporta esta lista em planilha, com os filtros da tela. Sem ela, o botão não aparece. */
+  exportAction?: ExportAction;
 }) {
   const router = useRouter();
   const { query, setQuery, result, pending, retry } = useServerList({
@@ -69,8 +70,7 @@ export function ProcessFinanceTable({
       <PanelHeader
         title="Financeiro por processo"
         description="Valor da causa, honorários (escritório × parceiro), contratado, recebido, despesas e resultado de cada processo."
-        /* EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (prop exportAction). */
-        actions={exportAction}
+        actions={exportAction && <ExportButton action={exportAction} input={processFinanceQueryToInput(query)} size="sm" />}
       />
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3" role="search" aria-label="Filtrar processos">
         <SearchInput

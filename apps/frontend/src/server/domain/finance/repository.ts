@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fromDbError, unwrap, type DbErrorLike } from "@/server/core/db-errors";
 import { conflict, notFound } from "@/server/core/errors";
 import { toRange, type PageInput } from "@/server/core/pagination";
+import type { ReceiptShareRow } from "./export";
 import type {
   AgreementListRow,
   AgreementRow,
@@ -620,6 +621,28 @@ export async function updateTransferWhere(db: SupabaseClient, id: string, expect
 }
 
 /* ------------------------------------------------------------------ */
+/* Planilhas (exportação)                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Divisão com o parceiro dos lançamentos informados (planilha de
+ * recebimentos): a parte do parceiro que o banco gravou e de qual parceiro.
+ * Até 100 ids por chamada (vão na URL da consulta).
+ */
+export async function listReceiptShares(db: SupabaseClient, receiptIds: string[]): Promise<ReceiptShareRow[]> {
+  if (receiptIds.length === 0) return [];
+  return (check(
+    await db.from("partner_revenue_allocations").select("receipt_id, partner_amount, case_partnership_agreements(partner_organization_id)").in("receipt_id", receiptIds).limit(CHUNK),
+  ) ?? []) as unknown as ReceiptShareRow[];
+}
+
+/** Nomes dos escritórios (parceiros), para as planilhas. */
+export async function listOrganizationNames(db: SupabaseClient): Promise<Map<string, string>> {
+  const rows = (check(await db.from("organizations").select("id, name")) ?? []) as { id: string; name: string }[];
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+/* ------------------------------------------------------------------ */
 /* Apoio                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -810,9 +833,18 @@ export async function getProcessRef(db: SupabaseClient, id: string): Promise<{ i
   return check(await db.from("legal_processes").select("id, legal_case_id").eq("id", id).is("deleted_at", null).maybeSingle()) as { id: string; legal_case_id: string } | null;
 }
 
+export interface ExpenseFilters {
+  processId?: string;
+  category?: string;
+  status?: "OPEN" | "PAID" | "CANCELLED";
+  /** Período pela data da despesa. */
+  from?: string;
+  to?: string;
+}
+
 export async function listExpenses(
   db: SupabaseClient,
-  filters: { processId?: string; category?: string; status?: "OPEN" | "PAID" | "CANCELLED"; from?: string; to?: string },
+  filters: ExpenseFilters,
   page: PageInput,
   sort: { column: string; ascending: boolean },
   withLabels: boolean,

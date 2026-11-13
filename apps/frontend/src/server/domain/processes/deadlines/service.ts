@@ -1,7 +1,10 @@
 import { requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { invalidState, notFound, validation } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
+import { collectForExport, exportCsv, mapChunks, type ExportFileDTO } from "@/server/domain/exports/service";
+import { listProfileNames } from "../repository";
 import type { DeadlineCreatedDTO, DeadlineDTO } from "./dto";
+import { DEADLINE_EXPORT_COLUMNS, type DeadlineExportRow } from "./export";
 import { addDays, deadlineCreatePayload, deadlineFromAgendaRow, deadlineUpdatePatch, officeLocalDate, resolveResponsible } from "./mappers";
 import * as repo from "./repository";
 import type {
@@ -46,23 +49,64 @@ async function agendaPage(ctx: ServiceContext, filters: repo.AgendaFilters, inpu
   return toPage(rows.map(deadlineFromAgendaRow), total, input);
 }
 
+/** Filtros da agenda como o repositório espera (os mesmos na tela e na exportação). */
+function agendaFilters(ctx: ServiceContext, input: ListDeadlinesInput): repo.AgendaFilters {
+  return {
+    ...scope(ctx, input),
+    effectiveStatus: input.effectiveStatus,
+    status: input.status,
+    type: input.type,
+    fromLocalDate: input.fromDate,
+    untilLocalDate: input.untilDate,
+    agentUnchecked: input.agentUnchecked,
+  };
+}
+
 /** Prazos de um caso, de um processo ou do escritório (agenda), por vencimento. */
 export async function listDeadlines(ctx: ServiceContext, input: ListDeadlinesInput): Promise<Page<DeadlineDTO>> {
   requireRead(ctx);
-  return agendaPage(
-    ctx,
-    {
-      ...scope(ctx, input),
-      effectiveStatus: input.effectiveStatus,
+  return agendaPage(ctx, agendaFilters(ctx, input), input, input.sortDirection !== "desc");
+}
+
+/**
+ * Planilha de prazos (ADMIN, `data.export`): os MESMOS filtros e ordem da
+ * agenda, com o nome do responsável e de quem conferiu o prazo do agente. Fica
+ * na auditoria (tipo, filtros e quantidade de linhas; nunca o conteúdo).
+ */
+export async function exportDeadlines(ctx: ServiceContext, input: ListDeadlinesInput): Promise<ExportFileDTO> {
+  requireRead(ctx);
+  requirePermission(ctx, "data.export");
+  const filters = agendaFilters(ctx, input);
+  const ascending = input.sortDirection !== "desc";
+  const { rows, total, truncated } = await collectForExport((page) => repo.listAgendaPage(ctx.db, filters, page, ascending));
+  const items = rows.map(deadlineFromAgendaRow);
+  // Nomes em blocos de 100 (os ids vão na URL da consulta).
+  const userIds = [...new Set(items.flatMap((d) => [d.responsibleUserId, d.checkedByUserId]).filter((id): id is string => !!id))];
+  const names = new Map((await mapChunks(userIds, 100, (ids) => listProfileNames(ctx.db, ids))).map((p) => [p.id, p.full_name ?? ""]));
+  const exportRows: DeadlineExportRow[] = items.map((d) => ({
+    ...d,
+    responsibleName: d.responsibleUserId ? names.get(d.responsibleUserId) : undefined,
+    checkedByName: d.checkedByUserId ? names.get(d.checkedByUserId) : undefined,
+  }));
+  return exportCsv(ctx, {
+    kind: "deadlines",
+    fileName: "prazos",
+    columns: DEADLINE_EXPORT_COLUMNS,
+    rows: exportRows,
+    filters: {
+      caseId: input.caseId,
+      processId: input.processId,
+      responsibleUserId: filters.responsibleUserId,
       status: input.status,
+      effectiveStatus: input.effectiveStatus,
       type: input.type,
-      fromLocalDate: input.fromDate,
-      untilLocalDate: input.untilDate,
+      fromDate: input.fromDate,
+      untilDate: input.untilDate,
       agentUnchecked: input.agentUnchecked,
     },
-    input,
-    input.sortDirection !== "desc",
-  );
+    total,
+    truncated,
+  });
 }
 
 /** Em aberto e no prazo, vencendo de hoje até hoje + `days` (data local de São Paulo). */

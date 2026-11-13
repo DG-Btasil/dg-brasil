@@ -28,7 +28,6 @@ async function InternalAgenda({ searchParams }: { searchParams: Record<string, s
     next5Days: next5Days.ok ? next5Days.data.total : undefined,
     agentUnchecked: agentUnchecked.ok ? agentUnchecked.data.total : undefined,
   };
-  // Exportação da lista: quando a infraestrutura existir, o botão entra em `headerActions` (cabeçalho da página).
   return <DeadlineAgenda initialQuery={query} initialResult={result} summary={summary} />;
 }
 

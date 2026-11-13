@@ -62,21 +62,6 @@ export interface ClientInactivation {
   previousStatus: ClientStatus;
 }
 
-/**
- * Registro de um cliente excluído. O protótipo não apaga o rastro: guarda o
- * nome e quando/por quem foi removido, para que processos que ficaram sem
- * vínculo possam exibir de quem eram. No backend: soft delete (deletedAt).
- */
-export interface RemovedClientRecord {
-  id: ID;
-  officeId: ID;
-  name: string;
-  document: string;
-  deletedAt: ISODateTime;
-  deletedBy: ID;
-  linkedProcessIds: ID[];
-}
-
 export interface IdentityDocument {
   type: IdDocumentType;
   number: string;

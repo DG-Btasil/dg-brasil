@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { FileSignature, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatCNJ, formatCurrency, formatDate, pluralize } from "@/lib/formatting";
@@ -20,6 +20,7 @@ import type { Page } from "@/server/core/pagination";
 import { listAgreementRowsAction } from "@/server/domain/finance/actions";
 import type { AgreementListItemDTO } from "@/server/domain/finance/dto";
 import { AGREEMENT_DB_STATUSES } from "@/server/domain/finance/schemas";
+import { ExportButton, type ExportAction } from "@/features/export/export-button";
 import { AGREEMENT_DB_STATUS_LABEL, AGREEMENT_DB_STATUS_TONE } from "../labels";
 import {
   AGREEMENT_PAGE_SIZE,
@@ -35,6 +36,9 @@ import { AgreementDrawer } from "./agreement-drawer";
 import { PeriodFilter } from "./period-filter";
 
 const STATUS_OPTIONS = AGREEMENT_DB_STATUSES.map((s) => ({ value: s, label: AGREEMENT_DB_STATUS_LABEL[s] }));
+
+/** Escopo da lista: um processo, um caso ou tudo (Financeiro). */
+const scopeOf = (legalProcessId?: string, legalCaseId?: string) => (legalProcessId ? { legalProcessId } : legalCaseId ? { legalCaseId } : {});
 
 /** Processo do contrato (046) com link para a aba Financeiro dele; contrato antigo = do caso. */
 function ProcessCell({ row }: { row: AgreementListItemDTO }) {
@@ -84,10 +88,10 @@ export function AgreementsPanel({
   urlTab?: FinanceTab;
   title?: string;
   description?: string;
-  /** EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (a infraestrutura vem de outro pacote de trabalho). */
-  exportAction?: ReactNode;
+  /** Server Action que exporta esta lista em planilha, com os filtros da tela. Sem ela, o botão não aparece. */
+  exportAction?: ExportAction;
 }) {
-  const scope = legalProcessId ? { legalProcessId } : legalCaseId ? { legalCaseId } : {};
+  const scope = scopeOf(legalProcessId, legalCaseId);
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
     initialResult,
@@ -135,8 +139,8 @@ export function AgreementsPanel({
         actions={
           <div className="flex items-center gap-2">
             {!fullFilters && statusSelect}
-            {/* EXPORTAÇÃO: o botão "Exportar" desta lista entra aqui (prop exportAction). */}
-            {exportAction}
+            {/* Escopo montado de novo (e não o `scope` de cima): o mesmo objeto usado depois dos hooks atrapalha o React Compiler. */}
+            {exportAction && <ExportButton action={exportAction} input={agreementQueryToInput(query, scopeOf(legalProcessId, legalCaseId))} size="sm" />}
             {cta}
           </div>
         }

@@ -91,7 +91,16 @@ DTO de parceiro com menos colunas que o interno.
 
 ## Exportação de planilhas (CSV)
 
-Tela `/clientes` e `/processos`: botão "Exportar planilha" (só ADMIN). O
+Onde está ligada: Clientes (`/clientes`), Processos (`/processos`), Prazos
+(`/prazos`) e as cinco listas do Financeiro (`/financeiro`: por processo,
+contratos, a receber, recebimentos e despesas). As listas de contratos e de
+despesas dentro do caso e do processo não têm o botão. Colunas de cada
+planilha: `export.ts` do domínio (`clients`, `processes`, `processes/deadlines`,
+`finance`). Em recebimentos, cada lançamento sai com a parte do escritório e a
+do parceiro (a divisão que o banco gravou); estorno e ajuste para menos saem
+com valor negativo, como número.
+
+Em todas: botão "Exportar planilha" (só ADMIN). O
 arquivo sai com os filtros e a ordem da tela, em CSV que o Excel brasileiro
 abre direto (`;`, BOM UTF-8, datas dd/mm/aaaa, vírgula decimal). Limite de
 **5.000 linhas** por arquivo (`EXPORT_MAX_ROWS`); passou disso, sai cortado e a
@@ -205,7 +214,7 @@ integração em `tests/integration/<domínio>.int.test.ts`.
 | Conta (`server/domain/account`) | sessões da própria conta (lista, MFA), sair dos outros dispositivos, sair de todos — toda sessão liberada, qualquer papel, sem `userId` no input | `get_my_sessions`, `record_account_security_event` (038) + `auth.signOut({ scope })` com o JWT do usuário |
 | Auditoria | eventos e acessos a dado pessoal (ADMIN, paginado, metadata por whitelist, sem IP/navegador) | `audit_events`, `personal_data_access_events` |
 | Lixeira (`server/domain/trash`, 066) | listar clientes, processos e documentos excluídos (quem excluiu, quando, busca e página no servidor), restaurar — só ADMIN (`trash.manage`) | `trash_list`, `restore_client`, `restore_process`, `restore_document` (o banco confere o ADMIN, recusa a restauração que deixaria dois registros ativos com o mesmo CPF/CNPJ ou CNJ e grava a auditoria) |
-| Exportação (`server/domain/exports`, 066) | CSV das listas com os filtros da tela — só ADMIN (`data.export`); ligada em Clientes e Processos | `record_data_export` grava `DATA_EXPORTED` (tipo, filtros, quantidade de linhas; nunca o conteúdo) |
+| Exportação (`server/domain/exports`, 066) | CSV das listas com os filtros da tela — só ADMIN (`data.export`); ligada em Clientes, Processos, Prazos e nas cinco listas do Financeiro | `record_data_export` grava `DATA_EXPORTED` (tipo, filtros, quantidade de linhas; nunca o conteúdo) |
 | Busca global (`server/domain/search`) | uma action que chama as buscas das listas de clientes, casos e processos, 5 resultados por grupo | nenhuma função própria: permissão e RLS das listas |
 
 ## Prazos (063)

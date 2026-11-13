@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { AlarmClock, ArrowUpRight, Bot, CalendarCheck, CalendarClock, CircleAlert, SearchX, X, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DEADLINE_STATUS_LABEL, DEADLINE_STATUS_TONE, DEADLINE_TYPE_LABEL, DEADLINE_TYPES, DEADLINE_URGENCY_TONE } from "@/lib/constants/status";
@@ -20,10 +20,11 @@ import { Panel } from "@/components/ui/panel";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { TONE_BORDER_LEFT } from "@/components/ui/tone";
 import type { Page } from "@/server/core/pagination";
-import { listDeadlinesAction } from "@/server/domain/processes/deadlines/actions";
+import { exportDeadlinesAction, listDeadlinesAction } from "@/server/domain/processes/deadlines/actions";
 import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
 import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUserMap, useResponsibleUserOptions } from "@/features/directory/directory-context";
+import { ExportButton } from "@/features/export/export-button";
 import { AddDeadlineDialog } from "@/features/processes/components/add-deadline-dialog";
 import { CnjText } from "@/features/processes/components/cnj-text";
 import { DeadlineActionDialog, DeadlineAgentMark, deadlineHasTime, DeadlineRowActions, HearingInfo, type DeadlineActionRequest } from "@/features/processes/components/deadline-actions";
@@ -79,19 +80,17 @@ function Counter({ icon: Icon, label, value, tone, active, onClick }: { icon: Lu
  * Agenda de prazos do escritório (equipe interna). Filtros, ordem e páginas no
  * servidor; a página vem agrupada por dia, com os vencidos em destaque no
  * topo. As ações são as mesmas da aba Prazos do processo, e valem também para
- * prazo de caso sem processo.
+ * prazo de caso sem processo. "Exportar planilha" (só ADMIN) leva os filtros
+ * da tela, sem a página.
  */
 export function DeadlineAgenda({
   initialQuery,
   initialResult,
   summary,
-  headerActions,
 }: {
   initialQuery: DeadlineAgendaQuery;
   initialResult: ActionResult<Page<DeadlineDTO>>;
   summary?: AgendaSummary;
-  /** Ações do cabeçalho da lista (ex.: exportação, quando existir). */
-  headerActions?: ReactNode;
 }) {
   const { query, setQuery, result, pending, retry } = useServerList({
     initialQuery,
@@ -117,7 +116,7 @@ export function DeadlineAgenda({
       <PageHeader
         title="Prazos"
         description="Todos os prazos do escritório, por dia. Os vencidos ficam no topo até serem cumpridos, cancelados ou marcados como perdidos."
-        actions={headerActions}
+        actions={<ExportButton action={exportDeadlinesAction} input={agendaQueryToInput(query)} />}
       />
       {summary && (
         <section aria-label="Resumo dos prazos do escritório" className="mb-4 grid grid-cols-4 divide-x divide-line overflow-hidden rounded-lg border border-line bg-surface shadow-hairline">

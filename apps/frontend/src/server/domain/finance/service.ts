@@ -1,6 +1,7 @@
 import { isPartner, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
 import { businessRule, DomainError, forbidden, invalidState, notFound, validation } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
+import { collectForExport, exportCsv, mapChunks, type ExportFileDTO } from "@/server/domain/exports/service";
 import type {
   AgreementListItemDTO,
   AllocationDTO,
@@ -24,6 +25,15 @@ import type {
   TransferInternalDTO,
   TransferListItemDTO, PartnerShareDetailDTO } from "./dto";
 import { receivableAging } from "./aging";
+import {
+  AGREEMENT_EXPORT_COLUMNS,
+  EXPENSE_EXPORT_COLUMNS,
+  PROCESS_FINANCE_EXPORT_COLUMNS,
+  RECEIPT_EXPORT_COLUMNS,
+  RECEIVABLE_EXPORT_COLUMNS,
+  withReceiptShares,
+  type ProcessFinanceExportRow,
+} from "./export";
 import {
   agreementFromRow,
   agreementInsert,
@@ -236,22 +246,22 @@ export async function createAgreement(ctx: ServiceContext, input: CreateAgreemen
  */
 export async function listAgreementRows(ctx: ServiceContext, input: ListAgreementRowsInput): Promise<Page<AgreementListItemDTO>> {
   requireFinance(ctx, "finance.view");
-  const { rows, total } = await repo.listAgreementRows(
-    ctx.db,
-    {
-      legalCaseId: input.legalCaseId,
-      legalProcessId: input.legalProcessId,
-      status: input.status,
-      q: input.q,
-      periodFrom: input.periodFrom,
-      periodTo: input.periodTo,
-      dueFrom: input.dueFrom,
-      dueTo: input.dueTo,
-    },
-    input,
-    { column: input.column, ascending: input.ascending },
-  );
+  const { rows, total } = await repo.listAgreementRows(ctx.db, agreementRowFilters(input), input, { column: input.column, ascending: input.ascending });
   return toPage(rows.map(agreementListItemFromRow), total, input);
+}
+
+/** Filtros da lista de contratos como o repositório espera (os mesmos na tela e na planilha). */
+function agreementRowFilters(input: ListAgreementRowsInput): repo.AgreementListFilters {
+  return {
+    legalCaseId: input.legalCaseId,
+    legalProcessId: input.legalProcessId,
+    status: input.status,
+    q: input.q,
+    periodFrom: input.periodFrom,
+    periodTo: input.periodTo,
+    dueFrom: input.dueFrom,
+    dueTo: input.dueTo,
+  };
 }
 
 /**
@@ -470,12 +480,22 @@ export async function listReceipts(ctx: ServiceContext, input: ListReceiptsInput
  */
 export async function listReceiptStatement(ctx: ServiceContext, input: ListReceiptStatementInput): Promise<ReceiptStatementDTO> {
   requireFinance(ctx, "finance.view");
-  const filters = { from: input.from, to: input.to, method: input.method, kind: input.kind, q: input.q };
+  const filters = receiptStatementFilters(input);
   const [list, totals] = await Promise.all([
     repo.listReceiptStatement(ctx.db, filters, input, { column: input.column, ascending: input.ascending }),
     repo.receiptStatementTotals(ctx.db, filters),
   ]);
   return { ...toPage(list.rows.map(receiptStatementItemFromRow), list.total, input), totals: receiptStatementTotalsFromRaw(totals) };
+}
+
+/** Filtros do extrato como o repositório espera (os mesmos na tela e na planilha). */
+function receiptStatementFilters(input: ListReceiptStatementInput): repo.ReceiptStatementFilters {
+  return { from: input.from, to: input.to, method: input.method, kind: input.kind, q: input.q };
+}
+
+/** Filtros do "a receber" como o repositório espera (os mesmos na tela e na planilha). */
+function receivableFilters(input: ListReceivablesInput): repo.ReceivableFilters {
+  return { from: input.from, to: input.to, overdueOnly: input.overdueOnly, q: input.q };
 }
 
 /**
@@ -484,7 +504,7 @@ export async function listReceiptStatement(ctx: ServiceContext, input: ListRecei
  */
 export async function listReceivables(ctx: ServiceContext, input: ListReceivablesInput): Promise<ReceivablesDTO> {
   requireFinance(ctx, "finance.view");
-  const filters = { from: input.from, to: input.to, overdueOnly: input.overdueOnly, q: input.q };
+  const filters = receivableFilters(input);
   const [list, totals] = await Promise.all([
     repo.listReceivables(ctx.db, filters, input, { column: input.column, ascending: input.ascending }),
     repo.receivablesTotals(ctx.db, filters),
@@ -810,13 +830,13 @@ export async function getPartnerShareDetail(ctx: ServiceContext, input: { agreem
  */
 export async function listProcessFinance(ctx: ServiceContext, input: ListProcessFinanceInput): Promise<Page<ProcessFinanceDTO>> {
   requireFinance(ctx, "finance.view");
-  const { rows, total } = await repo.listProcessFinance(
-    ctx.db,
-    { q: input.q, legalCaseId: input.legalCaseId, overdueOnly: input.overdueOnly, openExpensesOnly: input.openExpensesOnly, withoutAgreement: input.withoutAgreement },
-    input,
-    { column: input.column, ascending: input.ascending },
-  );
+  const { rows, total } = await repo.listProcessFinance(ctx.db, processFinanceFilters(input), input, { column: input.column, ascending: input.ascending });
   return toPage(rows.map(processFinanceFromRow), total, input);
+}
+
+/** Filtros da visão por processo como o repositório espera (os mesmos na tela e na planilha). */
+function processFinanceFilters(input: ListProcessFinanceInput): repo.ProcessFinanceFilters {
+  return { q: input.q, legalCaseId: input.legalCaseId, overdueOnly: input.overdueOnly, openExpensesOnly: input.openExpensesOnly, withoutAgreement: input.withoutAgreement };
 }
 
 /** Primeira página dos contratos e das despesas do processo (o painel pagina depois pelas listagens). */
@@ -843,14 +863,13 @@ export async function getProcessFinanceTotals(ctx: ServiceContext): Promise<Proc
 /** Despesas: todas (com rótulos do processo) ou de um processo; filtros por categoria, situação e período (data da despesa). */
 export async function listExpenses(ctx: ServiceContext, input: ListExpensesInput): Promise<Page<ExpenseDTO>> {
   requireFinance(ctx, "finance.view");
-  const { rows, total } = await repo.listExpenses(
-    ctx.db,
-    { processId: input.processId, category: input.category, status: input.status, from: input.from, to: input.to },
-    input,
-    { column: input.column, ascending: input.ascending },
-    !input.processId,
-  );
+  const { rows, total } = await repo.listExpenses(ctx.db, expenseFilters(input), input, { column: input.column, ascending: input.ascending }, !input.processId);
   return toPage(rows.map(expenseFromRow), total, input);
+}
+
+/** Filtros da lista de despesas como o repositório espera (os mesmos na tela e na planilha). */
+function expenseFilters(input: ListExpensesInput): repo.ExpenseFilters {
+  return { processId: input.processId, category: input.category, status: input.status, from: input.from, to: input.to };
 }
 
 /**
@@ -907,4 +926,94 @@ export async function getExpenseSummary(ctx: ServiceContext, now = new Date()): 
     monthlyPaid: monthlyPaidExpenses(rows, months),
     truncated,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Planilhas do Financeiro (CSV) — só ADMIN                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * As cinco listas do Financeiro saem em planilha com os MESMOS filtros e ordem
+ * da tela (a entrada é a da listagem), até o limite de linhas. Quem exporta é
+ * o ADMIN (`finance.view` + `data.export`; o banco confere de novo) e cada
+ * exportação fica na auditoria ANTES de o arquivo sair: tipo da lista, filtros
+ * (o texto da busca não é gravado) e quantidade de linhas, nunca o conteúdo.
+ */
+function requireFinanceExport(ctx: ServiceContext): void {
+  requireFinance(ctx, "finance.view");
+  requirePermission(ctx, "data.export");
+}
+
+/** Planilha de contratos de honorários. */
+export async function exportAgreements(ctx: ServiceContext, input: ListAgreementRowsInput): Promise<ExportFileDTO> {
+  requireFinanceExport(ctx);
+  const filters = agreementRowFilters(input);
+  const sort = { column: input.column, ascending: input.ascending };
+  const { rows, total, truncated } = await collectForExport((page) => repo.listAgreementRows(ctx.db, filters, page, sort));
+  return exportCsv(ctx, { kind: "finance_agreements", fileName: "contratos-de-honorarios", columns: AGREEMENT_EXPORT_COLUMNS, rows: rows.map(agreementListItemFromRow), filters: { ...filters }, total, truncated });
+}
+
+/** Planilha do "a receber": parcelas em aberto com saldo, por vencimento. */
+export async function exportReceivables(ctx: ServiceContext, input: ListReceivablesInput): Promise<ExportFileDTO> {
+  requireFinanceExport(ctx);
+  const filters = receivableFilters(input);
+  const sort = { column: input.column, ascending: input.ascending };
+  const { rows, total, truncated } = await collectForExport((page) => repo.listReceivables(ctx.db, filters, page, sort));
+  return exportCsv(ctx, { kind: "finance_receivables", fileName: "a-receber", columns: RECEIVABLE_EXPORT_COLUMNS, rows: rows.map(receivableFromRow), filters: { ...filters }, total, truncated });
+}
+
+/**
+ * Planilha do extrato de recebimentos, com a parte do escritório e a do
+ * parceiro em cada lançamento (a divisão que o banco gravou; sem parceria,
+ * tudo é do escritório).
+ */
+export async function exportReceiptStatement(ctx: ServiceContext, input: ListReceiptStatementInput): Promise<ExportFileDTO> {
+  requireFinanceExport(ctx);
+  const filters = receiptStatementFilters(input);
+  const sort = { column: input.column, ascending: input.ascending };
+  const { rows, total, truncated } = await collectForExport((page) => repo.listReceiptStatement(ctx.db, filters, page, sort));
+  const items = rows.map(receiptStatementItemFromRow);
+  // Divisões em blocos de 100 lançamentos (os ids vão na URL da consulta).
+  const [shares, organizations] = await Promise.all([
+    mapChunks(
+      items.map((i) => i.receiptId),
+      100,
+      (ids) => repo.listReceiptShares(ctx.db, ids),
+    ),
+    repo.listOrganizationNames(ctx.db),
+  ]);
+  return exportCsv(ctx, {
+    kind: "finance_receipts",
+    fileName: "recebimentos",
+    columns: RECEIPT_EXPORT_COLUMNS,
+    rows: withReceiptShares(items, shares, organizations),
+    filters: { ...filters },
+    total,
+    truncated,
+  });
+}
+
+/** Planilha de despesas, sempre com o cliente e o processo de cada uma. */
+export async function exportExpenses(ctx: ServiceContext, input: ListExpensesInput): Promise<ExportFileDTO> {
+  requireFinanceExport(ctx);
+  const filters = expenseFilters(input);
+  const sort = { column: input.column, ascending: input.ascending };
+  const { rows, total, truncated } = await collectForExport((page) => repo.listExpenses(ctx.db, filters, page, sort, true));
+  return exportCsv(ctx, { kind: "finance_expenses", fileName: "despesas", columns: EXPENSE_EXPORT_COLUMNS, rows: rows.map(expenseFromRow), filters: { ...filters }, total, truncated });
+}
+
+/** Planilha do financeiro por processo, com o nome do parceiro do caso. */
+export async function exportProcessFinance(ctx: ServiceContext, input: ListProcessFinanceInput): Promise<ExportFileDTO> {
+  requireFinanceExport(ctx);
+  const filters = processFinanceFilters(input);
+  const sort = { column: input.column, ascending: input.ascending };
+  const [{ rows, total, truncated }, organizations] = await Promise.all([
+    collectForExport((page) => repo.listProcessFinance(ctx.db, filters, page, sort)),
+    repo.listOrganizationNames(ctx.db),
+  ]);
+  const exportRows: ProcessFinanceExportRow[] = rows.map((row) => {
+    const item = processFinanceFromRow(row);
+    return { ...item, partnerName: item.partnerOrganizationId ? organizations.get(item.partnerOrganizationId) : undefined };
+  });
+  return exportCsv(ctx, { kind: "finance_processes", fileName: "financeiro-por-processo", columns: PROCESS_FINANCE_EXPORT_COLUMNS, rows: exportRows, filters: { ...filters }, total, truncated });
 }

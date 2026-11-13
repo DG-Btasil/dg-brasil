@@ -49,7 +49,7 @@ import type {
  * casos do próprio escritório). Para o parceiro, "não acessa" = "não existe".
  */
 
-/** Origens de movimentação que o parceiro vê (mesma regra da RLS e de lib/permissions/partner-scope). */
+/** Origens de movimentação que o parceiro vê (mesma regra da RLS). */
 export const PARTNER_EVENT_SOURCES = ["JUDICIAL_INTEGRATION", "IMPORT", "SYSTEM"] as const;
 
 const canViewCaseValue = (ctx: ServiceContext) => can(ctx.session.role, "processes.caseValue.view");

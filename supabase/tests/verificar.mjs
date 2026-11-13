@@ -8416,6 +8416,130 @@ await deve('catálogo [065]: search_path fixo; a vigia só pelo agendador; o con
   await limpar065()
 })
 
+// ═════════════════════════════ textos de mensagens do banco [068] ════════
+
+secao('Textos de mensagens — nome do escritório sem acento e caminho da tela de Integrações, sem redigitar as funções [068]')
+const rodar068 = async () => db.exec(await readFile(new URL('migrations/20261113000068_textos_de_mensagens.sql', raiz), 'utf8'))
+const FN068 = [
+  { fn: 'private.partner_submit_case(jsonb, jsonb)', velho: 'Fale com o escritório Bárbara Cardoso.', novo: 'Fale com o escritório Barbara Cardoso.' },
+  { fn: 'private.judicial_sync_finish(uuid, text, jsonb, text)', velho: 'Veja os detalhes em Configurações → Integrações.', novo: 'Veja os detalhes em DG Brasil → Integrações.' },
+]
+// Tudo o que a troca do texto NÃO pode mudar: dono, permissões, search_path, security definer, comentário.
+const ficha068 = (fn) => um(db, `select p.prosrc src, pg_get_userbyid(p.proowner) dono, coalesce(p.proacl::text, '') acl, p.proconfig::text config,
+    'search_path=""' = any(p.proconfig) caminho_vazio, p.prosecdef definer, p.provolatile volatil, p.prorettype::regtype::text retorno,
+    has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('authenticated', p.oid, 'execute') logado,
+    has_function_privilege('dg_worker', p.oid, 'execute') worker, has_function_privilege('service_role', p.oid, 'execute') servico,
+    coalesce(obj_description(p.oid, 'pg_proc'), '') comentario
+  from pg_proc p where p.oid = $1::regprocedure`, [fn])
+const semTexto068 = ({ src, ...resto }) => resto
+// Troca um texto na função como a migration faz (lendo a definição que está no banco), para simular o antes e o "alguém mexeu".
+const trocar068 = async (fn, de, para) => {
+  const def = (await um(db, `select pg_get_functiondef($1::regprocedure) d`, [fn])).d
+  if (!def.includes(de)) throw new Error(`"${de}" não está em ${fn}`)
+  await db.exec(def.replaceAll(de, para))
+}
+
+await deve('as duas funções ficaram com o texto novo e sem o antigo; continuam security definer, com search_path vazio e fechadas para anônimo', async () => {
+  for (const { fn, velho, novo } of FN068) {
+    const f = await ficha068(fn)
+    igual([f.src.includes(novo), f.src.includes(velho), f.definer, f.caminho_vazio, f.anon], [true, false, true, true, false], fn)
+  }
+  const [envio, busca] = [await ficha068(FN068[0].fn), await ficha068(FN068[1].fn)]
+  // Envio de caso: o parceiro chama pela porta pública (025). Fim da busca: só o servidor do DG Brasil, como dg_worker (043).
+  igual([envio.logado, envio.worker, busca.logado, busca.servico, busca.worker], [true, false, false, false, true], 'quem executa')
+})
+
+await deve('do texto antigo para o novo: muda SÓ o texto; dono, permissões, search_path, security definer e comentário ficam iguais', async () => {
+  for (const { fn, velho, novo } of FN068) {
+    const depois = await ficha068(fn)
+    // Volta a função ao que era antes da 068 e roda a migration de novo.
+    await trocar068(fn, novo, velho)
+    const antes = await ficha068(fn)
+    igual([antes.src.includes(velho), antes.src.includes(novo)], [true, false], `${fn}: estado anterior simulado`)
+    await rodar068()
+    const refeita = await ficha068(fn)
+    igual(refeita.src, antes.src.replaceAll(velho, novo), `${fn}: corpo = o de antes com o texto trocado`)
+    igual(semTexto068(refeita), semTexto068(antes), `${fn}: dono, permissões e configuração`)
+    igual(refeita, depois, `${fn}: igual ao que a primeira aplicação deixou`)
+  }
+})
+
+await deve('rodar de novo não muda nada', async () => {
+  const antes = [await ficha068(FN068[0].fn), await ficha068(FN068[1].fn)]
+  await rodar068()
+  await rodar068()
+  igual([await ficha068(FN068[0].fn), await ficha068(FN068[1].fn)], antes, 'funções')
+})
+
+await deve('função que alguém mudou (sem o texto antigo nem o novo): a migration falha com frase clara e não troca nada', async () => {
+  const { fn, novo } = FN068[0]
+  const outra = FN068[1]
+  await trocar068(fn, novo, 'Fale com a equipe.')
+  // A segunda função volta ao texto antigo: se a migration falha na primeira, a segunda tem de continuar como estava (tudo ou nada).
+  await trocar068(outra.fn, outra.novo, outra.velho)
+  let mensagem = null
+  try {
+    await rodar068()
+  } catch (e) {
+    mensagem = String(e.message)
+  } finally {
+    const meio = (await ficha068(outra.fn)).src
+    await trocar068(fn, 'Fale com a equipe.', novo)
+    await rodar068()
+    if (!meio.includes(outra.velho)) throw new Error('a migration falhou mas trocou a outra função')
+  }
+  if (!mensagem || !/068: o texto "Fale com o escritório Bárbara Cardoso\." não foi encontrado em private\.partner_submit_case/.test(mensagem)) {
+    throw new Error(`deveria falhar dizendo qual texto e qual função; veio: ${mensagem}`)
+  }
+  for (const { fn: f, velho, novo: n } of FN068) {
+    const src = (await ficha068(f)).src
+    igual([src.includes(n), src.includes(velho)], [true, false], `${f}: de volta ao texto novo`)
+  }
+})
+
+await deve('parceiro que envia caso com o CPF de um cliente excluído lê o nome do escritório sem acento', async () => {
+  const cli = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99906800001', $1) returning id`, [ids.owner])).id
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Cliente Fictício 068')`, [cli])
+  await como(ids.barbara, (tx) => tx.query(`update clients set deleted_at = now() where id = $1`, [cli]))
+  let mensagem = null
+  try {
+    await enviarCaso(ids.almeidaAdm, { document: '999.068.000-01', kind: 'INDIVIDUAL', origin_organization_id: ids.almeida, full_name: 'Outro Nome' }, casoBase())
+  } catch (e) {
+    mensagem = String(e.message)
+  }
+  igual(mensagem, 'Não foi possível usar este CPF/CNPJ. Fale com o escritório Barbara Cardoso.', 'mensagem ao parceiro')
+})
+
+await deve('busca judicial que falha sem detalhe manda o ADMIN para DG Brasil → Integrações', async () => {
+  const chave = await chaveJsync057()
+  await db.query(`update judicial_sync_runs set status = 'FAILED', finished_at = now() where status = 'RUNNING'`)
+  await db.query(`delete from notifications where event_key = $1`, [chave])
+  const rodada = (await um(db, `insert into judicial_sync_runs (trigger, scope) values ('CRON', 'DATAJUD') returning id`)).id
+  await worker043(`select private.judicial_sync_finish($1, 'FAILED', '{}') r`, [rodada])
+  const n = await linhas(db, `select type, title, message from notifications where event_key = $1 and user_id = $2`, [chave, ids.barbara])
+  igual(n, [{ type: 'JUDICIAL_SYNC_FAILED', title: 'A busca de publicações e andamentos falhou', message: 'Veja os detalhes em DG Brasil → Integrações.' }], 'aviso')
+})
+
+// A 066 não restringe o tipo da exportação (só o formato do nome): os tipos novos não pedem migration.
+await deve('exportação em Prazos e nas cinco listas do Financeiro: o registro da 066 aceita os tipos novos com os filtros que as telas mandam', async () => {
+  const pedidos = [
+    ['deadlines', { responsibleUserId: ids.lucas, status: 'OPEN', effectiveStatus: 'OVERDUE', type: 'HEARING', fromDate: '2026-11-01', untilDate: '2026-11-30', agentUnchecked: true }],
+    ['finance_processes', { search: true, overdueOnly: true, openExpensesOnly: true, withoutAgreement: true }],
+    ['finance_agreements', { search: true, status: 'ACTIVE', periodFrom: '2026-10-01', periodTo: '2026-10-31', dueFrom: '2026-12-01', dueTo: '2026-12-31' }],
+    ['finance_receivables', { search: true, from: '2026-11-01', to: '2026-11-30', overdueOnly: true }],
+    ['finance_receipts', { search: true, from: '2026-11-01', to: '2026-11-13', method: 'PIX', kind: 'REVERSAL' }],
+    ['finance_expenses', { processId: ids.owner, category: 'COURT_COSTS', status: 'PAID', from: '2026-11-01', to: '2026-11-30' }],
+  ]
+  for (const [tipo, filtros] of pedidos) {
+    const ev = await um(db, `select action, actor_user_id, metadata from audit_events where id = $1`, [await exportar066(ids.barbara, tipo, filtros, 12)])
+    // O jsonb não guarda a ordem das chaves: compara os filtros em ordem alfabética.
+    const emOrdem = (o) => Object.entries(o).sort(([a], [b]) => a.localeCompare(b))
+    igual([ev.action, ev.actor_user_id, ev.metadata.kind, ev.metadata.total_rows, ev.metadata.truncated, emOrdem(ev.metadata.filters)],
+      ['DATA_EXPORTED', ids.barbara, tipo, 12, false, emOrdem(filtros)], tipo)
+  }
+  await deveFalhar('advogado não registra exportação do Financeiro', () => exportar066(ids.lucas, 'finance_receipts', {}, 1), /Somente o administrador exporta/)
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(
