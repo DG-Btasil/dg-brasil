@@ -141,6 +141,24 @@ Cada agente escolheu a opção mais conservadora e seguiu. Vale confirmar.
   `agent-a4c5…`, `agent-af49…`) e os ramos `worktree-agent-*`, de uma tentativa que falhou:
   apagar. As pastas `rf-*` e os ramos `rf/*` podem ser apagados depois do merge no `master`.
 
-## 6. Fila de Revisões
+## 6. Fila de Revisões (migration 067)
 
-(Preenchido quando o agente de Revisões terminar.)
+O que mudou: a fila abre agrupada por execução do agente (alterna com "Lista"), tem busca por
+texto e decisão em conjunto dentro do grupo. Cada item continua decidido um a um pelo sistema, na
+sessão da pessoa, com auditoria de cada um. Revisão nova nasce atribuída ao advogado do caso.
+
+Decisões a confirmar:
+- **Aprovar em conjunto** vale só para pedido de documento (sem mensagem ao parceiro) e proposta
+  sem efeito automático. Prazo, cadastro de processo, atualização do caso e mudança de agente
+  exigem abrir o item. **Rejeitar em conjunto** vale para qualquer proposta.
+- **Proposta do agente** agora só aceita "Aprovar" ou "Rejeitar"; "Solicitar alterações" continua
+  para documentos e análises.
+- As revisões de proposta que estavam paradas em "alterações solicitadas" voltam para a fila como
+  reabertas, sem decisão de ninguém (correção de estado, auditada). Na hora de aplicar a 067, ela
+  avisa quantas voltaram.
+- A atribuição automática vale só para revisões novas: as 334 que existem no DEV continuam sem
+  responsável. Atribuir em massa é decisão sua.
+
+Ao juntar os ramos, uma conferência da área judicial precisou mudar: o caso "publicação presa
+porque a revisão pediu alterações" deixou de existir para revisões novas. Ele continua coberto pela
+vigia para dados antigos.
