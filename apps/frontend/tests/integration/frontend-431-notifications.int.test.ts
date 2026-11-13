@@ -54,7 +54,8 @@ describe("avisos produzidos por operações reais (037)", () => {
     expect((await inbox("LAWYER", "PARTNER_REQUEST_REPLY", caseId)).length).toBe(1);
   });
 
-  it("preferência desligada não gera aviso; segurança fica sempre ligada", async () => {
+  // 063: Prazos passou a ser como Segurança, não se desliga. O pedido de desligar é ignorado e o aviso de prazo sai.
+  it("segurança e prazos ficam sempre ligados: pedir para desligar não desliga, e o prazo novo avisa", async () => {
     const lawyer = await ctxFor("LAWYER");
     const saved = await preferences.saveNotificationPreferences(lawyer, {
       categories: [
@@ -63,15 +64,15 @@ describe("avisos produzidos por operações reais (037)", () => {
       ],
       digest: "WEEKLY",
     });
-    expect(saved.categories.find((c) => c.category === "DEADLINES")).toMatchObject({ inApp: false, email: true });
+    expect(saved.categories.find((c) => c.category === "DEADLINES")).toMatchObject({ inApp: true, email: true, locked: true });
     expect(saved.categories.find((c) => c.category === "SECURITY")).toMatchObject({ inApp: true });
     expect(saved.digest).toBe("WEEKLY");
 
     const caseId = await partnerCase(`Caso prazo 4.3.1 ${world.run}`);
-    const title = `Prazo sem aviso ${randomUUID().slice(0, 8)}`;
+    const title = `Prazo com aviso ${randomUUID().slice(0, 8)}`;
     const d = await (await ctxFor("ADMIN")).db.from("deadlines").insert({ legal_case_id: caseId, title, due_at: new Date(Date.now() + 20 * 86_400_000).toISOString(), responsible_user_id: world.users.LAWYER.id });
     expect(d.error).toBeNull();
-    expect((await inbox("LAWYER", "DEADLINE_CREATED")).some((n) => n.title.includes(title))).toBe(false);
+    expect((await inbox("LAWYER", "DEADLINE_CREATED")).some((n) => n.title.includes(title))).toBe(true);
 
     await preferences.saveNotificationPreferences(lawyer, { categories: [{ category: "DEADLINES", inApp: true, email: false }], digest: "NONE" });
   });
