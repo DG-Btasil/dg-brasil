@@ -8,6 +8,9 @@ fora **de propósito**:
 
 Esta lista junta tudo isso, com o que fazer e onde mexer.
 
+> **No dia de pôr em uso, siga o [checklist da virada](checklist-da-virada.md):**
+> ele põe os passos desta lista (e os dos outros documentos) na ordem certa.
+
 > **Lançamento (decisão de 10/11/2026):** o DG Brasil é lançado **completo**, não
 > como beta: valem todos os itens desta lista, inclusive o Google Drive (2), a
 > consulta de CPF na Receita (12) e os agentes do escritório pela ponte (14),
@@ -31,11 +34,15 @@ hora de contratar.
 | 7 | Claude com dados de clientes | Hoje só há dados fictícios | Plano Team ou Enterprise |
 | 8 | Variáveis e chaves de produção | Hoje tudo aponta para o DEV | Sem custo |
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
-| 10 | Integração judicial: mais buscas por dia e lotes do DataJud | Hobby: 1 rodada por dia, 60 s | Já vem com o Vercel Pro |
+| 10 | Integração judicial: mais buscas por dia | Hobby: 1 rodada por dia pela Vercel (os lotes saem do agendador do banco) | Já vem com o Vercel Pro |
 | 11 | ~~Conferir as publicações com o APOGEU~~ | Removido em 2026-11-09: o APOGEU não será usado | — |
 | 12 | Consulta de CPF na Receita (Serpro) (**no lançamento, só na produção**) | Paga por consulta; contrato do escritório | ~R$ 0,66 por consulta na 1ª faixa (tabela de 2024; conferir) |
 | 13 | Validação de formato dos documentos (RG, CNH, OAB, dígitos) (**depois do lançamento, prioridade baixa**) | Pedido para a atualização final | Sem custo |
 | 14 | Agentes do DG Brasil pela ponte ([ponte.md](../ponte.md)): os clones `-dg` da esteira bancária ([agentes/clonagem](../agentes/clonagem/README.md)) (**no lançamento**) | Ponte validada no DEV (Frente B); clones prontos, falta validar | Sem custo |
+| 15 | Cópia de segurança dos documentos (os arquivos do Storage) | Falta decidir o destino e quem roda | Depende do destino escolhido |
+| 16 | Monitoramento: monitor externo e destino dos erros | São contas de terceiros, a escolher | Há opções gratuitas; conferir |
+| 17 | Procedimento para pedido de titular de dados | Falta definir quem atende | Sem custo |
+| 18 | Prazos de guarda dos registros que hoje não têm limpeza | Decisão da dona do escritório | Sem custo |
 
 ---
 
@@ -101,9 +108,13 @@ hora de contratar.
      endereços e modelos de e-mail.
   6. **Criar a primeira administradora** ([supabase/README.md](../../supabase/README.md)).
 - **Os scripts de teste não servem para a produção:** `validar:real`,
-  `usuarios-qa` e os testes de integração recusam rodar fora de
-  `DG_ENV=development`. Conferir a produção vai precisar de um roteiro próprio,
-  sem dados fictícios. Pedir ao Claude quando chegar a hora.
+  `usuarios-qa`, `limpar:teste` e os testes de integração têm duas travas:
+  recusam rodar fora de `DG_ENV=development` e recusam se algum endereço não
+  for do projeto declarado em `DG_DEV_PROJECT_REF` (o identificador do projeto
+  de desenvolvimento; [supabase/README.md](../../supabase/README.md)). Nunca
+  ponha o identificador da produção nessa variável. Conferir a produção vai
+  precisar de um roteiro próprio, sem dados fictícios. Pedir ao Claude quando
+  chegar a hora.
 - **Conexão do servidor com o banco:** no DEV, o `DG_WORKER_DB_URL` usa o pooler
   na porta 5432, que foi o testado. Na produção, avaliar a porta 6543 (pooler de
   transação), que é a recomendada para a Vercel, testando antes.
@@ -158,9 +169,10 @@ Ligar no projeto de produção, depois de assinar o Pro (item 3):
   - **`portal.dgbrasil.adv.br`**, para os parceiros;
   - `dgbrasil.adv.br` e `www.dgbrasil.adv.br` redirecionam para o `app.`;
   - o site está ligado ao Supabase **DEV**.
-- **Nomes antigos no código:** os exemplos e textos antigos do repositório ainda
-  citam `app.barbaracardoso.adv.br`. O que vale é o que está gravado em
-  `NEXT_PUBLIC_APP_HOST` e `NEXT_PUBLIC_PORTAL_HOST` na Vercel.
+- **No código:** desde 13/11/2026 o padrão é `app.dgbrasil.adv.br` e
+  `portal.dgbrasil.adv.br` (`apps/frontend/src/lib/hosts.ts`). As variáveis
+  `NEXT_PUBLIC_APP_HOST` e `NEXT_PUBLIC_PORTAL_HOST` só são necessárias se os
+  domínios mudarem.
 - **Na produção, os domínios ficam os mesmos.** Falta:
   1. **Supabase de produção (item 3):** em **Authentication → URL Configuration**,
      preencher:
@@ -169,7 +181,8 @@ Ligar no projeto de produção, depois de assinar o Pro (item 3):
        `https://portal.dgbrasil.adv.br/auth/confirm**`
        ([docs/auth.md](../auth.md), item 4).
 
-     Sem isso, o link do e-mail de convite quebra.
+     Só esses dois: sem `localhost` e sem curinga no nome do site. Sem isso, o
+     link do e-mail de convite quebra.
   2. **Computador do escritório:** o `url` do `executor.json` é
      `https://app.dgbrasil.adv.br`, sempre com o `app.` (item 8). O domínio sem
      `app.` redireciona, e o token do computador não vai junto no
@@ -190,26 +203,53 @@ Ligar no projeto de produção, depois de assinar o Pro (item 3):
 ## 8. Variáveis e chaves de produção
 
 Na Vercel, em **Settings → Environment Variables**, ambiente *Production*. Tudo
-apontando para o projeto Supabase **de produção**, nunca para o DEV:
+apontando para o projeto Supabase **de produção**, nunca para o DEV.
+
+Na subida, o servidor confere esta lista e registra no log uma linha `env.check`
+para cada problema, com o nome da variável (`src/server/core/env-check.ts`).
+Erro não derruba o site: aparece nos logs da Vercel e, se o aviso de erros
+estiver ligado (item 16), chega por lá.
+
+**Obrigatórias** (sem elas o sistema não funciona):
 
 | Variável | O quê |
 |---|---|
+| `DG_ENV` | `production`, e só neste ambiente. Libera as chaves pagas do Serpro (item 12) e desliga a demonstração dele. No site de teste: `development` |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Do projeto de produção |
 | `SUPABASE_SERVICE_ROLE_KEY` | Do projeto de produção. Só no servidor |
-| `DG_WORKER_DB_URL` | Login `dg_worker` do projeto de produção, pelo pooler (item 3) |
-| `CRON_SECRET` | Um texto aleatório **novo**, diferente do usado em teste |
-| `GOOGLE_DRIVE_*` | Credencial do Google ([docs/mcp/google-drive.md](../mcp/google-drive.md)) |
-| `NEXT_PUBLIC_APP_HOST`, `NEXT_PUBLIC_PORTAL_HOST` | Os domínios (item 6) |
-| `NEXT_PUBLIC_DEMO_MODE` | Ausente ou `false`: na produção não há ferramentas de demonstração |
-| `DG_ENV` | `production` (só aqui). Libera as chaves pagas do Serpro (item 12) |
-| `SERPRO_CPF_CONSUMER_KEY`, `SERPRO_CPF_CONSUMER_SECRET`, `NEXT_PUBLIC_CPF_LOOKUP=1` | Consulta de CPF na Receita (item 12) |
+| `DG_WORKER_DB_URL` | Login `dg_worker` do projeto de produção, pelo pooler (item 3). Nunca `postgres` |
+| `CRON_SECRET` | Um texto aleatório **novo** (16 caracteres ou mais), diferente do usado em teste. O mesmo valor vai no cofre do Supabase (item 10) |
+
+**Opcionais** (cada uma liga uma parte):
+
+| Variável | O quê |
+|---|---|
+| `NEXT_PUBLIC_APP_HOST`, `NEXT_PUBLIC_PORTAL_HOST` | Os domínios (item 6). O padrão do código já é `app.dgbrasil.adv.br` e `portal.dgbrasil.adv.br`; só preencher se mudarem. Sem `https://` |
+| `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | Google Drive pela conta do escritório: as três juntas ([docs/mcp/google-drive.md](../mcp/google-drive.md)) |
+| `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` | Alternativa às três acima (conta de serviço) |
+| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | A pasta que contém as pastas dos clientes. Com o Drive ligado, é necessária: sem ela, só a administradora liga pasta |
+| `SERPRO_CPF_CONSUMER_KEY`, `SERPRO_CPF_CONSUMER_SECRET`, `NEXT_PUBLIC_CPF_LOOKUP=1` | Consulta de CPF na Receita: as três juntas (item 12) |
+| `SERPRO_CPF_BASE_URL` | Só se o Serpro indicar outro endereço |
+| `DATAJUD_API_KEY` | Só se o CNJ trocar a chave pública do DataJud (item 10) |
+| `ERROR_WEBHOOK_URL` | Para onde vão os erros do servidor (item 16). Recomendada |
+| `PARTNER_TAX_ID_LIMIT_PER_USER`, `PARTNER_TAX_ID_LIMIT_PER_ORGANIZATION` | Limite de consultas de CPF/CNPJ por parceiro, por minuto. Padrão: 10 e 30 |
+
+**Devem estar AUSENTES em produção:**
+
+| Variável | Por quê |
+|---|---|
+| `SERPRO_CPF_TRIAL`, `SERPRO_CPF_TRIAL_TOKEN` | Demonstração do Serpro, com dados fictícios. O código já ignora as duas quando `DG_ENV=production`, mas não devem existir |
+| `NEXT_PUBLIC_DEMO_MODE` | Liga as ferramentas de demonstração no menu da administradora |
+| `AUTH_FALLBACK_SITE_URL` | Só serve para endereço de prévia |
 
 **Computador do escritório:**
 1. No site de produção, em **Configurações → Computador do escritório**, gerar um
    token novo.
 2. Revogar o token de teste.
-3. Trocar `url` e `token` no `executor.json`
-   ([docs/mcp/instalacao.md](../mcp/instalacao.md)).
+3. No computador, rodar o instalador de novo e, quando ele perguntar se mantém
+   ou troca o token guardado, escolher **trocar** e colar o token novo
+   ([docs/mcp/instalacao.md](../mcp/instalacao.md)). O endereço é o mesmo do
+   teste; por isso o instalador pergunta em vez de reaproveitar em silêncio.
 
 ## 9. Conferências antes do primeiro dado real
 
@@ -238,9 +278,9 @@ verdade:
       busca as publicações do DJEN dessas OABs (revendo os últimos 5 dias);
     - depois, só os andamentos do DataJud (cada processo uma vez a cada 20 h);
     - sem nada pendente, nem chama a rota;
-  - cada lote tem 60 s, e o DJEN aceita 20 consultas por minuto: cabem umas 15
-    consultas (umas 5 OABs) por lote. Com 50 OABs, a conferência termina por
-    volta das 06:00;
+  - cada lote pode rodar até 5 minutos e trabalha 4 (`maxDuration = 300` e
+    `WORK_MS` em `apps/frontend/src/app/api/cron/judicial-sync/route.ts`, desde
+    13/11/2026); o DJEN aceita 20 consultas por minuto;
   - a Vercel Cron às 06:30 (`30 9 * * *` em `apps/frontend/vercel.json`) fica
     como reserva.
 - **Obrigatório para os lotes** (DEV e produção), no projeto Supabase. Sem isto,
@@ -260,10 +300,10 @@ verdade:
   1. Mais conferências de publicações por dia, se o escritório quiser: trocar a
      regra "uma vez com sucesso por dia" de `private.judicial_djen_due()` (por
      exemplo, também à tarde).
-  2. `maxDuration` da rota `/api/cron/judicial-sync` de 60 para 300 s e o prazo
-     interno (`started + 50_000`) para ~280 s: cabem muito mais OABs e processos
-     por lote.
-  3. Atualizar os textos de frequência em `route.ts`, em
+  2. O tempo da rota já foi aumentado (300 s, 240 s de trabalho): **nada a
+     mudar no código**. Só conferir, no painel da Vercel, que a função
+     `/api/cron/judicial-sync` não está limitada a menos de 300 s.
+  3. Se mudar a frequência (passo 1), atualizar os textos em `route.ts`, em
      [docs/judicial.md](../judicial.md) e nas telas (Configurações → Integrações).
 - **Chave do DataJud:** é a pública da wiki do CNJ e pode mudar. Se a tela
   mostrar "DataJud recusou a chave pública", pôr a nova em `DATAJUD_API_KEY`
@@ -378,22 +418,14 @@ acrescente:
 - **Por que não agora:** falta validar os clones com dados fictícios, um agente
   por vez, começando pela Clara.
 - **Na produção:**
-  1. aplicar as migrations 051, 053 (cadastro completo e quem assina), 054
-     (kit básico: os clones já cadastrados no site), 055 (forma de pagamento
-     do contrato no cadastro do cliente), 056 (sequência automática: análise
-     aprovada chama o Lucas e a Alice) e 058 (publicações e andamentos do
-     processo para os agentes; cadastra a Diana, agente de prazos, e, se a
-     integração judicial ainda não tem "Agente que propõe prazos", passa a
-     ser ela: cada publicação nova vira um trabalho dela, sem ninguém pedir)
-     059 (prazo direto: o prazo do agente de prazos entra na agenda sem
-     Revisões; desliga-se em Integrações), 060 (a ponte recebe o escritório de
-     origem do cliente: a pasta passa a ser `DG BRASIL\<ORIGEM>\CLIENTE
-     BANCÁRIO\<CLIENTE>`) e 061 (o prazo do agente vira tarefa do processo
-     para o orquestrador; desliga-se em Integrações) no projeto de produção,
-     **antes** de publicar o site;
+  1. aplicar **todas as migrations, em ordem** (`supabase db push`) no projeto
+     de produção, **antes** de publicar o site. O que cada uma faz está no
+     cabeçalho do arquivo e na tabela de
+     [supabase/README.md](../../supabase/README.md);
   2. rodar o instalador do conector de novo na máquina principal (versão
      1.3.4), **antes** do instalador dos clones: conector mais antigo não
-     entende a pasta com a origem;
+     entende a pasta com a origem, e desde 13/11/2026 o site recusa conector
+     abaixo da 1.3.4 com a instrução de rodar o instalador;
   3. rodar o instalador dos clones a partir da pasta local `agentes/`
      ([instalacao.md](../mcp/instalacao.md), seção 5.0) e preencher o
      `C:\DGBrasil\agentes\escritorio.json` (quem assina);
@@ -407,3 +439,107 @@ acrescente:
   computador do escritório, fora do GitHub (o repositório é público). Levá-los
   para dentro do DG Brasil, com um botão "Setup", é a prioridade do
   [pós-MVP](pos-mvp.md), item 6.
+
+## 15. Cópia de segurança dos documentos
+
+- **Hoje:** o backup do Supabase cobre o banco, não os arquivos do Storage
+  (`legal-documents`, `reference-materials`, `imports`, `skill-files`). O script
+  `supabase/scripts/backup-documentos.mjs` espelha os buckets para uma pasta, só
+  o que é novo ou mudou, e restaura o que faltar. Testado com um Storage
+  simulado; **ainda não rodou contra o Supabase de verdade**.
+- **Por que não agora:** falta decidir o destino (outro fornecedor, disco) e
+  quem roda. É decisão da dona do escritório.
+- **Na produção:**
+  1. decidir o destino, a frequência e o responsável;
+  2. fazer o ensaio no DEV: copiar, apagar um arquivo de teste, restaurar;
+  3. criar o arquivo de chaves com as chaves de produção e fazer a primeira
+     cópia, começando pela simulação;
+  4. decidir se contrata o PITR do banco (item 3).
+- **Como conferir:** o relatório termina com "Terminou sem falhas." e um
+  documento apagado de propósito no DEV volta a abrir depois da restauração.
+- Passo a passo: [restauracao-dos-documentos.md](restauracao-dos-documentos.md).
+
+## 16. Monitoramento: alguém ser avisado quando algo quebra
+
+- **Hoje (no código desde a revisão final de 13/11/2026):**
+  - **`GET /api/health`**: pública, sem segredo e sem dado. Responde 200 quando
+    o site e o banco respondem, e 503 quando o banco não responde. É o endereço
+    para um monitor externo.
+  - **Aviso de erros (`ERROR_WEBHOOK_URL`):** com um endereço nessa variável,
+    todo erro que o servidor registra vira um POST para ele, já sem dado pessoal
+    (os mesmos campos do log), no máximo 5 por minuto por instância. Serve um
+    webhook de chat (Slack, Teams, Discord) ou de um serviço de alertas. Sem a
+    variável, nada muda.
+  - **Conferência das variáveis na subida** (item 8): o que falta vira erro no
+    log e, com o aviso ligado, chega ao webhook.
+  - **Vigia diária no banco** (migration 065, `dg-vigia-da-plataforma`, 08:30
+    de Brasília em dia útil): avisa as administradoras, no sino do site, quando
+    um agendamento do banco falhou, quando há trabalho de agente parado na fila
+    há mais de 24 h ou quando nenhum computador do escritório faz contato há
+    mais de 3 dias (os dois últimos só com a execução ligada). Um aviso por
+    motivo por dia. É aviso de segurança: não dá para desligar nas preferências.
+  - A rota agendada do Google Drive deixou de responder "skipped" em silêncio:
+    sem configuração, registra erro e responde 503.
+- **Por que não está tudo ligado:** o monitor externo e o destino dos erros são
+  contas de terceiros. Escolher e contratar é decisão da dona do escritório.
+- **Na produção:**
+  1. **Monitor externo** (qualquer serviço de monitoramento de site): consultar
+     `https://app.dgbrasil.adv.br/api/health` a cada 5 minutos e avisar por
+     e-mail ou celular quando a resposta não for 200. É o único aviso que
+     funciona com o site inteiro fora do ar: a vigia do banco avisa **dentro**
+     do site.
+  2. **Destino dos erros:** criar o webhook, pôr em `ERROR_WEBHOOK_URL` (só em
+     Production) e publicar de novo.
+  3. **Vigia:** depois do `db push`, conferir que `dg-vigia-da-plataforma` e
+     `dg-expurgo-de-pedidos` estão em `cron.job`.
+- **Como conferir:**
+  - `/api/health` responde `"status":"ok"`;
+  - `select private.platform_watch();` no SQL Editor devolve o resumo do dia
+    (falhas do agendador, fila parada, computador calado, quantos avisos saíram);
+  - nos logs da Vercel, depois de um deploy, aparece `env.ok` e nenhuma linha
+    `env.check` com `"level":"error"`.
+- **Sentry (ou outro serviço de erros), quando o escritório quiser:** é uma
+  dependência nova e uma conta nova, por isso ficou fora. O lugar já existe:
+  1. instalar o SDK do serviço para Next.js;
+  2. em `apps/frontend/src/instrumentation.ts`, chamar o `init` do SDK dentro de
+     `register()` e trocar o `onRequestError` pelo do SDK (no Sentry:
+     `export const onRequestError = Sentry.captureRequestError`);
+  3. para os erros que o próprio sistema registra (`log.error`), registrar um
+     destino com `setLogSink` em `src/server/core/startup.ts`, como o do webhook
+     (`error-webhook.ts`): ele já recebe os campos sanitizados;
+  4. manter a regra: nada de CPF, nome, e-mail ou conteúdo de documento no que
+     sai para o serviço. Desligar no SDK o envio do corpo das requisições.
+- **O que isto não cobre:** e-mail que não chega (conferir no item 5), tribunal
+  fora do ar (a tela de Integrações mostra) e o computador do escritório
+  desligado no meio do dia (a vigia só confere de manhã).
+
+## 17. Pedido de titular de dados (LGPD)
+
+- **Hoje:** o sistema registra quem acessou o cadastro e os documentos de cada
+  cliente, toda alteração e o aceite dos termos pelos usuários. Não há tela
+  para exportar os dados de um titular nem função para anonimizar.
+- **Por que não agora:** tela e anonimização ficam para depois do lançamento.
+- **Na produção, antes do primeiro dado real:** definir quem atende e por onde o
+  pedido chega, e ler o procedimento:
+  [pedido-de-titular.md](pedido-de-titular.md).
+- **Como conferir:** a tabela "Quem atende" do procedimento está preenchida.
+
+## 18. Prazos de guarda (decisão pendente)
+
+- **Hoje:**
+  - com prazo e limpeza automática: o texto do pedido ao agente (180 dias,
+    `dg-expurgo-de-pedidos`, agendado na 065: a função existia desde a 012 e
+    nunca rodava), o histórico do agendador (7 dias, 057) e as linhas brutas de
+    importação (042);
+  - **sem prazo, crescendo para sempre:** os avisos (`notifications`), o
+    histórico das buscas judiciais (`judicial_sync_runs`), a fila arquivada dos
+    agentes, os registros de acesso a dado pessoal
+    (`personal_data_access_events`) e a auditoria (`audit_events`).
+- **Por que não agora:** por quanto tempo guardar cada um é decisão da dona do
+  escritório. A revisão final não definiu nenhum prazo novo.
+- **Na produção:** decidir e pedir a migration. Recomendação técnica, para
+  decidir: avisos lidos, 12 meses; histórico das buscas judiciais, 90 dias; fila
+  arquivada, 90 dias; auditoria e acessos a dado pessoal, **não apagar** sem
+  orientação jurídica (são o registro de quem fez e de quem viu).
+- **Como conferir:** `select jobname from cron.job order by 1;` mostra um
+  agendamento de limpeza para cada tabela com prazo definido.

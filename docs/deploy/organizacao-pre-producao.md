@@ -9,6 +9,14 @@ A medição foi feita só com leitura: estatísticas do Postgres, métricas de
 sistema do projeto e os arquivos do repositório. As medidas aplicadas depois
 estão na primeira seção.
 
+> **Atualização de 13/11/2026.** Este documento é a foto da revisão de
+> 12/11/2026: onde ele conta 55 ou 57 migrations, é a contagem daquele dia.
+> Depois dele entraram a 058 a 061 (aplicadas no DEV: 61 no total) e as da
+> revisão final, 062 a 067 (ainda não aplicadas em nenhum Supabase). As
+> **instruções** abaixo foram trocadas para "todas as migrations"; os números
+> das medições ficaram como estavam. A ordem do dia da produção está no
+> [checklist da virada](checklist-da-virada.md).
+
 ## Resumo
 
 1. **Não é falta de espaço em disco.** O banco tem 131 MB e os discos têm folga.
@@ -192,14 +200,14 @@ do repositório.
   criação.
 - A sequência atual é a que os testes cobrem. Um arquivo único novo seria SQL
   sem teste, escrito na véspera do lançamento.
-- A produção ainda não existe: ela vai receber as 55 em ordem, no mesmo caminho
+- A produção ainda não existe: ela vai receber todas em ordem, no mesmo caminho
   que o `verificar` exercita todo dia.
 
 ### Ensaio que falta
 
-Do zero, as 55 só rodaram no simulador local (PGlite). No Supabase real elas
-entraram aos poucos, ao longo de cinco semanas. Antes de criar a produção, vale
-**aplicar as 55 num projeto vazio** (o plano gratuito permite um segundo
+Do zero, as migrations só rodaram no simulador local (PGlite). No Supabase real
+elas entraram aos poucos, ao longo de cinco semanas. Antes de criar a produção,
+vale **aplicar todas num projeto vazio** (o plano gratuito permite um segundo
 projeto) e apagar o projeto depois. É a única forma de ver o caminho da produção
 antes do dia.
 
@@ -239,7 +247,7 @@ reaproveita os antigos. O que os testes e o QA usam de fato:
 |---|---|---|
 | **A. Apagar as notificações de lixo** | Seção 2, item 3 | Agora. Sem risco |
 | **B. Script de limpeza das contas de teste** | `npm run limpar:teste` (em `supabase/`): remove as contas das rodadas automáticas, os escritórios delas e o que criaram, preservando as contas reais e as de QA. Sem `-- --executar`, só simula | Escrito em 2026-11-12 e ensaiado no simulador local. Decisão do Miguel: usar este |
-| **C. Recriar o DEV do zero** | `supabase db reset --linked`: apaga tudo e reaplica as 55 migrations | Depois de fechar o QA em andamento. Exige refazer a senha do `dg_worker`, os segredos do cofre, a administradora e os usuários de QA |
+| **C. Recriar o DEV do zero** | `supabase db reset --linked`: apaga tudo e reaplica todas as migrations | Depois de fechar o QA em andamento. Exige refazer a senha do `dg_worker`, os segredos do cofre, a administradora e os usuários de QA |
 
 Decisão (2026-11-12): **A e B**, depois que a validação em andamento terminar.
 A opção C continua valendo como ensaio da seção 4, quando o QA da ponte acabar.
@@ -255,7 +263,7 @@ como melhoria para depois do lançamento.
 | 2 | **Processo que falha no DataJud volta para a fila no lote seguinte.** Nas rodadas observadas, os mesmos processos falham de 5 em 5 minutos | Chamadas à Vercel e ao DataJud sem fim, e mais recusas 429. Conclusão tirada dos números das rodadas, não da leitura completa do código | Espera crescente por processo depois de falha. Confirmar no código antes |
 | 3 | **Histórico do agendador sem limpeza.** `cron.job_run_details` ganha cerca de 1.700 linhas por dia e nunca é esvaziada | Uns 600 mil registros por ano, sem uso | **Migration 057:** `dg-limpeza-do-agendador`, uma vez por dia, apaga o que tem mais de 7 dias |
 | 4 | **Dois agendamentos para os lembretes de prazo** num projeto novo (037 e 040) | A mesma função rodaria em duplicidade | **Migration 057:** remove `dg-deadline-reminders` se existir |
-| 5 | **Tabelas sem retenção:** `notifications`, `judicial_sync_runs` (uma linha por rodada) e o arquivo da fila `agent_execution` | Crescem para sempre. Lento, mas contínuo | Definir prazo de guarda para cada uma. `audit_events` fica fora: é registro legal |
+| 5 | **Tabelas sem retenção:** `notifications`, `judicial_sync_runs` (uma linha por rodada) e o arquivo da fila `agent_execution` | Crescem para sempre. Lento, mas contínuo | Definir prazo de guarda para cada uma. `audit_events` fica fora: é registro legal. **Segue aberto:** decisão da dona do escritório ([producao.md](producao.md), item 18) |
 | 6 | **README do banco desatualizado:** fala em "19 migrations ainda não aplicadas em nenhum Supabase real" | Quem ler vai achar que ainda pode editar migration antiga | Corrigir o texto: são 55, e nenhuma aplicada pode ser reescrita |
 
 Os itens 1, 3 e 4 estão na migration 057
@@ -278,7 +286,7 @@ seguem abertos.
 
 Complementa o item 3 de [producao.md](producao.md).
 
-1. Ensaio das 55 migrations em projeto vazio feito, sem erro (seção 4).
+1. Ensaio de todas as migrations em projeto vazio feito, sem erro (seção 4).
 2. Extensões ligadas antes ou durante o `db push`: `pgmq`, `pg_cron`, `pg_net`.
 3. Depois do `db push`, conferir os agendamentos:
 
@@ -286,8 +294,10 @@ Complementa o item 3 de [producao.md](producao.md).
    select jobname, schedule from cron.job order by jobname;
    ```
 
-   Esperado: `dg-importacoes`, `dg-judicial`, `dg-lembretes-de-prazo`,
-   `dg-limpeza-do-agendador` e `dg-manutencao`. A 057 remove
+   Esperado: `dg-expurgo-de-pedidos` e `dg-vigia-da-plataforma` (065),
+   `dg-importacoes`, `dg-judicial`, `dg-lembretes-de-prazo`,
+   `dg-limpeza-do-agendador` e `dg-manutencao`, mais os que as outras
+   migrations da revisão final criarem. A 057 remove
    `dg-deadline-reminders`; se ele ainda aparecer:
    `select cron.unschedule('dg-deadline-reminders');`
 4. Segredos do cofre (`dg_app_url`, `dg_cron_secret`) criados com os valores de
