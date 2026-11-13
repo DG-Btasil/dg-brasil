@@ -176,10 +176,19 @@ advogado deveria dizer "anexe os documentos do caso" (pós-MVP, item 5).
   entra na agenda sem Revisões. Testado em memória (928 verificações no banco);
   **ao vivo, depende de aplicar a 059 no banco de teste**.
 - **DataJud com mais paciência:** cada consulta espera até 2 min e insiste 3
-  vezes na recusa; a rodada agendada trabalha 4 min. Testes do site passando.
+  vezes na recusa; a rodada agendada trabalha 4 min; o botão "Buscar
+  andamentos agora" do processo também espera 2 min. **Validado no site
+  (01:20):** a busca do processo de teste levou cerca de 1 minuto e trouxe 36
+  andamentos, a vara e o assunto. Com os 45 s de antes, tinha falhado em
+  todas as tentativas da noite.
 - **Prévia do arquivo em Revisões:** a tela da revisão mostra a primeira página
   de PDF e de Word e a imagem; o botão diz o formato ("Baixar em Word",
-  "Baixar em PDF"). Não há conversão entre Word e PDF.
+  "Baixar em PDF"). Não há conversão entre Word e PDF. **Validado no site:**
+  procuração do Lucas (PDF) e minuta do recurso do Rafael (Word) aparecem na
+  tela da revisão, sem baixar nada.
+- **Processo real de teste:** excluído do site em 13/11/2026, 01:25, depois das
+  validações (exclusão lógica, registrada na auditoria). O caso de teste 17
+  fica para a limpeza dos casos de teste.
 
 Ainda não visto ao vivo: a publicação nova virar trabalho do agente
 **sozinha** (nesta rodada a publicação já estava guardada quando o agente foi
