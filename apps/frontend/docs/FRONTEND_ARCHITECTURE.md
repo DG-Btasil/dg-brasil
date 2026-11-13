@@ -13,6 +13,13 @@ Regras práticas do dia a dia estão em [CONVENTIONS.md](CONVENTIONS.md).
 > navegador (`ClientGate` em `components/layout/guards.tsx`) e apaga a chave antiga
 > `dg-brasil:demo` do `localStorage`. As seções 3 (escopo de dados), 4, 5 e 7 abaixo
 > descrevem o protótipo e ficam como histórico.
+>
+> Na mesma revisão entraram: `ConfirmDialog` para ações de um clique; título de aba em toda
+> rota; rótulos de auditoria conferidos contra as migrations (`features/audit/humanize.test.ts`);
+> lista completa de tribunais com busca (`lib/constants/courts.ts`); a tela "Acessos a dados
+> pessoais (LGPD)" em Configurações → Segurança e auditoria (`listPersonalDataAccessEventsAction`);
+> cadastro e edição das partes do processo (`features/processes/components/party-dialog.tsx`);
+> reabrir caso encerrado e reconsiderar rejeição (`overrideCaseStatusAction`, só Administrador).
 
 ## 1. Domínio
 

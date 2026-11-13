@@ -1,25 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Plus, RefreshCw, Sparkles } from "lucide-react";
 import { CLIENT_POLE_LABEL } from "@/lib/constants/status";
 import { formatCurrency, formatDate, formatDateTime, formatPercent, maskDocument } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
+import { Button } from "@/components/ui/button";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import type { Page } from "@/server/core/pagination";
 import type { ProcessInternalDTO, ProcessPartyDTO } from "@/server/domain/processes/dto";
-import type { PartyType } from "@/server/domain/processes/schemas";
 import { usePermission } from "@/features/auth/hooks";
 import { ProcessJudicialCard } from "@/features/judicial/components/process-judicial-card";
+import { PARTY_TYPE_LABEL } from "../../party-input";
 import { CnjText } from "../cnj-text";
-
-const PARTY_TYPE_LABEL: Record<PartyType, string> = {
-  PLAINTIFF: "Autor",
-  DEFENDANT: "Réu",
-  INTERESTED: "Interessado",
-  OTHER: "Outro",
-};
+import { PartyDialog } from "../party-dialog";
 
 function OriginPanel({ process }: { process: ProcessInternalDTO }) {
   if (process.origin === "AGENT") {
@@ -64,6 +60,9 @@ export function OverviewTab({
   lastMovementAt?: string;
 }) {
   const showValue = usePermission("processes.caseValue.view");
+  // Cadastrar e corrigir partes: quem edita processos (o servidor confere).
+  const canEditParties = usePermission("processes.edit");
+  const [partyDialog, setPartyDialog] = useState<{ party?: ProcessPartyDTO } | null>(null);
   const location = [p.district, p.state].filter(Boolean).join("/");
   const partyRows = parties.ok ? parties.data.items : [];
 
@@ -98,7 +97,17 @@ export function OverviewTab({
         </Panel>
 
         <Panel>
-          <PanelHeader title="Partes" as="h3" />
+          <PanelHeader
+            title="Partes"
+            as="h3"
+            actions={
+              canEditParties ? (
+                <Button size="sm" variant="secondary" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => setPartyDialog({})}>
+                  Adicionar parte
+                </Button>
+              ) : undefined
+            }
+          />
           <PanelBody className="space-y-4">
             <DefinitionGrid
               items={[
@@ -126,6 +135,11 @@ export function OverviewTab({
                         <Th>Parte</Th>
                         <Th>Qualificação</Th>
                         <Th>Documento</Th>
+                        {canEditParties && (
+                          <Th className="text-right">
+                            <span className="sr-only">Ações</span>
+                          </Th>
+                        )}
                       </tr>
                     </THead>
                     <TBody>
@@ -143,6 +157,13 @@ export function OverviewTab({
                           <Td className="text-[12.5px] text-muted">{PARTY_TYPE_LABEL[party.type]}</Td>
                           {/* Documento mascarado (minimização — LGPD). */}
                           <Td className="tabular text-[12.5px] text-muted">{party.document ? maskDocument(party.document) : "—"}</Td>
+                          {canEditParties && (
+                            <Td className="text-right">
+                              <Button size="sm" variant="ghost" aria-label={`Editar a parte ${party.name}`} onClick={() => setPartyDialog({ party })}>
+                                Editar
+                              </Button>
+                            </Td>
+                          )}
                         </Tr>
                       ))}
                     </TBody>
@@ -151,6 +172,7 @@ export function OverviewTab({
               )
             )}
           </PanelBody>
+          {partyDialog && <PartyDialog processId={p.id} party={partyDialog.party} onClose={() => setPartyDialog(null)} />}
         </Panel>
 
         <Panel>

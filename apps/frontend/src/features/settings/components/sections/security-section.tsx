@@ -6,10 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { SectionHeader } from "../section-header";
 import { AuditLog } from "./audit-log";
+import { PersonalDataAccessLog } from "./personal-data-access-log";
 
 /**
- * Segurança e auditoria (ADMIN): postura REAL da plataforma e o registro de
- * auditoria do banco. As sessões de cada pessoa ficam em "Sua conta e
+ * Segurança e auditoria (ADMIN): postura REAL da plataforma, o registro de
+ * auditoria do banco e os acessos a dados pessoais (LGPD). As sessões de cada pessoa ficam em "Sua conta e
  * sessões" (só as próprias): o administrador não vê sessões de terceiros.
  */
 export function SecuritySection() {
@@ -44,6 +45,7 @@ export function SecuritySection() {
       </Panel>
 
       <AuditLog />
+      <PersonalDataAccessLog />
     </div>
   );
 }
