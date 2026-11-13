@@ -189,7 +189,7 @@ if ($ComPonte) {
 # $env:DG_BRASIL_AGENTES_EXTRA = 'nome1,nome2' e rode o instalador de novo.
 $Redatores = @('alice-inicial', 'atlas-revisional', 'vicente-agregados', 'murilo-replica', 'pedro-provas', 'laura-emenda',
                'gabriel-embargos', 'rafael-recurso', 'paulo-agravo', 'beatriz-cumprimento', 'teresa-audiencia')
-$ManterAgentes = @('porteiro-dg', 'arquivista-dg', 'mensageiro-dg', 'orquestrador', 'analista-teste', 'kit-cliente-teste', 'orquestrador-teste')
+$ManterAgentes = @('porteiro-dg', 'arquivista-dg', 'mensageiro-dg', 'orquestrador', 'intimacao-dg', 'analista-teste', 'kit-cliente-teste', 'orquestrador-teste')
 if ($ComPonte) {
   $daPonte = @('clara-hiscon', 'lucas-procuracao') + $Redatores
   if (Test-Path $Ponte) {

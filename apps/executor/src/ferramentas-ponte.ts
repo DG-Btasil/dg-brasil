@@ -7,9 +7,11 @@ import { nomeLivre } from './arquivos.js'
 import {
   type Antivirus, type ChecagemArquivo, type HtmlParaPdf, ErroPonte, LeituraPorteiro, caminhoPonte, checarArquivo,
   conferirCadastroExistente, dadosDoCadastro, dadosDoEscritorio, defender, dentro, edgeHtmlParaPdf, lerEscritorio, lerPonte,
-  mesmoConteudoNaPasta, nomeDePasta, nomeDoClienteParaPasta, nomeLivreDaPasta, nomeNaPasta, resolverPasta, trazer,
+  mesmoConteudoNaPasta, nomeDePasta, nomeDoClienteParaPasta, nomeLivreDaPasta, nomeNaPasta, processosDoCaso, resolverPasta,
+  textoDoProcesso, trazer,
 } from './ponte.js'
 import { createHash } from 'node:crypto'
+import { ErroApi } from './api.js'
 import type { Trabalho, Trabalhos } from './trabalhos.js'
 
 /**
@@ -55,6 +57,43 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
   const exigirPonte = (t: Trabalho) => {
     if (!t.ponte) throw new ErroPonte('ORDEM', 'Chame ver_ponte primeiro: ela diz se este trabalho passa pela ponte e qual é a pasta do cliente.')
     return t.ponte
+  }
+
+  /**
+   * Um PROCESSO_<CNJ>.txt por processo do caso do trabalho, na raiz da pasta do
+   * cliente: dados, andamentos e publicações do DJEN que o DG Brasil guarda
+   * (migration 058). Arquivo GERADO, regravado a cada trabalho. Nada aqui para o
+   * trabalho: o que não der para gravar volta como aviso.
+   */
+  const gravarProcessos = async (t: Trabalho, pastaReal: string, linhas: string[]): Promise<string[]> => {
+    const motivo = (e: unknown) => (e instanceof ErroApi ? e.message : 'não foi possível gravar o arquivo')
+    const antigo = 'Se a pasta já tem esse arquivo, ele é de um trabalho anterior (veja "salvo_em").'
+    let lista: ReturnType<typeof processosDoCaso>
+    try {
+      lista = processosDoCaso(await api.caso(t.id, t.reserva), t.contexto.legal_process_id)
+    } catch (e) {
+      return [`Processos do caso: não consegui consultar o DG Brasil (${motivo(e)}). Nenhum PROCESSO_<CNJ>.txt foi gravado. ${antigo}`]
+    }
+    const avisos: string[] = []
+    if (lista.alemDoLimite) avisos.push(`O caso tem mais processos com número CNJ do que o limite: ${lista.alemDoLimite} ficaram sem PROCESSO_<CNJ>.txt.`)
+    for (const pr of lista.comArquivo) {
+      try {
+        const dados = await api.processo(t.id, t.reserva, pr.id)
+        const destino = join(pastaReal, pr.arquivo)
+        const info = await lstat(destino).catch(() => null)
+        if (info && (info.isSymbolicLink() || !info.isFile())) { avisos.push(`${pr.arquivo}: não gravado (o que está na pasta com esse nome é um atalho ou uma pasta).`); continue }
+        await writeFile(destino, textoDoProcesso(dados, t.id), 'utf8')
+        linhas.push(`- ${pr.arquivo} (${info ? 'atualizado' : 'gerado'}: dados do processo, andamentos e publicações do DJEN que o DG Brasil tem)`)
+        if (!Array.isArray(dados?.publicacoes)) {
+          avisos.push(`${pr.arquivo}: gravado SEM as publicações do DJEN (o DG Brasil ainda não as entrega: falta a migration 058 no banco).`)
+        }
+      } catch (e) {
+        avisos.push(`${pr.arquivo}: não gravado (${motivo(e)}). ${antigo}`)
+        // Sem conexão ou sem a reserva, os outros processos também falhariam: para aqui.
+        if (e instanceof ErroApi && e.status !== 404) break
+      }
+    }
+    return avisos
   }
 
   servidor.registerTool('ver_ponte', {
@@ -153,7 +192,7 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
     title: 'Arquivista: copiar para a pasta do cliente',
     description: 'Copia os documentos de entrada para a pasta do cliente no Drive, com os nomes que os agentes esperam (HISCON.pdf, ' +
       'IDENTIDADE.pdf, COMPROVANTE DE RESIDÊNCIA.pdf, CONTRACHEQUE.pdf, AUTOS_...pdf) e grava o DADOS DO CADASTRO.txt (cadastro do ' +
-      'cliente) e o DADOS DO ESCRITORIO.txt (quem assina). ' +
+      'cliente), o DADOS DO ESCRITORIO.txt (quem assina) e um PROCESSO_<CNJ>.txt por processo do caso (andamentos e publicações do DJEN). ' +
       'Só copia o que o script E o Porteiro (saida\\porteiro.json) liberaram. Nunca sobrescreve (vira " (2)"), nunca apaga, nunca move.',
     inputSchema: {
       trabalho_id: idTrabalho,
@@ -232,6 +271,7 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
 
     // 4. Copia: nunca sobrescreve; mesmo conteúdo já lá = não copia de novo.
     const linhas: string[] = []
+    const avisos: string[] = []
     for (const pl of planos) {
       let destinoPasta = pastaReal
       if (pl.subpasta) {
@@ -263,9 +303,12 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
       const local = await lerEscritorio(o.escritorio)
       await writeFile(join(pastaReal, 'DADOS DO ESCRITORIO.txt'), dadosDoEscritorio(local, p.dados), 'utf8')
       linhas.push(`- DADOS DO ESCRITORIO.txt (quem assina${local ? '' : '; sem o escritorio.json deste computador, só o que o DG Brasil tem'})`)
+      avisos.push(...await gravarProcessos(t, pastaReal, linhas))
     }
     p.inicioAgente = agora() - 2000
-    return texto(`Copiado para ${pastaReal}:\n${linhas.join('\n')}\n\nAgora chame o agente da máquina ${p.agente} para trabalhar NESSA pasta.`)
+    return texto(`Copiado para ${pastaReal}:\n${linhas.join('\n')}` +
+      (avisos.length ? `\n\nAvisos (o trabalho segue; repasse ao agente da máquina):\n${avisos.map((x) => `- ${x}`).join('\n')}` : '') +
+      `\n\nAgora chame o agente da máquina ${p.agente} para trabalhar NESSA pasta.`)
   }))
 
   servidor.registerTool('trazer_da_pasta_do_cliente', {

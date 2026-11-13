@@ -37,11 +37,15 @@ A ferramenta já dá estes nomes pela categoria do documento no DG Brasil:
 | Autos do processo (título com "autos") | `AUTOS_<título>.pdf` |
 | Outros | o título do documento |
 
-Ela também grava, a cada trabalho, dois arquivos de dados:
+Ela também grava, a cada trabalho, os arquivos de dados:
 
 - `DADOS DO CADASTRO.txt`: o cadastro do cliente no DG Brasil (nome, CPF,
   documento, profissão, estado civil, e-mail, telefone, endereço);
-- `DADOS DO ESCRITORIO.txt`: quem assina (escritório, advogado, OAB, endereço).
+- `DADOS DO ESCRITORIO.txt`: quem assina (escritório, advogado, OAB, endereço);
+- `PROCESSO_<CNJ>.txt`: um por processo do caso que tem número CNJ (no máximo
+  5), com os dados do processo, as partes, os andamentos e as publicações do
+  DJEN que o DG Brasil guarda. Se a ferramenta avisar que algum não foi gravado
+  ou veio sem as publicações, repasse o aviso na sua resposta.
 
 Tudo fica **na raiz** da pasta do cliente, inclusive os autos. Você só informa
 `nome` quando o padrão não serve:

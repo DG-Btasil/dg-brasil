@@ -24,7 +24,7 @@ Ninguém precisou responder pergunta no meio, nada foi enviado ao cliente e nada
 no ChatJurídico ou na ADVBOX.
 
 **Ressalvas:**
-- oito defeitos apareceram na validação e foram corrigidos na hora (tabela "Achados");
+- nove defeitos apareceram na validação e foram corrigidos na hora (tabela "Achados");
 - alguns testes ficaram para outra rodada (seção "O que não foi validado");
 - o banco de teste avisou que está no limite de leitura e gravação de disco (seção
   "Supabase").
@@ -124,21 +124,72 @@ verificações) e **validada no DEV em 12/11/2026, 23:08**: aprovada a análise 
 e a Alice entraram na fila, nessa ordem. As duas execuções foram interrompidas em seguida (o kit
 e a inicial do caso já existiam). Falta só ver os dois rodarem depois da aprovação.
 
-## O que não foi validado (próxima rodada)
+## Rodada curta (12/11/2026, 23:20 às 23:24, duas sessões em paralelo)
 
-- Porteiro com documento malicioso (validado na Frente B; o Porteiro só ganhou a conferência de qualidade);
-- Lucas sem forma de pagamento (o contrato deve ficar em DECIDIR);
-- pedido de "refazer" (versão 2 mantendo a 1);
-- os agentes rodando depois da aprovação (a sequência 056 já põe os dois na fila: validado);
-- conector DJEN na sessão (os clones seguem pelos autos e avisam).
+| Item | Resultado | O que se viu |
+|---|---|---|
+| Porteiro com documento malicioso | OK | Barrou a carta com instruções para a IA, registrou a pendência e parou o trabalho antes de qualquer agente |
+| Refazer (Lucas) | OK | Procuração e declaração saíram como `_v2`; a versão 1 ficou na pasta |
+| Lucas sem forma de pagamento | OK, com achado | Não gerou o contrato e deixou a decisão para o advogado. Achado 9: o arquivo de dados manteve a forma antiga depois que ela foi apagada no site |
+
+| # | O que aconteceu | Correção |
+|---|---|---|
+| 9 | Campo apagado no site continuava no `DADOS DO CADASTRO.txt` (a regra de não perder o que a equipe completou à mão valia também para campos do site) | Conector: campo que o DG Brasil manda vale o do site, mesmo vazio; só o que o site não manda fica do arquivo (teste novo; 62 testes) |
+
+Observação: como todos os casos de teste são do mesmo cliente, a pasta dele acumulou
+documentos de vários casos (o Lucas usou o `HISCON (2).pdf` e o `COMPROVANTE DE
+RESIDÊNCIA (2).pdf` vindos de outro caso). Na vida real é o comportamento esperado: o
+documento mais novo do cliente vale. Para testes, usar um cliente fictício por cenário.
+
+## DJEN, DataJud e agente de prazos (13/11/2026)
+
+Com autorização da Barbara, UM processo real foi cadastrado no caso de teste 17
+só para esta validação (a apagar depois). Rodada curta, de 00:05 a 00:35.
+
+| O que | Como | Resultado |
+|---|---|---|
+| Busca do DJEN pelas OABs | Integrações → "Buscar agora", com as duas buscas ligadas | **Passou.** 565 publicações achadas; guardou só a do processo cadastrado (1) e descartou 564 de quem não é cliente |
+| Publicação na tela | Publicações → "Todas a tratar" | **Passou.** Intimação de 10/11/2026, com órgão, classe, teor e os botões "Criar prazo" e "Não há prazo" |
+| Andamentos do DataJud | Lotes automáticos e consulta direta à API do CNJ | **Pendente por lentidão do CNJ.** A API pública respondeu à consulta direta (37 andamentos do processo), mas levou 49 s e recusou duas tentativas por sobrecarga; o site espera 45 s e marcou "DataJud não respondeu". O site tenta de novo sozinho a cada hora. A cópia pública do CNJ estava atualizada só até julho de 2026 |
+| Agente de prazos cadastrado e escolhido | Agentes → Criar agente; Integrações → "Agente que propõe prazos" | **Passou.** Salvo e conferido ao reabrir a tela |
+| Publicação real → proposta | Pedido igual ao que o banco monta, execução ligada, uma sessão | **Passou.** Proposta "Sem prazo:" em Revisões: o despacho manda o cartório fazer o sequestro e expedir a ordem de pagamento, sem prazo para o cliente. O agente ainda apontou que o nome da parte no teor não era o do cliente do cadastro (verdade: o caso de teste usa o cliente fictício) |
+| Publicação fictícia de réplica → proposta | Idem, com um ato ordinatório fictício de 15 dias | **Passou.** "Proposta de prazo" em Revisões: Réplica à contestação, vencimento 03/12/2026 às 23:59, prioridade alta, contagem conferida de duas formas (lista do pedido e script), agente indicado para a peça |
+| Testes em memória | `npm run verificar` e testes do conector | **Passou.** 907 verificações no banco; 71 testes no conector |
+
+Não coberto ao vivo, por depender da migration 058 no banco de teste:
+
+- a publicação nova virar trabalho do agente **sozinha** (nesta rodada a
+  publicação já estava guardada quando o agente foi escolhido, então o pedido
+  foi criado à mão, com o mesmo texto). Coberto pelos testes em memória;
+- o arquivo `PROCESSO_<CNJ>.txt` na pasta do cliente. Coberto pelos testes do
+  conector; falta uma passada curta da ponte depois da 058.
+
+Aprovar a proposta de prazo (para ver o prazo nascer no caso) ficou para uma
+pessoa: é a decisão humana que a esteira exige.
+
+Achados desta rodada:
+
+- o teor de algumas publicações aparece com `&emsp;` escrito (pós-MVP, item 5);
+- publicação que chega antes de haver agente escolhido não vai para ele depois
+  (pós-MVP, item 5);
+- os 9 processos fictícios dos casos de teste contam como "processos com
+  aviso" na tela de Integrações, porque o DataJud nunca os acha. Some com a
+  limpeza dos casos de teste.
+
+## O que ainda não foi validado
+
+- Os agentes rodando sozinhos depois da aprovação (a sequência 056 põe os dois na fila:
+  validado).
+- Conector DJEN na sessão do DG Brasil (os clones seguem pelos autos e avisam).
 
 ## Pode ligar na produção?
 
 **Ainda não.** Falta:
-1. aplicar a 056 no DEV e validar a sequência;
-2. a rodada curta dos testes acima;
-3. publicar o conector com as correções (vai junto deste commit) e reinstalar;
-4. decidir a distribuição dos clones (pós-MVP, item 6), porque hoje eles existem só neste
+1. publicar o conector com as correções (vai junto deste commit; o site publica sozinho) e
+   reinstalar nos computadores;
+2. aplicar na produção as migrations 051 e 053 a 056 (o roteiro está em
+   [deploy/producao.md](../../deploy/producao.md), item 14);
+3. decidir a distribuição dos clones (pós-MVP, item 6), porque hoje eles existem só neste
    computador.
 
 ## Limpeza

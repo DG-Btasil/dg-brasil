@@ -94,6 +94,18 @@ Não são do DG Brasil e já acontecem hoje:
 - **Gênero no cadastro do cliente:** a procuração do Lucas sai "brasileira" para
   cliente homem quando o cadastro não traz o gênero.
 
+- **Publicações (integração judicial), achados de 13/11/2026:**
+  - o teor de algumas publicações do DJEN aparece com `&emsp;` escrito na
+    tela e no pedido ao agente: limpar as entidades HTML na captura;
+  - publicação que chegou **antes** de o escritório escolher o "Agente que
+    propõe prazos" (ou com o agente pausado) não vai para ele depois. Criar o
+    botão "Pedir o prazo ao agente" na tela da publicação, ou repassar as
+    pendentes quando o agente é escolhido;
+  - DataJud lento: em 13/11/2026 a API do CNJ levou 49 s para responder e o
+    site desiste em 45 s. Avaliar um tempo maior nos lotes de andamentos;
+  - `ver_processo` ainda mostra o teor de publicação cancelada pelo tribunal
+    dentro dos andamentos (no `PROCESSO_<CNJ>.txt` ela já sai sem teor).
+
 ## 6. Distribuição dos agentes do kit: botão "Setup" no site (PRIORIDADE)
 
 **Primeiro item a resolver depois do lançamento** (decisão de Barbara,
