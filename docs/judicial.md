@@ -87,6 +87,7 @@ por minuto). A Barbara escolheu manter a OAB (2026-11-04).
 - **Prazo de cada consulta:** nenhuma consulta ao DJEN ou ao DataJud passa do prazo da rodada (4 min na rota de 5 min), para a rodada sempre gravar o fim.
 - **Paciência com o DataJud (13/11/2026):** cada consulta espera até 2 min pela resposta do CNJ (eram 45 s; nesse dia o CNJ levou 49 s e o site desistia antes). Quando o CNJ recusa por sobrecarga (429 ou 5xx), a consulta tenta até 3 vezes, esperando 4 s e depois 12 s. Quem chama a rota (pg_net, 60 s) desiste antes do fim; a função continua e grava o resultado.
 - **Rodadas ao mesmo tempo:** duas rodadas não correm juntas; a segunda recebe "busy". Rodada sem fim gravado há 6 min vira "Interrompida" e avisa os ADMIN (062; mesma chave do aviso de falha, no máximo dois por dia).
+- **Aviso de falha da busca:** quando a rodada falha sem detalhe do erro, o aviso manda o ADMIN para "DG Brasil → Integrações" (068; o texto ainda dizia "Configurações → Integrações", onde a tela ficava antes).
 - **Os lotes precisam de** `pg_net` e de dois segredos no Vault (`dg_app_url`,
   `dg_cron_secret`); ver [deploy/producao.md](deploy/producao.md), item 10.
   Sem eles, só a rodada das 06:30 roda, e nela cabem umas 5 OABs.
@@ -112,7 +113,7 @@ segredos do Vault), ninguém ficava sabendo.
 
 ## OABs acompanhadas
 
-- **ADMIN:** cadastra as OABs do escritório em Configurações → Integrações → Integração judicial. Vê e pode pausar as dos parceiros.
+- **ADMIN:** cadastra as OABs do escritório em DG Brasil → Integrações → Integração judicial. Vê e pode pausar as dos parceiros.
 - **Administrador do parceiro:** cadastra as do próprio escritório em Minha Conta → OABs acompanhadas. Os demais usuários do parceiro só veem.
 - **Parceiro:** nunca vê OAB de outro escritório.
 - **A mesma OAB em dois escritórios:** o DJEN é consultado uma vez só.
@@ -144,7 +145,7 @@ agente de prazos (abaixo). Na tela:
 4. **O calendário só aceita dia que vale para o tribunal inteiro** (feriado estadual, suspensão por ato do tribunal). O dia cadastrado para um tribunal vale para todos os processos dele: um feriado municipal cadastrado ali adiaria o prazo das outras comarcas, e a data sairia **depois** da real (o lado perigoso). Por isso a tela pede só feriado e suspensão do tribunal inteiro (062); o feriado da cidade do fórum se ajusta na data, na hora de criar o prazo.
 5. **Para que lado a conta erra:** dia que falta no calendário faz a data sair antes da real (lado seguro). Dia cadastrado a mais, ou no tribunal errado, faz a data sair depois. A frase antiga ("pode sair antes, nunca depois") só vale enquanto o calendário não tem dia indevido. Toda contagem feita na tela é conferida por uma pessoa.
 
-**Agente que propõe prazos** (opcional, Configurações → Integrações):
+**Agente que propõe prazos** (opcional, DG Brasil → Integrações):
 1. Cada publicação nova vira um trabalho do agente no computador do escritório.
 2. O pedido leva o teor, a data de publicação, o lado do cliente e a lista dos 30 primeiros dias úteis.
 3. O agente usa a ferramenta `propor` com `CREATE_DEADLINE` (há prazo) ou `OTHER` começando com "Sem prazo:".
