@@ -120,14 +120,16 @@ desta validação. Entrou no pós-MVP.
 
 Migration 056: quando o advogado aprova em Revisões a análise da Clara, o Lucas (kit) e a
 Alice (iniciais da primeira rodada) entram na fila sozinhos. Testada no banco simulado (886
-verificações). **Falta aplicar no DEV e validar de ponta a ponta.**
+verificações) e **validada no DEV em 12/11/2026, 23:08**: aprovada a análise do caso 5, o Lucas
+e a Alice entraram na fila, nessa ordem. As duas execuções foram interrompidas em seguida (o kit
+e a inicial do caso já existiam). Falta só ver os dois rodarem depois da aprovação.
 
 ## O que não foi validado (próxima rodada)
 
 - Porteiro com documento malicioso (validado na Frente B; o Porteiro só ganhou a conferência de qualidade);
 - Lucas sem forma de pagamento (o contrato deve ficar em DECIDIR);
 - pedido de "refazer" (versão 2 mantendo a 1);
-- sequência automática depois da aprovação (056);
+- os agentes rodando depois da aprovação (a sequência 056 já põe os dois na fila: validado);
 - conector DJEN na sessão (os clones seguem pelos autos e avisam).
 
 ## Pode ligar na produção?
