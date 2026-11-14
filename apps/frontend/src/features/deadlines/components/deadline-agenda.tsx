@@ -254,12 +254,24 @@ function GroupHeader({ group }: { group: AgendaGroup }) {
           <span className="inline-flex items-center gap-2">
             <span className="capitalize">{weekday(group.date as string)}</span>
             <span className="tabular">{formatDate(group.date as string)}</span>
-            <DeadlineBadge dueDate={group.date as string} done={group.items.every((d) => d.status === "COMPLETED")} />
+            <GroupBadge group={group} />
           </span>
         )}
       </th>
     </tr>
   );
+}
+
+/**
+ * Selo do dia: urgência só se houver prazo em aberto nele; todos cumpridos,
+ * "Cumprido"; só cancelados ou perdidos, nenhum selo (não há o que vencer).
+ * Dia só de audiências: "Em N dias".
+ */
+function GroupBadge({ group }: { group: AgendaGroup }) {
+  const open = group.items.filter((d) => d.status === "OPEN");
+  if (open.length > 0) return <DeadlineBadge dueDate={group.date as string} event={open.every((d) => d.type === "HEARING")} />;
+  if (group.items.every((d) => d.status === "COMPLETED")) return <DeadlineBadge dueDate={group.date as string} done />;
+  return null;
 }
 
 function AgendaRow({
@@ -309,7 +321,7 @@ function AgendaRow({
             {formatDate(d.dueDateLocal)}
             {deadlineHasTime(d) ? ` às ${d.dueTimeLocal}` : ""}
           </span>
-          {d.status === "OPEN" && <DeadlineBadge dueDate={d.dueDateLocal} />}
+          {d.status === "OPEN" && <DeadlineBadge dueDate={d.dueDateLocal} event={d.type === "HEARING"} />}
         </div>
       </Td>
       <Td className="text-[12.5px]">{responsible || <span className="text-danger">Sem responsável</span>}</Td>

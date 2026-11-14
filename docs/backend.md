@@ -236,7 +236,10 @@ na agenda.
   a regra. A edição continua só em prazo em aberto.
 - **Prazo de agente**: `source = 'AGENT'` (prazo direto ou aprovado em Revisões)
   aparece com o selo "Agente, sem conferência" até alguém clicar em "Conferido"
-  (`deadline_mark_checked`: quem, quando, uma vez só, auditado). O aplicador
+  (`deadline_mark_checked`: quem, quando, uma vez só, auditado). Prazo de
+  proposta corrigida em "Corrigir e aprovar" já nasce conferido por quem
+  corrigiu (071: gatilho em `agent_proposals`, auditoria `DEADLINE_CHECKED`
+  com `via = PROPOSAL_CORRECTED`). O aplicador
   grava o `deadline_type` da proposta quando vem (o contrato do computador do
   escritório aceita a chave opcional `deadline_type`).
 - **Audiência**: tipo `HEARING` guarda hora (em `due_at`), modalidade, local e
@@ -339,6 +342,19 @@ na agenda.
   na fila do mesmo jeito; o diálogo e o aviso de sucesso dizem isso.
 - Auditoria `AGENT_RUN_REDO_REQUESTED` (sem o recado, que fica na decisão e no
   pedido).
+
+### Depois de gravar: "Atualizando a tela"
+
+Toda gravação que recarrega os dados do servidor usa `useRefresh()`
+(`lib/hooks/use-refresh.ts`) em vez de `router.refresh()`. A recarga roda numa
+transição do `RefreshHost` (app-shell), que nunca sai da tela: o aviso
+"Atualizando a tela" aparece se a recarga passar de 250 ms, e as listas de
+`useServerList` ficam marcadas como ocupadas até os dados novos chegarem (antes,
+a lista antiga ficava parada alguns segundos sem sinal). A consulta periódica
+(`useAutoRefresh`) continua sem aviso. Edição de texto longa (minuta) usa
+`useUnsavedChangesGuard` (`components/feedback/unsaved-changes.tsx`): aviso do
+navegador ao fechar ou recarregar, e o diálogo do sistema ao clicar em link
+interno; o botão Voltar do navegador não é interceptado.
 
 ## Idempotência
 

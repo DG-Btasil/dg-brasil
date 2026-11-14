@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useRef, useState } from "react";
 import { Paperclip, RotateCcw, UploadCloud } from "lucide-react";
 import { DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABEL, type DocumentCategory } from "@/lib/constants/status";
@@ -46,7 +46,7 @@ export function UploadDialog({
   /** Chamado com o documento confirmado (ex.: anexar à mensagem de uma pendência). */
   onUploaded?: (doc: { documentId: string; versionId: string; title: string }) => void | Promise<void>;
 }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | undefined>(initialFile);
@@ -82,7 +82,7 @@ export function UploadDialog({
     if (outcome.ok) {
       toast({ tone: "success", title: target.kind === "new" ? "Documento enviado" : "Nova versão enviada", description: "O arquivo entra como não verificado." });
       await onUploaded?.({ documentId: outcome.documentId, versionId: outcome.versionId, title: target.kind === "new" ? title.trim() : target.title });
-      router.refresh();
+      refresh();
       onClose();
       return;
     }

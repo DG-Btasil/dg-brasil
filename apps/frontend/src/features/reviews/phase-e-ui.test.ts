@@ -8,6 +8,7 @@ import type { TemplateFieldDTO } from "@/server/domain/analyses/dto";
 import { fieldsPayload, formatFieldValue, validateFields } from "@/features/analyses/fields";
 import {
   clearReviewFilters,
+  switchReviewView,
   countReviewFilters,
   DEFAULT_REVIEW_QUERY,
   isReviewCounterActive,
@@ -119,6 +120,8 @@ describe("fila agrupada por execução, lista e busca (067)", () => {
     const q: ReviewListQuery = { ...DEFAULT_REVIEW_QUERY, mode: "lista", view: "todas", search: "maria", status: "APPROVED", page: 5 };
     expect(clearReviewFilters(q)).toEqual({ ...DEFAULT_REVIEW_QUERY, mode: "lista", view: "todas" });
     expect(clearReviewFilters(q, "minhas")).toEqual({ ...DEFAULT_REVIEW_QUERY, mode: "lista", view: "minhas" });
+    // Trocar de aba mantém o texto da busca (e só ele).
+    expect(switchReviewView({ ...q, search: "silva" }, "minhas")).toEqual({ ...DEFAULT_REVIEW_QUERY, mode: "lista", view: "minhas", search: "silva" });
     expect(toggleReviewCounter(q, "open")).toEqual({ ...DEFAULT_REVIEW_QUERY, mode: "lista" });
   });
   it("página da fila: cada linha diz se é grupo ou revisão; erro passa adiante", () => {

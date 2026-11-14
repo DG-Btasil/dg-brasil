@@ -418,6 +418,9 @@ describe("planilha de prazos", () => {
       '20/11/2026;14:30;Audiência de instrução;Audiência;Em aberto;Maria Fictícia;0001234-56.2026.8.19.0001;Maria x Banco;Revisional Maria;Lucas Fictício;Agente;Barbara Fictícia;13/11/2026 12:00;Videoconferência;"Sala 3; 2º andar";https://tribunal.test/sala;;;',
     );
     expect(lines[3]).toBe("10/10/2026;;Réplica;Réplica;Cancelado;Maria Fictícia;;;Revisional Maria;;Pessoa;;;;;;;;Acordo");
+    // Processo novo, sem título próprio, leva o nome do caso na coluna "Processo" (P5).
+    const untitled = deadlineFromAgendaRow(row({ id: "d4", process_title: null }));
+    expect(buildCsv(DEADLINE_EXPORT_COLUMNS, [untitled]).split("\r\n")[1]).toContain(";0001234-56.2026.8.19.0001;Revisional Maria;Revisional Maria;");
   });
 
   it("ADMIN: os filtros e a ordem da agenda chegam ao repositório (sem a página da tela), com os nomes; a auditoria leva só os filtros", async () => {

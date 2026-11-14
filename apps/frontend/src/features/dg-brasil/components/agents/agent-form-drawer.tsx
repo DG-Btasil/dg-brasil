@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useId, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -73,6 +74,7 @@ function fromAgent(a: AgentDetailDTO): FormValues {
 export function AgentFormDrawer({ open, onOpenChange, agent, catalog }: { open: boolean; onOpenChange: (o: boolean) => void; agent?: AgentDetailDTO; catalog: DgCatalogDTO }) {
   const formId = useId();
   const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
   const idempotency = useIdempotencyKey();
@@ -121,7 +123,7 @@ export function AgentFormDrawer({ open, onOpenChange, agent, catalog }: { open: 
     });
     onOpenChange(false);
     if (!agent) router.push(dgRoutes.agent(r.data.id));
-    else router.refresh();
+    else refresh();
   });
 
   const options = (list: { id: string; name: string }[]) => list.map((x) => ({ value: x.id, label: x.name }));

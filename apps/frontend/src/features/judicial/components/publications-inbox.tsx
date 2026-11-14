@@ -33,6 +33,21 @@ const FILTER: Record<View, { status: "OPEN" | "WITH_AGENT" | "DONE"; mine?: bool
   tratadas: { status: "DONE" },
 };
 const PAGE = 25;
+/** Parâmetro da URL com a aba escolhida ("aba" já é a aba da ficha do processo). */
+const VIEW_PARAM = "lista";
+const isView = (v: string | null): v is View => v === "minhas" || v === "abertas" || v === "agente" || v === "tratadas";
+
+/** Lista vazia: a frase diz qual aba está vazia. */
+const EMPTY_TITLE: Record<View, string> = {
+  minhas: "Nenhuma publicação sua a tratar.",
+  abertas: "Nenhuma publicação a tratar.",
+  agente: "Nenhuma publicação com o agente.",
+  tratadas: "Nenhuma publicação tratada.",
+};
+const EMPTY_DESCRIPTION: Partial<Record<View, string>> = {
+  minhas: "Publicações dos processos em que você é o responsável aparecem aqui.",
+  agente: "Publicação enviada a um agente para ler e propor o prazo fica aqui até a resposta chegar em Revisões.",
+};
 
 /**
  * Caixa de publicações do DJEN (equipe interna). Cada publicação de processo
@@ -43,7 +58,9 @@ export function PublicationsInbox({ processId }: { processId?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const [view, setView] = useState<View>(processId ? "abertas" : "minhas");
+  // A aba escolhida vai para a URL: recarregar ou mandar o link abre na mesma aba.
+  const fromUrl = params.get(VIEW_PARAM);
+  const view: View = isView(fromUrl) && !(processId && fromUrl === "minhas") ? fromUrl : processId ? "abertas" : "minhas";
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ActionResult<PublicationPageDTO> | null>(null);
   const [version, setVersion] = useState(0);
@@ -64,6 +81,14 @@ export function PublicationsInbox({ processId }: { processId?: string }) {
     if (id) next.set("id", id);
     else next.delete("id");
     router.replace(`${pathname}${next.size ? `?${next}` : ""}`, { scroll: false });
+  };
+
+  const setView = (v: View) => {
+    const next = new URLSearchParams(params.toString());
+    next.set(VIEW_PARAM, v);
+    // Até a lista da aba nova chegar, nada da aba anterior fica na tela.
+    setData(null);
+    router.replace(`${pathname}?${next}`, { scroll: false });
   };
 
   const tabs = processId ? VIEWS.filter((v) => v.key !== "minhas") : VIEWS;
@@ -92,7 +117,7 @@ export function PublicationsInbox({ processId }: { processId?: string }) {
       ) : !data.ok ? (
         <ActionErrorState error={data} title="Não foi possível carregar as publicações." />
       ) : data.data.items.length === 0 ? (
-        <EmptyState compact icon={Newspaper} title={view === "tratadas" ? "Nenhuma publicação tratada." : "Nada a tratar."} description={view === "minhas" ? "Publicações dos processos em que você é o responsável aparecem aqui." : undefined} />
+        <EmptyState compact icon={Newspaper} title={EMPTY_TITLE[view]} description={EMPTY_DESCRIPTION[view]} />
       ) : (
         <>
           <Table caption="Publicações">

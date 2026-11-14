@@ -101,3 +101,12 @@ export function runSummary(stats: Record<string, number> | undefined): string {
   if (stats.djenErrors || stats.datajudErrors) parts.push(`${(stats.djenErrors ?? 0) + (stats.datajudErrors ?? 0)} falha(s)`);
   return parts.join(" · ") || "Nada novo";
 }
+
+/** "sábado" ou "domingo" para uma data civil (AAAA-MM-DD); null nos dias de semana ou em data inválida. */
+export function weekendName(day: string): "sábado" | "domingo" | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const d = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const w = d.getUTCDay();
+  return w === 6 ? "sábado" : w === 0 ? "domingo" : null;
+}

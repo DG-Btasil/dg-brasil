@@ -122,5 +122,10 @@ describe("resumo do que vai ser aplicado", () => {
     expect(proposalFieldText("case_value", 1500, names)).toMatch(/1\.500,00/);
     expect(proposalFieldText("responsible_user_id", "x", names)).toBe("Pessoa da equipe");
     expect(proposalFieldText("title", "", names)).toBe("—");
+    // Tela da proposta (R4): data e hora para pessoas, rótulo da prioridade, nada de ISO nem código cru.
+    expect(proposalFieldText("due_at", "2026-12-03T23:59:00-03:00", names)).toMatch(/^\d{2}\/\d{2}\/2026 às \d{2}:\d{2}$/);
+    expect(proposalFieldText("priority", "HIGH", names)).not.toBe("HIGH");
+    expect(proposalFieldText("category", "POWER_OF_ATTORNEY", names)).not.toBe("POWER_OF_ATTORNEY");
+    expect(proposalFieldText("required", true, names)).toBe("Sim");
   });
 });

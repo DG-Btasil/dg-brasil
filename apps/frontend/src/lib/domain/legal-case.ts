@@ -8,6 +8,7 @@
  * - Aceitar exige advogado responsável; o acordo de parceria nasce no aceite.
  */
 import {
+  LEGAL_CASE_STATUSES,
   ACCEPTED_CASE_STATUSES,
   DECIDABLE_CASE_STATUSES,
   PRE_DECISION_CASE_STATUSES,
@@ -36,6 +37,22 @@ export function explicitPartnerLink(originOrganizationId: ID, ownerOfficeId: ID,
 export const isPreDecision = (status: LegalCaseStatus) => PRE_DECISION_CASE_STATUSES.includes(status);
 export const isDecidable = (status: LegalCaseStatus) => DECIDABLE_CASE_STATUSES.includes(status);
 export const isAccepted = (status: LegalCaseStatus) => ACCEPTED_CASE_STATUSES.includes(status);
+
+/** Situações em que o caso não recebe processo (o banco recusa e a busca de casos do cadastro não mostra). */
+const NO_PROCESS_CASE_STATUSES: readonly LegalCaseStatus[] = ["DRAFT", "REJECTED", "ARCHIVED"];
+/** Casos aptos a receber processo: tudo menos rascunho, rejeitado e arquivado. */
+export const CASE_STATUSES_FOR_PROCESS = LEGAL_CASE_STATUSES.filter((s) => !NO_PROCESS_CASE_STATUSES.includes(s));
+
+/**
+ * Por que o caso ainda não recebe processo, em frase para a tela; null quando
+ * recebe. Rascunho: falta enviar o caso para análise.
+ */
+export function processBlockedReason(status: LegalCaseStatus): string | null {
+  if (status === "DRAFT") return "O caso ainda é um rascunho. Envie o caso para análise e depois cadastre o processo.";
+  if (status === "REJECTED") return "O caso foi rejeitado e não recebe processo.";
+  if (status === "ARCHIVED") return "O caso está arquivado e não recebe processo.";
+  return null;
+}
 
 /** Status do caso correspondente à análise (somente enquanto o caso não foi decidido). */
 const ANALYSIS_TO_CASE: Partial<Record<AnalysisStatus, LegalCaseStatus>> = {

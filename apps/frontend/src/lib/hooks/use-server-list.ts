@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import type { Page } from "@/server/core/pagination";
+import { useRefreshing } from "./use-refresh";
 
 /**
  * Listagem paginada NO SERVIDOR (padrão único das telas da Etapa 4.3).
@@ -70,7 +71,9 @@ export function useServerList<Q, T>({
     setQueryState(initialQuery);
   }
 
-  return { query, setQuery, result, pending, retry };
+  // Depois de uma gravação, a lista fica marcada como ocupada até a recarga do servidor chegar.
+  const refreshing = useRefreshing();
+  return { query, setQuery, result, pending: pending || refreshing, retry };
 }
 
 /** Atraso da busca digitada (ms): não dispara uma consulta por tecla. */

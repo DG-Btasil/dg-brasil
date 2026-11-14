@@ -9244,6 +9244,41 @@ await deve('catálogo [070]: search_path fixo; blocos internos e gatilho fechado
   igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.agent_runs'::regclass and tgname = 'agent_runs_redo_guard'`)).n, 1, 'gatilho do vínculo')
 })
 
+// ═════════════════════════════ Prazo corrigido nasce conferido [071] ═════
+
+secao('Revisões: o prazo de "Corrigir e aprovar" nasce conferido por quem corrigiu; o só aprovado continua sem conferência [071]')
+const conferencia071 = (prazo) => um(db, `select d.checked_by por, d.checked_at is not null em, a.agent_unchecked sem
+    from deadlines d join deadline_agenda a on a.id = d.id where d.id = $1`, [prazo])
+
+await deve('os prazos corrigidos da 069 (advogado e ADMIN) já nasceram conferidos por quem corrigiu', async () => {
+  const p1 = await proposta069(c069.pPrazo)
+  const p2 = await proposta069(c069.pPrazo2)
+  igual(await conferencia071(p1.efeito), { por: ids.lucas, em: true, sem: false }, 'corrigido pelo advogado: conferido por ele')
+  igual(await conferencia071(p2.efeito), { por: ids.barbara, em: true, sem: false }, 'corrigido pela ADMIN: conferido por ela')
+  const au = await um(db, `select metadata from audit_events where action = 'DEADLINE_CHECKED' and entity_id = $1`, [p1.efeito])
+  igual([au.metadata.via, au.metadata.agent_proposal_id, au.metadata.checked_by], ['PROPOSAL_CORRECTED', c069.pPrazo, ids.lucas], 'auditoria da conferência pela correção')
+})
+
+await deve('proposta de prazo só aprovada (sem correção) continua "sem conferência"; a conferência à mão segue valendo uma vez só', async () => {
+  const t = await trabalho060(c069.caso, 'Trabalho 071: prazo só aprovado')
+  const pr = (await proposta067(t, 'CREATE_DEADLINE', { summary: 'Prazo 071', data: { title: 'Contrarrazões 071', due_at: `${await dia069(30)}T23:59:00-03:00`, priority: 'NORMAL' } }, 'k-071-prazo')).proposal_id
+  await decidir(ids.lucas, await revDe069(pr), 'APPROVE')
+  const p = await aplicar069(pr)
+  igual(p.status, 'APPLIED', 'aplicada')
+  igual(await conferencia071(p.efeito), { por: null, em: false, sem: true }, 'sem conferência')
+  await como(ids.lucas, (tx) => tx.query(`select public.deadline_mark_checked($1)`, [p.efeito]))
+  igual(await conferencia071(p.efeito), { por: ids.lucas, em: true, sem: false }, 'conferido à mão')
+})
+
+await deve('catálogo [071]: função do gatilho com search_path fixo e fechada; um gatilho só', async () => {
+  const r = await um(db, `select coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('authenticated', p.oid, 'execute') usr,
+      has_function_privilege('service_role', p.oid, 'execute') srv, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'private' and p.proname = 'agent_proposals_corrected_deadline_checked'`)
+  igual([r.cfg.includes('search_path='), r.anon, r.usr, r.srv, r.wrk], [true, false, false, false, false], 'fechada, com search_path fixo')
+  igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.agent_proposals'::regclass and tgname = 'agent_proposals_corrected_deadline_checked'`)).n, 1, 'gatilho')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

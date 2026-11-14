@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useState } from "react";
 import { Pause, Pencil, Play, Rocket } from "lucide-react";
 import { Can } from "@/components/layout/guards";
@@ -95,7 +95,7 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
 }
 
 function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () => void; onRun: () => void }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -112,7 +112,7 @@ function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () =>
     }
     setConfirmOpen(false);
     toast({ tone: "success", title: pausing ? `${agent.name} pausado` : `${agent.name} ativado` });
-    router.refresh();
+    refresh();
   }
 
   return (
@@ -200,7 +200,7 @@ function Overview({ agent, catalog }: { agent: AgentDetailDTO; catalog: DgCatalo
 
 /** Templates de análise que este agente executa (analysis_templates.primary_agent_id). */
 function TemplatesPanel({ agent, catalog }: { agent: AgentDetailDTO; catalog: DgCatalogDTO }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const failed = useActionFeedback();
   const [busy, setBusy] = useState(false);
   const available = catalog.templates.filter((t) => t.active && t.agentId !== agent.id);
@@ -210,7 +210,7 @@ function TemplatesPanel({ agent, catalog }: { agent: AgentDetailDTO; catalog: Dg
     const r = await callAction(() => setDgTemplateAgentAction({ templateId, agentId }));
     setBusy(false);
     if (!r.ok) failed(r, "Não foi possível alterar o template.");
-    else router.refresh();
+    else refresh();
   }
 
   return (

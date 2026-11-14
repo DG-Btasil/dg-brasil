@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useCallback } from "react";
 import { callAction } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
@@ -17,7 +17,7 @@ import type { Client } from "@/types";
 export function useClientLifecycleActions() {
   const toast = useToast();
   const failed = useActionFeedback();
-  const router = useRouter();
+  const refresh = useRefresh();
 
   const inactivate = useCallback(
     async (client: Client, input: InactivateClientInput): Promise<boolean> => {
@@ -27,10 +27,10 @@ export function useClientLifecycleActions() {
         return false;
       }
       toast({ tone: "success", title: "Cliente inativado", description: "Continua pesquisável e com todo o histórico preservado." });
-      router.refresh();
+      refresh();
       return true;
     },
-    [toast, failed, router],
+    [toast, failed, refresh],
   );
 
   const reactivate = useCallback(
@@ -41,10 +41,10 @@ export function useClientLifecycleActions() {
         return false;
       }
       toast({ tone: "success", title: "Cliente reativado" });
-      router.refresh();
+      refresh();
       return true;
     },
-    [toast, failed, router],
+    [toast, failed, refresh],
   );
 
   const remove = useCallback(

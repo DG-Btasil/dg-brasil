@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { agentRunEventKindLabel, agentRunOperationLabel, agentRunProviderLabel } from "@/features/agent-runs/labels";
 import { organizationStatusNotice } from "@/lib/constants/status";
-import { capitalizeFirst, displayCNJ, formatCEP, formatPhone, formatUsd } from "./index";
+import { capitalizeFirst, displayCNJ, formatCEP, formatEventDay, formatPhone, formatUsd, INPUT_MASKS } from "./index";
 
 /** Espaço comum no lugar do espaço sem quebra que o Intl usa em moeda. */
 const plain = (s: string) => s.replace(/ /g, " ");
@@ -60,3 +60,32 @@ describe("códigos técnicos nunca aparecem crus", () => {
     expect(organizationStatusNotice("OUTRA")).not.toContain("OUTRA");
   });
 });
+
+describe("máscara do número CNJ (C1)", () => {
+  const cnj = INPUT_MASKS.cnj;
+  it("20 dígitos colados sem pontuação: mantém o zero à esquerda e não anda os dígitos", () => {
+    expect(cnj("09173538620268190042")).toBe("0917353-86.2026.8.19.0042");
+    expect(cnj("19173538620268190042")).toBe("1917353-86.2026.8.19.0042");
+    expect(cnj("0917353-86.2026.8.19.0042")).toBe("0917353-86.2026.8.19.0042");
+  });
+  it("digitado um a um, chega ao mesmo número; dígito a mais é cortado", () => {
+    let typed = "";
+    for (const ch of "09173538620268190042") typed = cnj(typed + ch);
+    expect(typed).toBe("0917353-86.2026.8.19.0042");
+    expect(cnj(`${typed}9`)).toBe("0917353-86.2026.8.19.0042");
+  });
+});
+
+describe("audiência: dia marcado, não vencimento (S5)", () => {
+  it("diz 'Em N dias' e nunca 'Vence'", () => {
+    const inDays = (n: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    expect(formatEventDay(inDays(12))).toBe("Em 12 dias");
+    expect(formatEventDay(inDays(0))).toBe("Hoje");
+    expect(formatEventDay(inDays(1))).toBe("Amanhã");
+  });
+});
+

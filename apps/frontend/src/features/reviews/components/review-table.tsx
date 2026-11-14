@@ -85,7 +85,8 @@ export function ReviewTable({
 }) {
   const users = useDirectoryUserMap();
   const selectable = selection ? rows.filter((r) => isOpen(r) && !selection.blocked(r)).map((r) => r.id) : [];
-  const allSelected = selectable.length > 0 && selectable.every((id) => selection?.selected.has(id));
+  const selectedCount = selectable.filter((id) => selection?.selected.has(id)).length;
+  const allSelected = selectable.length > 0 && selectedCount === selectable.length;
   return (
     <div className="overflow-x-auto">
       <table className={`w-full table-fixed border-collapse text-left text-[13px] ${showCase ? "min-w-[1200px]" : "min-w-[1024px]"}`}>
@@ -108,7 +109,9 @@ export function ReviewTable({
                   <Checkbox
                     label={<span className="sr-only">Marcar todos os itens que podem ser decididos em conjunto</span>}
                     checked={allSelected}
-                    onChange={(e) => selection.onToggleAll(selectable, e.target.checked)}
+                    indeterminate={selectedCount > 0 && !allSelected}
+                    // Com alguns marcados, o clique marca todos (como nas listas de e-mail).
+                    onChange={() => selection.onToggleAll(selectable, !allSelected)}
                   />
                 )}
               </Th>

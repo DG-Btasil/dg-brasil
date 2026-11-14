@@ -140,6 +140,11 @@ export function clearReviewFilters(q: ReviewListQuery, view: ReviewView = q.view
   return { ...DEFAULT_REVIEW_QUERY, mode: q.mode, view };
 }
 
+/** Trocar de aba (Aguardando, Atribuídas, Todas): limpa os filtros, mas o texto da busca continua. */
+export function switchReviewView(q: ReviewListQuery, view: ReviewView): ReviewListQuery {
+  return { ...clearReviewFilters(q, view), search: q.search };
+}
+
 /* ------------------------------------------------------------------ */
 /* Indicadores clicáveis (E-05)                                        */
 /* ------------------------------------------------------------------ */

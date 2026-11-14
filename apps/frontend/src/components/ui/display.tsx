@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { AlarmClock, CalendarClock, CheckCircle2, ChevronRight, CircleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DEADLINE_URGENCY_LABEL, DEADLINE_URGENCY_TONE, type Tone } from "@/lib/constants/status";
-import { deadlineUrgency, formatDeadline, initials } from "@/lib/formatting";
+import { deadlineUrgency, formatDeadline, formatEventDay, initials } from "@/lib/formatting";
 import { TONE_BADGE, TONE_DOT, TONE_TEXT } from "./tone";
 
 /* ------------------------------------------------------------------ */
@@ -136,7 +136,8 @@ export function Stat({
 const URGENCY_ICON = { OVERDUE: CircleAlert, TODAY: AlarmClock, TOMORROW: AlarmClock, SOON: CalendarClock, LATER: CalendarClock } as const;
 
 /** Vencimento com ícone + texto + cor (acessível). */
-export function DeadlineBadge({ dueDate, done, className }: { dueDate: string; done?: boolean; className?: string }) {
+/** `event`: audiência (dia marcado): "Em 12 dias" em vez de "Vence em 12 dias". */
+export function DeadlineBadge({ dueDate, done, event, className }: { dueDate: string; done?: boolean; event?: boolean; className?: string }) {
   if (done) {
     return (
       <span className={cn("inline-flex h-[22px] items-center gap-1 rounded-xs border px-1.5 text-[11.5px] font-medium", TONE_BADGE.success, className)}>
@@ -153,7 +154,7 @@ export function DeadlineBadge({ dueDate, done, className }: { dueDate: string; d
       className={cn("inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-xs border px-1.5 text-[11.5px] font-medium", TONE_BADGE[tone], className)}
     >
       <Icon className="size-3" aria-hidden />
-      {formatDeadline(dueDate)}
+      {event ? formatEventDay(dueDate) : formatDeadline(dueDate)}
     </span>
   );
 }

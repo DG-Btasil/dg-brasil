@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { referenceCode, type ActionError } from "@/lib/actions/result";
@@ -13,7 +13,7 @@ import { ErrorState } from "./states";
  * Sem `onRetry`, "Tentar novamente" recarrega os dados do servidor da rota.
  */
 export function ActionErrorState({ error, onRetry, title }: { error: ActionError; onRetry?: () => void; title?: string }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const code = referenceCode(error.requestId);
   return (
     <ErrorState
@@ -25,7 +25,7 @@ export function ActionErrorState({ error, onRetry, title }: { error: ActionError
         </>
       }
       action={
-        <Button variant="secondary" icon={<RotateCcw className="size-4" aria-hidden />} onClick={onRetry ?? (() => router.refresh())}>
+        <Button variant="secondary" icon={<RotateCcw className="size-4" aria-hidden />} onClick={onRetry ?? (() => refresh())}>
           Tentar novamente
         </Button>
       }

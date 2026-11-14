@@ -14,7 +14,7 @@ import {
   type Priority,
   type ReviewDecisionKind,
 } from "@/lib/constants/status";
-import { formatDate, formatDateTime } from "@/lib/formatting";
+import { formatDate, formatDateTime, formatDateTimeAt } from "@/lib/formatting";
 import { PageContainer } from "@/components/layout/guards";
 import { Callout, EmptyState } from "@/components/feedback/states";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -25,7 +25,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { canRequestChanges } from "@/server/domain/reviews/bulk-rules";
 import { canCorrectProposal, isCorrectableProposalType } from "@/server/domain/reviews/correction-rules";
-import { MAX_REDO_ROUNDS, type OfficeState } from "@/server/domain/reviews/redo-rules";
+import { MAX_REDO_ROUNDS, redoneSituation, type OfficeState } from "@/server/domain/reviews/redo-rules";
 import type { ReviewDetailDTO, ReviewRedoDTO, ReviewTargetDTO } from "@/server/domain/reviews/dto";
 import { PROPOSAL_TYPE_LABEL } from "@/server/domain/reviews/labels";
 import { usePermission, useRole } from "@/features/auth/hooks";
@@ -33,7 +33,7 @@ import { useDirectoryUserMap, useLawyerOptions } from "@/features/directory/dire
 import { REVIEW_KIND_LABEL } from "../list-query";
 import { useReviewActions } from "../use-review-actions";
 import { canEditReview, isEditableMime } from "../manual-revision";
-import { correctionRows } from "../proposal-correction";
+import { correctionRows, PROPOSAL_FIELD_LABEL, proposalFieldText } from "../proposal-correction";
 import { AttachDocumentPanel } from "./attach-document-panel";
 import { DecisionDialog } from "./decision-dialog";
 import { DocumentContentPanel } from "./document-content";
@@ -237,18 +237,6 @@ export function ReviewDetail({ review, office }: { review: ReviewDetailDTO; offi
 
 /* ------------------------------------------------------------------ */
 
-/** Rótulos dos campos de proposta (contrato em server/executor/contract.ts). */
-const PAYLOAD_LABEL: Record<string, string> = {
-  title: "Título", description: "Descrição", due_at: "Data do prazo", priority: "Prioridade", legal_process_id: "Processo",
-  responsible_user_id: "Responsável", category: "Categoria", label: "Documento", required: "Obrigatório",
-  message_to_partner: "Mensagem ao parceiro", summary: "Resumo", status: "Situação", cnj_number: "Número CNJ", court: "Tribunal",
-  court_unit: "Vara", district: "Comarca", state: "UF", legal_class: "Classe", subject: "Assunto", client_side: "Polo do cliente",
-  adverse_party_summary: "Parte contrária", case_value: "Valor da causa", skill_slug: "Skill", agent_slug: "Agente",
-  instructions: "Instruções", configuration: "Configuração",
-};
-
-const show = (v: unknown): string => (v === null || v === undefined ? "—" : typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
-
 function TargetPanel({
   target,
   reviewId,
@@ -335,7 +323,13 @@ function RedoNotices({ redo, open, allowed }: { redo: ReviewRedoDTO | null; open
   const users = useDirectoryUserMap();
   if (!redo) return null;
   const redone = redo.redone;
+  // A frase segue a situação do trabalho refeito agora (na fila, rodando, entregue, interrompido).
+  const situation = redone ? redoneSituation(redone.status) : null;
   const blockedOpen = open && allowed && !redo.canRedo && redo.blocked && redo.blocked !== "NO_RUN" && redo.blocked !== "DECIDED";
+  const blockedMessage =
+    redo.blocked === "ALREADY_REDONE" && redone && situation
+      ? `Este trabalho já foi mandado refazer${redone.createdAt ? ` em ${formatDateTimeAt(redone.createdAt)}` : ""}. ${situation.text}`
+      : redo.message;
   return (
     <>
       {redo.redoOfReviewId && (
@@ -354,9 +348,12 @@ function RedoNotices({ redo, open, allowed }: { redo: ReviewRedoDTO | null; open
           )}
         </Callout>
       )}
-      {redone && redo.redoneFromThisReview && (
-        <Callout tone="info" title={`Refeito em ${formatDateTime(redone.createdAt)}${redone.requestedById ? ` a pedido de ${users.get(redone.requestedById)?.name ?? "pessoa da equipe"}` : ""}`}>
-          O agente recebeu o recado num trabalho novo. O que ele refizer chega em Revisões.{" "}
+      {redone && situation && redo.redoneFromThisReview && (
+        <Callout
+          tone={situation.tone === "warning" ? "warning" : "info"}
+          title={`Refeito em ${formatDateTimeAt(redone.createdAt)}${redone.requestedById ? ` a pedido de ${users.get(redone.requestedById)?.name ?? "pessoa da equipe"}` : ""}`}
+        >
+          O agente recebeu o recado num trabalho novo. {situation.text}{" "}
           <Link href={`/execucoes/${redone.agentRunId}`} className="font-medium underline underline-offset-2">
             Ver o trabalho refeito
           </Link>
@@ -370,9 +367,9 @@ function RedoNotices({ redo, open, allowed }: { redo: ReviewRedoDTO | null; open
           )}
         </Callout>
       )}
-      {blockedOpen && redo.message && (
-        <Callout tone={redo.blocked === "LIMIT" ? "warning" : "neutral"} title="Pedir para o agente refazer">
-          {redo.message}
+      {blockedOpen && blockedMessage && !(redo.blocked === "ALREADY_REDONE" && redo.redoneFromThisReview) && (
+        <Callout tone={redo.blocked === "LIMIT" || situation?.tone === "warning" ? "warning" : "neutral"} title="Pedir para o agente refazer">
+          {blockedMessage}
           {redo.blocked === "ALREADY_REDONE" && redone && (
             <>
               {" "}
@@ -404,6 +401,11 @@ function ProposalPanel({ target }: { target: Extract<ReviewTargetDTO, { kind: "A
   const changes = original ? correctionRows(original, dataOf(target.payload), (id) => users.get(id)?.name) : [];
   const correctedBy = (target.correctedById && users.get(target.correctedById)?.name) || "pessoa da equipe";
   const pending = target.proposalStatus === "PENDING";
+  // Valores para pessoas: data e hora, rótulos, nome do responsável, Sim/Não (nunca o código cru).
+  const row = ([key, value]: [string, unknown]) => {
+    const text = proposalFieldText(key, value, (id) => users.get(id)?.name);
+    return { label: PROPOSAL_FIELD_LABEL[key] ?? key, value: text, wide: text.length > 60 };
+  };
   return (
     <Panel>
       <PanelHeader title={PROPOSAL_TYPE_LABEL[target.proposalType] ?? "Proposta do agente"} description={`Criada em ${formatDateTime(target.createdAt)}. Aprovar aplica a proposta automaticamente, em até um minuto.`} />
@@ -430,17 +432,14 @@ function ProposalPanel({ target }: { target: Extract<ReviewTargetDTO, { kind: "A
         ) : (
           <>
             <p className="text-[12px] text-muted">{original ? "Aprovada com estes dados, já corrigidos:" : pending ? "Se aprovada, será aplicada exatamente com estes dados:" : "Dados da proposta:"}</p>
-            <DefinitionGrid columns={2} items={entries.map(([key, value]) => ({ label: PAYLOAD_LABEL[key] ?? key, value: show(value), wide: typeof value === "string" && value.length > 60 }))} />
+            <DefinitionGrid columns={2} items={entries.map(row)} />
           </>
         )}
         {original && (
           <details className="rounded-md border border-line px-3 py-2 text-[13px]">
             <summary className="cursor-pointer font-medium">Proposta do agente (original)</summary>
             <div className="mt-3">
-              <DefinitionGrid
-                columns={2}
-                items={Object.entries(original).map(([key, value]) => ({ label: PAYLOAD_LABEL[key] ?? key, value: show(value), wide: typeof value === "string" && value.length > 60 }))}
-              />
+              <DefinitionGrid columns={2} items={Object.entries(original).map(row)} />
             </div>
           </details>
         )}

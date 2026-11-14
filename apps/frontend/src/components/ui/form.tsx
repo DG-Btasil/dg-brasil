@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useCallback,
   useId,
   useState,
   type InputHTMLAttributes,
@@ -154,14 +155,27 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   );
 });
 
-export const Checkbox = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { label: ReactNode; description?: ReactNode }>(
-  function Checkbox({ label, description, className, id, ...props }, ref) {
+/**
+ * Caixa de marcar. `indeterminate`: o estado "alguns marcados" da caixa de
+ * marcar todos (o navegador só aceita isso pela propriedade do elemento, não
+ * por atributo; leitores de tela anunciam como "misto").
+ */
+export const Checkbox = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { label: ReactNode; description?: ReactNode; indeterminate?: boolean }>(
+  function Checkbox({ label, description, className, id, indeterminate = false, ...props }, ref) {
     const autoId = useId();
     const inputId = id ?? autoId;
+    const setRef = useCallback(
+      (el: HTMLInputElement | null) => {
+        if (el) el.indeterminate = indeterminate;
+        if (typeof ref === "function") ref(el);
+        else if (ref) ref.current = el;
+      },
+      [ref, indeterminate],
+    );
     return (
       <label htmlFor={inputId} className={cn("flex cursor-pointer items-start gap-2.5", className)}>
         <input
-          ref={ref}
+          ref={setRef}
           id={inputId}
           type="checkbox"
           className="mt-0.5 size-4 shrink-0 cursor-pointer rounded-xs border-line-strong accent-navy"

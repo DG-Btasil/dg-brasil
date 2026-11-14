@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -21,7 +21,7 @@ import { EMPTY_PARTY, PARTY_TYPE_OPTIONS, partyAddInput, partyFormErrors, partyF
  * pessoa digitar outro.
  */
 export function PartyDialog({ processId, party, onClose }: { processId: string; party?: ProcessPartyDTO; onClose: () => void }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
   const [values, setValues] = useState<PartyFormValues>(party ? partyFormFrom(party) : EMPTY_PARTY);
@@ -50,7 +50,7 @@ export function PartyDialog({ processId, party, onClose }: { processId: string; 
       return;
     }
     toast({ tone: "success", title: party ? "Parte atualizada" : "Parte adicionada", description: values.name.trim() });
-    router.refresh();
+    refresh();
     onClose();
   }
 

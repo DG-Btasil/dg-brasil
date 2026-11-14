@@ -261,7 +261,7 @@ function DeadlineRow({ d, overdue, responsible }: { d: DeadlineDTO; overdue: boo
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-[13px] font-semibold text-foreground">{d.title}</p>
-          <DeadlineBadge dueDate={d.dueDateLocal} />
+          <DeadlineBadge dueDate={d.dueDateLocal} event={d.type === "HEARING"} />
           {hasTime && <span className="text-[12px] tabular text-muted">às {d.dueTimeLocal}</span>}
           {d.agentUnchecked && <Badge tone="warning">Agente, sem conferência</Badge>}
         </div>

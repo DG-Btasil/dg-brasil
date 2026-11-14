@@ -102,7 +102,7 @@ export function ProposalCorrectionDialog({
 
   const form = { formId, original, hidden: corrected !== null, onValid };
   const confirm = async () => {
-    if (!corrected) return;
+    if (!corrected || saving) return;
     setSaving(true);
     const ok = await actions.correctAndApprove(reviewId, corrected, notes.trim() || undefined);
     setSaving(false);
@@ -127,7 +127,7 @@ export function ProposalCorrectionDialog({
               Voltar e editar
             </Button>
             <Button icon={<CheckCircle2 className="size-4" aria-hidden />} loading={saving} onClick={confirm}>
-              Confirmar correção e aprovar
+              {saving ? "Gravando a correção" : "Confirmar correção e aprovar"}
             </Button>
           </>
         ) : (
@@ -152,7 +152,12 @@ export function ProposalCorrectionDialog({
       {proposalType === "UPDATE_CASE" && <CaseForm {...form} />}
       {proposalType === "CREATE_PROCESS" && <ProcessForm {...form} />}
       {corrected && (
-        <div className="space-y-4">
+        <div className="space-y-4" aria-busy={saving || undefined}>
+          {saving && (
+            <Callout tone="info" title="Gravando a correção e a aprovação.">
+              Aguarde: o diálogo fecha sozinho quando o sistema confirmar.
+            </Callout>
+          )}
           <div className="overflow-hidden rounded-md border border-line">
             <table className="w-full text-[13px]">
               <thead className="bg-surface-muted text-left text-[12px] text-muted">
@@ -173,10 +178,23 @@ export function ProposalCorrectionDialog({
               </tbody>
             </table>
           </div>
-          <p className="text-[12px] text-muted">Os outros campos ficam como o agente propôs. A proposta original fica guardada no histórico da revisão.</p>
+          <p className="text-[12px] text-muted">
+            Os outros campos ficam como o agente propôs. A proposta original fica guardada no histórico da revisão.
+            {proposalType === "CREATE_DEADLINE" && " O prazo entra na agenda já conferido por você."}
+          </p>
           <Field label="Comentário" requirement="optional">
             {(a) => (
-              <Textarea {...a} rows={3} maxLength={5000} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional. Fica registrado no histórico e na auditoria." />
+              <Textarea
+                {...a}
+                rows={3}
+                maxLength={5000}
+                value={notes}
+                // Travado enquanto grava: o comentário que vai para o servidor é o que está na tela.
+                readOnly={saving}
+                aria-busy={saving || undefined}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Opcional. Fica registrado no histórico e na auditoria."
+              />
             )}
           </Field>
         </div>

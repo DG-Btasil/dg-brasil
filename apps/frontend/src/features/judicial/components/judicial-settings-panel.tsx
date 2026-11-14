@@ -22,7 +22,7 @@ import {
 } from "@/server/domain/judicial/actions";
 import type { CourtCalendarDayDTO, JudicialMonitorDTO, JudicialOverviewDTO } from "@/server/domain/judicial/dto";
 import { useToast } from "@/store/ui-store";
-import { CALENDAR_HELP, RUN_SCOPE_LABEL, RUN_STATUS_LABEL, RUN_STATUS_TONE, runSummary } from "../labels";
+import { CALENDAR_HELP, RUN_SCOPE_LABEL, RUN_STATUS_LABEL, RUN_STATUS_TONE, runSummary, weekendName } from "../labels";
 import { JudicialCaptureCallout } from "./judicial-capture-alert";
 import { CoverageDialog } from "./coverage-dialog";
 import { MonitorStatus } from "./monitor-status";
@@ -37,6 +37,8 @@ export function JudicialSettingsPanel() {
   const failed = useActionFeedback();
   const [data, setData] = useState<ActionResult<JudicialOverviewDTO> | null>(null);
   const [version, setVersion] = useState(0);
+  // Versão que já chegou do servidor: diferente de `version` = recarregando (a tela mostra).
+  const [loaded, setLoaded] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [coverage, setCoverage] = useState<JudicialMonitorDTO | null>(null);
@@ -45,7 +47,11 @@ export function JudicialSettingsPanel() {
 
   useEffect(() => {
     let alive = true;
-    callAction(() => getJudicialOverviewAction()).then((r) => alive && setData(r));
+    callAction(() => getJudicialOverviewAction()).then((r) => {
+      if (!alive) return;
+      setData(r);
+      setLoaded(version);
+    });
     return () => {
       alive = false;
     };
@@ -178,7 +184,15 @@ export function JudicialSettingsPanel() {
         )}
       </Panel>
 
-      <CalendarPanel overview={d} onChanged={reload} />
+      <CalendarPanel
+        overview={d}
+        reloading={loaded !== version}
+        onChanged={(patch) => {
+          // A resposta do servidor já diz o que mudou: a tabela muda na hora e a leitura completa vem em seguida.
+          setData((cur) => (cur?.ok ? { ...cur, data: { ...cur.data, calendar: patch(cur.data.calendar) } } : cur));
+          reload();
+        }}
+      />
 
       {adding && <AddMonitorDialog onClose={() => setAdding(false)} onSaved={reload} />}
       {coverage && <CoverageDialog monitor={coverage} onClose={() => setCoverage(null)} />}
@@ -428,7 +442,15 @@ function ResponsibleField({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
-function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO; onChanged: () => void }) {
+function CalendarPanel({
+  overview,
+  reloading,
+  onChanged,
+}: {
+  overview: JudicialOverviewDTO;
+  reloading: boolean;
+  onChanged: (patch: (calendar: CourtCalendarDayDTO[]) => CourtCalendarDayDTO[]) => void;
+}) {
   const failed = useActionFeedback();
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -446,11 +468,12 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
     setSaving(false);
     if (!r.ok) return failed(r, "Não foi possível salvar o dia.");
     toast({ tone: "success", title: "Dia cadastrado", description: "Vale para as próximas contagens." });
+    const added: CourtCalendarDayDTO = { id: r.data.id, court: court.trim() || undefined, day, kind, description: description.trim() };
     setOpen(false);
     setCourt("");
     setDay("");
     setDescription("");
-    onChanged();
+    onChanged((calendar) => [...calendar.filter((c) => c.id !== added.id), added].sort((a, b) => a.day.localeCompare(b.day)));
   }
 
   // Remover muda a contagem dos próximos prazos: pede confirmação e não aceita o segundo clique.
@@ -460,9 +483,15 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
     const r = await callAction(() => deleteCourtCalendarDayAction({ id: removing.id }));
     setRemovingBusy(false);
     if (!r.ok) return failed(r, "Não foi possível remover o dia.");
-    toast({ tone: "success", title: "Dia removido", description: `${formatDate(removing.day)} volta a contar como dia útil nas próximas contagens.` });
+    const removedId = removing.id;
+    const weekend = weekendName(removing.day);
+    toast({
+      tone: "success",
+      title: "Dia removido",
+      description: weekend ? `${formatDate(removing.day)} é ${weekend}: continua sem contar nas próximas contagens.` : `${formatDate(removing.day)} volta a contar como dia útil nas próximas contagens.`,
+    });
     setRemoving(null);
-    onChanged();
+    onChanged((calendar) => calendar.filter((c) => c.id !== removedId));
   }
 
   return (
@@ -478,6 +507,7 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
           )
         }
       />
+      <div aria-busy={reloading || undefined} className={reloading ? "opacity-60 transition-opacity" : "transition-opacity"}>
       {overview.calendar.length === 0 ? (
         <EmptyState compact title="Nenhum dia cadastrado." description="Ex.: 09/07 no TJSP (feriado estadual em São Paulo); segunda e terça de Carnaval, se o tribunal suspender os prazos. Feriado de uma cidade só não entra aqui." />
       ) : (
@@ -511,6 +541,7 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
           </TBody>
         </Table>
       )}
+      </div>
       {removing && (
         <Dialog
           open
@@ -529,9 +560,15 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
             </>
           }
         >
-          <Callout tone="warning">
-            Este dia volta a contar como dia útil: as próximas contagens {removing.court ? `do ${removing.court}` : "de todos os tribunais"} podem vencer um dia antes. Prazos já criados não mudam. A remoção fica registrada na auditoria.
-          </Callout>
+          {weekendName(removing.day) ? (
+            <Callout tone="info">
+              Este dia é {weekendName(removing.day)}: a contagem já pula fins de semana, então remover não muda nenhum prazo. A remoção fica registrada na auditoria.
+            </Callout>
+          ) : (
+            <Callout tone="warning">
+              Este dia volta a contar como dia útil: as próximas contagens {removing.court ? `do ${removing.court}` : "de todos os tribunais"} podem vencer um dia antes. Prazos já criados não mudam. A remoção fica registrada na auditoria.
+            </Callout>
+          )}
         </Dialog>
       )}
       {open && (
@@ -568,6 +605,11 @@ function CalendarPanel({ overview, onChanged }: { overview: JudicialOverviewDTO;
             <Field label="Motivo" requirement="required">
               {(a) => <Input {...a} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} placeholder="Feriado estadual (Revolução Constitucionalista)" />}
             </Field>
+            {weekendName(day) && (
+              <Callout tone="warning" title={`Este dia é ${weekendName(day)}.`}>
+                A contagem já pula sábados e domingos: cadastrar este dia não muda nenhum prazo. Confira se a data está certa.
+              </Callout>
+            )}
             <Callout tone="warning" title="O dia vale para todos os processos do tribunal">
               Não cadastre feriado de uma cidade só: ele adiaria o prazo dos processos das outras cidades, e a data sairia depois da real. Para o feriado da cidade do fórum, ajuste a data na hora de criar o prazo.
             </Callout>

@@ -3,10 +3,11 @@
 import { useCallback, useRef, useState } from "react";
 import { FormProvider, useForm, useFormContext, useWatch, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CLIENT_POLE_LABEL, CLIENT_POLES, LEGAL_CASE_STATUSES, PROCESS_PHASE_LABEL, PROCESS_PHASES, PROCESS_STATUS_LABEL, PROCESS_STATUSES } from "@/lib/constants/status";
+import { CLIENT_POLE_LABEL, CLIENT_POLES, PROCESS_PHASE_LABEL, PROCESS_PHASES, PROCESS_STATUS_LABEL, PROCESS_STATUSES } from "@/lib/constants/status";
 import { courtName, searchCourts } from "@/lib/constants/courts";
 import { BRAZILIAN_STATES } from "@/lib/constants/legal";
 import { onlyDigits } from "@/lib/formatting";
+import { CASE_STATUSES_FOR_PROCESS } from "@/lib/domain/legal-case";
 import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/result";
 import { AsyncPicker, type PickerOption } from "@/components/ui/async-picker";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,6 @@ import { processCreateInput, processEditPatch } from "../server-input";
 
 const opts = <T extends string>(values: readonly T[], labels?: Record<T, string>) => values.map((v) => ({ value: v, label: labels ? labels[v] : v }));
 /** Processo só entra em caso enviado, em análise, aceito, em andamento ou encerrado. */
-const CASE_STATUSES_FOR_PROCESS = LEGAL_CASE_STATUSES.filter((s) => s !== "DRAFT" && s !== "REJECTED" && s !== "ARCHIVED");
 
 /** Busca de casos aptos a receber processo (servidor + RLS). Guarda o responsável de cada um. */
 function useCaseSearch(lawyerOf: React.MutableRefObject<Map<string, string | undefined>>) {

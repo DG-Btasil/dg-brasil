@@ -8,6 +8,7 @@ import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { Callout, SkeletonRows } from "@/components/feedback/states";
+import { UnsavedChangesDialog, useUnsavedChangesGuard } from "@/components/feedback/unsaved-changes";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
@@ -116,6 +117,8 @@ function ManualEditor({ reviewId, content, onCancel }: { reviewId: string; conte
   const [error, setError] = useState<string>();
   const [discarding, setDiscarding] = useState(false);
   const dirty = draft !== content.text;
+  // Sair por link, fechar ou recarregar a aba com texto alterado pergunta antes (Salvar navega sozinho, sem pergunta).
+  const leaving = useUnsavedChangesGuard(dirty && !saving);
 
   async function save() {
     if (saving) return;
@@ -178,6 +181,7 @@ function ManualEditor({ reviewId, content, onCancel }: { reviewId: string; conte
           </label>
         </div>
       </div>
+      <UnsavedChangesDialog guard={leaving} description={`O texto que você alterou não foi salvo. Se sair agora, a edição se perde e a versão ${content.versionNumber} continua como está.`} />
       {discarding && (
         <Dialog
           open

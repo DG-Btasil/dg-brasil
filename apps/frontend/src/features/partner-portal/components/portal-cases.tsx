@@ -1,5 +1,6 @@
 "use client";
 
+import { processBlockedReason } from "@/lib/domain/legal-case";
 import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import Link from "next/link";
 import { useMemo, type ReactNode } from "react";
@@ -179,7 +180,9 @@ export function PortalCaseDetail({
 }
 
 function CaseProcesses({ legalCase, processes, closed }: { legalCase: CasePartnerDTO; processes: ActionResult<Page<ProcessListItem>>; closed: boolean }) {
-  const cta = closed ? undefined : (
+  // Rascunho, rejeitado e arquivado não recebem processo (o cadastro recusaria o caso).
+  const blocked = processBlockedReason(legalCase.status);
+  const cta = closed || blocked ? undefined : (
     <Can permission="partnerPortal.processes.create">
       <ButtonLink href={`/processos/novo?caso=${legalCase.id}`} variant="secondary" size="sm" icon={<FolderPlus className="size-4" aria-hidden />}>
         Cadastrar processo
@@ -191,7 +194,7 @@ function CaseProcesses({ legalCase, processes, closed }: { legalCase: CasePartne
     <Panel>
       <PanelHeader title="Processos do caso" actions={processes.data.items.length > 0 ? cta : undefined} />
       {processes.data.items.length === 0 ? (
-        <EmptyState compact icon={FolderPlus} title="Este caso ainda não possui processo judicial vinculado." action={cta} />
+        <EmptyState compact icon={FolderPlus} title="Este caso ainda não possui processo judicial vinculado." description={blocked ?? undefined} action={cta} />
       ) : (
         <ProcessListTable rows={processes.data.items} showClient={false} />
       )}

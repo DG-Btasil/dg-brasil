@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useEffect, useState } from "react";
 import { Bot } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -11,7 +11,7 @@ import { runErrorLabel } from "@/lib/constants/ai";
 import type { ActionResult } from "@/lib/actions/result";
 import { useServerList } from "@/lib/hooks/use-server-list";
 import { ActionErrorState } from "@/components/feedback/action-error";
-import { EmptyState, SkeletonRows } from "@/components/feedback/states";
+import { Callout, EmptyState, SkeletonRows } from "@/components/feedback/states";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/form";
@@ -20,11 +20,11 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
 import type { Page } from "@/server/core/pagination";
 import { cancelAgentRunAction, listAgentRunsAction } from "@/server/domain/agents/actions";
-import type { AgentRunSummaryDTO } from "@/server/domain/agents/dto";
+import type { AgentRunCancelDTO, AgentRunSummaryDTO } from "@/server/domain/agents/dto";
 import { AGENT_RUN_STATUSES, type AgentRunStatus } from "@/server/domain/agents/schemas";
 import { usePermission } from "@/features/auth/hooks";
 import { useDirectoryUserMap } from "@/features/directory/directory-context";
-import { canInterrupt } from "../interrupt";
+import { canInterrupt, queuedRunNotice, withCancelAnswer, type OfficeRunState } from "../interrupt";
 import { AGENT_RUN_PAGE_SIZE, agentRunQueryToInput, agentRunQueryToSearchParams, type AgentRunListQuery } from "../list-query";
 import { agentRunOperationLabel } from "../labels";
 import { InterruptDialog } from "./interrupt-dialog";
@@ -62,6 +62,7 @@ export function AgentRunsPanel({
   syncUrl = false,
   title = "Execuções de agente",
   description = "Pedidos aos agentes do DG Brasil, do mais recente ao mais antigo.",
+  office,
 }: {
   initialQuery: AgentRunListQuery;
   initialResult: ActionResult<Page<AgentRunSummaryDTO>>;
@@ -71,8 +72,10 @@ export function AgentRunsPanel({
   syncUrl?: boolean;
   title?: string;
   description?: string;
+  /** Situação do computador do escritório: com execução na fila, a tela diz por que ela não começa. */
+  office?: OfficeRunState;
 }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const canCancel = usePermission("analyses.start");
   const isAdmin = usePermission("dgbrasil.manage");
   const users = useDirectoryUserMap();
@@ -84,9 +87,13 @@ export function AgentRunsPanel({
     toSearch: syncUrl ? agentRunQueryToSearchParams : undefined,
   });
   const [interrupting, setInterrupting] = useState<string | null>(null);
-  const page = result.ok ? result.data : undefined;
+  // Respostas do "Interromper", até a lista nova chegar do servidor.
+  const [answers, setAnswers] = useState<{ for: typeof result; byId: Record<string, AgentRunCancelDTO> }>({ for: result, byId: {} });
+  const cancelAnswers = answers.for === result ? answers.byId : {};
+  const page = result.ok ? { ...result.data, items: result.data.items.map((r) => withCancelAnswer(r, cancelAnswers[r.id])) } : undefined;
   // Enquanto houver execução na fila ou rodando, a lista se atualiza sozinha.
   const active = !!page?.items.some((r) => r.status === "QUEUED" || r.status === "RUNNING");
+  const queued = page?.items.some((r) => r.status === "QUEUED" && !r.cancelRequested) ? queuedRunNotice(office) : null;
   useEffect(() => {
     if (!active) return;
     const id = window.setInterval(() => {
@@ -111,6 +118,13 @@ export function AgentRunsPanel({
           />
         }
       />
+      {queued && (
+        <div className="border-b border-line px-5 py-3">
+          <Callout tone={queued.tone} title={queued.title}>
+            {queued.message}
+          </Callout>
+        </div>
+      )}
       <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-60")}>
         {!result.ok ? (
           <ActionErrorState error={result} onRetry={retry} title="Não foi possível carregar as execuções." />
@@ -197,9 +211,10 @@ export function AgentRunsPanel({
         <InterruptDialog
           subject="esta execução"
           run={() => cancelAgentRunAction({ id: interrupting })}
-          onDone={() => {
+          onDone={(answer) => {
+            setAnswers((a) => ({ for: result, byId: { ...(a.for === result ? a.byId : {}), [answer.agentRunId]: answer } }));
             retry();
-            router.refresh();
+            refresh();
           }}
           onClose={() => setInterrupting(null)}
         />

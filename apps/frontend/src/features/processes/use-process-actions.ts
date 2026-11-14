@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useCallback, useMemo } from "react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
@@ -25,7 +25,7 @@ type Notice = { title: string; description?: string };
  * campos volta para o diálogo, os demais viram aviso com código de referência.
  */
 export function useProcessActions() {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
 
@@ -37,10 +37,10 @@ export function useProcessActions() {
         return result;
       }
       toast({ tone: "success", ...success });
-      if (options.refresh !== false) router.refresh();
+      if (options.refresh !== false) refresh();
       return result;
     },
-    [failed, toast, router],
+    [failed, toast, refresh],
   );
 
   return useMemo(

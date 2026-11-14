@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useCallback, useMemo } from "react";
 import { REVIEW_DECISION_LABEL, type Priority, type ReviewDecisionKind } from "@/lib/constants/status";
 import { callAction, type ActionResult } from "@/lib/actions/result";
@@ -14,7 +14,7 @@ import { useToast } from "@/store/ui-store";
  * a tela muda depois da resposta (router.refresh).
  */
 export function useReviewActions() {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
 
@@ -26,10 +26,10 @@ export function useReviewActions() {
         return false;
       }
       toast({ tone: "success", title: success, description });
-      router.refresh();
+      refresh();
       return true;
     },
-    [failed, toast, router],
+    [failed, toast, refresh],
   );
 
   return useMemo(

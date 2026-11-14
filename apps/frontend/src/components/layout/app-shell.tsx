@@ -5,6 +5,7 @@ import { useIsPartner } from "@/features/auth/hooks";
 import { ProductTour } from "@/features/tour/product-tour";
 import { AppHeader } from "./app-header";
 import { ClientGate } from "./guards";
+import { RefreshHost } from "./refresh-host";
 
 /** O tour apresenta áreas internas: não é montado no portal do parceiro. */
 function OwnerTour() {
@@ -41,6 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         Pular para o conteúdo
       </a>
       <AppHeader />
+      <RefreshHost />
       <main id="conteudo" className="min-h-[calc(100vh-var(--header-height))]">
         {children}
       </main>

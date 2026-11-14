@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useState } from "react";
 import { CircleStop, RotateCcw } from "lucide-react";
 import { ActionErrorState } from "@/components/feedback/action-error";
@@ -17,10 +18,11 @@ import { formatDateTime, formatEventTime, formatNumber, formatUsd } from "@/lib/
 import { useAutoRefresh } from "@/lib/hooks/use-auto-refresh";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
 import { cancelAgentRunAction, retryAgentRunAction } from "@/server/domain/agents/actions";
-import type { AgentRunDetailDTO } from "@/server/domain/agents/dto";
+import type { AgentRunCancelDTO, AgentRunDetailDTO } from "@/server/domain/agents/dto";
+import { VerifyNowButton } from "@/features/dg-brasil/components/verify-now";
 import { usePermission } from "@/features/auth/hooks";
 import { useToast } from "@/store/ui-store";
-import { canInterrupt } from "../interrupt";
+import { canInterrupt, queuedRunNotice, withCancelAnswer, type OfficeRunState } from "../interrupt";
 import { agentRunEventKindLabel, agentRunProviderLabel } from "../labels";
 import { AGENT_RUN_STATUS_LABEL, AGENT_RUN_STATUS_TONE } from "./agent-runs-panel";
 import { InterruptDialog } from "./interrupt-dialog";
@@ -51,13 +53,17 @@ const DECISION_LABEL: Record<string, string> = {
  * bruto). Dados técnicos só para ADMIN. Enquanto na fila ou rodando, a tela
  * se atualiza sozinha.
  */
-export function RunDetail({ result }: { result: ActionResult<AgentRunDetailDTO> }) {
+export function RunDetail({ result, office }: { result: ActionResult<AgentRunDetailDTO>; office?: OfficeRunState }) {
   if (!result.ok) return <ActionErrorState error={result} title="Não foi possível abrir a execução." />;
-  return <Detail run={result.data} />;
+  return <Detail serverRun={result.data} office={office} />;
 }
 
-function Detail({ run }: { run: AgentRunDetailDTO }) {
+function Detail({ serverRun, office }: { serverRun: AgentRunDetailDTO; office?: OfficeRunState }) {
   const router = useRouter();
+  const refresh = useRefresh();
+  // Resposta do "Interromper": vale até os dados novos do servidor chegarem.
+  const [answer, setAnswer] = useState<{ for: AgentRunDetailDTO; value: AgentRunCancelDTO } | null>(null);
+  const run = withCancelAnswer(serverRun, answer?.for === serverRun ? answer.value : null);
   const toast = useToast();
   const failed = useActionFeedback();
   const idempotency = useIdempotencyKey();
@@ -66,6 +72,8 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
   const [retrying, setRetrying] = useState(false);
   const active = run.status === "QUEUED" || run.status === "RUNNING";
   useAutoRefresh(active, 5_000);
+  // Na fila por causa do escritório (interruptor desligado ou nenhum computador conectado).
+  const queued = run.status === "QUEUED" ? queuedRunNotice(office) : null;
 
   const error = runErrorLabel(run.errorCode);
   const canRetry = (run.status === "FAILED" || run.status === "CANCELLED") && !run.analysisId && run.retriedByIds.length === 0;
@@ -115,14 +123,23 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
       <div className="space-y-5">
         {active && (
           <Callout
-            tone="info"
-            title={run.status === "QUEUED" ? "Na fila do escritório." : run.cancelRequested ? "Interrupção solicitada." : `Em andamento${run.executorName ? ` no ${run.executorName}` : ""}.`}
+            tone={run.status === "QUEUED" && !run.cancelRequested && queued ? queued.tone : "info"}
+            title={
+              run.cancelRequested
+                ? "Interrupção solicitada."
+                : run.status === "QUEUED"
+                  ? (queued?.title ?? "Na fila do escritório.")
+                  : `Em andamento${run.executorName ? ` no ${run.executorName}` : ""}.`
+            }
           >
             {run.cancelRequested
               ? "O computador do escritório foi avisado e vai parar sem entregar nada novo."
               : run.status === "QUEUED"
-                ? "O trabalho começa quando alguém do escritório abrir o Claude Code e processar a fila. Esta tela se atualiza sozinha."
+                ? queued
+                  ? queued.message
+                  : "O computador do escritório está conectado e pega o trabalho na próxima passada pela fila. Esta tela se atualiza sozinha."
                 : `${run.progress?.message ? `${run.progress.message}. ` : ""}Esta tela se atualiza sozinha. O que o agente entregar vai para Revisões e só vale depois da decisão humana.`}
+            {run.status === "QUEUED" && !run.cancelRequested && office?.executionEnabled && <VerifyNowButton executionEnabled className="mt-3" />}
           </Callout>
         )}
         {error && run.status !== "CANCELLED" && (
@@ -228,7 +245,15 @@ function Detail({ run }: { run: AgentRunDetailDTO }) {
       </div>
 
       {interrupting && (
-        <InterruptDialog subject="esta execução" run={() => cancelAgentRunAction({ id: run.id })} onDone={() => router.refresh()} onClose={() => setInterrupting(false)} />
+        <InterruptDialog
+          subject="esta execução"
+          run={() => cancelAgentRunAction({ id: run.id })}
+          onDone={(value) => {
+            setAnswer({ for: serverRun, value });
+            refresh();
+          }}
+          onClose={() => setInterrupting(false)}
+        />
       )}
     </>
   );

@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/feedback/states";
 import type { Page } from "@/server/core/pagination";
 import type { DeadlineDTO } from "@/server/domain/processes/deadlines/dto";
 import { usePermission } from "@/features/auth/hooks";
+import { useRefreshing } from "@/lib/hooks/use-refresh";
 import { useDirectoryUserMap } from "@/features/directory/directory-context";
 import { DeadlineActionDialog, DeadlineAgentMark, deadlineHasTime, DeadlineRowActions, HearingInfo, type DeadlineActionRequest } from "../deadline-actions";
 
@@ -38,6 +39,8 @@ export function DeadlinesTab({
   const users = useDirectoryUserMap();
   const canEdit = usePermission("processes.edit");
   const [action, setAction] = useState<DeadlineActionRequest | null>(null);
+  // Depois de adicionar, cumprir ou remover, a lista fica marcada até os dados novos chegarem.
+  const refreshing = useRefreshing();
   const items = useMemo(() => (deadlines.ok ? deadlines.data.items : []), [deadlines]);
   const { open, done } = useMemo(
     () => ({
@@ -50,7 +53,7 @@ export function DeadlinesTab({
   if (!deadlines.ok) return <ActionErrorState error={deadlines} title="Não foi possível carregar os prazos." />;
 
   return (
-    <div className="space-y-5">
+    <div className={cn("space-y-5 transition-opacity", refreshing && "opacity-60")} aria-busy={refreshing || undefined}>
       <Panel>
         <PanelHeader
           title="Prazos em aberto"
@@ -107,7 +110,7 @@ export function DeadlinesTab({
                           {formatDate(d.dueDateLocal)}
                           {deadlineHasTime(d) ? ` às ${d.dueTimeLocal}` : ""}
                         </span>
-                        <DeadlineBadge dueDate={d.dueDateLocal} />
+                        <DeadlineBadge dueDate={d.dueDateLocal} event={d.type === "HEARING"} />
                       </div>
                     </Td>
                     <Td className="text-[12.5px]">{(d.responsibleUserId && users.get(d.responsibleUserId)?.name) || "—"}</Td>
@@ -160,7 +163,10 @@ export function DeadlinesTab({
                       {d.statusReason && <div className="mt-0.5 max-w-[420px] truncate text-[12px]" title={d.statusReason}>Motivo: {d.statusReason}</div>}
                     </Td>
                     <Td className="text-[12.5px]">{DEADLINE_TYPE_LABEL[d.type]}</Td>
-                    <Td className="tabular">{formatDate(d.dueDateLocal)}</Td>
+                    <Td className="tabular">
+                      {formatDate(d.dueDateLocal)}
+                      {deadlineHasTime(d) ? ` às ${d.dueTimeLocal}` : ""}
+                    </Td>
                     <Td className="text-[12.5px]">{(d.responsibleUserId && users.get(d.responsibleUserId)?.name) || "—"}</Td>
                     <Td>
                       <div className="flex items-center gap-2">

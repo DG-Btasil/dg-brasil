@@ -85,7 +85,7 @@ export function RedoDialog({
           </Callout>
         )}
         <Field label="O que precisa mudar" requirement="required" hint="Seja específico: o agente corrige a partir do que entregou, não começa do zero." error={errors.message?.message}>
-          {(a) => <Textarea {...a} {...register("message")} rows={6} maxLength={REDO_MESSAGE_MAX} placeholder="Ex.: a data está errada; a intimação saiu na sexta, conte a partir de segunda." autoFocus />}
+          {(a) => <Textarea {...a} {...register("message")} rows={6} maxLength={REDO_MESSAGE_MAX} placeholder="Ex.: a data está errada; a intimação saiu na sexta, conte a partir de segunda." readOnly={isSubmitting} autoFocus />}
         </Field>
       </form>
     </Dialog>

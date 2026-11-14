@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { Bell } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { NOTIFICATION_SEVERITY_TONE } from "@/lib/constants/status";
@@ -32,7 +32,7 @@ const notificationsInput = (q: Query) => ({ unreadOnly: q.unreadOnly, page: q.pa
 
 /** Caixa de notificações do usuário (página inteira), paginada no servidor. */
 export function NotificationsPage({ initialResult }: { initialResult: ActionResult<Page<NotificationDTO>> }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const failed = useActionFeedback();
   const session = useClientSession();
   const audience = session?.surface === "PARTNER" ? "PARTNER" : "INTERNAL";
@@ -47,7 +47,7 @@ export function NotificationsPage({ initialResult }: { initialResult: ActionResu
     const r = await callAction(call);
     if (!r.ok) failed(r, failure);
     retry();
-    router.refresh();
+    refresh();
   }
 
   return (

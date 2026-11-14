@@ -49,6 +49,8 @@ export function AddDeadlineDialog({
   const { addDeadline, updateDeadline } = useProcessActions();
   const idempotency = useIdempotencyKey();
   const responsibleOptions = useResponsibleUserOptions();
+  // O responsável do processo vem escolhido só se ainda estiver ativo (a lista só tem pessoas ativas).
+  const defaultResponsible = defaultResponsibleId && responsibleOptions.some((o) => o.value === defaultResponsibleId) ? defaultResponsibleId : "";
   const defaults: DeadlineFormInput = deadline
     ? {
         title: deadline.title,
@@ -61,7 +63,7 @@ export function AddDeadlineDialog({
         hearingLink: deadline.hearingLink ?? "",
         notes: deadline.description ?? "",
       }
-    : { title: "", type: "MANIFESTATION", dueDate: "", dueTime: "", responsibleUserId: defaultResponsibleId ?? "", hearingMode: "", hearingLocation: "", hearingLink: "", notes: "" };
+    : { title: "", type: "MANIFESTATION", dueDate: "", dueTime: "", responsibleUserId: defaultResponsible, hearingMode: "", hearingLocation: "", hearingLink: "", notes: "" };
   const {
     register,
     handleSubmit,

@@ -4,7 +4,7 @@ import type { AppSession } from "@/lib/auth/types";
 import { createServiceContext } from "@/server/core/context";
 import { DomainError } from "@/server/core/errors";
 import { redoFromRow, type ReviewRow } from "./mappers";
-import { MAX_REDO_ROUNDS, officeQueueNotice, REDO_MESSAGE_MAX, REDO_MESSAGE_MIN, redoRoundLabel } from "./redo-rules";
+import { MAX_REDO_ROUNDS, officeQueueNotice, REDO_MESSAGE_MAX, REDO_MESSAGE_MIN, redoneSituation, redoRoundLabel } from "./redo-rules";
 import { redoReviewSchema } from "./schemas";
 
 // Nada chega ao banco: o repositório é simulado. A regra testada é a do service.
@@ -137,3 +137,17 @@ describe("pedir para o agente refazer (service)", () => {
     expect((await getReview(ctxOf("LAWYER"), REVIEW)).redo).toBeNull();
   });
 });
+
+describe("situação do trabalho refeito (R6)", () => {
+  it("só promete itens em Revisões enquanto o trabalho refeito roda", () => {
+    expect(redoneSituation("QUEUED").text).toMatch(/chega em Revisões/);
+    expect(redoneSituation("RUNNING").ended).toBe(false);
+    expect(redoneSituation("COMPLETED").text).toMatch(/já entregou/);
+    for (const status of ["CANCELLED", "FAILED"]) {
+      expect(redoneSituation(status).text).not.toMatch(/chega em Revisões/);
+      expect(redoneSituation(status).text).toMatch(/Trate este item aqui/);
+      expect(redoneSituation(status).tone).toBe("warning");
+    }
+  });
+});
+

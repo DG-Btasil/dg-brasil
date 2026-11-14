@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { settingsSchema, decideSchema } from "@/server/domain/judicial/schemas";
-import { agentBlocker, CALENDAR_HELP, captureNotice, runSummary, waitingFor } from "./labels";
+import { agentBlocker, CALENDAR_HELP, captureNotice, runSummary, waitingFor, weekendName } from "./labels";
 
 describe("publicação com o agente (062)", () => {
   it("há quanto tempo está com o agente: minutos, horas e dias, sem número negativo", () => {
@@ -62,3 +62,13 @@ describe("textos da integração judicial", () => {
     expect(CALENDAR_HELP).not.toMatch(/nunca depois/i);
   });
 });
+
+describe("calendário de prazos: fim de semana (P6)", () => {
+  it("reconhece sábado e domingo; dia de semana e data inválida não", () => {
+    expect(weekendName("2026-11-14")).toBe("sábado");
+    expect(weekendName("2026-11-15")).toBe("domingo");
+    expect(weekendName("2026-11-13")).toBeNull();
+    expect(weekendName("")).toBeNull();
+  });
+});
+

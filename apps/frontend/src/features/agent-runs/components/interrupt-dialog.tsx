@@ -50,7 +50,7 @@ export function InterruptDialog({
       onOpenChange={(o) => !o && !saving && onClose()}
       size="sm"
       title={`Interromper ${subject}?`}
-      description="Na fila, ela não será processada. Em execução, o agente é avisado e para; o que ele já tiver entregue continua em Revisões para decisão humana. Não dá para desfazer — depois é possível enviar de novo."
+      description="Na fila, ela não será processada. Em execução, o agente é avisado e para; o que ele já tiver entregue continua em Revisões para decisão humana. Não dá para desfazer, mas depois é possível enviar de novo."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={saving}>

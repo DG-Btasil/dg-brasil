@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useId } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,6 +41,7 @@ type Values = z.infer<typeof schema>;
 export function ThesisFormDrawer({ open, onOpenChange, thesis, catalog }: { open: boolean; onOpenChange: (o: boolean) => void; thesis?: ThesisDetailDTO; catalog: DgCatalogDTO }) {
   const formId = useId();
   const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
   const idempotency = useIdempotencyKey();
@@ -68,7 +70,7 @@ export function ThesisFormDrawer({ open, onOpenChange, thesis, catalog }: { open
     toast({ tone: "success", title: thesis ? "Tese salva" : "Tese criada", description: r.data.versionCreated ? `Versão ${r.data.versionNumber}.` : undefined });
     onOpenChange(false);
     if (!thesis) router.push(dgRoutes.thesis(r.data.id));
-    else router.refresh();
+    else refresh();
   });
 
   const opts = (l: { id: string; name: string }[]) => l.map((x) => ({ value: x.id, label: x.name }));

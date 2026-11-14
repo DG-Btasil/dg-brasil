@@ -30,6 +30,16 @@ interface UiState {
   /** Evita reabrir o convite do tour na mesma sessão do navegador. */
   tourPromptDismissed: boolean;
   dismissTourPrompt: () => void;
+
+  /**
+   * Recarga dos dados do servidor depois de uma gravação (router.refresh numa
+   * transição do RefreshHost, que nunca sai da tela). `refreshing` fica true
+   * até a tela nova chegar: as listas e o aviso "Atualizando" usam isso.
+   */
+  refresher: (() => void) | null;
+  setRefresher: (refresher: (() => void) | null) => void;
+  refreshing: boolean;
+  setRefreshing: (refreshing: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -51,6 +61,11 @@ export const useUiStore = create<UiState>()((set) => ({
 
   tourPromptDismissed: false,
   dismissTourPrompt: () => set({ tourPromptDismissed: true }),
+
+  refresher: null,
+  setRefresher: (refresher) => set({ refresher }),
+  refreshing: false,
+  setRefreshing: (refreshing) => set({ refreshing }),
 }));
 
 /** Atalho para feedback de sucesso/erro após ações. */

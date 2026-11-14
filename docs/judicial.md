@@ -143,6 +143,7 @@ agente de prazos (abaixo). Na tela:
    - o recesso de 20/12 a 20/01 (art. 220 do CPC);
    - os dias cadastrados em **Calendário de prazos**, por tribunal ou para todos.
 4. **O calendário só aceita dia que vale para o tribunal inteiro** (feriado estadual, suspensão por ato do tribunal). O dia cadastrado para um tribunal vale para todos os processos dele: um feriado municipal cadastrado ali adiaria o prazo das outras comarcas, e a data sairia **depois** da real (o lado perigoso). Por isso a tela pede só feriado e suspensão do tribunal inteiro (062); o feriado da cidade do fórum se ajusta na data, na hora de criar o prazo.
+   Sábado e domingo: a tela avisa que a contagem já pula fim de semana (cadastrar ou remover não muda nenhum prazo).
 5. **Para que lado a conta erra:** dia que falta no calendário faz a data sair antes da real (lado seguro). Dia cadastrado a mais, ou no tribunal errado, faz a data sair depois. A frase antiga ("pode sair antes, nunca depois") só vale enquanto o calendário não tem dia indevido. Toda contagem feita na tela é conferida por uma pessoa.
 
 **Agente que propõe prazos** (opcional, DG Brasil → Integrações):

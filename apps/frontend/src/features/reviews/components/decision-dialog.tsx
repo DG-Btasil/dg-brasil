@@ -75,12 +75,13 @@ export function DecisionDialog({
   return (
     <Dialog
       open
-      onOpenChange={(open) => !open && onClose()}
+      // Enquanto grava, nada fecha nem muda: o texto que vai para o servidor é o que está na tela.
+      onOpenChange={(open) => !open && !isSubmitting && onClose()}
       title={config.title}
       description={description}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>
             Cancelar
           </Button>
           <Button type="submit" form={formId} variant={config.variant} loading={isSubmitting}>
@@ -91,7 +92,7 @@ export function DecisionDialog({
     >
       <form id={formId} noValidate onSubmit={submit}>
         <Field label={config.fieldLabel} requirement={config.required ? "required" : "optional"} error={errors.comment?.message}>
-          {(a) => <Textarea {...a} {...register("comment")} rows={5} placeholder={config.placeholder} autoFocus />}
+          {(a) => <Textarea {...a} {...register("comment")} rows={5} placeholder={config.placeholder} readOnly={isSubmitting} autoFocus />}
         </Field>
       </form>
     </Dialog>

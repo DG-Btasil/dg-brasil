@@ -81,6 +81,12 @@ export function formatDateTime(value: string | Date | undefined): string {
   return dateTimeFmt.format(toDate(value)).replace(",", " ·");
 }
 
+/** "03/12/2026 às 23:59": data e hora numa frase (sem o " · " de `formatDateTime`). */
+export function formatDateTimeAt(value: string | Date | undefined): string {
+  if (!value) return "—";
+  return `${formatDate(value)} às ${formatTime(value)}`;
+}
+
 export function formatTime(value: string | Date): string {
   return timeFmt.format(toDate(value));
 }
@@ -139,6 +145,16 @@ export function formatDeadline(dueDate: string): string {
   if (diff > 1) return `Vence em ${diff} dias`;
   if (diff === -1) return "Venceu ontem";
   return `Venceu há ${Math.abs(diff)} dias`;
+}
+
+/** Audiência (dia marcado, não vencimento): "Hoje", "Amanhã", "Em 12 dias", "Foi ontem", "Foi há 3 dias". */
+export function formatEventDay(date: string): string {
+  const diff = daysUntil(date);
+  if (diff === 0) return "Hoje";
+  if (diff === 1) return "Amanhã";
+  if (diff > 1) return `Em ${diff} dias`;
+  if (diff === -1) return "Foi ontem";
+  return `Foi há ${Math.abs(diff)} dias`;
 }
 
 export function initials(name: string): string {

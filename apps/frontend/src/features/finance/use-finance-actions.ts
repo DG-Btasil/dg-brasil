@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useCallback, useMemo } from "react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
@@ -36,7 +36,7 @@ type Notice = { title: string; description?: string };
  * "parcela" (o que a pessoa lê), mesmo com `agreement`/`payment` no código.
  */
 export function useFinanceActions(onDone?: () => void) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
 
@@ -49,10 +49,10 @@ export function useFinanceActions(onDone?: () => void) {
       }
       toast({ tone: "success", ...success });
       onDone?.();
-      router.refresh();
+      refresh();
       return result;
     },
-    [failed, toast, router, onDone],
+    [failed, toast, refresh, onDone],
   );
 
   return useMemo(

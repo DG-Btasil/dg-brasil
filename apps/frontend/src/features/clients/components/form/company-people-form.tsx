@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { FormProvider, useForm, type Path } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -26,7 +26,7 @@ import { RepresentativesFields } from "./representatives-fields";
  * remontado (key = `updatedAt` do cliente) com os ids reais das linhas novas.
  */
 export function CompanyPeopleForm({ client }: { client: CompanyClient }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
   const methods = useForm<CompanyPeopleFormValues>({ resolver: zodResolver(companyPeopleSchema), defaultValues: companyPeopleToValues(client), shouldFocusError: true });
@@ -42,7 +42,7 @@ export function CompanyPeopleForm({ client }: { client: CompanyClient }) {
     const { representatives: r, partners: p } = result.data;
     const changed = r.added + r.updated + r.removed + p.added + p.updated + p.removed > 0;
     toast({ tone: "success", title: changed ? "Representação e sócios atualizados" : "Nada a alterar", description: changed ? "O quadro foi salvo." : undefined });
-    router.refresh();
+    refresh();
   }, methods.setError);
 
   return (

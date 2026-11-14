@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useId, useRef, useState } from "react";
 import { FileText, Library, Pencil, Plus } from "lucide-react";
 import { Can } from "@/components/layout/guards";
@@ -101,7 +101,7 @@ export function ReferenceTable({ references, catalog }: { references: ReferenceI
 /** Referência = texto colado OU arquivo (PDF, DOCX, TXT, MD). Conteúdo novo = versão nova. */
 function ReferenceFormDrawer({ reference, catalog, onClose }: { reference?: ReferenceItemDTO; catalog: DgCatalogDTO; onClose: () => void }) {
   const formId = useId();
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
   const idempotency = useIdempotencyKey();
@@ -168,7 +168,7 @@ function ReferenceFormDrawer({ reference, catalog, onClose }: { reference?: Refe
     idempotency.reset();
     toast({ tone: "success", title: reference ? "Referência salva" : "Referência criada" });
     onClose();
-    router.refresh();
+    refresh();
   }
 
   return (

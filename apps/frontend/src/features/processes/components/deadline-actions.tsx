@@ -134,6 +134,12 @@ export function DeadlineActionDialog({ request, onClose }: { request: DeadlineAc
         )}
         <p className="text-muted">{copy.body}</p>
         {kind === "complete" && overdue && <Callout tone="warning">Este prazo já venceu. Confirme que o ato foi praticado dentro do prazo antes de marcar como cumprido.</Callout>}
+        {kind === "miss" && !overdue && (
+          <Callout tone="danger" title="Este prazo ainda não venceu.">
+            O vencimento é {formatDate(deadline.dueDateLocal)}
+            {deadlineHasTime(deadline) ? ` às ${deadline.dueTimeLocal}` : ""}. Só marque como perdido se já não houver como praticar o ato. Se o prazo deixou de existir, use “Cancelar prazo”.
+          </Callout>
+        )}
         {copy.reason !== "none" && (
           <Field label={copy.reasonLabel} requirement={copy.reason === "required" ? "required" : "optional"} error={error}>
             {(a) => (

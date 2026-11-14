@@ -7,8 +7,9 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { Scale } from "lucide-react";
 import { BRAZILIAN_STATES, COURTS } from "@/lib/constants/legal";
-import { CLIENT_POLE_LABEL, CLIENT_POLES, LEGAL_CASE_STATUSES, PROCESS_PHASE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
+import { CLIENT_POLE_LABEL, CLIENT_POLES, PROCESS_PHASE_LABEL, PROCESS_STATUS_LABEL, PROCESS_STATUS_TONE } from "@/lib/constants/status";
 import { formatCurrency, formatDate } from "@/lib/formatting";
+import { CASE_STATUSES_FOR_PROCESS } from "@/lib/domain/legal-case";
 import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
@@ -183,7 +184,6 @@ export function PortalProcessDetail({
 
 const opts = <T extends string>(values: readonly T[], labels?: Record<T, string>) => values.map((v) => ({ value: v, label: labels ? labels[v] : v }));
 /** Processo só entra em caso enviado, em análise, aceito, em andamento ou encerrado (o banco confere). */
-const CASE_STATUSES_FOR_PROCESS = LEGAL_CASE_STATUSES.filter((s) => s !== "DRAFT" && s !== "REJECTED" && s !== "ARCHIVED");
 const FIELD_MAP: Record<string, string> = { legalCaseId: "legalCaseId" };
 
 /**

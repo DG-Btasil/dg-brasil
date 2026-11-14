@@ -151,7 +151,11 @@ export function NotificationCenter() {
         aria-expanded={open}
         aria-haspopup="dialog"
         data-state={open ? "open" : "closed"}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          // Ao abrir, o que estava na lista da última vez não aparece como se fosse atual: carregando até chegar.
+          if (!open) setList(null);
+          setOpen((v) => !v);
+        }}
       >
         <Bell className="size-[18px]" aria-hidden />
         {unread > 0 && (
@@ -178,7 +182,11 @@ export function NotificationCenter() {
                   key={f}
                   type="button"
                   aria-pressed={filter === f}
-                  onClick={() => setFilter(f)}
+                  onClick={() => {
+                    if (f === filter) return;
+                    setList(null);
+                    setFilter(f);
+                  }}
                   className={cn("rounded-sm px-2 py-1 text-[12px]", filter === f ? "bg-navy text-white" : "text-muted hover:text-foreground")}
                 >
                   {f === "unread" ? "Não lidas" : "Todas"}

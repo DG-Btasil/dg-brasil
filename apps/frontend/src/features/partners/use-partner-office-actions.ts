@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useCallback, useMemo } from "react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
@@ -12,22 +12,22 @@ type Notice = { title: string; description?: string };
 
 /** Cadastro e gestão de escritório parceiro no BACKEND (ADMIN). Banco primeiro; depois recarrega do servidor. */
 export function usePartnerOfficeActions() {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
 
   const run = useCallback(
-    async <T>(call: () => Promise<ActionResult<T>>, success: Notice, failure: string, refresh = true): Promise<ActionResult<T>> => {
+    async <T>(call: () => Promise<ActionResult<T>>, success: Notice, failure: string, reload = true): Promise<ActionResult<T>> => {
       const result = await callAction(call);
       if (!result.ok) {
         if (!result.error.fieldErrors) failed(result, failure);
         return result;
       }
       toast({ tone: "success", ...success });
-      if (refresh) router.refresh();
+      if (reload) refresh();
       return result;
     },
-    [failed, toast, router],
+    [failed, toast, refresh],
   );
 
   return useMemo(

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useState } from "react";
 import { ArrowRight, CircleStop, FlaskConical, Plus, Send } from "lucide-react";
 import { ANALYSIS_STATUS_LABEL, ANALYSIS_STATUS_TONE } from "@/lib/constants/status";
@@ -118,7 +118,7 @@ export function AnalysisPanel({
 const BACK_FROM_REVIEW = /rejeitado na revisão|Alterações pedidas na revisão/;
 
 function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, office }: { analysis: AnalysisDetailDTO; fieldDefs: TemplateFieldDTO[]; onGoToDocuments: () => void; office?: { enabled: boolean; online: boolean } }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
   const idempotency = useIdempotencyKey();
@@ -144,7 +144,7 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, office }: { ana
     }
     idempotency.reset();
     toast({ tone: "success", title: "Análise enviada ao agente", description: "O resultado chegará em Revisões. Nada segue sem aprovação humana." });
-    router.refresh();
+    refresh();
   }
 
   return (
@@ -225,7 +225,7 @@ function CurrentAnalysis({ analysis, fieldDefs, onGoToDocuments, office }: { ana
           </Callout>
         )}
         {interrupting && (
-          <InterruptDialog subject="esta análise" run={() => cancelAnalysisAction({ id: analysis.id })} onDone={() => router.refresh()} onClose={() => setInterrupting(false)} />
+          <InterruptDialog subject="esta análise" run={() => cancelAnalysisAction({ id: analysis.id })} onDone={() => refresh()} onClose={() => setInterrupting(false)} />
         )}
         {analysis.result && <AnalysisResultView result={analysis.result} reviewStatus={analysis.reviewStatus} />}
         {analysis.reviewId && (

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Archive, Check, FolderPlus, Handshake, Pencil, Send, X } from "lucide-react";
 import { ACQUISITION_CHANNEL_LABEL, LEGAL_AREA_LABEL, type LegalArea } from "@/lib/constants/legal";
 import { LEGAL_CASE_STATUS_LABEL, LEGAL_CASE_STATUS_TONE } from "@/lib/constants/status";
-import { isAccepted, isDecidable } from "@/lib/domain/legal-case";
+import { isAccepted, isDecidable, processBlockedReason } from "@/lib/domain/legal-case";
 import { formatDateTime, formatEventTime } from "@/lib/formatting";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import type { ActionResult } from "@/lib/actions/result";
@@ -445,21 +445,24 @@ function CaseOverview({ legalCase, onDialog }: { legalCase: CaseInternalDTO; onD
 
 function CaseProcessesTab({ legalCase, processes }: { legalCase: CaseInternalDTO; processes: ActionResult<Page<ProcessListItem>> }) {
   const newHref = `/processos/novo?caso=${legalCase.id}`;
+  // Rascunho, rejeitado e arquivado não recebem processo: em vez do botão, a explicação.
+  const blocked = processBlockedReason(legalCase.status);
   if (!processes.ok) return <ActionErrorState error={processes} title="Não foi possível carregar os processos do caso." />;
+  const cta = blocked ? undefined : (
+    <Can permission="processes.edit">
+      <ButtonLink href={newHref} icon={<FolderPlus className="size-4" aria-hidden />}>
+        Cadastrar processo
+      </ButtonLink>
+    </Can>
+  );
   if (processes.data.items.length === 0) {
     return (
       <Panel>
         <EmptyState
           icon={FolderPlus}
           title="Este caso ainda não possui processo judicial vinculado."
-          description="Um caso pode existir antes do processo. Cadastre o processo quando houver distribuição."
-          action={
-            <Can permission="processes.edit">
-              <ButtonLink href={newHref} icon={<FolderPlus className="size-4" aria-hidden />}>
-                Cadastrar processo
-              </ButtonLink>
-            </Can>
-          }
+          description={blocked ?? "Um caso pode existir antes do processo. Cadastre o processo quando houver distribuição."}
+          action={cta}
         />
       </Panel>
     );
@@ -468,13 +471,17 @@ function CaseProcessesTab({ legalCase, processes }: { legalCase: CaseInternalDTO
     <Panel>
       <PanelHeader
         title="Processos do caso"
-        description={processes.data.total > processes.data.items.length ? `Mostrando ${processes.data.items.length} de ${processes.data.total}. Veja todos em Processos.` : undefined}
+        description={
+          blocked ?? (processes.data.total > processes.data.items.length ? `Mostrando ${processes.data.items.length} de ${processes.data.total}. Veja todos em Processos.` : undefined)
+        }
         actions={
-          <Can permission="processes.edit">
-            <ButtonLink href={newHref} variant="secondary" size="sm" icon={<FolderPlus className="size-4" aria-hidden />}>
-              Cadastrar processo
-            </ButtonLink>
-          </Can>
+          blocked ? undefined : (
+            <Can permission="processes.edit">
+              <ButtonLink href={newHref} variant="secondary" size="sm" icon={<FolderPlus className="size-4" aria-hidden />}>
+                Cadastrar processo
+              </ButtonLink>
+            </Can>
+          )
         }
       />
       <ProcessListTable rows={processes.data.items} showClient={false} />

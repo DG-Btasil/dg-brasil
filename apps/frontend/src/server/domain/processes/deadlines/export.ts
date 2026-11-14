@@ -33,7 +33,8 @@ export const DEADLINE_EXPORT_COLUMNS: readonly CsvColumn<DeadlineExportRow>[] = 
   { header: "Situação", value: (d) => (d.effectiveStatus === "OVERDUE" ? "Vencido" : DEADLINE_STATUS_LABEL[d.status]) },
   { header: "Cliente", value: (d) => d.clientName },
   { header: "Número CNJ", value: (d) => (d.processCnj ? formatCNJ(d.processCnj) : "") },
-  { header: "Processo", value: (d) => d.processTitle },
+  // Processo sem título próprio leva o nome do caso (como na tela); prazo só do caso fica em branco.
+  { header: "Processo", value: (d) => (d.processId ? d.processTitle || d.caseTitle : "") },
   { header: "Caso", value: (d) => d.caseTitle },
   { header: "Responsável", value: (d) => d.responsibleName },
   { header: "Origem", value: (d) => DEADLINE_SOURCE_LABEL[d.source] },

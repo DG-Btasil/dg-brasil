@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useState } from "react";
 import { CheckCircle2, LayoutList, Rows3, SearchX } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -34,6 +34,7 @@ import {
   REVIEW_VIEWS,
   reviewQueryFitsUrl,
   reviewQueryToSearchParams,
+  switchReviewView,
   toggleReviewCounter,
   type ReviewListQuery,
   type ReviewMode,
@@ -94,7 +95,7 @@ export function ReviewQueue({
   /** Indicadores da fila, contados no servidor junto com a primeira página. */
   initialSummary?: ActionResult<ReviewSummaryDTO>;
 }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const { summary, refresh: refreshSummary } = useReviewSummary(initialSummary);
   const { query, setQuery, result, pending, retry } = useServerList<ReviewListQuery, ReviewQueueEntry>({
     initialQuery,
@@ -117,15 +118,15 @@ export function ReviewQueue({
   const grouped = page ? groups.length > 0 : query.mode === "grupos";
   const totalItems = page && "totalItems" in page && typeof page.totalItems === "number" ? page.totalItems : undefined;
 
-  function clear(view = query.view) {
+  function clear() {
     setSearch("");
-    setQuery(clearReviewFilters(query, view));
+    setQuery(clearReviewFilters(query));
   }
 
   /** Depois de uma decisão em conjunto: a fila, os indicadores e os contadores do menu são lidos de novo. */
   function changed() {
     retry();
-    if (reviewQueryFitsUrl(query)) router.refresh();
+    if (reviewQueryFitsUrl(query)) refresh();
   }
 
   return (
@@ -144,7 +145,7 @@ export function ReviewQueue({
           }}
         />
       )}
-      <Tabs items={tabs} value={query.view} onChange={(view) => clear(view)} label="Visões da fila de revisões" className="mb-4" />
+      <Tabs items={tabs} value={query.view} onChange={(view) => setQuery(switchReviewView({ ...query, search: search.trim() }, view))} label="Visões da fila de revisões" className="mb-4" />
       <Panel>
         <div className="border-b border-line px-5 py-3" role="search" aria-label="Filtrar revisões">
           <div className="flex flex-wrap items-center gap-3">

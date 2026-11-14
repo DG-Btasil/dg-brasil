@@ -13,7 +13,7 @@ import {
   type LegalCaseStatus,
   type Priority,
 } from "@/lib/constants/status";
-import { formatCurrency, formatDateTime } from "@/lib/formatting";
+import { formatCurrency, formatDateTimeAt } from "@/lib/formatting";
 import { isCnjFormat, msg, readCurrencyInput, zCurrencyOptional, zRequired } from "@/lib/validation";
 import type { CorrectableProposalType } from "@/server/domain/reviews/correction-rules";
 
@@ -279,12 +279,16 @@ export const PROPOSAL_FIELD_LABEL: Record<string, string> = {
   client_side: "Polo do cliente",
   adverse_party_summary: "Parte contrária",
   case_value: "Valor da causa",
+  skill_slug: "Skill",
+  agent_slug: "Agente",
+  instructions: "Instruções",
+  configuration: "Configuração",
 };
 
 /** Valor de um campo da proposta para pessoas. `userName` resolve o responsável. */
 export function proposalFieldText(key: string, value: unknown, userName: (id: string) => string | undefined): string {
   if (value === undefined || value === null || value === "") return "—";
-  if (key === "due_at" && typeof value === "string") return Number.isNaN(Date.parse(value)) ? value : formatDateTime(value);
+  if (key === "due_at" && typeof value === "string") return Number.isNaN(Date.parse(value)) ? value : formatDateTimeAt(value);
   if (key === "priority") return PRIORITY_LABEL[value as Priority] ?? String(value);
   if (key === "deadline_type") return DEADLINE_TYPE_LABEL[value as DeadlineType] ?? String(value);
   if (key === "category") return DOCUMENT_CATEGORY_LABEL[value as DocumentCategory] ?? String(value);

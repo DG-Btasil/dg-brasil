@@ -45,3 +45,34 @@ export function officeQueueNotice(office: OfficeState | undefined): { title: str
   }
   return null;
 }
+
+/**
+ * O que dizer sobre o trabalho refeito, conforme a situação dele agora. O
+ * texto antigo ("os itens chegam em Revisões") só vale enquanto ele roda;
+ * interrompido ou com falha, nada mais vai chegar e o item é tratado à mão.
+ */
+export function redoneSituation(status: string | undefined): { text: string; tone: "info" | "warning" | "neutral"; ended: boolean } {
+  switch (status) {
+    case "QUEUED":
+      return { tone: "info", ended: false, text: "O trabalho refeito está na fila. O que o agente entregar chega em Revisões." };
+    case "RUNNING":
+      return { tone: "info", ended: false, text: "O agente está no trabalho refeito. O que ele entregar chega em Revisões." };
+    case "WAITING_HUMAN":
+    case "COMPLETED":
+      return { tone: "neutral", ended: true, text: "O trabalho refeito já entregou: os itens dele estão em Revisões." };
+    case "CANCELLED":
+      return {
+        tone: "warning",
+        ended: true,
+        text: "O trabalho refeito foi interrompido e não vai entregar nada. Trate este item aqui: aprove, corrija e aprove, ou rejeite.",
+      };
+    case "FAILED":
+      return {
+        tone: "warning",
+        ended: true,
+        text: "O trabalho refeito não terminou e não vai entregar nada. Trate este item aqui: aprove, corrija e aprove, ou rejeite.",
+      };
+    default:
+      return { tone: "neutral", ended: false, text: "O que o agente refizer chega em Revisões." };
+  }
+}

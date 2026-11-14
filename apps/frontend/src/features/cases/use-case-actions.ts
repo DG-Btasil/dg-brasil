@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useCallback, useMemo } from "react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
@@ -30,7 +30,7 @@ type Notice = { title: string; description?: string };
  * no campo; os demais viram aviso com código de referência.
  */
 export function useCaseActions() {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
 
@@ -42,10 +42,10 @@ export function useCaseActions() {
         return result;
       }
       toast({ tone: "success", ...success });
-      router.refresh();
+      refresh();
       return result;
     },
-    [failed, toast, router],
+    [failed, toast, refresh],
   );
 
   return useMemo(

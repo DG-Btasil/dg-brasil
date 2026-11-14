@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useCallback, useMemo } from "react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
@@ -15,7 +15,7 @@ type Notice = { title: string; description?: string };
  * a conversa só muda depois da resposta; erro com campos volta ao formulário.
  */
 export function useRequestActions() {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
 
@@ -27,10 +27,10 @@ export function useRequestActions() {
         return result;
       }
       toast({ tone: "success", ...success });
-      router.refresh();
+      refresh();
       return result;
     },
-    [failed, toast, router],
+    [failed, toast, refresh],
   );
 
   return useMemo(

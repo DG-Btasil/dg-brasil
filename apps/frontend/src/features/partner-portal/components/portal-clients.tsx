@@ -2,7 +2,7 @@
 
 import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useState, type ReactNode } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -237,7 +237,7 @@ const FIELD_MAP: Record<string, string> = { "contact.email": "email", "contact.p
 
 /** Contato e endereço (updateClientBasicsAction). Fica registrado na auditoria. */
 function EditBasicsDrawer({ client, onClose }: { client: ClientPartnerDTO; onClose: () => void }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const failed = useActionFeedback();
   const form = useForm<BasicsValues>({
@@ -262,7 +262,7 @@ function EditBasicsDrawer({ client, onClose }: { client: ClientPartnerDTO; onClo
     }
     toast({ tone: "success", title: "Dados atualizados" });
     onClose();
-    router.refresh();
+    refresh();
   });
   return (
     <Drawer

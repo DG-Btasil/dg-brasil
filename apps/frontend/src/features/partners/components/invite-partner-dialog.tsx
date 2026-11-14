@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRefresh } from "@/lib/hooks/use-refresh";
 import { useState, type FormEvent } from "react";
 import { Callout } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { useToast } from "@/store/ui-store";
  * escritório principal, continua existindo o formulário completo.
  */
 export function InvitePartnerDialog({ onClose }: { onClose: () => void }) {
-  const router = useRouter();
+  const refresh = useRefresh();
   const toast = useToast();
   const [contactName, setContactName] = useState("");
   const [email, setEmail] = useState("");
@@ -36,7 +36,7 @@ export function InvitePartnerDialog({ onClose }: { onClose: () => void }) {
     setSending(false);
     if (!result.ok) return setError(result.error);
     toast({ tone: "success", title: "Convite enviado", description: `${email.trim()} recebe o link para criar a senha e completar o cadastro.` });
-    router.refresh();
+    refresh();
     onClose();
   }
 
