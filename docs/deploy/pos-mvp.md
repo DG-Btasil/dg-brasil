@@ -17,6 +17,12 @@ Este arquivo junta só o que fica **para depois do lançamento**.
 | 5 | Ajustes pequenos | — | Ver a lista | Sem custo |
 | 6 | **PRIORIDADE.** Distribuição dos agentes do kit (clones `-dg`): botão "Setup" no site | Só no computador do escritório, fora do repositório (que é público) | Decidir o desenho e construir | Sem custo |
 | 7 | Titular do comprovante de residência no cadastro do cliente | O Lucas compara o nome do comprovante com o do cliente | Decidir como o campo deve ser | Sem custo |
+| 8 | Cópia de segurança dos documentos (Storage) | Script pronto (`supabase/scripts/backup-documentos.mjs`), sem destino | Escolher destino, frequência e responsável; ensaiar a restauração | Depende do destino |
+| 9 | Monitoramento (monitor externo e destino dos erros) | `/api/health` e `ERROR_WEBHOOK_URL` prontos, sem conta ligada | Escolher o monitor e o destino; ligar na produção | Há opções gratuitas |
+| 10 | Prazos de guarda dos dados | Nada é apagado sozinho, salvo os pedidos aos agentes (180 dias) e o histórico do agendador (7 dias) | Decidir por quanto tempo guardar cada registro | Sem custo |
+| 11 | Pedido de titular de dados (LGPD) | Procedimento escrito, sem tela | Definir quem atende e por qual canal | Sem custo |
+| 12 | Resumo diário por e-mail | Avisos só no sino do site | Depende do e-mail do escritório (SMTP) | Plano pago do Zoho |
+| 13 | Termos de uso e política de privacidade definitivos | Texto provisório (versão `0.1-provisorio`) | Texto jurídico definitivo | Sem custo |
 
 ---
 
@@ -190,6 +196,31 @@ campo simples "comprovante em nome de", ou uma opção que, marcada, pede de que
 hoje vazia.
 
 ---
+
+## 8 a 13. Itens que vão direto para a produção (decisão de 13/11/2026)
+
+A Barbara decidiu que estes itens não serão montados no ambiente de teste: dependem de conta,
+gasto ou decisão, e entram já na produção, depois do lançamento. O que já está pronto no código
+fica como está.
+
+- **8. Cópia de segurança dos documentos.** O backup do Supabase Pro guarda o banco, não os
+  arquivos enviados (procurações, minutas, extratos). O script copia esses arquivos para outro
+  lugar. Falta escolher o destino e ensaiar a restauração
+  ([restauracao-dos-documentos.md](restauracao-dos-documentos.md); [producao.md](producao.md), item 15).
+- **9. Monitoramento.** Um serviço de fora consulta o site a cada poucos minutos e avisa se ele
+  cair; os erros do servidor podem ir para um endereço de aviso ([producao.md](producao.md), item 16).
+- **10. Prazos de guarda.** Por quanto tempo o sistema guarda registros antigos antes de apagar
+  sozinho: avisos já lidos, o histórico das buscas de publicações, a fila de trabalhos já
+  terminados. Sem prazo, eles crescem para sempre. Sugestão: avisos lidos 12 meses; histórico
+  de buscas e fila 90 dias; auditoria e registro de acesso a dados pessoais não apagar sem
+  orientação jurídica ([producao.md](producao.md), item 18).
+- **11. Pedido de titular.** Quando um cliente pede para ver ou apagar os próprios dados (LGPD):
+  quem atende e como ([pedido-de-titular.md](pedido-de-titular.md)).
+- **12. Resumo diário por e-mail.** Precisa do e-mail do escritório configurado para envio
+  ([producao.md](producao.md), item 5).
+- **13. Termos de uso e política de privacidade.** O texto provisório diz isso na própria tela.
+  Atenção: [producao.md](producao.md), item 9, recomenda ter o texto definitivo antes do
+  primeiro cliente real.
 
 ## Depois do lançamento: o que anotar
 

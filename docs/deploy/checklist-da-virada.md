@@ -18,7 +18,7 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
 - [ ] **1. Contratar:** Vercel Pro, Supabase Pro, Zoho Mail com SMTP, Claude
   Team ou Enterprise e a Consulta CPF do Serpro
   ([producao.md](producao.md), itens 1, 3, 5, 7 e 12).
-- [ ] **2. Textos jurídicos definitivos** dos termos de uso e da política de
+- [ ] **2. Textos jurídicos definitivos** *(pós-MVP desde 13/11/2026: [pos-mvp.md](pos-mvp.md), itens 8 a 13)* dos termos de uso e da política de
   privacidade, com versão nova em
   `apps/frontend/src/lib/auth/legal-documents.ts`
   ([producao.md](producao.md), item 9; [docs/auth.md](../auth.md)).
@@ -35,14 +35,14 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
 - [ ] **7. Decidir as pendências de robustez** de
   [docs/backend.md](../backend.md), "Hardening pendente por domínio"
   ([producao.md](producao.md), item 9).
-- [ ] **8. Cópia de segurança dos documentos:** decidir o destino, decidir se
+- [ ] **8. Cópia de segurança dos documentos:** *(pós-MVP desde 13/11/2026: [pos-mvp.md](pos-mvp.md), itens 8 a 13)* decidir o destino, decidir se
   contrata o PITR do Supabase e **ensaiar uma restauração**
   ([producao.md](producao.md), item 15;
   [restauracao-dos-documentos.md](restauracao-dos-documentos.md)). **[novo]**
-- [ ] **9. Monitoramento:** escolher o monitor que consulta `/api/health` e o
+- [ ] **9. Monitoramento:** *(pós-MVP desde 13/11/2026: [pos-mvp.md](pos-mvp.md), itens 8 a 13)* escolher o monitor que consulta `/api/health` e o
   destino dos erros (`ERROR_WEBHOOK_URL`)
   ([producao.md](producao.md), item 16). **[novo]**
-- [ ] **10. Pedido de titular de dados:** ler e ajustar o procedimento
+- [ ] **10. Pedido de titular de dados:** *(pós-MVP desde 13/11/2026: [pos-mvp.md](pos-mvp.md), itens 8 a 13)* ler e ajustar o procedimento
   ([pedido-de-titular.md](pedido-de-titular.md)). **[novo]**
 
 ## Banco de produção
