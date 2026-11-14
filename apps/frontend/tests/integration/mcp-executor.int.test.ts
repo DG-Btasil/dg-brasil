@@ -5,6 +5,7 @@ import * as agents from "@/server/domain/agents/service";
 import * as dg from "@/server/domain/dg/service";
 import { saveAgentSchema } from "@/server/domain/dg/schemas";
 import { pgExecutorDb } from "@/server/executor/db";
+import { MIN_EXECUTOR_VERSION } from "@/server/executor/contract";
 import { handleExecutorRequest, type ExecutorDeps } from "@/server/executor/handler";
 import { signedExecutorStorage } from "@/server/executor/storage";
 import { integrationEnv } from "./support/env";
@@ -31,7 +32,8 @@ const state: { tokenA: string; tokenB: string; executorA: string; executorB: str
   { tokenA: "", tokenB: "", executorA: "", executorB: "", agentId: "", runId: "", lease: "", caseId: "" };
 
 function send(method: string, path: string, opts: { token?: string; lease?: string; body?: unknown } = {}) {
-  const headers = new Headers();
+  // O servidor recusa (426) conector que não diz a versão ou está abaixo da mínima (065).
+  const headers = new Headers({ "x-dg-client": `dg-executor/${MIN_EXECUTOR_VERSION}` });
   if (opts.token) headers.set("authorization", `Bearer ${opts.token}`);
   if (opts.lease) headers.set("x-dg-lease", opts.lease);
   return handleExecutorRequest({ method, segments: path.split("/").filter(Boolean), headers, query: new URLSearchParams(), body: opts.body }, deps);

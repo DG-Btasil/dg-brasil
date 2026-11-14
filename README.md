@@ -30,7 +30,7 @@ produz efeito.
 
 | Caminho | Papel |
 |---|---|
-| `supabase/` | **Banco:** as migrations (001–061 aplicadas no Supabase de desenvolvimento; 062–068, da revisão final, ainda não aplicadas), RLS, Storage, fila pgmq, agendador (pg_cron), as verificações do `npm run verificar` e os scripts de operação (cópia de segurança dos documentos, trava dos scripts de teste). Ver [supabase/README.md](supabase/README.md) |
+| `supabase/` | **Banco:** as migrations (001–068, todas aplicadas no Supabase de desenvolvimento), RLS, Storage, fila pgmq, agendador (pg_cron), as verificações do `npm run verificar` e os scripts de operação (cópia de segurança dos documentos, trava dos scripts de teste). Ver [supabase/README.md](supabase/README.md) |
 | `apps/executor/` | O pacote do **computador do escritório**: servidor MCP local `dg-brasil` para o Claude Code (catálogo fechado de ferramentas) e o diagnóstico `doctor`. Ver [docs/mcp/instalacao.md](docs/mcp/instalacao.md) |
 | `apps/frontend/` | **O painel** (Next.js 16, na Vercel): escritório proprietário e portal do parceiro, com o backend de domínio dentro (Server Actions), a API do computador do escritório e as rotas agendadas. Lê e grava no banco real. Ver [apps/frontend/README.md](apps/frontend/README.md) |
 | `docs/` | Um documento por assunto. Publicação e operação em [docs/deploy/](docs/deploy/) |
@@ -171,7 +171,7 @@ ainda não existe: o que falta está em
 
 | Componente | Situação |
 |---|---|
-| Banco (`supabase/`) | **61 migrations aplicadas no Supabase de desenvolvimento** (001–061), idênticas aos arquivos. As da revisão final (062–068) estão no repositório e **ainda não foram aplicadas em nenhum Supabase**. Nenhuma migration aplicada pode ser reescrita. `npm run verificar` aplica todas do zero e confere as regras (951 verificações até a 061; cada migration nova acrescenta as suas, e o total aparece no fim do comando) |
+| Banco (`supabase/`) | **68 migrations aplicadas no Supabase de desenvolvimento** (001–068), idênticas aos arquivos; as da revisão final (062–068) entraram em 13/11/2026. Nenhuma migration aplicada pode ser reescrita. `npm run verificar` aplica todas do zero e confere as regras (951 verificações até a 061; cada migration nova acrescenta as suas, e o total aparece no fim do comando) |
 | Painel (`apps/frontend`) | Identidade real (convite, senha, **MFA obrigatório**, termos com texto **provisório**) e telas ligadas ao banco real: clientes, casos, processos e prazos, documentos, revisões, financeiro, parceiros, publicações, DG Brasil, importações, notificações. Validado no DEV por etapa ([docs/qa/](docs/qa/)). As ferramentas de demonstração só aparecem com `NEXT_PUBLIC_DEMO_MODE=true` |
 | Backend de domínio | Server Actions → services → repositories, com o JWT do usuário e a RLS como segunda barreira. Ver [docs/backend.md](docs/backend.md) |
 | Auth | Supabase Auth: convite, senha (8+), MFA TOTP (a RLS exige `aal2`), sessões, gestão de equipe, redefinição de MFA pelo ADMIN. Ver [docs/auth.md](docs/auth.md) |

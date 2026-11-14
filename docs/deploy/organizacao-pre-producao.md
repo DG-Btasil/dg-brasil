@@ -12,7 +12,7 @@ estão na primeira seção.
 > **Atualização de 13/11/2026.** Este documento é a foto da revisão de
 > 12/11/2026: onde ele conta 55 ou 57 migrations, é a contagem daquele dia.
 > Depois dele entraram a 058 a 061 (aplicadas no DEV: 61 no total) e as da
-> revisão final, 062 a 068 (ainda não aplicadas em nenhum Supabase). As
+> revisão final, 062 a 068 (aplicadas no DEV no mesmo dia: 68 no total). As
 > **instruções** abaixo foram trocadas para "todas as migrations"; os números
 > das medições ficaram como estavam. A ordem do dia da produção está no
 > [checklist da virada](checklist-da-virada.md).
