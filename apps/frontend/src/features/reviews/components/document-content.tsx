@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { FileText, Pencil, Save, Sparkles, X } from "lucide-react";
+import { FileText, Pencil, RefreshCcw, Save, X } from "lucide-react";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
@@ -11,7 +11,6 @@ import { Callout, SkeletonRows } from "@/components/feedback/states";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
-import { Tooltip } from "@/components/ui/tooltip";
 import { getReviewContentAction, saveManualRevisionAction } from "@/server/domain/reviews/actions";
 import type { ReviewContentDTO } from "@/server/domain/reviews/dto";
 import { useToast } from "@/store/ui-store";
@@ -22,8 +21,22 @@ import { contentNotEditableMessage, isEditableMime } from "../manual-revision";
  * Salvar cria a versão N+1 (origem "edição manual") com revisão nova; a
  * versão N e as decisões dela ficam intactas. A tela muda depois da resposta
  * do servidor (sem otimismo) e navega para a revisão da versão nova.
+ *
+ * "Pedir para o agente refazer" (070): com `onAskAgent`, a minuta que veio de
+ * um trabalho de agente ganha o botão; o agente entrega uma versão nova, nunca
+ * altera esta.
  */
-export function DocumentContentPanel({ reviewId, mimeType, canEdit }: { reviewId: string; mimeType?: string; canEdit: boolean }) {
+export function DocumentContentPanel({
+  reviewId,
+  mimeType,
+  canEdit,
+  onAskAgent,
+}: {
+  reviewId: string;
+  mimeType?: string;
+  canEdit: boolean;
+  onAskAgent?: () => void;
+}) {
   const textual = isEditableMime(mimeType);
   const [content, setContent] = useState<ActionResult<ReviewContentDTO> | null>(null);
   const [version, setVersion] = useState(0);
@@ -72,13 +85,11 @@ export function DocumentContentPanel({ reviewId, mimeType, canEdit }: { reviewId
         actions={
           editable ? (
             <div className="flex gap-2">
-              <Tooltip content="Disponível quando a execução real dos agentes for ativada. Também vai gerar uma versão nova, nunca alterar esta.">
-                <span tabIndex={0}>
-                  <Button size="sm" variant="ghost" icon={<Sparkles className="size-3.5" aria-hidden />} disabled aria-disabled>
-                    Solicitar alteração à IA
-                  </Button>
-                </span>
-              </Tooltip>
+              {onAskAgent && (
+                <Button size="sm" variant="ghost" icon={<RefreshCcw className="size-3.5" aria-hidden />} onClick={onAskAgent}>
+                  Pedir para o agente refazer
+                </Button>
+              )}
               <Button size="sm" variant="secondary" icon={<Pencil className="size-3.5" aria-hidden />} onClick={() => setEditing(true)}>
                 Editar conteúdo
               </Button>

@@ -9,7 +9,7 @@ import {
 } from "@/repositories/api/db-mappings";
 import type { DocumentCategory, Priority, ReviewDecisionKind } from "@/lib/constants/status";
 import { resultFromRow } from "../analyses/mappers";
-import type { ReviewDecisionDTO, ReviewGroupDTO, ReviewListItem, ReviewTargetDTO, ReviewTargetKind } from "./dto";
+import type { ReviewDecisionDTO, ReviewGroupDTO, ReviewListItem, ReviewRedoDTO, ReviewTargetDTO, ReviewTargetKind } from "./dto";
 import type { AssignReviewInput, ReviewDueFilter } from "./schemas";
 import { PROPOSAL_TYPE_LABEL } from "./labels";
 
@@ -324,6 +324,29 @@ export function documentVersionTargetFromRow(row: DocumentVersionTargetRow): Rev
     mimeType: opt(row.mime_type),
     source: row.source,
     createdAt: row.created_at,
+  };
+}
+
+/** Resposta de get_review_redo (070) → DTO. */
+export function redoFromRow(raw: unknown): ReviewRedoDTO | null {
+  if (!isObject(raw)) return null;
+  const s = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  const redone = isObject(raw.redone) ? raw.redone : null;
+  return {
+    agentRunId: s(raw.agent_run_id),
+    agentName: s(raw.agent_name),
+    runStatus: s(raw.run_status),
+    round: typeof raw.round === "number" ? raw.round : 0,
+    redoOfRunId: s(raw.redo_of_run_id),
+    redoOfReviewId: s(raw.redo_of_review_id),
+    redone:
+      redone && s(redone.agent_run_id)
+        ? { agentRunId: s(redone.agent_run_id)!, status: s(redone.status) ?? "QUEUED", createdAt: s(redone.created_at) ?? "", requestedById: s(redone.requested_by), reviewId: s(redone.review_id) }
+        : undefined,
+    redoneFromThisReview: raw.redone_from_review === true,
+    canRedo: raw.can_redo === true,
+    blocked: s(raw.blocked) as ReviewRedoDTO["blocked"],
+    message: s(raw.message),
   };
 }
 

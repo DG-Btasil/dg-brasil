@@ -5,7 +5,7 @@ import type { DbReviewStatus } from "@/repositories/api/db-mappings";
 import { PROPOSAL_DATA } from "@/server/executor/contract";
 import { planBulkDecision, PROPOSAL_CHANGES_MESSAGE } from "./bulk-rules";
 import { changedProposalFields, isCorrectableProposalType, NOTHING_CHANGED_MESSAGE } from "./correction-rules";
-import type { BulkDecisionItemDTO, BulkDecisionResultDTO, CorrectionResultDTO, ReviewDetailDTO, ReviewGroupPage, ReviewListItem, ReviewSummaryDTO, ReviewTargetDTO } from "./dto";
+import type { BulkDecisionItemDTO, BulkDecisionResultDTO, CorrectionResultDTO, RedoResultDTO, ReviewDetailDTO, ReviewRedoDTO, ReviewGroupPage, ReviewListItem, ReviewSummaryDTO, ReviewTargetDTO } from "./dto";
 import {
   analysisTargetFromRow,
   assignPayload,
@@ -17,6 +17,7 @@ import {
   listItemFromRow,
   priorityFilterToDb,
   proposalTargetFromRow,
+  redoFromRow,
   reviewDueCutoff,
   statusFilterToDb,
   targetOf,
@@ -24,7 +25,7 @@ import {
   type ReviewRow,
 } from "./mappers";
 import * as repo from "./repository";
-import type { AssignReviewInput, CorrectReviewInput, DecideReviewInput, DecideReviewsBulkInput, ListReviewGroupsInput, ListReviewsInput, ReopenReviewInput } from "./schemas";
+import type { AssignReviewInput, CorrectReviewInput, DecideReviewInput, RedoReviewInput, DecideReviewsBulkInput, ListReviewGroupsInput, ListReviewsInput, ReopenReviewInput } from "./schemas";
 
 /**
  * Revisão humana — "IA executa. Humano decide." Só ADMIN e LAWYER
@@ -133,8 +134,19 @@ async function loadTarget(ctx: ServiceContext, row: ReviewRow): Promise<ReviewTa
 export async function getReview(ctx: ServiceContext, id: string): Promise<ReviewDetailDTO> {
   requireReviewer(ctx, "reviews.view");
   const row = await loadReview(ctx, id);
-  const [target, decisions] = await Promise.all([loadTarget(ctx, row), repo.listDecisions(ctx.db, id)]);
-  return { ...listItemFromRow(row), target, decisions: decisions.map(decisionFromRow) };
+  const [target, decisions, redo] = await Promise.all([loadTarget(ctx, row), repo.listDecisions(ctx.db, id), loadRedo(ctx, id)]);
+  return { ...listItemFromRow(row), target, decisions: decisions.map(decisionFromRow), redo };
+}
+
+/** Situação do refazer (070). Se não puder ser lida, a revisão abre do mesmo jeito, só sem o botão. */
+async function loadRedo(ctx: ServiceContext, id: string): Promise<ReviewRedoDTO | null> {
+  try {
+    return redoFromRow(await repo.getRedo(ctx.db, id));
+  } catch (error) {
+    const safe = error instanceof DomainError ? error : new DomainError("INTERNAL");
+    ctx.log.warn("review.redo_state_failed", { reviewId: id, code: safe.code, technicalCode: safe.technicalCode });
+    return null;
+  }
 }
 
 /** Responsável, prioridade e prazo (grant de coluna). Só revisão em aberto. */
@@ -198,6 +210,24 @@ export async function correctAndApproveReview(ctx: ServiceContext, input: Correc
   const after = listItemFromRow(await loadReview(ctx, input.id));
   ctx.log.info("review.corrected", { reviewId: input.id, reviewDecisionId: result.decision_id, fields: (result.fields ?? []).join(",") });
   return { decisionId: result.decision_id, fields: result.fields ?? [], status: after.status };
+}
+
+/**
+ * "Pedir para o agente refazer" (070). Quem pode decidir a revisão (ADMIN ou
+ * advogado; estrutural só ADMIN), revisão em aberto e nascida de um trabalho
+ * de agente. O banco encerra a revisão (rejeitada, com o recado) e pede o
+ * trabalho novo ao MESMO agente pela porta de sempre, numa transação. Nada é
+ * aplicado; o que o agente refizer volta para Revisões. Nunca loga o recado.
+ */
+export async function redoReview(ctx: ServiceContext, input: RedoReviewInput): Promise<RedoResultDTO> {
+  requireReviewer(ctx, "reviews.decide");
+  const item = listItemFromRow(await loadReview(ctx, input.id));
+  if (item.requiresAdmin && !hasRole(ctx, "ADMIN")) throw forbidden("Somente ADMIN decide proposta que altera a configuração do DG Brasil.");
+  if (!item.agentRunId) throw invalidState("Este item foi enviado por uma pessoa, não por um agente: não há trabalho para refazer.");
+  if (!OPEN.includes(item.dbStatus)) throw invalidState("Esta revisão já foi decidida.");
+  const r = await repo.redo(ctx.db, input.id, input.message);
+  ctx.log.info("review.redo_requested", { reviewId: input.id, agentRunId: r.agent_run_id, round: r.round, deduplicated: r.deduplicated });
+  return { agentRunId: r.agent_run_id, round: Number(r.round ?? 0), deduplicated: r.deduplicated === true };
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);

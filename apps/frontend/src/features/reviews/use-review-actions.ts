@@ -5,7 +5,7 @@ import { useCallback, useMemo } from "react";
 import { REVIEW_DECISION_LABEL, type Priority, type ReviewDecisionKind } from "@/lib/constants/status";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
-import { assignReviewAction, correctAndApproveReviewAction, decideReviewAction, reopenReviewAction } from "@/server/domain/reviews/actions";
+import { assignReviewAction, correctAndApproveReviewAction, decideReviewAction, redoReviewAction, reopenReviewAction } from "@/server/domain/reviews/actions";
 import { useToast } from "@/store/ui-store";
 
 /**
@@ -19,13 +19,13 @@ export function useReviewActions() {
   const failed = useActionFeedback();
 
   const run = useCallback(
-    async <T>(call: () => Promise<ActionResult<T>>, success: string, failure: string): Promise<boolean> => {
+    async <T>(call: () => Promise<ActionResult<T>>, success: string, failure: string, description?: string): Promise<boolean> => {
       const result = await callAction(call);
       if (!result.ok) {
         failed(result, failure);
         return false;
       }
-      toast({ tone: "success", title: success });
+      toast({ tone: "success", title: success, description });
       router.refresh();
       return true;
     },
@@ -39,6 +39,14 @@ export function useReviewActions() {
       /** "Corrigir e aprovar" (069): os dados corrigidos da proposta e a aprovação, numa decisão só. */
       correctAndApprove: (id: string, data: Record<string, unknown>, notes?: string) =>
         run(() => correctAndApproveReviewAction({ id, data, notes }), "Proposta corrigida e aprovada", "Não foi possível corrigir e aprovar a proposta."),
+      /** "Pedir para o agente refazer" (070): `queueNotice` avisa quando o pedido vai esperar na fila. */
+      redo: (id: string, message: string, queueNotice?: string) =>
+        run(
+          () => redoReviewAction({ id, message }),
+          "Pedido enviado ao agente",
+          "Não foi possível pedir para o agente refazer.",
+          queueNotice ?? "O resultado volta para Revisões. Nada é aplicado sem a sua decisão.",
+        ),
       reopen: (id: string, reason?: string) => run(() => reopenReviewAction({ id, reason }), "Revisão reaberta", "Não foi possível reabrir a revisão."),
       assign: (id: string, patch: { assignedReviewerId?: string | null; priority?: Priority; dueAt?: string | null }) =>
         run(() => assignReviewAction({ id, ...patch }), "Revisão atualizada", "Não foi possível atualizar a revisão."),

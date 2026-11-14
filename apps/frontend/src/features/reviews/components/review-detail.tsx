@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CheckCircle2, MessageSquareWarning, PencilLine, RotateCcw, XCircle } from "lucide-react";
+import { CheckCircle2, MessageSquareWarning, PencilLine, RefreshCcw, RotateCcw, XCircle } from "lucide-react";
 import {
   DOCUMENT_CATEGORY_LABEL,
   PRIORITIES,
@@ -25,7 +25,8 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { canRequestChanges } from "@/server/domain/reviews/bulk-rules";
 import { canCorrectProposal, isCorrectableProposalType } from "@/server/domain/reviews/correction-rules";
-import type { ReviewDetailDTO, ReviewTargetDTO } from "@/server/domain/reviews/dto";
+import { MAX_REDO_ROUNDS, type OfficeState } from "@/server/domain/reviews/redo-rules";
+import type { ReviewDetailDTO, ReviewRedoDTO, ReviewTargetDTO } from "@/server/domain/reviews/dto";
 import { PROPOSAL_TYPE_LABEL } from "@/server/domain/reviews/labels";
 import { usePermission, useRole } from "@/features/auth/hooks";
 import { useDirectoryUserMap, useLawyerOptions } from "@/features/directory/directory-context";
@@ -41,6 +42,7 @@ import { DownloadVersionButton } from "./download-version-button";
 import { AnalysisResultView } from "@/features/analyses/components/analysis-result-view";
 import { PriorityBadge } from "./priority-badge";
 import { ProposalCorrectionDialog } from "./proposal-correction-dialog";
+import { RedoDialog } from "./redo-dialog";
 import { DB_STATUS_LABEL, isOpen } from "./review-table";
 
 const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }));
@@ -56,8 +58,10 @@ const VERSION_SOURCE_LABEL: Record<string, string> = {
  * Revisão humana (ADMIN/LAWYER): o CONTEÚDO vem do alvo, lido na hora no
  * servidor (análise, versão de documento ou proposta do agente). Decidir é só
  * pela RPC decide_review; a tela muda depois da resposta (sem otimismo).
+ * `office` (situação do computador do escritório) só serve para avisar, no
+ * "Pedir para o agente refazer", que o pedido vai esperar na fila.
  */
-export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
+export function ReviewDetail({ review, office }: { review: ReviewDetailDTO; office?: OfficeState }) {
   const canDecide = usePermission("reviews.decide");
   const isAdmin = useRole() === "ADMIN";
   const users = useDirectoryUserMap();
@@ -65,13 +69,17 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
   const [deciding, setDeciding] = useState<ReviewDecisionKind | null>(null);
   const [reopening, setReopening] = useState(false);
   const [correcting, setCorrecting] = useState(false);
+  const [redoing, setRedoing] = useState(false);
   const open = isOpen(review);
   const allowed = canDecide && (!review.requiresAdmin || isAdmin);
   const changesAllowed = canRequestChanges(review.targetKind);
   // "Corrigir e aprovar" (069): prazo, pedido de documento, atualização do caso e cadastro de processo.
   const proposal = review.target?.kind === "AGENT_PROPOSAL" ? review.target : null;
   const correctable = allowed && !!proposal && proposal.proposalStatus === "PENDING" && canCorrectProposal(review, isAdmin);
-  const last =[...review.decisions].reverse().find((d) => d.decision !== null);
+  // "Pedir para o agente refazer" (070): só item que veio de um trabalho de agente.
+  const redo = review.redo;
+  const redoable = open && allowed && !!redo?.canRedo;
+  const last = [...review.decisions].reverse().find((d) => d.decision !== null);
 
   return (
     <PageContainer>
@@ -127,6 +135,11 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
                       Solicitar alterações
                     </Button>
                   )}
+                  {redoable && (
+                    <Button variant="secondary" icon={<RefreshCcw className="size-4" aria-hidden />} onClick={() => setRedoing(true)}>
+                      Pedir para o agente refazer
+                    </Button>
+                  )}
                   {correctable && (
                     <Button variant="secondary" icon={<PencilLine className="size-4" aria-hidden />} onClick={() => setCorrecting(true)}>
                       Corrigir e aprovar
@@ -160,11 +173,18 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
             {last?.notes ?? "Sem justificativa registrada."}
           </Callout>
         )}
+        <RedoNotices redo={redo} open={open} allowed={allowed} />
       </div>
 
       <div className="grid grid-cols-12 items-start gap-5">
         <div className="col-span-12 space-y-5 xl:col-span-8">
-          <TargetPanel target={review.target} reviewId={review.id} reviewStatus={review.dbStatus} canEdit={allowed && canEditReview(review.dbStatus)} />
+          <TargetPanel
+            target={review.target}
+            reviewId={review.id}
+            reviewStatus={review.dbStatus}
+            canEdit={allowed && canEditReview(review.dbStatus)}
+            onAskAgent={redoable ? () => setRedoing(true) : undefined}
+          />
         </div>
         <aside className="col-span-12 space-y-5 xl:col-span-4" aria-label="Atribuição, documentos e histórico">
           <Assignment review={review} editable={open && allowed} />
@@ -199,6 +219,9 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
         />
       )}
       {reopening && <ReopenDialog review={review} onClose={() => setReopening(false)} />}
+      {redoing && redo && (
+        <RedoDialog reviewId={review.id} subject={review.subject} agentName={redo.agentName ?? review.agentName} round={redo.round} office={office} onClose={() => setRedoing(false)} />
+      )}
       {correcting && proposal && isCorrectableProposalType(proposal.proposalType) && (
         <ProposalCorrectionDialog
           reviewId={review.id}
@@ -226,7 +249,19 @@ const PAYLOAD_LABEL: Record<string, string> = {
 
 const show = (v: unknown): string => (v === null || v === undefined ? "—" : typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
 
-function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: ReviewTargetDTO | null; reviewId: string; reviewStatus: string; canEdit: boolean }) {
+function TargetPanel({
+  target,
+  reviewId,
+  reviewStatus,
+  canEdit,
+  onAskAgent,
+}: {
+  target: ReviewTargetDTO | null;
+  reviewId: string;
+  reviewStatus: string;
+  canEdit: boolean;
+  onAskAgent?: () => void;
+}) {
   if (!target) {
     return (
       <Panel>
@@ -280,7 +315,7 @@ function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: Revi
         </Panel>
         {/* Minuta de texto (.md/.txt): lida e editada na tela. PDF, Word e imagem: prévia do arquivo, sem baixar. */}
         {isEditableMime(target.mimeType) ? (
-          <DocumentContentPanel reviewId={reviewId} mimeType={target.mimeType} canEdit={canEdit} />
+          <DocumentContentPanel reviewId={reviewId} mimeType={target.mimeType} canEdit={canEdit} onAskAgent={onAskAgent} />
         ) : (
           <DocumentPreviewPanel documentId={target.documentId} versionId={target.documentVersionId} title={target.title} file={file} />
         )}
@@ -288,6 +323,68 @@ function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: Revi
     );
   }
   return <ProposalPanel target={target} />;
+}
+
+/**
+ * Os dois lados do refazer (070): "Refeito em ..." na revisão em que o
+ * refazer foi pedido; "Refazer de ..." nos itens do trabalho refeito; e, em
+ * aberto, por que não dá para pedir (limite de 3, já pedido, agente ainda
+ * trabalhando).
+ */
+function RedoNotices({ redo, open, allowed }: { redo: ReviewRedoDTO | null; open: boolean; allowed: boolean }) {
+  const users = useDirectoryUserMap();
+  if (!redo) return null;
+  const redone = redo.redone;
+  const blockedOpen = open && allowed && !redo.canRedo && redo.blocked && redo.blocked !== "NO_RUN" && redo.blocked !== "DECIDED";
+  return (
+    <>
+      {redo.redoOfReviewId && (
+        <Callout tone="info" title={`Refazer de um trabalho anterior (${Math.min(redo.round, MAX_REDO_ROUNDS)} de ${MAX_REDO_ROUNDS})`}>
+          Este item veio de um pedido para o agente refazer.{" "}
+          <Link href={`/revisoes/${redo.redoOfReviewId}`} className="font-medium underline underline-offset-2">
+            Ver a revisão em que pediram para refazer
+          </Link>
+          {redo.redoOfRunId && (
+            <>
+              {" · "}
+              <Link href={`/execucoes/${redo.redoOfRunId}`} className="font-medium underline underline-offset-2">
+                trabalho anterior
+              </Link>
+            </>
+          )}
+        </Callout>
+      )}
+      {redone && redo.redoneFromThisReview && (
+        <Callout tone="info" title={`Refeito em ${formatDateTime(redone.createdAt)}${redone.requestedById ? ` a pedido de ${users.get(redone.requestedById)?.name ?? "pessoa da equipe"}` : ""}`}>
+          O agente recebeu o recado num trabalho novo. O que ele refizer chega em Revisões.{" "}
+          <Link href={`/execucoes/${redone.agentRunId}`} className="font-medium underline underline-offset-2">
+            Ver o trabalho refeito
+          </Link>
+          {redone.reviewId && (
+            <>
+              {" · "}
+              <Link href={`/revisoes/${redone.reviewId}`} className="font-medium underline underline-offset-2">
+                abrir o que ele entregou
+              </Link>
+            </>
+          )}
+        </Callout>
+      )}
+      {blockedOpen && redo.message && (
+        <Callout tone={redo.blocked === "LIMIT" ? "warning" : "neutral"} title="Pedir para o agente refazer">
+          {redo.message}
+          {redo.blocked === "ALREADY_REDONE" && redone && (
+            <>
+              {" "}
+              <Link href={`/execucoes/${redone.agentRunId}`} className="font-medium underline underline-offset-2">
+                Ver o trabalho refeito
+              </Link>
+            </>
+          )}
+        </Callout>
+      )}
+    </>
+  );
 }
 
 /** `payload.data` da proposta (objeto), ou vazio. */

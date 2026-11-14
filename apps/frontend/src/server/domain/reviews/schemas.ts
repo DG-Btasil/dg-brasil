@@ -3,6 +3,7 @@ import { PRIORITIES, REVIEW_DECISIONS } from "@/lib/constants/status";
 import { pageInputSchema, sortSchema } from "@/server/core/pagination";
 import { zIsoDateTime, zOptionalText, zUuid } from "@/server/core/validation";
 import { BULK_DECISIONS, MAX_BULK_REVIEWS } from "./bulk-rules";
+import { REDO_MESSAGE_MAX, REDO_MESSAGE_MIN } from "./redo-rules";
 
 /**
  * Entrada das operações de revisão humana. Decisão no vocabulário do FRONT
@@ -120,6 +121,17 @@ export const correctReviewSchema = z.object({
   notes: zOptionalText(5000),
 });
 export type CorrectReviewInput = z.infer<typeof correctReviewSchema>;
+
+/** "Pedir para o agente refazer" (070): a revisão é encerrada e o mesmo agente recebe o recado. */
+export const redoReviewSchema = z.object({
+  id: zUuid(),
+  message: z
+    .string()
+    .trim()
+    .min(REDO_MESSAGE_MIN, `Escreva o que precisa mudar (no mínimo ${REDO_MESSAGE_MIN} caracteres).`)
+    .max(REDO_MESSAGE_MAX, `Máximo de ${REDO_MESSAGE_MAX} caracteres.`),
+});
+export type RedoReviewInput = z.infer<typeof redoReviewSchema>;
 
 export const reopenReviewSchema = z.object({
   id: zUuid(),

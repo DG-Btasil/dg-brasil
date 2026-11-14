@@ -84,6 +84,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   REVIEW_CHANGES_REQUESTED: "Alterações solicitadas na revisão",
   REVIEW_REOPENED: "Revisão reaberta",
   AGENT_RUN_REQUESTED: "Execução de agente pedida",
+  AGENT_RUN_REDO_REQUESTED: "Pedido para o agente refazer um trabalho, a partir de uma revisão",
   AGENT_RUN_QUEUED: "Execução de agente voltou para a fila",
   AGENT_RUN_RUNNING: "Execução de agente iniciada",
   AGENT_RUN_WAITING_HUMAN: "Execução de agente aguardando decisão humana",

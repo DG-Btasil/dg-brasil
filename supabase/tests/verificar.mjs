@@ -9035,6 +9035,215 @@ await deve('catálogo [069]: search_path fixo; blocos internos e gatilho fechado
   igual(r.filter((x) => x.f === 'private.correct_and_approve_review' || x.f === 'private.proposal_correction_data').every((x) => x.def), true, 'as internas são definer')
 })
 
+// ═════════════════════════════ Pedir para o agente refazer [070] ═════════
+
+secao('Revisões: "Pedir para o agente refazer": a revisão é encerrada, o mesmo agente recebe o recado e o resultado volta para Revisões [070]')
+const r070 = {}
+// As verificações anteriores rodaram migrations antigas de novo (a 062 redefine o prazo direto): a 070 vem depois delas.
+const rodar070 = async () => db.exec(await readFile(new URL('migrations/20261113000070_pedir_para_o_agente_refazer.sql', raiz), 'utf8'))
+const refazer070 = (uid, rv, recado) => como(uid, (tx) => um(tx, `select public.redo_agent_review($1, $2) r`, [rv, recado])).then((x) => x.r)
+const situacao070 = (uid, rv) => como(uid, (tx) => um(tx, `select public.get_review_redo($1) r`, [rv])).then((x) => x.r)
+const recusa070 = (uid, rv, recado, padrao, rotulo) => refazer070(uid, rv, recado).then(
+  () => { throw new Error(`${rotulo}: foi aceito`) }, (e) => { if (!padrao.test(e.message)) throw new Error(`${rotulo}: ${e.message}`) })
+const run070 = (id) => um(db, `select r.agent_id, r.legal_case_id, r.legal_process_id, r.requested_by, r.status, r.operation, r.redo_of_run_id, r.redo_of_review_id,
+    r.retry_of_agent_run_id, i.request_text, i.parameters from agent_runs r left join agent_run_inputs i on i.agent_run_id = r.id where r.id = $1`, [id])
+const revisao070 = (id) => um(db, `select status, agent_run_id from reviews where id = $1`, [id])
+const concluir070 = (t) => ex(`select private.executor_complete($1, $2, $3) r`, [hA, t.run, t.reserva])
+// O trabalho novo, reservado pelo computador do escritório (como faria a Vigia).
+const reservar070 = async (run) => {
+  const reserva = lease()
+  igual((await reservar040(hA, run, reserva)).claimed, true, 'trabalho refeito reservado pelo computador do escritório')
+  return { run, reserva }
+}
+const RECADO070 = 'A data está errada: a intimação saiu na sexta, conte de novo a partir de segunda.'
+
+await deve('cenário: um trabalho do agente com duas propostas e uma minuta, já entregue (aguardando revisão)', async () => {
+  await rodar070()
+  const cli = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99907000001', $1) returning id`, [ids.owner])).id
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Cliente Fictícia 070')`, [cli])
+  r070.caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Caso fictício 070', 'IN_PROGRESS', $3, $3, $4) returning id`, [cli, ids.banking, ids.owner, ids.lucas])).id
+  r070.t = await trabalho060(r070.caso, 'Pedido original 070: redigir a réplica e propor o prazo.')
+  const p = async (t, tipo, dados, chave, resumo = `Resumo do agente ${chave}`) => (await proposta067(t, tipo, { summary: resumo, data: dados }, chave)).proposal_id
+  r070.pPrazo = await p(r070.t, 'CREATE_DEADLINE', { title: 'Réplica 070', due_at: '2027-02-10T23:59:00-03:00' }, 'k-070-prazo', 'Prazo de réplica de 15 dias úteis')
+  r070.pOutra = await p(r070.t, 'OTHER', { description: 'Conferir o endereço da cliente 070.' }, 'k-070-outra')
+  const prep = await ex(`select private.executor_prepare_output($1, $2, $3, 'MINUTA_REPLICA_070.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 1200) r`, [hA, r070.t.run, r070.t.reserva])
+  await db.query(`insert into storage.objects (bucket_id, name) values ('legal-documents', $1)`, [prep.storage_object_name])
+  await ex(`select private.executor_finalize_output($1, $2, $3, $4, $5, $6, 'MINUTA_REPLICA_070.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 1200, $7, 'Minuta da réplica 070', 'PETITION') r`,
+    [hA, r070.t.run, r070.t.reserva, prep.document_id, prep.document_version_id, prep.storage_object_name, sha64])
+  r070.rvMinuta = (await um(db, `select id from reviews where document_version_id = $1`, [prep.document_version_id])).id
+  igual((await concluir070(r070.t)).status, 'WAITING_HUMAN', 'trabalho entregue, aguardando revisão')
+  r070.rvPrazo = await revDe069(r070.pPrazo)
+  r070.rvOutra = await revDe069(r070.pOutra)
+})
+
+await deve('quem não decide não pede; recado curto, item enviado por pessoa e revisão decidida são recusados; nada muda', async () => {
+  const antes = await revisao070(r070.rvPrazo)
+  await recusa070(ids.ana, r070.rvPrazo, RECADO070, /Só ADMIN ou advogado do escritório pede/, 'assistente')
+  await recusa070(ids.almeidaAdm, r070.rvPrazo, RECADO070, /Só ADMIN ou advogado do escritório pede/, 'administrador do parceiro')
+  await recusa070(ids.lucas, r070.rvPrazo, '  curto  ', /no mínimo 10 caracteres/, 'recado curto')
+  await recusa070(ids.lucas, t067.revEscolhida, RECADO070, /enviado por uma pessoa/, 'item de pessoa')
+  igual((await situacao070(ids.lucas, t067.revEscolhida)).blocked, 'NO_RUN', 'a tela sabe que não há trabalho')
+  await recusa070(ids.lucas, await revDaProposta067(t067.pDoc2), RECADO070, /Esta revisão já foi decidida/, 'revisão decidida')
+  await como(ids.ana, (tx) => tx.query(`select public.get_review_redo($1)`, [r070.rvPrazo])).then(
+    () => { throw new Error('assistente leu') }, (e) => { if (!/Revisões são visíveis só a ADMIN e LAWYER/.test(e.message)) throw e })
+  igual(await revisao070(r070.rvPrazo), antes, 'revisão como estava')
+  igual((await um(db, `select count(*)::int n from agent_runs where redo_of_run_id = $1`, [r070.t.run])).n, 0, 'nenhum trabalho novo')
+  const s = await situacao070(ids.lucas, r070.rvPrazo)
+  igual([s.agent_run_id, s.round, s.can_redo, s.blocked, s.redone], [r070.t.run, 0, true, null, null], 'pode pedir')
+})
+
+await deve('pedir o refazer de uma proposta: revisão rejeitada com o recado, nada aplicado, trabalho novo do MESMO agente no mesmo caso, em nome de quem pediu', async () => {
+  const r = r070.redo1 = await refazer070(ids.lucas, r070.rvPrazo, RECADO070)
+  igual([r.round, r.redo_of_run_id, r.deduplicated, r.publication_relinked], [1, r070.t.run, false, false], 'resposta')
+  igual((await revisao070(r070.rvPrazo)).status, 'REJECTED', 'revisão encerrada')
+  igual(await linhas(db, `select decision, notes, decided_by from review_decisions where review_id = $1`, [r070.rvPrazo]),
+    [{ decision: 'REJECT', notes: `Pedido ao agente para refazer: ${RECADO070}`, decided_by: ids.lucas }], 'decisão com o recado')
+  const p = await um(db, `select status, applied_entity_id from agent_proposals where id = $1`, [r070.pPrazo])
+  igual([p.status, p.applied_entity_id], ['REJECTED', null], 'proposta rejeitada, nada aplicado')
+  igual((await aplicar069(r070.pPrazo)).efeito, null, 'o aplicador não aplica nada')
+  const velho = await run070(r070.t.run), novo = await run070(r.agent_run_id)
+  igual([novo.agent_id, novo.legal_case_id, novo.legal_process_id, novo.requested_by, novo.status, novo.operation, novo.redo_of_run_id, novo.redo_of_review_id],
+    [velho.agent_id, velho.legal_case_id, velho.legal_process_id, ids.lucas, 'QUEUED', velho.operation, r070.t.run, r070.rvPrazo], 'trabalho novo')
+  igual((await um(db, `select queue_msg_id is not null q from agent_runs where id = $1`, [r.agent_run_id])).q, true, 'na fila')
+  const t = novo.request_text
+  igual([t.startsWith('REFAZER (1º refazer deste trabalho, pedido em Revisões por Lucas em '), t.includes(`O QUE PRECISA MUDAR (recado do advogado):\n${RECADO070}`),
+    t.includes('O QUE FOI ENTREGUE ANTES:\nProposta (prazo): Réplica 070. Resumo do agente: Prazo de réplica de 15 dias úteis'),
+    t.includes('_v2 no fim do nome'), t.endsWith('PEDIDO ORIGINAL DO TRABALHO ANTERIOR:\nPedido original 070: redigir a réplica e propor o prazo.'),
+    t.includes('NÃO entra direto na agenda')], [true, true, true, true, true, false], 'o pedido leva o recado, o que foi entregue e o pedido original')
+  igual([novo.parameters.redo_of_run_id, novo.parameters.redo_of_review_id, novo.parameters.redo_round], [r070.t.run, r070.rvPrazo, 1], 'parâmetros do refazer')
+  const au = await um(db, `select actor_type, actor_user_id, metadata from audit_events where action = 'AGENT_RUN_REDO_REQUESTED' and entity_id = $1`, [r.agent_run_id])
+  igual([au.actor_type, au.actor_user_id, au.metadata.review_id, au.metadata.redo_of_run_id, au.metadata.attempt], ['USER', ids.lucas, r070.rvPrazo, r070.t.run, 1], 'auditoria')
+  igual(JSON.stringify(au.metadata).includes('sexta'), false, 'o recado não vai para a auditoria')
+  // Clique duplo: o mesmo trabalho, nada novo.
+  const de_novo = await refazer070(ids.lucas, r070.rvPrazo, RECADO070)
+  igual([de_novo.agent_run_id, de_novo.deduplicated], [r.agent_run_id, true], 'mesmo trabalho')
+  igual((await um(db, `select count(*)::int n from agent_runs where redo_of_run_id = $1`, [r070.t.run])).n, 1, 'um refazer só')
+})
+
+await deve('os dois lados: a revisão encerrada mostra "Refeito em"; o trabalho novo diz de qual revisão é; outro item do mesmo trabalho não pede um segundo refazer', async () => {
+  const s = await situacao070(ids.lucas, r070.rvPrazo)
+  igual([s.blocked, s.redone.agent_run_id, s.redone.requested_by, s.redone_from_review], ['DECIDED', r070.redo1.agent_run_id, ids.lucas, true], 'refeito em')
+  const outra = await situacao070(ids.barbara, r070.rvOutra)
+  igual([outra.can_redo, outra.blocked, outra.redone.agent_run_id, outra.redone_from_review], [false, 'ALREADY_REDONE', r070.redo1.agent_run_id, false], 'o outro item sabe do refazer')
+  await recusa070(ids.barbara, r070.rvOutra, RECADO070, /já foi mandado refazer em/, 'segundo refazer do mesmo trabalho')
+  igual((await revisao070(r070.rvOutra)).status, 'PENDING', 'o outro item continua pendente')
+  // O vínculo não se escreve por fora nem muda depois.
+  await db.query(`update agent_runs set redo_of_run_id = null, redo_of_review_id = null where id = $1`, [r070.redo1.agent_run_id]).then(
+    () => { throw new Error('vínculo apagado') }, (e) => { if (!/não muda depois de gravado/.test(e.message)) throw e })
+  await db.query(`update agent_runs set redo_of_run_id = $2, redo_of_review_id = $3 where id = $1`, [t067.t.run, r070.t.run, r070.rvOutra]).then(
+    () => { throw new Error('vínculo gravado por fora') }, (e) => { if (!/só se grava por "Pedir para o agente refazer"/.test(e.message)) throw e })
+})
+
+await deve('minuta: o recado e o nome do documento entregue vão no pedido; a cadeia chega a 3 refazeres e o quarto é recusado, com a orientação de tratar à mão', async () => {
+  // 1º refazer já foi pedido (proposta). O trabalho refeito entrega uma minuta; ela é refeita de novo, e assim por diante.
+  let atual = await reservar070(r070.redo1.agent_run_id)
+  for (const rodada of [2, 3]) {
+    const prep = await ex(`select private.executor_prepare_output($1, $2, $3, $4, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 1200) r`,
+      [hA, atual.run, atual.reserva, `MINUTA_REPLICA_070_v${rodada}.docx`])
+    await db.query(`insert into storage.objects (bucket_id, name) values ('legal-documents', $1)`, [prep.storage_object_name])
+    await ex(`select private.executor_finalize_output($1, $2, $3, $4, $5, $6, $7, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 1200, $8, 'Minuta da réplica 070', 'PETITION') r`,
+      [hA, atual.run, atual.reserva, prep.document_id, prep.document_version_id, prep.storage_object_name, `MINUTA_REPLICA_070_v${rodada}.docx`, sha64])
+    const rv = (await um(db, `select id from reviews where document_version_id = $1`, [prep.document_version_id])).id
+    igual((await revisao070(rv)).agent_run_id, atual.run, 'a minuta nova é do trabalho refeito')
+    igual((await situacao070(ids.lucas, rv)).blocked, 'RUNNING', 'com o agente ainda trabalhando, espera')
+    await concluir070(atual)
+    const r = await refazer070(ids.lucas, rv, `Rodada ${rodada}: faltou o pedido de gratuidade na réplica.`)
+    igual(r.round, rodada, `refazer nº ${rodada}`)
+    const novo = await run070(r.agent_run_id)
+    igual([novo.redo_of_run_id, novo.request_text.includes(`REFAZER (${rodada}º refazer`), novo.request_text.includes(`_v${rodada + 1} no fim do nome`),
+      novo.request_text.includes(`O QUE FOI ENTREGUE ANTES:\nMinuta "Minuta da réplica 070" (versão 1, arquivo MINUTA_REPLICA_070_v${rodada}.docx)`),
+      novo.request_text.includes('Pedido original 070: redigir a réplica e propor o prazo.')], [atual.run, true, true, true, true], `pedido da rodada ${rodada}`)
+    atual = await reservar070(r.agent_run_id)
+  }
+  // O 3º refazer entrega; o quarto pedido é recusado.
+  const ultimo = (await proposta067(atual, 'OTHER', { summary: 'Resumo da rodada 3 do agente', data: { description: 'Conferir a gratuidade na réplica 070.' } }, 'k-070-ultimo')).proposal_id
+  await concluir070(atual)
+  const rv = await revDe069(ultimo)
+  const s = await situacao070(ids.lucas, rv)
+  igual([s.round, s.can_redo, s.blocked, /refeito 3 vezes a partir do original/.test(s.message)], [3, false, 'LIMIT', true], 'limite na tela')
+  await recusa070(ids.lucas, rv, 'Quarta tentativa: ainda faltou a gratuidade.', /refeito 3 vezes a partir do original/, 'quarto refazer')
+  igual((await revisao070(rv)).status, 'PENDING', 'a revisão continua para ser tratada à mão')
+})
+
+await deve('análise: o trabalho novo vira a execução da própria análise (volta para a fila) e o agente recebe o resultado anterior com o recado', async () => {
+  const a = await analise056(ids.tpl039)
+  const run = (await um(db, `select agent_run_id r from legal_analyses where id = $1`, [a.analise])).r
+  await comoWorker((tx) => tx.query(`select private.worker_finish_run($1, 'worker-056', 'WAITING_HUMAN')`, [run]))
+  const r = await refazer070(ids.barbara, a.revisao, 'Faltou analisar o contrato de cartão RMC do extrato.')
+  const an = await um(db, `select status, agent_run_id from legal_analyses where id = $1`, [a.analise])
+  igual([an.status, an.agent_run_id], ['QUEUED', r.agent_run_id], 'a análise volta para a fila com o trabalho novo')
+  const novo = await run070(r.agent_run_id)
+  igual([novo.redo_of_run_id, novo.retry_of_agent_run_id, novo.requested_by, novo.request_text.includes('O QUE FOI ENTREGUE ANTES:\nAnálise "Template 039". Resumo do resultado: Resumo da análise 056')],
+    [run, run, ids.barbara, true], 'trabalho novo ligado ao anterior')
+  igual((await reservar039(r.agent_run_id, 'worker-070')).claimed, true, 'reservada')
+  const c = await comoWorker(async (tx) => (await um(tx, `select private.worker_run_context($1, 'worker-070') c`, [r.agent_run_id])).c)
+  igual([c.analysis.id, c.analysis.previous.result_id, c.analysis.previous.review_status, c.analysis.previous.review_notes],
+    [a.analise, a.resultado, 'REJECTED', 'Pedido ao agente para refazer: Faltou analisar o contrato de cartão RMC do extrato.'], 'o agente lê o resultado anterior e o recado')
+  igual(c.input.request_text.startsWith('REFAZER (1º refazer'), true, 'e o pedido diz que é um refazer')
+})
+
+await deve('prazo de publicação: o refazer mantém a publicação "Com o agente", ligada ao trabalho novo; a vigia não a solta; o prazo do refeito NÃO entra direto (vai para Revisões) e, aprovado, fecha a publicação', async () => {
+  await db.query(`update judicial_settings set deadline_agent_id = $1, deadline_auto_apply = true, agent_timeout_hours = 4 where id`, [ids.agente])
+  const cli = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99907000002', $1) returning id`, [ids.owner])).id
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Cliente Fictício 070 da publicação')`, [cli])
+  const caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Caso fictício 070 da publicação', 'IN_PROGRESS', $3, $3, $4) returning id`, [cli, ids.banking, ids.owner, ids.lucas])).id
+  const cnjPub = cnj(7001, '2026', '8', '19', '0999')
+  const proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court, responsible_user_id) values ($1, $2, 'Fictícia x Banco 070 publicação', 'TJRJ', $3) returning id`,
+    [caso, cnjPub, ids.lucas])).id
+  // Conferência de que a 070 não afrouxou o prazo direto: trabalho de publicação comum, data da lista → entra direto.
+  const comum = await trabalho059(proc, cnjPub, await dia069(0))
+  const direto = await propor059(comum, 'CREATE_DEADLINE', prazo059(comum.dias[14]), 'k-070-comum')
+  igual(direto.applied, true, 'o prazo direto continua valendo para o trabalho comum')
+  // A publicação do refazer.
+  const t = await trabalho059(proc, cnjPub, await dia069(0))
+  const r0 = await propor059(t, 'CREATE_DEADLINE', prazo059(mais059(t.dias[29], 40)), 'k-070-pub')
+  const p0 = await proposta059(r0.proposal_id)
+  igual([r0.applied, p0.revisao, (await publicacao059(t)).st], [false, 'PENDING', 'WITH_AGENT'], 'data fora da lista: foi para Revisões')
+  igual((await concluir070(t)).status, 'WAITING_HUMAN', 'trabalho entregue')
+  // O trabalho anterior é antigo: o tempo de espera do refazer conta a partir do refazer.
+  await db.query(`alter table agent_runs disable trigger user`)
+  await db.query(`update agent_runs set created_at = now() - interval '2 days' where id = $1`, [t.run])
+  await db.query(`alter table agent_runs enable trigger user`)
+  const r = await refazer070(ids.lucas, p0.revisao_id, 'A contagem tem de começar no primeiro dia útil depois da publicação.')
+  igual(r.publication_relinked, true, 'publicação ligada ao trabalho novo')
+  const pub = await um(db, `select triage_status st, agent_run_id run, deadline_id prazo from judicial_publications where id = $1`, [t.pub])
+  igual([pub.st, pub.run, pub.prazo], ['WITH_AGENT', r.agent_run_id, null], 'continua "Com o agente"')
+  const novo = await run070(r.agent_run_id)
+  igual([novo.request_text.includes('Neste refazer o prazo proposto NÃO entra direto na agenda'), novo.parameters.kind, novo.parameters.publication_id, novo.parameters.business_days],
+    [true, 'JUDICIAL_PUBLICATION', t.pub, t.dias], 'o pedido avisa e leva os dias úteis que o agente leu')
+  await db.query(`select private.judicial_release_stuck_publications(now())`)
+  await db.query(`select private.judicial_release_stuck_publications(now() + interval '3 hours')`)
+  igual((await publicacao059(t)).st, 'WITH_AGENT', 'a vigia não solta: a revisão anterior terminou, mas o refazer está na fila e dentro do tempo')
+  // O trabalho refeito propõe um prazo com data da lista: mesmo assim vai para Revisões.
+  const t2 = { ...(await reservar070(r.agent_run_id)), pub: t.pub }
+  const r2 = await propor059(t2, 'CREATE_DEADLINE', prazo059(t.dias[14]), 'k-070-pub-2')
+  const p2 = await proposta059(r2.proposal_id)
+  igual([r2.applied, p2.status, p2.rev, p2.revisao], [false, 'PENDING', true, 'PENDING'], 'sem prazo direto no refazer')
+  igual(await motivos059(t2), ['Prazo não entrou direto na agenda (foi para Revisões): este trabalho é um refazer pedido em Revisões: o prazo volta para uma pessoa conferir'], 'motivo na linha do tempo')
+  igual((await publicacao059(t)).st, 'WITH_AGENT', 'a publicação espera a revisão')
+  await decidir(ids.lucas, p2.revisao_id, 'APPROVE')
+  const p = await aplicar069(r2.proposal_id)
+  const fim = await publicacao059(t)
+  igual([p.status, fim.st, fim.res, fim.prazo, fim.por], ['APPLIED', 'DONE', 'DEADLINE', p.efeito, ids.lucas], 'aprovado em Revisões, fecha a publicação')
+})
+
+await deve('catálogo [070]: search_path fixo; blocos internos e gatilho fechados; só as duas da tela para usuário logado; o prazo direto continua fechado', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname = 'private' and p.proname = any ($1)) or (n.nspname = 'public' and p.proname = any ($2)) order by 1`,
+    [['agent_runs_redo_guard', 'agent_run_redo_depth', 'review_redo_state', 'get_review_redo', 'redo_agent_review', 'judicial_direct_deadline_check'],
+     ['get_review_redo', 'redo_agent_review']])
+  igual(r.length, 8, 'uma versão de cada função')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv || x.wrk).map((x) => x.f), [], 'search_path fixo; sem visitante, service_role nem dg_worker')
+  igual(r.filter((x) => x.usr).map((x) => x.f), ['private.get_review_redo', 'private.redo_agent_review', 'public.get_review_redo', 'public.redo_agent_review'], 'usuário logado: só as da tela')
+  igual(r.filter((x) => x.f.startsWith('public.') && x.def).length, 0, 'as públicas rodam como quem chama')
+  igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.agent_runs'::regclass and tgname = 'agent_runs_redo_guard'`)).n, 1, 'gatilho do vínculo')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

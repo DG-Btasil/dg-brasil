@@ -225,6 +225,20 @@ export async function correctAndApprove(db: SupabaseClient, reviewId: string, da
   return unwrap(await db.rpc("correct_and_approve_review", { p_review_id: reviewId, p_data: data, p_notes: notes })) as { decision_id: string; fields: string[] };
 }
 
+/** Situação do refazer da revisão (070): trabalho, cadeia, refazer já pedido e motivo de bloqueio. */
+export async function getRedo(db: SupabaseClient, reviewId: string): Promise<unknown> {
+  return unwrap(await db.rpc("get_review_redo", { p_review_id: reviewId }));
+}
+
+/**
+ * "Pedir para o agente refazer" (070): encerra a revisão (rejeitada, com o
+ * recado) e pede o trabalho novo ao mesmo agente, numa transação. O banco
+ * confere papel, acesso, cadeia e limite.
+ */
+export async function redo(db: SupabaseClient, reviewId: string, message: string): Promise<{ agent_run_id: string; round: number; deduplicated: boolean }> {
+  return unwrap(await db.rpc("redo_agent_review", { p_review_id: reviewId, p_message: message })) as { agent_run_id: string; round: number; deduplicated: boolean };
+}
+
 /* ------------------------------------------------------------------ */
 /* Edição manual (034)                                                 */
 /* ------------------------------------------------------------------ */

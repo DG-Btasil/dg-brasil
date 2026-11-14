@@ -167,6 +167,7 @@ agente de prazos (abaixo). Na tela:
 9. **O trabalho que ficou na fila não é cancelado.** Se o agente responder depois, a proposta **cai em Revisões**, nunca direto na agenda (o prazo direto só vale para publicação que ainda está com o agente). Aprovada, cria o prazo e fecha a publicação que estava "A tratar". Se a equipe já tinha tratado a publicação, a proposta chega em Revisões com o motivo "a publicação já foi tratada": rejeite, para não ficarem dois prazos.
 10. **"Tratar eu mesmo"** (tela da publicação): tira a publicação do agente por decisão de uma pessoa. A tela mostra há quanto tempo ela está com o agente e avisa quando a execução está desligada ou o computador do escritório não está conectado.
 11. **Teor cortado não entra direto (062).** O pedido ao agente cabe em 20 mil caracteres. Publicação maior vai com o começo e o fim do teor (o meio é marcado como cortado), o agente é avisado para ler a íntegra pelo link, e o prazo proposto vai para Revisões.
+12. **Refazer não entra direto (070).** Em Revisões, "Pedir para o agente refazer" na proposta do agente de prazos manda um trabalho novo com o recado; a publicação passa para esse trabalho e continua "Com o agente" (o tempo de espera conta de novo). O prazo que o trabalho refeito propuser vai sempre para Revisões, mesmo com data da lista. "Corrigir e aprovar" (069) também fecha a publicação, com quem corrigiu como quem tratou.
 
 **O prazo vira tarefa** (migration 061, decisão da dona em 13/11/2026). Todo
 prazo que nasce de uma proposta do agente de prazos (direto ou aprovado em
