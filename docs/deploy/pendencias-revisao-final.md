@@ -54,7 +54,8 @@ migrations novas.
 Cada agente escolheu a opção mais conservadora e seguiu. **A Barbara confirmou todas em
 13/11/2026**, menos uma: em Revisões, proposta do agente com só "Aprovar" e "Rejeitar". Para o
 caso "está quase certo", ela escolheu acrescentar "Corrigir e aprovar" (a pessoa edita a proposta
-e aprova) e, depois, "Pedir para o agente refazer" (com o recado, também para minutas).
+e aprova) e, depois, "Pedir para o agente refazer" (com o recado, também para minutas). **Feito e publicado no DEV em 13/11/2026** (migrations 069 e 070); os agentes do computador principal
+ganharam a regra "Refazer pedido em Revisões" (cópias no Drive: `kit-agentes-dg-2026-11-13-com-refazer.zip`).
 
 **Prazos e publicações**
 - Publicação "com o agente" volta para a equipe depois de **4 horas corridas** sem proposta
