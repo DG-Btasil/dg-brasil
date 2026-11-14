@@ -172,6 +172,13 @@ export const prepareOutputSchema = z.object({
   size: z.number().int().positive().max(OUTPUT_MAX_BYTES),
 }).strict().refine((o) => OUTPUT_MIME[extensionOf(o.filename)] === o.mime_type, "extensão e tipo do arquivo não combinam");
 
+/** Setup do escritório (072): o pacote .zip que o publicar-setup.ps1 envia. Até 50 MB. */
+export const SETUP_MAX_BYTES = 50 * 1024 * 1024;
+export const setupPrepareSchema = z.object({
+  size: z.number().int().positive().max(SETUP_MAX_BYTES),
+  checksum_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+}).strict();
+
 export const finalizeOutputSchema = z.object({
   document_id: uuid,
   storage_object_name: z.string().min(10).max(500),

@@ -20,6 +20,8 @@ export async function proxy(request: NextRequest) {
   // API do computador do escritório: sem sessão de navegador nem cookie. Quem
   // autentica é a própria rota (token do computador + token de reserva).
   if (pathname.startsWith("/api/executor/")) return NextResponse.next();
+  // Setup do escritório (072): quem autentica é a rota, com o código de uso único.
+  if (pathname.startsWith("/api/setup/")) return NextResponse.next();
   // Situação do sistema para o monitor externo: pública, sem segredo e sem dado.
   if (pathname === "/api/health") return NextResponse.next();
   // Rotas agendadas (Vercel Cron): autenticadas pela própria rota (CRON_SECRET).

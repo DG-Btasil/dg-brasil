@@ -14,6 +14,7 @@ export const EXECUTOR_FUNCTIONS = [
   "executor_list_theses", "executor_list_references", "executor_submit_analysis", "executor_create_proposal",
   "executor_prepare_output", "executor_finalize_output", "executor_record_config", "executor_complete",
   "executor_fail", "executor_release", "executor_bridge_data", "executor_wake_poll",
+  "executor_setup_prepare", "executor_setup_publish",
 ] as const;
 export type ExecutorFunction = (typeof EXECUTOR_FUNCTIONS)[number];
 

@@ -15,7 +15,7 @@ Este arquivo junta só o que fica **para depois do lançamento**.
 | 3 | Agendamentos atuais dos agentes (risco R1) | Como estão | Decidir | — |
 | 4 | Correções nos arquivos dos agentes do escritório | Defeitos já existentes | Corrigir no repositório dos agentes | Sem custo |
 | 5 | Ajustes pequenos | — | Ver a lista | Sem custo |
-| 6 | **PRIORIDADE.** Distribuição dos agentes do kit (clones `-dg`): botão "Setup" no site | Só no computador do escritório, fora do repositório (que é público) | Decidir o desenho e construir | Sem custo |
+| 6 | Distribuição dos agentes do kit (clones `-dg`): botão "Setup" no site | **Feito em 14/11/2026** (072): Sua conta e sessões → Setup, só para a dona do escritório | Publicar a primeira versão e instalar pelo botão | Sem custo |
 | 7 | Titular do comprovante de residência no cadastro do cliente | O Lucas compara o nome do comprovante com o do cliente | Decidir como o campo deve ser | Sem custo |
 | 8 | Cópia de segurança dos documentos (Storage) | Script pronto (`supabase/scripts/backup-documentos.mjs`), sem destino | Escolher destino, frequência e responsável; ensaiar a restauração | Depende do destino |
 | 9 | Monitoramento (monitor externo e destino dos erros) | `/api/health` e `ERROR_WEBHOOK_URL` prontos, sem conta ligada | Escolher o monitor e o destino; ligar na produção | Há opções gratuitas |
@@ -23,6 +23,7 @@ Este arquivo junta só o que fica **para depois do lançamento**.
 | 11 | Pedido de titular de dados (LGPD) | Procedimento escrito, sem tela | Definir quem atende e por qual canal | Sem custo |
 | 12 | Resumo diário por e-mail | Avisos só no sino do site | Depende do e-mail do escritório (SMTP) | Plano pago do Zoho |
 | 13 | Termos de uso e política de privacidade definitivos | Texto provisório (versão `0.1-provisorio`) | Texto jurídico definitivo | Sem custo |
+| 14 | OAB e assinatura nas peças de caso de parceiro | Os dados de quem assina vêm do `escritorio.json` (dentro do setup) | Decidir como a peça e a procuração levam a OAB do advogado parceiro, dono do cliente | Sem custo |
 
 ---
 
@@ -136,45 +137,53 @@ Não são do DG Brasil e já acontecem hoje:
   que ficou aberta por falta dos autos quando o documento chega; mostrar na
   tarefa o link para o prazo de origem.
 
-## 6. Distribuição dos agentes do kit: botão "Setup" no site (PRIORIDADE)
+## 6. Distribuição dos agentes do kit: botão "Setup" no site (FEITO em 14/11/2026, migration 072)
 
-**Primeiro item a resolver depois do lançamento** (decisão de Barbara,
-12/11/2026). Dá trabalho e precisa de um bom desenho; por isso não entrou agora.
+Antecipado para antes da produção (decisão de 14/11/2026). Os 13 clones, a
+Diana, os agentes da ponte, os scripts e os dados de quem assina saem do
+computador do escritório e passam a morar no DG Brasil, no bucket **privado**
+`office-setup`. A pasta `agentes/` continua fora do GitHub (o repositório é
+público).
 
-**Como está no lançamento:** os 13 clones e os scripts deles existem **só no
-computador do escritório**, na pasta `agentes/` da cópia local do projeto. Essa
-pasta **não vai para o GitHub**: o repositório é público e os clones trazem o
-método do escritório (teses, modelos, regras de redação, textos de procuração e
-de contrato, material das Lives). O `.gitignore` impede o envio por engano. O
-instalador dos clones ([instalacao.md](../mcp/instalacao.md), seção 5.0) lê
-dessa pasta local. No site fica só o cadastro de cada agente (migration 054).
+**Quem usa:** só a dona do escritório, que é o **primeiro ADMIN do escritório
+principal** (o vínculo ADMIN ativo mais antigo; na instalação, o que o
+`bootstrap_owner_admin` criou). Se ele for desativado, o próximo ADMIN mais
+antigo assume. Para os outros, a linha nem aparece.
 
-**Riscos de ficar assim:**
-- não há cópia dos clones fora desse computador;
-- instalar num segundo computador exige copiar a pasta à mão;
-- o endereço do instalador do conector no site também é público: nada do
-  método pode ir para lá.
+**Como a dona instala ou atualiza:** **Sua conta e sessões → Setup**. A
+pergunta é "Você deseja instalar o setup?" (se já estiver instalado, ele é
+removido e atualizado para a versão mais recente), com **Autorizar** ou
+**Negar**. Autorizar baixa o arquivo `Setup DG Brasil.cmd`. Dois cliques nele
+no computador fazem o resto, e no fim o arquivo apaga a si mesmo.
 
-**A ideia (Barbara, 12/11/2026):** levar os agentes para dentro do DG Brasil.
-Em **Computador do escritório → Autorizar computador**, depois do nome, a tela
-oferece **Baixar setup** ou **Seguir**. O setup traz o instalador, os agentes,
-os scripts e os dados de quem assina.
+**Segurança, sem senha:**
+- o arquivo baixado não traz os agentes nem o token do computador: traz só um
+  código de **uso único** que vence em **15 minutos**. Esquecido na pasta
+  Downloads ou mandado para alguém, não serve para nada;
+- o código troca, uma vez, por um link de 2 minutos para o pacote
+  (`/api/setup/v1/baixar`), e o pacote é conferido pelo SHA-256 antes de
+  instalar;
+- a dona recebe aviso no sino (Segurança) quando o setup é instalado e quando
+  sai versão nova. Tudo fica na auditoria (`OFFICE_SETUP_ISSUED`,
+  `OFFICE_SETUP_REDEEMED`, `OFFICE_SETUP_PUBLISHED`);
+- a instalação guarda o setup anterior e o devolve se algo falhar no meio.
+  Nunca toca em `C:\DGBrasil\agentes\trabalho` nem nos agentes do escritório
+  (só nos `-dg.md` e no `orquestrador.md`).
 
-**Pontos do desenho a decidir:**
-- onde guardar os arquivos dos agentes no DG Brasil (área privada, nunca a
-  pasta pública do site);
-- só ADMIN logado baixa, e fica registrado quem baixou, quando e qual versão;
-- a chave do computador **não** vai dentro do arquivo baixado (um setup
-  esquecido na pasta de downloads não pode abrir o DG Brasil);
-- o mesmo botão na linha de cada computador já autorizado, para atualizar
-  quando um agente melhorar;
-- de onde vêm os dados de quem assina e as condições do contrato (honorários,
-  custo inicial): hoje estão em `C:\DGBrasil\agentes\escritorio.json`, só no
-  computador; o cadastro do escritório no site ainda não tem todos;
+**Como publicar uma versão nova** (quando um agente melhorar), no computador do
+escritório já autorizado, de dentro da cópia local do projeto:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File apps\executor\scripts\publicar-setup.ps1
+```
+
+`-Simular` monta o pacote sem enviar. O script recusa o `escritorio.json` com
+os dados fictícios do exemplo. Depois de publicar, a dona aperta **Setup** de
+novo no computador que deve receber a versão.
+
+**Ainda em aberto:**
 - se outros escritórios usarem o DG Brasil: o que é kit do DG Brasil e o que é
-  método deste escritório.
-
-**Junto disso, pensar:**
+  método deste escritório;
 - a procuração do Lucas cobre só a revisional de consignado do INSS; o Atlas
   (empréstimo pessoal, consignado de trabalhador CLT) e o Vicente (seguro,
   conta) precisam de outro objeto de procuração;
@@ -221,6 +230,20 @@ fica como está.
 - **13. Termos de uso e política de privacidade.** O texto provisório diz isso na própria tela.
   Atenção: [producao.md](producao.md), item 9, recomenda ter o texto definitivo antes do
   primeiro cliente real.
+
+## 14. OAB e assinatura nas peças de caso de parceiro
+
+Regra de 14/11/2026, para decidir depois (não trava o lançamento). No caso que
+o parceiro mandou e virou processo, **o processo continua sendo do parceiro**:
+o cliente contratou aquele advogado e deu poderes a ele. A petição inicial, a
+procuração e as outras peças usam a **OAB do advogado parceiro**, dono do
+cliente. O escritório auxilia, mas a OAB da dona do escritório não vai em todas
+as peças.
+
+Hoje os dados de quem assina vêm do `escritorio.json` que vai no setup (item 6).
+Falta decidir de onde o agente tira a OAB e o nome do advogado parceiro em cada
+caso (o cadastro do parceiro no site já tem as OABs das pessoas, migration 048).
+Junto, mais tarde: termos de uso e LGPD da parceria (item 13).
 
 ## Depois do lançamento: o que anotar
 

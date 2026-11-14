@@ -19,8 +19,10 @@ DG Brasil. **Os agentes originais do escritório não foram alterados.**
 > Os arquivos dos clones (`agentes/bancario/`), os scripts (`agentes/scripts/`)
 > e os relatórios por agente desta pasta trazem o método do escritório e ficam
 > **só no computador do escritório** (o `.gitignore` impede o envio por
-> engano). Levá-los para dentro do DG Brasil, com um botão "Setup", é a
-> prioridade do [pós-MVP](../../deploy/pos-mvp.md), item 6.
+> engano). Desde a migration 072 eles também ficam no DG Brasil, num lugar
+> privado, e a dona do escritório instala por **Sua conta e sessões → Setup**
+> ([pós-MVP](../../deploy/pos-mvp.md), item 6). Versão nova:
+> `apps\executor\scripts\publicar-setup.ps1`.
 
 ## Como fica
 

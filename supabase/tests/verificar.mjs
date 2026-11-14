@@ -1375,7 +1375,7 @@ await deve('usuário não reativa o próprio perfil', async () => {
 secao('Storage')
 await deve('buckets de documentos são privados', async () => {
   const r = await linhas(db, `select id, public from storage.buckets order by id`)
-  igual(r.map((x) => [x.id, x.public]), [['imports', false], ['legal-documents', false], ['reference-materials', false], ['skill-files', false]], 'buckets')
+  igual(r.map((x) => [x.id, x.public]), [['imports', false], ['legal-documents', false], ['office-setup', false], ['reference-materials', false], ['skill-files', false]], 'buckets')
 })
 await deveFalhar('navegador não grava direto no bucket', () => como(ids.barbara, (tx) =>
   tx.query(`insert into storage.objects (bucket_id, name) values ('legal-documents', 'clients/x/y.pdf')`)),
@@ -9350,6 +9350,85 @@ await deve('catálogo [071]: funções com search_path fixo; gatilho fechado; ex
   igual(tot.map((x) => x.a), ['p_from date, p_to date, p_overdue_only boolean, p_search text, p_cnj_prefix text, p_drafts boolean'], 'a receber: uma versão só, com p_drafts')
   igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.agent_proposals'::regclass and tgname = 'agent_proposals_corrected_deadline_checked'`)).n, 1, 'gatilho')
 })
+
+// ═════════════════════════════ Setup do escritório [072] ═════════════════
+
+secao('Setup do escritório: só a dona, código de uso único [072]')
+const h072 = (s) => createHash('sha256').update(s).digest('hex')
+const setupPode = (uid) => como(uid, async (tx) => (await um(tx, `select public.can_use_office_setup() r`)).r)
+const setupPede = (uid, code) => como(uid, async (tx) => (await um(tx, `select public.dg_issue_office_setup($1) r`, [h072(code)])).r)
+const setupTroca = (code) => ex(`select private.office_setup_redeem($1) r`, [h072(code)])
+const setupPrepara = (hash, size = 1234, sha = 'a'.repeat(64)) => ex(`select private.executor_setup_prepare($1, $2, $3) r`, [hash, size, sha])
+const setupPublica = (hash, id) => ex(`select private.executor_setup_publish($1, $2) r`, [hash, id])
+ids.adm072 = await usuario('Clarice', ids.owner, 'ADMIN')
+await deve('a dona é o primeiro ADMIN do escritório; outro ADMIN, advogado e parceiro não usam', async () => {
+  igual(await setupPode(ids.barbara), true, 'primeira ADMIN')
+  for (const u of [ids.adm072, ids.lucas, ids.ana, ids.almeidaAdm]) igual(await setupPode(u), false, 'sem setup')
+  await setupPede(ids.adm072, 'dgs_outra-adm-072').then(() => { throw new Error('outro ADMIN pediu') }, (e) => { if (!/Sem permissão/.test(e.message)) throw e })
+})
+await deve('sem versão publicada, o pedido recusa com mensagem clara', async () => {
+  await setupPede(ids.barbara, 'dgs_sem-versao-072').then(() => { throw new Error('pedido sem versão') }, (e) => { if (!/ainda não foi publicado/.test(e.message)) throw e })
+})
+await deve('computador publica: reserva, arquivo no bucket, publica; sem o arquivo não publica', async () => {
+  const p = await setupPrepara(hA)
+  igual(/^\d{4}\.\d{2}\.\d{2}-\d{6}$/.test(p.version) && p.storage_object_name === `${ids.owner}/${p.version}.zip`, true, 'versão e caminho')
+  await setupPublica(hA, p.id).then(() => { throw new Error('publicou sem arquivo') }, (e) => { if (!/não chegou/.test(e.message)) throw e })
+  await db.query(`insert into storage.objects (bucket_id, name) values ('office-setup', $1)`, [p.storage_object_name])
+  await setupPublica(hB, p.id).then(() => { throw new Error('revogado publicou') }, (e) => { if (!/inválido ou revogado/.test(e.message)) throw e })
+  const r = await setupPublica(hA, p.id)
+  igual([r.version, r.already_published], [p.version, false], 'publicada')
+  igual((await setupPublica(hA, p.id)).already_published, true, 'repetir não quebra')
+  igual((await linhas(db, `select title from notifications where user_id = $1 and event_key = $2`, [ids.barbara, `office_setup_published:${p.id}`])).map((x) => x.title), ['Setup atualizado'], 'a dona é avisada')
+  ids.v072 = p
+  await setupPrepara(hA, 0).then(() => { throw new Error('tamanho zero') }, (e) => { if (!/50 MB/.test(e.message)) throw e })
+  await setupPrepara(hA, 10, 'nao-e-sha').then(() => { throw new Error('sha inválido') }, (e) => { if (!/SHA-256/.test(e.message)) throw e })
+})
+await deve('a dona gera o código; ele vale uma vez só e avisa no sino', async () => {
+  const a = await setupPede(ids.barbara, 'dgs_codigo-bom-072')
+  igual(a.version, ids.v072.version, 'versão mais recente')
+  const t = await setupTroca('dgs_codigo-bom-072')
+  igual([t.version, t.storage_object_name, t.checksum_sha256, Number(t.size_bytes)], [ids.v072.version, ids.v072.storage_object_name, 'a'.repeat(64), 1234], 'troca')
+  await setupTroca('dgs_codigo-bom-072').then(() => { throw new Error('usou duas vezes') }, (e) => { if (!/já foi usado/.test(e.message)) throw e })
+  await setupTroca('dgs_codigo-que-nao-existe').then(() => { throw new Error('código inventado') }, (e) => { if (!/já foi usado/.test(e.message)) throw e })
+  igual((await linhas(db, `select title from notifications where user_id = $1 and type = 'SECURITY_NOTICE' and event_key like 'office_setup_redeemed:%'`, [ids.barbara])).map((x) => x.title), ['Setup instalado'], 'aviso')
+  igual((await linhas(db, `select distinct action from audit_events where action like 'OFFICE_SETUP_%'`)).map((x) => x.action).sort(),
+    ['OFFICE_SETUP_ISSUED', 'OFFICE_SETUP_PUBLISHED', 'OFFICE_SETUP_REDEEMED'], 'auditoria')
+})
+await deve('código com mais de 15 minutos não vale', async () => {
+  await setupPede(ids.barbara, 'dgs_codigo-velho-072')
+  await db.query(`update office_setup_codes set issued_at = now() - interval '20 minutes', expires_at = now() - interval '5 minutes' where code_hash = $1`, [h072('dgs_codigo-velho-072')])
+  await setupTroca('dgs_codigo-velho-072').then(() => { throw new Error('vencido usado') }, (e) => { if (!/venceu/.test(e.message)) throw e })
+})
+await deve('dona desativada: o próximo ADMIN mais antigo assume', async () => {
+  await db.query(`update organization_memberships set status = 'SUSPENDED' where user_id = $1`, [ids.barbara])
+  try {
+    const dona = (await um(db, `select private.office_owner_user_id() u`)).u
+    igual(dona !== null && dona !== ids.barbara, true, 'outro ADMIN assume')
+  } finally {
+    await db.query(`update organization_memberships set status = 'ACTIVE' where user_id = $1`, [ids.barbara])
+  }
+  igual((await um(db, `select private.office_owner_user_id() u`)).u, ids.barbara, 'reativada, volta a ser a dona')
+})
+await deve('tabelas fechadas; funções com search_path fixo e grants certos [072]', async () => {
+  for (const t of ['office_setup_versions', 'office_setup_codes']) {
+    await como(ids.barbara, (tx) => tx.query(`select * from ${t}`)).then(() => { throw new Error(`leu ${t}`) }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  }
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.proname = any ($1)`,
+  [['office_owner_user_id', 'can_use_office_setup', 'dg_issue_office_setup', 'office_setup_redeem', 'executor_setup_prepare', 'executor_setup_publish']])
+  igual(r.length, 8, 'funções')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv).map((x) => x.f), [], 'search_path / anon / service_role')
+  const esperado = {
+    'private.office_owner_user_id': [false, false], 'private.can_use_office_setup': [true, false], 'private.dg_issue_office_setup': [true, false],
+    'public.can_use_office_setup': [true, false], 'public.dg_issue_office_setup': [true, false],
+    'private.office_setup_redeem': [false, true], 'private.executor_setup_prepare': [false, true], 'private.executor_setup_publish': [false, true],
+  }
+  igual(r.filter((x) => JSON.stringify([x.usr, x.wrk]) !== JSON.stringify(esperado[x.f])).map((x) => x.f), [], 'quem executa')
+})
+await db.query(`update organization_memberships set status = 'REMOVED' where user_id = $1`, [ids.adm072])
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
 

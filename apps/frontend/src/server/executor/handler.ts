@@ -7,7 +7,7 @@ import { SlidingWindowLimiter } from "@/server/core/rate-limit";
 import {
   ANALYSIS_SCHEMA_VERSION, EXECUTOR_TOKEN, LEASE_TOKEN, MIN_EXECUTOR_VERSION, PROPOSAL_DATA, analysisForStorage, completeSchema,
   configSchema, createProposalSchema, executorVersionAccepted, failSchema, finalizeOutputSchema, heartbeatSchema, parseExecutorVersion,
-  prepareOutputSchema, proposalKey, sha256Hex, submitAnalysisSchema,
+  prepareOutputSchema, proposalKey, setupPrepareSchema, sha256Hex, submitAnalysisSchema,
 } from "./contract";
 import type { ExecutorDb, ExecutorFunction } from "./db";
 import type { ExecutorStorage } from "./storage";
@@ -175,6 +175,17 @@ async function route_(req: ExecutorRequest, tokenHash: string, deps: ExecutorDep
       execution_enabled: r?.execution_enabled === true,
       newest_job_at: typeof r?.newest_job_at === "string" ? r.newest_job_at : null,
     });
+  }
+  // Setup do escritório (072): o publicar-setup.ps1 reserva a versão, envia o
+  // .zip para a URL assinada e publica. A dona do escritório é avisada no sino.
+  if (s.length === 2 && s[0] === "setup" && s[1] === "prepare" && m === "POST") {
+    const b = parse(setupPrepareSchema, req.body);
+    const p = await call<{ id: string; version: string; storage_object_name: string }>("executor_setup_prepare", b.size, b.checksum_sha256);
+    const uploadUrl = await deps.storage.signSetupUpload(p.storage_object_name);
+    return ok({ id: p.id, version: p.version, upload_url: uploadUrl });
+  }
+  if (s.length === 3 && s[0] === "setup" && UUID.test(s[1]) && s[2] === "publish" && m === "POST") {
+    return ok(await call("executor_setup_publish", s[1]));
   }
   if (s[0] !== "jobs" || s.length < 3 || !UUID.test(s[1])) throw new HttpError(404, "NOT_FOUND", "Rota inexistente.");
 

@@ -18,6 +18,8 @@ export type ExecutorBucket = typeof LEGAL_DOCUMENTS_BUCKET | "reference-material
 export interface ExecutorStorage {
   signDownload(bucket: ExecutorBucket, objectName: string, filename: string): Promise<string>;
   signUpload(objectName: string): Promise<string>;
+  /** Setup do escritório (072): envio write-once no bucket office-setup, para o caminho que o banco reservou. */
+  signSetupUpload(objectName: string): Promise<string>;
 }
 
 export const DOWNLOAD_URL_SECONDS = 120;
@@ -32,6 +34,11 @@ export function signedExecutorStorage(createAdmin = createSupabaseAdminClient): 
     },
     async signUpload(objectName) {
       const { data, error } = await createAdmin().storage.from(LEGAL_DOCUMENTS_BUCKET).createSignedUploadUrl(objectName, { upsert: false });
+      if (error || !data) throw fromStorageError(error as never);
+      return data.signedUrl;
+    },
+    async signSetupUpload(objectName) {
+      const { data, error } = await createAdmin().storage.from("office-setup").createSignedUploadUrl(objectName, { upsert: false });
       if (error || !data) throw fromStorageError(error as never);
       return data.signedUrl;
     },

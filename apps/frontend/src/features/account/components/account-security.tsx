@@ -19,6 +19,7 @@ import { signOut } from "@/server/auth/actions";
 import { getAccountSecurityAction, signOutAllSessionsAction, signOutOtherSessionsAction } from "@/server/domain/account/actions";
 import type { AccountSecurityDTO, AccountSessionDTO } from "@/server/domain/account/security";
 import { useToast } from "@/store/ui-store";
+import { OfficeSetupRow } from "./office-setup-row";
 
 const CONFIRM_WORD = "SAIR";
 
@@ -69,6 +70,7 @@ export function AccountSecurity() {
               </div>
               {result?.ok && (result.data.mfa.enabled ? <Badge tone="success" dot>Ativa</Badge> : <Badge tone="warning" dot>Pendente</Badge>)}
             </li>
+            <OfficeSetupRow />
           </ul>
         </PanelBody>
       </Panel>

@@ -28,6 +28,7 @@ function setup(responses: Partial<Record<ExecutorFunction, unknown | ((args: unk
   const storage = {
     signDownload: vi.fn(async () => "https://storage.test/download?token=x"),
     signUpload: vi.fn(async () => "https://storage.test/upload?token=y"),
+    signSetupUpload: vi.fn(async () => "https://storage.test/setup-upload?token=z"),
   };
   const silent = createLogger();
   const log = { ...silent, info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -58,6 +59,31 @@ const result = {
 };
 
 describe("API do computador do escritório", () => {
+  it("setup (072): reserva a versão, devolve a URL de envio do bucket do setup e publica", async () => {
+    const VERSION_ID = "41111111-2222-4333-8444-555555555555";
+    const { send, calls, storage } = setup({
+      executor_setup_prepare: { id: VERSION_ID, version: "2026.11.14-101500", storage_object_name: "org/2026.11.14-101500.zip" },
+      executor_setup_publish: { id: VERSION_ID, version: "2026.11.14-101500", already_published: false },
+    });
+    const prep = await send("POST", "setup/prepare", { size: 1024, checksum_sha256: "c".repeat(64) });
+    expect(prep.status).toBe(200);
+    expect(prep.body).toEqual({ id: VERSION_ID, version: "2026.11.14-101500", upload_url: "https://storage.test/setup-upload?token=z" });
+    expect(storage.signSetupUpload).toHaveBeenCalledWith("org/2026.11.14-101500.zip");
+    expect(storage.signUpload).not.toHaveBeenCalled();
+    expect(calls[0]).toEqual({ fn: "executor_setup_prepare", args: [sha256Hex(TOKEN), 1024, "c".repeat(64)] });
+    const pub = await send("POST", `setup/${VERSION_ID}/publish`);
+    expect(pub.status).toBe(200);
+    expect(calls[1]).toEqual({ fn: "executor_setup_publish", args: [sha256Hex(TOKEN), VERSION_ID] });
+  });
+
+  it("setup (072): pacote acima de 50 MB ou SHA inválido não chega ao banco", async () => {
+    const { send, calls } = setup();
+    expect((await send("POST", "setup/prepare", { size: 60 * 1024 * 1024, checksum_sha256: "c".repeat(64) })).status).toBe(422);
+    expect((await send("POST", "setup/prepare", { size: 10, checksum_sha256: "xyz" })).status).toBe(422);
+    expect((await send("POST", "setup/nao-e-uuid/publish")).status).toBe(404);
+    expect(calls).toHaveLength(0);
+  });
+
   it("sem token, ou fora do formato: 401, sem tocar no banco", async () => {
     const { calls, deps } = setup();
     const r1 = await handleExecutorRequest({ method: "GET", segments: ["me"], headers: new Headers(), query: new URLSearchParams(), body: undefined }, deps);
