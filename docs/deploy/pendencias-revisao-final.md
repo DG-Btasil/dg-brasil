@@ -106,6 +106,17 @@ ganharam a regra "Refazer pedido em Revisões" (cópias no Drive: `kit-agentes-d
 - Lista de tribunais com 92 opções (inclui TREs e Tribunais de Justiça Militar), com busca.
 - Os textos novos de confirmação, auditoria e tour foram escritos pelos agentes: vale uma leitura.
 
+## 2b. Testes ao vivo (13/11/2026, noite)
+
+Quatro agentes testaram o site de teste como administrador (Prazos, Financeiro, Revisões,
+Cadastros). Nenhum defeito impedia o uso; 31 defeitos de acabamento e importantes foram corrigidos
+na mesma noite (migration 071, aplicada no DEV) e conferidos de novo no site: Home e Financeiro
+com o mesmo "Em aberto", rascunho à parte, busca por CNJ só com números e por CPF, proposta
+corrigida com datas e nomes legíveis, tour sem travar. O "número do processo colado sem
+pontuação" não era defeito: a ferramenta de teste convertia o texto em número.
+Os registros criados pelos testes ("QA RF") foram cancelados ou estão na Lixeira; ficaram dois
+casos "QA RF" (casos não têm exclusão).
+
 ## 3. O que só a Barbara resolve
 
 - **Backup dos documentos:** o script existe (`supabase/scripts/backup-documentos.mjs`, roteiro em
