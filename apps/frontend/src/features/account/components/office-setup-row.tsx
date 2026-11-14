@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Copy, Download } from "lucide-react";
 import { callAction } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { Button } from "@/components/ui/button";
@@ -11,13 +11,16 @@ import { useToast } from "@/store/ui-store";
 
 /**
  * Setup do DG Brasil (072). Só aparece para a dona do escritório (o banco
- * decide); para os outros, nada é desenhado. Sem explicação de propósito: o
- * arquivo baixado leva só um código de uso único, que vence em 15 minutos.
+ * decide); para os outros, nada é desenhado. "Autorizar" copia um comando para
+ * colar no PowerShell (não baixa arquivo: o Windows 11 bloqueia .cmd vindo da
+ * internet). O comando leva só um código de uso único, que vence em 15 minutos.
  */
 export function OfficeSetupRow() {
   const [allowed, setAllowed] = useState(false);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [command, setCommand] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const failed = useActionFeedback();
   const toast = useToast();
 
@@ -31,21 +34,30 @@ export function OfficeSetupRow() {
 
   if (!allowed) return null;
 
+  function close() {
+    setOpen(false);
+    setCommand(null);
+    setCopied(false);
+  }
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      return true;
+    } catch {
+      setCopied(false);
+      return false;
+    }
+  }
+
   async function authorize() {
     setBusy(true);
     const r = await callAction(() => issueOfficeSetupAction());
     setBusy(false);
     if (!r.ok) return failed(r, "Não foi possível preparar o setup.");
-    const url = URL.createObjectURL(new Blob([r.data.content], { type: "application/octet-stream" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = r.data.filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    setOpen(false);
-    toast({ tone: "success", title: "Setup baixado", description: "Abra o arquivo no computador em até 15 minutos." });
+    setCommand(r.data.command);
+    if (!(await copy(r.data.command))) toast({ tone: "warning", title: "Não foi possível copiar", description: "Selecione o comando e copie à mão." });
   }
 
   return (
@@ -60,21 +72,38 @@ export function OfficeSetupRow() {
       </Button>
       <Dialog
         open={open}
-        onOpenChange={(o) => !o && !busy && setOpen(false)}
+        onOpenChange={(o) => !o && !busy && close()}
         size="sm"
-        title="Você deseja instalar o setup?"
-        description="Se o setup já estiver instalado, ele será removido e atualizaremos para a versão mais recente."
-        footer={
-          <>
-            <Button variant="secondary" disabled={busy} onClick={() => setOpen(false)}>
-              Negar
-            </Button>
-            <Button loading={busy} onClick={authorize}>
-              Autorizar
-            </Button>
-          </>
+        title={command ? (copied ? "Comando copiado" : "Copie o comando") : "Você deseja instalar o setup?"}
+        description={
+          command
+            ? "Abra o PowerShell neste computador, cole (Ctrl+V) e aperte Enter. Vale por 15 minutos."
+            : "Se o setup já estiver instalado, ele será removido e atualizaremos para a versão mais recente."
         }
-      />
+        footer={
+          command ? (
+            <>
+              <Button variant="secondary" icon={<Copy className="size-4" aria-hidden />} onClick={() => copy(command)}>
+                Copiar de novo
+              </Button>
+              <Button onClick={close}>Fechar</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="secondary" disabled={busy} onClick={close}>
+                Negar
+              </Button>
+              <Button loading={busy} onClick={authorize}>
+                Autorizar
+              </Button>
+            </>
+          )
+        }
+      >
+        {command && !copied && (
+          <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[11.5px] text-foreground">{command}</pre>
+        )}
+      </Dialog>
     </li>
   );
 }

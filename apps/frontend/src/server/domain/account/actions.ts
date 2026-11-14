@@ -43,7 +43,7 @@ export async function canUseOfficeSetupAction(input?: unknown) {
   return runAction({ name: "account.office_setup.check", schema: noInput, input, handler: (ctx) => setup.canUseOfficeSetup(ctx) });
 }
 
-/** "Autorizar": gera o código de uso único e devolve o lançador para baixar. */
+/** "Autorizar": gera o código de uso único e devolve o comando para colar no PowerShell. */
 export async function issueOfficeSetupAction(input?: unknown) {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");

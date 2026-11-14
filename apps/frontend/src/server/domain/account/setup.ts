@@ -10,14 +10,13 @@ import { enforceAccountSecurityLimit } from "@/server/core/rate-limit";
  * escritório principal) vê o botão, em Sua conta e sessões; quem decide é o
  * banco (can_use_office_setup / dg_issue_office_setup).
  *
- * O arquivo baixado é só um lançador: leva um código de uso único (15 minutos,
- * uma vez) e chama o /executor/setup.ps1, que troca o código pelo pacote em
- * /api/setup/v1/baixar. Nem os agentes nem o token do computador vão dentro
- * dele. O código só chega ao banco como SHA-256.
+ * "Autorizar" devolve um comando para colar no PowerShell: leva um código de uso
+ * único (15 minutos, uma vez) e chama o /executor/setup.ps1, que troca o código
+ * pelo pacote em /api/setup/v1/baixar. Nem os agentes nem o token do computador
+ * vão no comando. O código só chega ao banco como SHA-256.
  */
 
 export const SETUP_CODE = /^dgs_[A-Za-z0-9_-]{40,60}$/;
-export const SETUP_FILENAME = "Setup DG Brasil.cmd";
 
 export function newSetupCode(): string {
   return `dgs_${randomBytes(32).toString("base64url")}`;
@@ -25,7 +24,7 @@ export function newSetupCode(): string {
 
 export const setupCodeHash = (code: string) => createHash("sha256").update(code).digest("hex");
 
-/** Endereço do site, para o lançador voltar a ele. Só https (ou http em localhost). */
+/** Endereço do site, para o comando voltar a ele. Só https (ou http em localhost). */
 export function setupOrigin(host: string | null | undefined, proto: string | null | undefined): string {
   const h = (host ?? "").trim().toLowerCase();
   if (!/^[a-z0-9.-]{1,200}(:\d{1,5})?$/.test(h)) throw new DomainError("VALIDATION", "Endereço do site inválido.");
@@ -35,24 +34,17 @@ export function setupOrigin(host: string | null | undefined, proto: string | nul
 }
 
 /**
- * O lançador (.cmd): dois cliques e ele roda o setup.ps1 do site com o código.
- * No fim apaga a si mesmo. O código e o endereço vão entre aspas simples do
+ * O comando para colar no PowerShell: roda o setup.ps1 do site com o código.
+ * Não é arquivo baixado: o Windows 11 bloqueia .cmd vindo da internet (Controle
+ * Inteligente de Aplicativos), e colar o comando é o mesmo caminho do
+ * instalador do conector. O código e o endereço vão entre aspas simples do
  * PowerShell: os dois já foram validados (só letras, números, ponto, hífen,
  * sublinhado, dois-pontos e barra).
  */
-export function setupLauncher(origin: string, code: string): string {
+export function setupCommand(origin: string, code: string): string {
   if (!SETUP_CODE.test(code)) throw new Error("código do setup inválido");
   if (!/^https?:\/\/[a-z0-9.-]+(:\d+)?$/.test(origin)) throw new Error("endereço do setup inválido");
-  return [
-    "@echo off",
-    "chcp 65001 >nul",
-    "title Setup DG Brasil",
-    `powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:DG_SETUP_CODE='${code}'; $env:DG_BRASIL_URL='${origin}'; irm '${origin}/executor/setup.ps1' | iex"`,
-    "echo.",
-    "pause",
-    '(goto) 2>nul & del "%~f0"',
-    "",
-  ].join("\r\n");
+  return `$env:DG_SETUP_CODE='${code}'; $env:DG_BRASIL_URL='${origin}'; irm '${origin}/executor/setup.ps1' | iex`;
 }
 
 export async function canUseOfficeSetup(ctx: ServiceContext): Promise<boolean> {
@@ -61,18 +53,17 @@ export async function canUseOfficeSetup(ctx: ServiceContext): Promise<boolean> {
   return data === true;
 }
 
-export interface OfficeSetupFileDTO {
-  filename: string;
-  content: string;
+export interface OfficeSetupCommandDTO {
+  command: string;
   version: string;
 }
 
-export async function issueOfficeSetup(ctx: ServiceContext, origin: string): Promise<OfficeSetupFileDTO> {
+export async function issueOfficeSetup(ctx: ServiceContext, origin: string): Promise<OfficeSetupCommandDTO> {
   enforceAccountSecurityLimit(ctx);
   const code = newSetupCode();
   const { data, error } = await ctx.db.rpc("dg_issue_office_setup", { p_code_hash: setupCodeHash(code) });
   if (error) throw fromDbError(error);
   const version = String((data as { version?: unknown } | null)?.version ?? "");
   ctx.log.info("account.office_setup_issued", { version });
-  return { filename: SETUP_FILENAME, content: setupLauncher(origin, code), version };
+  return { command: setupCommand(origin, code), version };
 }

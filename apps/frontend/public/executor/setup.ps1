@@ -1,9 +1,9 @@
 # Setup do DG Brasil (migration 072): os agentes do kit (clones -dg), os scripts
 # deles e os dados de quem assina, no computador do escritório.
 #
-# Quem chama é o lançador "Setup DG Brasil.cmd", que a dona do escritório baixa
-# em Sua conta e sessões. Ele traz só um código de uso único (15 minutos, uma
-# vez), em $env:DG_SETUP_CODE. Este arquivo é público e não tem segredo: sem o
+# Quem chama é o comando que a dona do escritório copia em Sua conta e sessões →
+# Setup → Autorizar e cola no PowerShell. Ele traz só um código de uso único
+# (15 minutos, uma vez), em $env:DG_SETUP_CODE. Este arquivo é público e não tem segredo: sem o
 # código, não baixa nada.
 #
 # O que faz:
@@ -35,8 +35,8 @@ $Manifesto = Join-Path $Raiz 'setup.json'
 $Utf8 = New-Object System.Text.UTF8Encoding $false
 
 Write-Host 'Setup do DG Brasil' -ForegroundColor White
-if ($Codigo -notmatch '^dgs_[A-Za-z0-9_-]{40,60}$') { Falha 'Abra o arquivo "Setup DG Brasil" que foi baixado em Sua conta e sessões.' }
-if ($Base -notmatch '^https?://[a-z0-9.-]+(:\d+)?$') { Falha 'Endereço do DG Brasil inválido. Baixe o setup de novo.' }
+if ($Codigo -notmatch '^dgs_[A-Za-z0-9_-]{40,60}$') { Falha 'Copie o comando em Sua conta e sessões > Setup > Autorizar e cole aqui.' }
+if ($Base -notmatch '^https?://[a-z0-9.-]+(:\d+)?$') { Falha 'Endereço do DG Brasil inválido. Copie o comando de novo.' }
 
 $Tmp = Join-Path $env:TEMP ('dg-setup-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
@@ -48,13 +48,13 @@ try {
   } catch {
     $msg = $null
     try { $msg = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message } catch { }
-    if (-not $msg) { $msg = 'Não foi possível falar com o DG Brasil. Confira a internet e baixe o setup de novo.' }
+    if (-not $msg) { $msg = 'Não foi possível falar com o DG Brasil. Confira a internet e copie o comando de novo.' }
     Falha $msg
   }
   $Zip = Join-Path $Tmp 'setup.zip'
   Invoke-WebRequest -UseBasicParsing -Uri $r.url -OutFile $Zip
   $hash = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($hash -ne $r.sha256) { Falha 'O arquivo baixado não confere com o DG Brasil. Nada foi instalado; baixe o setup de novo.' }
+  if ($hash -ne $r.sha256) { Falha 'O arquivo baixado não confere com o DG Brasil. Nada foi instalado; copie o comando de novo.' }
   $Pacote = Join-Path $Tmp 'pacote'
   Expand-Archive -LiteralPath $Zip -DestinationPath $Pacote -Force
   $Instalador = Join-Path $Pacote 'apps\executor\scripts\instalar-agentes-bancario.ps1'
@@ -91,7 +91,10 @@ try {
 
     # ── 4. agentes ──────────────────────────────────────────────────────────
     Passo 'Instalando a versão mais recente'
-    & $Instalador -Repo $Pacote
+    # Processo próprio com -ExecutionPolicy Bypass: colado no PowerShell, este
+    # setup roda sob a política padrão do Windows, que não deixa executar .ps1.
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Instalador -Repo $Pacote
+    if ($LASTEXITCODE -ne 0) { throw "o instalador dos agentes parou (código $LASTEXITCODE)" }
   } catch {
     Aviso 'A instalação falhou. Voltando o setup anterior.'
     foreach ($nome in $removidos) { Copy-Item -LiteralPath (Join-Path (Join-Path $Guardado 'agents') $nome) -Destination (Join-Path $Agentes $nome) -Force }

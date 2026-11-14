@@ -153,13 +153,16 @@ antigo assume. Para os outros, a linha nem aparece.
 **Como a dona instala ou atualiza:** **Sua conta e sessões → Setup**. A
 pergunta é "Você deseja instalar o setup?" (se já estiver instalado, ele é
 removido e atualizado para a versão mais recente), com **Autorizar** ou
-**Negar**. Autorizar baixa o arquivo `Setup DG Brasil.cmd`. Dois cliques nele
-no computador fazem o resto, e no fim o arquivo apaga a si mesmo.
+**Negar**. Autorizar copia um comando; ela abre o PowerShell no computador,
+cola (Ctrl+V) e aperta Enter. Não é arquivo baixado: o Windows 11 bloqueia
+`.cmd` vindo da internet (Controle Inteligente de Aplicativos) sem opção de
+liberar, e a 1ª versão, com o arquivo `Setup DG Brasil.cmd`, esbarrou nisso
+em 14/11/2026.
 
 **Segurança, sem senha:**
-- o arquivo baixado não traz os agentes nem o token do computador: traz só um
-  código de **uso único** que vence em **15 minutos**. Esquecido na pasta
-  Downloads ou mandado para alguém, não serve para nada;
+- o comando não traz os agentes nem o token do computador: traz só um código
+  de **uso único** que vence em **15 minutos**. Copiado e esquecido, ou mandado
+  para alguém, não serve para nada;
 - o código troca, uma vez, por um link de 2 minutos para o pacote
   (`/api/setup/v1/baixar`), e o pacote é conferido pelo SHA-256 antes de
   instalar;

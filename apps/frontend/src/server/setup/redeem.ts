@@ -4,7 +4,7 @@ import { SETUP_CODE, setupCodeHash } from "@/server/domain/account/setup";
 
 /**
  * /api/setup/v1/baixar (072). Quem chama é o setup.ps1, no computador, com o
- * código de uso único que veio no arquivo baixado pela dona do escritório. Sem
+ * código de uso único do comando que a dona do escritório copiou. Sem
  * sessão de navegador nem token do computador: o código É a autorização, e o
  * banco (private.office_setup_redeem) o aceita uma vez só, em até 15 minutos.
  *
@@ -30,7 +30,7 @@ const LIMIT_PER_MINUTE = 10;
 export const SETUP_URL_SECONDS = 120;
 
 const fail = (status: number, code: string, message: string): SetupRedeemResponse => ({ status, body: { error: { code, message } } });
-const EXPIRED = "Este setup venceu ou já foi usado. Baixe outro em Sua conta e sessões.";
+const EXPIRED = "Este comando venceu ou já foi usado. Copie outro em Sua conta e sessões > Setup.";
 
 export async function handleSetupRedeem(body: unknown, ip: string, deps: SetupRedeemDeps): Promise<SetupRedeemResponse> {
   const code = typeof (body as { code?: unknown } | null)?.code === "string" ? (body as { code: string }).code.trim() : "";

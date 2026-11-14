@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLogger } from "@/server/core/logger";
 import { SlidingWindowLimiter } from "@/server/core/rate-limit";
-import { SETUP_CODE, newSetupCode, setupCodeHash, setupLauncher, setupOrigin } from "@/server/domain/account/setup";
+import { SETUP_CODE, newSetupCode, setupCodeHash, setupCommand, setupOrigin } from "@/server/domain/account/setup";
 import { handleSetupRedeem } from "./redeem";
 
 const ROW = { version: "2026.11.14-101500", storage_object_name: "org/2026.11.14-101500.zip", size_bytes: "2048", checksum_sha256: "d".repeat(64) };
@@ -16,7 +16,7 @@ function deps(redeem: (hash: string) => Promise<typeof ROW> = async () => ROW) {
   };
 }
 
-describe("setup do escritório (072): código e lançador", () => {
+describe("setup do escritório (072): código e comando", () => {
   it("o código tem o formato esperado e muda a cada pedido", () => {
     const a = newSetupCode();
     expect(SETUP_CODE.test(a)).toBe(true);
@@ -24,19 +24,16 @@ describe("setup do escritório (072): código e lançador", () => {
     expect(setupCodeHash(a)).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("o lançador chama o setup.ps1 do próprio site, leva só o código e apaga a si mesmo", () => {
+  it("o comando chama o setup.ps1 do próprio site e leva só o código", () => {
     const code = newSetupCode();
-    const cmd = setupLauncher("https://app.dgbrasil.adv.br", code);
-    expect(cmd).toContain(`$env:DG_SETUP_CODE='${code}'`);
-    expect(cmd).toContain("irm 'https://app.dgbrasil.adv.br/executor/setup.ps1' | iex");
-    expect(cmd).toContain('del "%~f0"');
+    const cmd = setupCommand("https://app.dgbrasil.adv.br", code);
+    expect(cmd).toBe(`$env:DG_SETUP_CODE='${code}'; $env:DG_BRASIL_URL='https://app.dgbrasil.adv.br'; irm 'https://app.dgbrasil.adv.br/executor/setup.ps1' | iex`);
     expect(cmd).not.toMatch(/dgx_/);
-    expect(cmd.split("\r\n")[0]).toBe("@echo off");
   });
 
-  it("lançador recusa código ou endereço fora do formato (nada de aspas no comando)", () => {
-    expect(() => setupLauncher("https://app.dgbrasil.adv.br", "dgs_'; rm -rf")).toThrow();
-    expect(() => setupLauncher("https://x.com'; calc", newSetupCode())).toThrow();
+  it("comando recusa código ou endereço fora do formato (nada de aspas no comando)", () => {
+    expect(() => setupCommand("https://app.dgbrasil.adv.br", "dgs_'; rm -rf")).toThrow();
+    expect(() => setupCommand("https://x.com'; calc", newSetupCode())).toThrow();
   });
 
   it("endereço: https no site, http só em localhost; host estranho recusado", () => {
