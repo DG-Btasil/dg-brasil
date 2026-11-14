@@ -111,6 +111,30 @@ segredos do Vault), ninguém ficava sabendo.
   `judicial.cron_unauthorized`. Nada mais responde "skipped" em silêncio.
 - "Última busca completa" vem de `last_full_run`, não das 10 últimas rodadas.
 
+### Bolinhas de conferência (074)
+
+Um ponto colorido, sempre com o rótulo para leitor de tela e ao passar o mouse
+(a cor sozinha não basta). Horário de São Paulo. Regra única em
+`apps/frontend/src/features/judicial/capture-dots.ts`.
+
+- **DJEN, por OAB, vale "hoje":** antes do horário da última busca, na lista de
+  OABs (DG Brasil → Integrações e Minha Conta → OABs acompanhadas). Verde: busca
+  concluída hoje a partir das 05:00. Amarelo: dia útil, antes das 08:00, ainda
+  sem busca. Vermelho: dia útil, depois das 08:00, sem busca concluída. Cinza:
+  OAB pausada, DJEN desligado, fim de semana ou feriado nacional (em
+  Integrações, pelo `capture.applies`).
+- **DataJud, por processo, vale 24 h:** na tela do processo, na linha "DataJud:
+  lido em…". Verde: lido nas últimas 24 h, sem erro. Amarelo: acompanhado e
+  ainda não lido. Vermelho: a última leitura falhou, ou a última leitura tem
+  mais de 24 h. Cinza: pausado ou sem número CNJ.
+- **DataJud, resumo em Integrações:** uma linha sob "Andamentos do DataJud": "X
+  de Y processos lidos nas últimas 24 h · Z com falha" (X é
+  `processes.synced_last_24h`, da 074). Verde: todos lidos e nenhum com falha.
+  Amarelo: falta ler algum. Vermelho: há processo com falha. Cinza: DataJud
+  desligado ou nenhum processo acompanhado. Banco sem a 074 mostra só "Y
+  processos acompanhados · Z com falha" (sem verde).
+- A Home não muda: a faixa de alerta continua sendo o aviso da captura do dia.
+
 ## OABs acompanhadas
 
 - **ADMIN:** cadastra as OABs do escritório em DG Brasil → Integrações → Integração judicial. Vê e pode pausar as dos parceiros.

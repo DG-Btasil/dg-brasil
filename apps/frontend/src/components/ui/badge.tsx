@@ -30,6 +30,15 @@ export function Badge({ tone = "neutral", children, dot, icon, className, title 
   );
 }
 
+/**
+ * Só o ponto do Badge (mesmas classes de cor), para quando um Badge inteiro
+ * mudaria demais a tela. O rótulo vai no leitor de tela e no title: cor
+ * sozinha não basta.
+ */
+export function Dot({ tone = "neutral", label, className }: { tone?: Tone; label: string; className?: string }) {
+  return <span role="img" aria-label={label} title={label} className={cn("inline-block size-1.5 shrink-0 rounded-full", TONE_DOT[tone], className)} />;
+}
+
 /** Badge a partir de um valor de status + mapas centralizados de rótulo/tom. */
 export function StatusBadge<S extends string>({
   status,

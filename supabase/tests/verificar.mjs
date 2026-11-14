@@ -9505,6 +9505,62 @@ await deve('catálogo [073]: assinatura, definer e search_path iguais; gravaçã
     'assinatura de sempre (uma função só)')
 })
 
+// ═════════════════════════════ bolinhas de conferência [074] ═════════════
+
+secao('Integração judicial: visão geral conta os processos lidos nas últimas 24 h [074]')
+const j074 = {}
+const cnj074 = (n) => cnj(7400 + n, '2025', '8', '26', '0100')
+const novo074 = async (n, horas, ativo) => {
+  const proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, $3) returning id`,
+    [j043.caso, cnj074(n), `Bolinha 074 · ${n}`])).id
+  await db.query(`update process_external_refs set sync_enabled = $2,
+      last_synced_at = case when $3::numeric is null then null else now() - make_interval(secs => $3::numeric * 3600) end
+    where provider = 'DATAJUD' and legal_process_id = $1`, [proc, ativo, horas])
+  return proc
+}
+const proc074 = async (uid) => (await rpc043(uid, `select public.get_judicial_overview() r`)).processes
+// As seções da 062 rodam a 062 de novo (idempotência), o que volta a visão geral à versão dela: a 074 roda de novo aqui.
+await deve('a 074 roda de novo sem erro (idempotente)', async () => {
+  await db.exec(await readFile(new URL('migrations/20261114000074_judicial_bolinhas.sql', raiz), 'utf8'))
+})
+await deve('o campo existe e bate com a contagem direta do banco', async () => {
+  j074.antes = await proc074(ids.lucas)
+  igual(typeof j074.antes.synced_last_24h, 'number', 'synced_last_24h é número')
+  const direto = await um(db, `select count(*) filter (where r.sync_enabled and r.last_synced_at >= now() - interval '24 hours') n
+    from process_external_refs r join legal_processes p on p.id = r.legal_process_id and p.deleted_at is null and p.cnj_number = r.external_id
+    where r.provider = 'DATAJUD'`)
+  igual(j074.antes.synced_last_24h, Number(direto.n), 'mesma conta')
+  igual(Object.keys(j074.antes).sort(), ['never_synced', 'paused', 'synced_last_24h', 'tracked', 'with_error'], 'só o campo novo a mais')
+})
+await deve('lido há 1 h conta; lido há 30 h não; pausado (lido há 1 h) não; nunca lido não', async () => {
+  j074.h1 = await novo074(1, 1, true)
+  j074.h30 = await novo074(2, 30, true)
+  j074.pausado = await novo074(3, 1, false)
+  j074.nunca = await novo074(4, null, true)
+  const depois = await proc074(ids.barbara)
+  igual(depois.synced_last_24h - j074.antes.synced_last_24h, 1, 'só o lido há 1 h')
+  igual(depois.tracked - j074.antes.tracked, 3, 'acompanhados: os três ativos')
+  igual(depois.paused - j074.antes.paused, 1, 'pausado')
+})
+await deve('processo excluído deixa de contar, como os outros números', async () => {
+  const antes = await proc074(ids.barbara)
+  await db.query(`update legal_processes set deleted_at = now() where id = $1`, [j074.h1])
+  const depois = await proc074(ids.barbara)
+  igual([antes.synced_last_24h - depois.synced_last_24h, antes.tracked - depois.tracked], [1, 1], 'sai das duas contas')
+  await db.query(`update process_external_refs set sync_enabled = false where legal_process_id = any($1)`, [[j074.h30, j074.nunca]])
+})
+await deveFalhar('assistente continua sem abrir a visão [074]', () => rpc043(ids.ana, `select public.get_judicial_overview() r`), /Somente advogado ou ADMIN/)
+await deve('catálogo [074]: assinatura, definer, search_path e quem executa iguais aos da 062', async () => {
+  const r = await linhas(db, `select p.prosecdef def, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      pg_get_function_identity_arguments(p.oid) args,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'get_judicial_overview'`)
+  igual(r.map((x) => [x.def, x.cfg.includes('search_path=""'), x.args, x.anon, x.srv, x.usr, x.wrk]),
+    [[true, true, '', false, false, true, false]], 'uma função só, definer, search_path vazio, só usuário logado')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(
