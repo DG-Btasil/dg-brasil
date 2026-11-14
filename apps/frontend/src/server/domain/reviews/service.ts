@@ -1,9 +1,11 @@
 import { hasRole, requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
-import { businessRule, DomainError, forbidden, invalidState, notFound } from "@/server/core/errors";
+import { businessRule, DomainError, forbidden, invalidState, notFound, validation, type FieldErrors } from "@/server/core/errors";
 import { toPage, type Page } from "@/server/core/pagination";
 import type { DbReviewStatus } from "@/repositories/api/db-mappings";
+import { PROPOSAL_DATA } from "@/server/executor/contract";
 import { planBulkDecision, PROPOSAL_CHANGES_MESSAGE } from "./bulk-rules";
-import type { BulkDecisionItemDTO, BulkDecisionResultDTO, ReviewDetailDTO, ReviewGroupPage, ReviewListItem, ReviewSummaryDTO, ReviewTargetDTO } from "./dto";
+import { changedProposalFields, isCorrectableProposalType, NOTHING_CHANGED_MESSAGE } from "./correction-rules";
+import type { BulkDecisionItemDTO, BulkDecisionResultDTO, CorrectionResultDTO, ReviewDetailDTO, ReviewGroupPage, ReviewListItem, ReviewSummaryDTO, ReviewTargetDTO } from "./dto";
 import {
   analysisTargetFromRow,
   assignPayload,
@@ -22,7 +24,7 @@ import {
   type ReviewRow,
 } from "./mappers";
 import * as repo from "./repository";
-import type { AssignReviewInput, DecideReviewInput, DecideReviewsBulkInput, ListReviewGroupsInput, ListReviewsInput, ReopenReviewInput } from "./schemas";
+import type { AssignReviewInput, CorrectReviewInput, DecideReviewInput, DecideReviewsBulkInput, ListReviewGroupsInput, ListReviewsInput, ReopenReviewInput } from "./schemas";
 
 /**
  * Revisão humana — "IA executa. Humano decide." Só ADMIN e LAWYER
@@ -163,6 +165,42 @@ export async function decideReview(ctx: ServiceContext, input: DecideReviewInput
   ctx.log.info("review.decided", { reviewId: input.id, reviewDecisionId: decisionId, decision: input.decision });
   return { decisionId, status: after.status };
 }
+
+/**
+ * "Corrigir e aprovar" (069): a pessoa corrige os dados da proposta do agente
+ * e aprova a versão corrigida, numa decisão só. Mesmas condições de decidir
+ * (ADMIN ou advogado; estrutural só ADMIN, e nem se corrige; só revisão em
+ * aberto). Os dados passam pelo MESMO contrato que vale para o agente
+ * (`PROPOSAL_DATA`, pelo tipo que está no banco) e o banco confere de novo,
+ * com as regras do aplicador. A aplicação continua sendo do aplicador, só de
+ * proposta aprovada. Nunca loga os dados: só ids e nomes de campo.
+ */
+export async function correctAndApproveReview(ctx: ServiceContext, input: CorrectReviewInput): Promise<CorrectionResultDTO> {
+  requireReviewer(ctx, "reviews.decide");
+  const item = listItemFromRow(await loadReview(ctx, input.id));
+  if (item.requiresAdmin && !hasRole(ctx, "ADMIN")) throw forbidden("Somente ADMIN decide proposta que altera a configuração do DG Brasil.");
+  if (item.targetKind !== "AGENT_PROPOSAL") throw invalidState("Só proposta do agente se corrige e aprova.");
+  if (!isCorrectableProposalType(item.proposalType)) throw invalidState("Esta proposta não se corrige: aprove ou rejeite.");
+  if (!OPEN.includes(item.dbStatus)) throw invalidState("Esta revisão já foi decidida.");
+  const parsed = PROPOSAL_DATA[item.proposalType].safeParse(input.data);
+  if (!parsed.success) {
+    const fieldErrors: FieldErrors = {};
+    for (const issue of parsed.error.issues) (fieldErrors[["data", ...issue.path].join(".")] ??= []).push(issue.message);
+    throw validation(fieldErrors, "Confira os dados corrigidos.");
+  }
+  const proposal = await repo.getProposalTarget(ctx.db, item.targetId);
+  if (!proposal) throw notFound(NOT_FOUND_MESSAGE);
+  const payload = proposalTargetFromRow(proposal);
+  const original = payload.kind === "AGENT_PROPOSAL" && isRecord(payload.payload.data) ? payload.payload.data : {};
+  const data = parsed.data as Record<string, unknown>;
+  if (changedProposalFields(original, data).length === 0) throw invalidState(NOTHING_CHANGED_MESSAGE);
+  const result = await repo.correctAndApprove(ctx.db, input.id, data, input.notes ?? null);
+  const after = listItemFromRow(await loadReview(ctx, input.id));
+  ctx.log.info("review.corrected", { reviewId: input.id, reviewDecisionId: result.decision_id, fields: (result.fields ?? []).join(",") });
+  return { decisionId: result.decision_id, fields: result.fields ?? [], status: after.status };
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
  * Decisão em conjunto (067). É só um laço: cada item é decidido UM A UM pela

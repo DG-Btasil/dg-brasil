@@ -277,6 +277,33 @@ na agenda.
   solicitadas" quando o alvo é proposta do agente (antes, a revisão ficava sem
   saída). Documento e análise continuam aceitando.
 
+### Revisões: "Corrigir e aprovar" (069)
+
+- **O que é.** Na proposta do agente de prazo, pedido de documento,
+  atualização do caso ou cadastro de processo, a pessoa abre o formulário do
+  tipo (o prazo usa as regras do diálogo de prazo da equipe), já preenchido com
+  o que o agente propôs, confere o resumo "antes → depois" e confirma. Corrigir
+  e aprovar é UMA decisão: `correctAndApproveReviewAction` →
+  `correct_and_approve_review`, que troca `payload.data` e aprova pela mesma
+  `private.decide_review`, na mesma transação. "OTHER" e proposta estrutural não
+  se corrigem; a decisão em conjunto não muda.
+- **Quem e quando.** Quem decide a revisão (ADMIN ou advogado; estrutural só
+  ADMIN), só com a revisão em aberto e a proposta PENDING.
+- **Validação em dois lugares.** O service passa os dados pelo mesmo contrato do
+  agente (`PROPOSAL_DATA`, em `server/executor/contract.ts`); o banco
+  (`private.proposal_correction_data`) confere de novo e acrescenta o que o
+  aplicador exigiria: vencimento com fuso e no futuro, responsável interno
+  ativo, caso e processo não excluídos, processo do prazo fixo, caso ainda
+  alterável, CNJ válido e livre.
+- **Rastro.** `agent_proposals.original_payload` guarda o que o agente propôs
+  (com `corrected_by` e `corrected_at`; só a correção escreve e nada muda
+  depois). Auditoria `AGENT_PROPOSAL_CORRECTED` com a revisão, a decisão e os
+  nomes dos campos (nunca os valores). A tela mostra "Corrigida por <pessoa> em
+  <data>" com o que mudou e a proposta original.
+- **Aplicação.** Continua sendo do aplicador, só de proposta aprovada. Prazo de
+  publicação corrigido fecha a publicação como antes (gatilho da 062), com quem
+  corrigiu como quem tratou.
+
 ## Idempotência
 
 **Contrato com a tela (vale para toda operação com `idempotencyKey`):** a chave

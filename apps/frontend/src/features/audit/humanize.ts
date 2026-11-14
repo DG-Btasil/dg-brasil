@@ -98,6 +98,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   AGENT_PROPOSAL_APPLIED: "Proposta do agente aplicada",
   AGENT_PROPOSAL_FAILED: "Proposta do agente não pôde ser aplicada",
   AGENT_PROPOSAL_EFFECT: "Registro criado a partir de proposta do agente",
+  AGENT_PROPOSAL_CORRECTED: "Proposta do agente corrigida e aprovada por uma pessoa",
   AUTO_SEQUENCE_QUEUED: "Sequência automática: próximo agente acionado",
   AUTO_SEQUENCE_SKIPPED: "Sequência automática: agente pulado",
   AUTO_SEQUENCE_FAILED: "Sequência automática: falha ao acionar agente",

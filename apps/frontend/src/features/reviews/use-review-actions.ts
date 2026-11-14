@@ -5,7 +5,7 @@ import { useCallback, useMemo } from "react";
 import { REVIEW_DECISION_LABEL, type Priority, type ReviewDecisionKind } from "@/lib/constants/status";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
-import { assignReviewAction, decideReviewAction, reopenReviewAction } from "@/server/domain/reviews/actions";
+import { assignReviewAction, correctAndApproveReviewAction, decideReviewAction, reopenReviewAction } from "@/server/domain/reviews/actions";
 import { useToast } from "@/store/ui-store";
 
 /**
@@ -36,6 +36,9 @@ export function useReviewActions() {
     () => ({
       decide: (id: string, decision: ReviewDecisionKind, notes?: string) =>
         run(() => decideReviewAction({ id, decision, notes }), `Revisão: ${REVIEW_DECISION_LABEL[decision].toLowerCase()}`, "Não foi possível registrar a decisão."),
+      /** "Corrigir e aprovar" (069): os dados corrigidos da proposta e a aprovação, numa decisão só. */
+      correctAndApprove: (id: string, data: Record<string, unknown>, notes?: string) =>
+        run(() => correctAndApproveReviewAction({ id, data, notes }), "Proposta corrigida e aprovada", "Não foi possível corrigir e aprovar a proposta."),
       reopen: (id: string, reason?: string) => run(() => reopenReviewAction({ id, reason }), "Revisão reaberta", "Não foi possível reabrir a revisão."),
       assign: (id: string, patch: { assignedReviewerId?: string | null; priority?: Priority; dueAt?: string | null }) =>
         run(() => assignReviewAction({ id, ...patch }), "Revisão atualizada", "Não foi possível atualizar a revisão."),

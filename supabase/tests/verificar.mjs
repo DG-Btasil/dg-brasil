@@ -8809,6 +8809,232 @@ await deve('catálogo [067]: funções com search_path fixo; blocos internos e g
   igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.reviews'::regclass and tgname = 'reviews_fill_on_insert'`)).n, 1, 'um gatilho de nascimento')
 })
 
+// ═════════════════════════════ Corrigir e aprovar [069] ══════════════════
+
+secao('Revisões: "Corrigir e aprovar" a proposta do agente, numa decisão só; o original fica guardado [069]')
+const c069 = {}
+// As verificações anteriores rodaram migrations antigas de novo: a 069 vem depois delas, como no banco de verdade.
+const rodar069 = async () => db.exec(await readFile(new URL('migrations/20261113000069_corrigir_e_aprovar.sql', raiz), 'utf8'))
+const corrigir069 = (uid, rv, dados, notas = null) =>
+  como(uid, (tx) => um(tx, `select public.correct_and_approve_review($1, $2, $3) r`, [rv, JSON.stringify(dados), notas])).then((x) => x.r)
+const proposta069 = (id) => um(db, `select status, payload, original_payload orig, corrected_by por, corrected_at is not null em,
+    applied_entity_type ent, applied_entity_id efeito, application_error erro from agent_proposals where id = $1`, [id])
+const revDe069 = async (p) => (await um(db, `select id from reviews where agent_proposal_id = $1 order by created_at desc limit 1`, [p])).id
+const estado069 = async (p) => {
+  const rv = await revDe069(p)
+  return { p: await proposta069(p), rv: (await um(db, `select status from reviews where id = $1`, [rv])).status,
+    decisoes: (await um(db, `select count(*)::int n from review_decisions where review_id = $1`, [rv])).n }
+}
+// O aplicador pega a proposta aprovada mais antiga do banco inteiro: roda até a nossa sair de APPROVED.
+async function aplicar069(p) {
+  for (let i = 0; i < 100; i++) {
+    if ((await proposta069(p)).status !== 'APPROVED') break
+    const r = await comoWorker((tx) => linhas(tx, `select * from private.worker_apply_next_proposal('worker-069')`))
+    if (r.length === 0) break
+  }
+  return proposta069(p)
+}
+const recusa069 = (uid, rv, dados, padrao, rotulo) => corrigir069(uid, rv, dados).then(
+  () => { throw new Error(`${rotulo}: foi aceito`) }, (e) => { if (!padrao.test(e.message)) throw new Error(`${rotulo}: ${e.message}`) })
+const dia069 = async (desloc) => (await um(db, `select to_char((now() at time zone 'America/Sao_Paulo')::date + $1::int, 'YYYY-MM-DD') d`, [desloc])).d
+
+await deve('cenário: caso do escritório (advogado: Lucas) com um processo, e um trabalho do agente com propostas dos quatro tipos que se corrigem', async () => {
+  await rodar069()
+  const cli = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99906900001', $1) returning id`, [ids.owner])).id
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Cliente Fictícia 069')`, [cli])
+  c069.caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Caso fictício 069', 'WAITING_DOCUMENTS', $3, $3, $4) returning id`, [cli, ids.banking, ids.owner, ids.lucas])).id
+  c069.proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court, responsible_user_id) values ($1, $2, 'Fictícia x Banco 069', 'TJRJ', $3) returning id`,
+    [c069.caso, cnj(6901, '2026', '8', '19', '0999'), ids.barbara])).id
+  c069.t = await trabalho060(c069.caso, 'Trabalho 069: várias propostas')
+  c069.dia = await dia069(20)
+  const p = async (tipo, dados, chave) => (await proposta067(c069.t, tipo, { summary: `Resumo do agente ${chave}`, data: dados }, chave)).proposal_id
+  c069.pPrazo = await p('CREATE_DEADLINE', { title: 'Réplica 069', due_at: `${c069.dia}T23:59:00-03:00`, priority: 'NORMAL', legal_process_id: c069.proc,
+    description: 'CPC, art. 350.' }, 'k-069-prazo')
+  c069.pPrazo2 = await p('CREATE_DEADLINE', { title: 'Embargos 069', due_at: `${c069.dia}T23:59:00-03:00`, priority: 'NORMAL' }, 'k-069-prazo-2')
+  c069.pDoc = await p('REQUEST_DOCUMENT', { label: 'Extrato 069', category: 'OTHER', required: true }, 'k-069-doc')
+  c069.pCaso = await p('UPDATE_CASE', { summary: 'Resumo do agente para o caso 069' }, 'k-069-caso')
+  c069.pProc = await p('CREATE_PROCESS', { court: 'TJRJ', state: 'RJ', client_side: 'ACTIVE' }, 'k-069-proc')
+  c069.pOutra = await p('OTHER', { description: 'Ligar para a cliente 069 e confirmar o endereço.' }, 'k-069-outra')
+  const rs = await linhas(db, `select status from reviews where agent_proposal_id = any ($1)`, [[c069.pPrazo, c069.pPrazo2, c069.pDoc, c069.pCaso, c069.pProc, c069.pOutra]])
+  igual(rs.map((r) => r.status), ['PENDING', 'PENDING', 'PENDING', 'PENDING', 'PENDING', 'PENDING'], 'seis propostas em Revisões')
+})
+
+await deve('assistente, parceiro e quem não decide não corrigem; documento, análise e proposta sem efeito automático não se corrigem; nada muda', async () => {
+  const rv = await revDe069(c069.pPrazo)
+  const antes = await estado069(c069.pPrazo)
+  const dados = { title: 'Réplica corrigida 069', due_at: `${c069.dia}T23:59:59-03:00` }
+  await recusa069(ids.ana, rv, dados, /Só ADMIN ou advogado do escritório corrige/, 'assistente')
+  await recusa069(ids.almeidaAdm, rv, dados, /Só ADMIN ou advogado do escritório corrige/, 'administrador do parceiro')
+  await recusa069(ids.almeidaUsr, rv, dados, /Só ADMIN ou advogado do escritório corrige/, 'usuário do parceiro')
+  await como(ids.lucas, (tx) => tx.query(`select private.proposal_correction_data('CREATE_DEADLINE', '{}', '{}', $1, null)`, [c069.caso])).then(
+    () => { throw new Error('bloco interno aberto') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  igual(await estado069(c069.pPrazo), antes, 'nada mudou')
+  await recusa069(ids.lucas, await revDe069(c069.pOutra), { description: 'Outra coisa qualquer 069 com texto.' }, /não se corrige: aprove ou rejeite/, 'proposta OTHER')
+  await recusa069(ids.lucas, t067.revEscolhida, { title: 'x' }, /Só proposta do agente se corrige/, 'documento')
+  // Proposta estrutural: advogado não decide; ADMIN decide, mas ela não se corrige.
+  const est = (await um(db, `select r.id from reviews r join agent_proposals p on p.id = r.agent_proposal_id
+     where p.proposal_type = 'UPDATE_AGENT' and r.status = 'PENDING' and r.legal_case_id = $1 limit 1`, [t067.caso])).id
+  await recusa069(ids.lucas, est, { instructions: 'x' }, /Somente ADMIN decide proposta UPDATE_AGENT/, 'estrutural, advogado')
+  await recusa069(ids.barbara, est, { instructions: 'x' }, /não se corrige: aprove ou rejeite/, 'estrutural, ADMIN')
+})
+
+await deve('dados corrigidos inválidos são recusados com as regras do agente e do aplicador; a revisão continua pendente', async () => {
+  const rv = await revDe069(c069.pPrazo)
+  const antes = await estado069(c069.pPrazo)
+  const base = { title: 'Réplica corrigida 069', due_at: `${c069.dia}T23:59:59-03:00`, legal_process_id: c069.proc }
+  const casos = [
+    [{ ...base, title: 'ab' }, /Título: no mínimo 3 caracteres/, 'título curto'],
+    [{ ...base, title: '   ' }, /Informe o título do prazo/, 'título em branco'],
+    [{ ...base, due_at: c069.dia }, /informe data, hora e fuso/, 'vencimento sem hora e fuso'],
+    [{ ...base, due_at: `${await dia069(-1)}T23:59:59-03:00` }, /já passou/, 'vencimento no passado'],
+    [{ ...base, due_at: '2027-02-30T10:00:00-03:00' }, /data inválida/, 'data que não existe'],
+    [{ ...base, priority: 'ALTISSIMA' }, /Prioridade inválida/, 'prioridade'],
+    [{ ...base, deadline_type: 'OUTRO' }, /Tipo de prazo inválido/, 'tipo'],
+    [{ ...base, responsible_user_id: t067.saiu }, /pessoa ativa da equipe/, 'responsável que saiu'],
+    [{ ...base, responsible_user_id: ids.almeidaAdm }, /pessoa ativa da equipe/, 'responsável do parceiro'],
+    [{ ...base, responsible_user_id: 'nao-e-id' }, /Responsável inválido/, 'responsável que não é id'],
+    [{ ...base, legal_process_id: randomUUID() }, /O processo do prazo não muda na correção/, 'outro processo'],
+    [{ ...base, hearing_mode: 'ONLINE' }, /Campo hearing_mode não existe/, 'campo desconhecido'],
+    [{ title: 'Réplica 069', due_at: `${c069.dia}T23:59:00-03:00`, priority: 'NORMAL', legal_process_id: c069.proc, description: 'CPC, art. 350.' }, /Nada foi alterado/, 'nada mudou'],
+  ]
+  for (const [dados, padrao, rotulo] of casos) await recusa069(ids.lucas, rv, dados, padrao, rotulo)
+  await como(ids.lucas, (tx) => um(tx, `select public.correct_and_approve_review($1, '"texto"', null) r`, [rv])).then(
+    () => { throw new Error('dados que não são objeto') }, (e) => { if (!/Dados da correção inválidos/.test(e.message)) throw e })
+  igual(await estado069(c069.pPrazo), antes, 'proposta pendente, sem original guardado, revisão pendente e sem decisão')
+  igual(antes.p.orig, null, 'sem correção')
+})
+
+await deve('advogado corrige o prazo e aprova: payload corrigido, original guardado, revisão aprovada por ele, auditoria com os campos que mudaram', async () => {
+  const rv = await revDe069(c069.pPrazo)
+  const original = (await proposta069(c069.pPrazo)).payload
+  c069.venc = await dia069(25)
+  const r = await corrigir069(ids.lucas, rv, { title: '  Réplica à contestação 069  ', due_at: `${c069.venc}T23:59:59-03:00`, priority: 'HIGH', deadline_type: 'REPLY',
+    legal_process_id: c069.proc, responsible_user_id: ids.lucas, description: 'CPC, art. 350: 15 dias úteis.' }, 'Data conferida no processo.')
+  igual(r.fields, ['deadline_type', 'description', 'due_at', 'priority', 'responsible_user_id', 'title'], 'campos que mudaram')
+  const p = await proposta069(c069.pPrazo)
+  igual([p.status, p.por, p.em, p.orig], ['APPROVED', ids.lucas, true, original], 'aprovada; o que o agente propôs fica guardado')
+  igual(p.payload.summary, original.summary, 'o resumo do agente continua')
+  // (jsonb devolve as chaves pela ordem de tamanho)
+  igual(p.payload.data, { title: 'Réplica à contestação 069', due_at: `${c069.venc}T23:59:59-03:00`, priority: 'HIGH', description: 'CPC, art. 350: 15 dias úteis.',
+    deadline_type: 'REPLY', legal_process_id: c069.proc, responsible_user_id: ids.lucas }, 'os dados como serão aplicados')
+  const d = await linhas(db, `select decision, notes, decided_by from review_decisions where review_id = $1`, [rv])
+  igual(d, [{ decision: 'APPROVE', notes: 'Data conferida no processo.', decided_by: ids.lucas }], 'uma decisão: aprovar, em nome de quem corrigiu')
+  igual((await um(db, `select status from reviews where id = $1`, [rv])).status, 'APPROVED', 'revisão aprovada')
+  const au = await um(db, `select actor_type, actor_user_id, entity_type, entity_id, metadata from audit_events where action = 'AGENT_PROPOSAL_CORRECTED' and entity_id = $1`, [c069.pPrazo])
+  igual([au.actor_type, au.actor_user_id, au.entity_type, au.metadata.review_id, au.metadata.review_decision_id, au.metadata.proposal_type, au.metadata.fields],
+    ['USER', ids.lucas, 'agent_proposals', rv, r.decision_id, 'CREATE_DEADLINE', r.fields], 'auditoria: quem, a revisão, a decisão e os nomes dos campos')
+  igual(JSON.stringify(au.metadata).includes('Réplica à contestação 069'), false, 'a auditoria não guarda os valores')
+  // Decidida, não se corrige de novo.
+  await recusa069(ids.lucas, rv, { title: 'De novo 069', due_at: `${c069.venc}T23:59:59-03:00` }, /já foi decidida/, 'revisão decidida')
+})
+
+await deve('o aplicador aplica a versão corrigida: prazo com o título, o tipo, a data, a prioridade, o responsável e a descrição corrigidos', async () => {
+  const p = await aplicar069(c069.pPrazo)
+  igual([p.status, p.ent, p.erro], ['APPLIED', 'deadlines', null], 'aplicada')
+  const d = await um(db, `select legal_case_id, legal_process_id, title, deadline_type, description, priority, responsible_user_id, source,
+      to_char(due_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS') due from deadlines where id = $1`, [p.efeito])
+  igual([d.legal_case_id, d.legal_process_id, d.title, d.deadline_type, d.description, d.priority, d.responsible_user_id, d.source, d.due],
+    [c069.caso, c069.proc, 'Réplica à contestação 069', 'REPLY', 'CPC, art. 350: 15 dias úteis.', 'HIGH', ids.lucas, 'AGENT', `${c069.venc} 23:59:59`], 'prazo')
+})
+
+await deve('o original e a correção não se escrevem por fora: nem a equipe pela tela, nem o dono do banco sem a correção', async () => {
+  await como(ids.barbara, (tx) => tx.query(`update agent_proposals set original_payload = '{}' where id = $1`, [c069.pPrazo2])).then(
+    () => { throw new Error('ADMIN gravou o original') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  await db.query(`update agent_proposals set original_payload = '{}', corrected_by = $2, corrected_at = now() where id = $1`, [c069.pPrazo2, ids.lucas]).then(
+    () => { throw new Error('gravou sem a correção') }, (e) => { if (!/só se grava por "Corrigir e aprovar"/.test(e.message)) throw e })
+  await db.query(`update agent_proposals set original_payload = '{"x":1}' where id = $1`, [c069.pPrazo]).then(
+    () => { throw new Error('original mudou') }, (e) => { if (!/não mudam depois de gravadas/.test(e.message)) throw e })
+  await db.query(`update agent_proposals set original_payload = null where id = $1`, [c069.pPrazo]).then(
+    () => { throw new Error('original apagado') }, (e) => { if (!/não mudam depois de gravadas/.test(e.message)) throw e })
+})
+
+await deve('ADMIN corrige e aprova o prazo sem processo; o processo não aparece do nada', async () => {
+  const r = await corrigir069(ids.barbara, await revDe069(c069.pPrazo2), { title: 'Embargos de declaração 069', due_at: `${c069.dia}T23:59:00-03:00`, priority: 'NORMAL' })
+  igual(r.fields, ['title'], 'só o título')
+  const p = await aplicar069(c069.pPrazo2)
+  const d = await um(db, `select title, legal_process_id, responsible_user_id from deadlines where id = $1`, [p.efeito])
+  igual([p.status, d.title, d.legal_process_id, d.responsible_user_id], ['APPLIED', 'Embargos de declaração 069', null, null], 'prazo do caso, sem processo')
+})
+
+await deve('pedido de documento, atualização do caso e cadastro de processo: corrigidos com as regras de cada tipo e aplicados como corrigidos', async () => {
+  // Pedido de documento.
+  const rvDoc = await revDe069(c069.pDoc)
+  await recusa069(ids.lucas, rvDoc, { label: 'Extrato 069', category: 'extrato' }, /Categoria do documento inválida/, 'categoria')
+  await recusa069(ids.lucas, rvDoc, { label: 'Ex', category: 'OTHER' }, /Documento: no mínimo 3 caracteres/, 'documento')
+  await recusa069(ids.lucas, rvDoc, { label: 'Extrato 069', category: 'OTHER', required: 'sim' }, /Obrigatório: informe sim ou não/, 'obrigatório')
+  const rd = await corrigir069(ids.lucas, rvDoc, { label: 'Extrato do benefício (HISCON) 069', category: 'BENEFIT_STATEMENT', required: false })
+  igual(rd.fields, ['category', 'label', 'required'], 'campos do pedido')
+  const pd = await aplicar069(c069.pDoc)
+  const req = await um(db, `select requirement_label l, category c, required r from case_document_requirements where id = $1`, [pd.efeito])
+  igual([pd.status, req.l, req.c, req.r], ['APPLIED', 'Extrato do benefício (HISCON) 069', 'BENEFIT_STATEMENT', false], 'pendência do caso')
+  // Atualização do caso.
+  const rvCaso = await revDe069(c069.pCaso)
+  await recusa069(ids.lucas, rvCaso, { status: 'ACCEPTED' }, /O agente não põe o caso nessa situação/, 'situação fora do agente')
+  await recusa069(ids.lucas, rvCaso, {}, /Informe ao menos um campo do caso/, 'vazio')
+  igual((await corrigir069(ids.lucas, rvCaso, { summary: 'Resumo corrigido pela equipe 069', status: 'READY_FOR_ANALYSIS' })).fields, ['status', 'summary'], 'campos do caso')
+  const pc = await aplicar069(c069.pCaso)
+  const caso = await um(db, `select summary, status from legal_cases where id = $1`, [c069.caso])
+  igual([pc.status, caso.summary, caso.status], ['APPLIED', 'Resumo corrigido pela equipe 069', 'READY_FOR_ANALYSIS'], 'caso atualizado')
+  // Caso já em andamento (decidido): a correção recusa antes, porque o aplicador recusaria depois.
+  await db.query(`select private.proposal_correction_data('UPDATE_CASE', '{}', '{"title": "Título novo 069"}', $1, null)`, [t067.caso]).then(
+    () => { throw new Error('caso decidido aceito') }, (e) => { if (!/O caso já foi decidido/.test(e.message)) throw e })
+  // Cadastro de processo.
+  const rvProc = await revDe069(c069.pProc)
+  await recusa069(ids.lucas, rvProc, { cnj_number: '12345678901234567890' }, /Número CNJ inválido/, 'CNJ com dígito errado')
+  await recusa069(ids.lucas, rvProc, { cnj_number: cnj(6901, '2026', '8', '19', '0999') }, /Já existe processo cadastrado com este número CNJ/, 'CNJ em uso')
+  await recusa069(ids.lucas, rvProc, { state: 'Rio' }, /UF inválida/, 'UF')
+  await recusa069(ids.lucas, rvProc, { case_value: '1000' }, /Valor da causa inválido/, 'valor em texto')
+  await recusa069(ids.lucas, rvProc, { case_value: -1 }, /Valor da causa inválido/, 'valor negativo')
+  c069.cnjNovo = cnj(6902, '2026', '8', '19', '0999')
+  const rp = await corrigir069(ids.lucas, rvProc, { cnj_number: c069.cnjNovo, court: 'TJRJ', court_unit: '2ª Vara Cível', state: 'RJ', client_side: 'ACTIVE', case_value: 15000.5 })
+  igual(rp.fields, ['case_value', 'cnj_number', 'court_unit'], 'campos do processo')
+  const pp = await aplicar069(c069.pProc)
+  const proc = await um(db, `select legal_case_id, cnj_number, court_unit, case_value::text v, technical_origin o from legal_processes where id = $1`, [pp.efeito])
+  igual([pp.status, proc.legal_case_id, proc.cnj_number, proc.court_unit, proc.v, proc.o], ['APPLIED', c069.caso, c069.cnjNovo, '2ª Vara Cível', '15000.50', 'AGENT'], 'processo cadastrado')
+})
+
+await deve('prazo de publicação: a proposta foi para Revisões (data fora da lista), a pessoa corrige a data e aprova; o aplicador cria o prazo corrigido e a publicação fica tratada por quem corrigiu', async () => {
+  await db.query(`update judicial_settings set deadline_agent_id = $1, deadline_auto_apply = true where id`, [ids.agente])
+  const cli = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99906900002', $1) returning id`, [ids.owner])).id
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Cliente Fictício 069 da publicação')`, [cli])
+  const caso = (await um(db, `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, assigned_lawyer_id)
+    values ($1, $2, 'Caso fictício 069 da publicação', 'IN_PROGRESS', $3, $3, $4) returning id`, [cli, ids.banking, ids.owner, ids.lucas])).id
+  const cnjPub = cnj(6903, '2026', '8', '19', '0999')
+  const proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title, court, responsible_user_id) values ($1, $2, 'Fictícia x Banco 069 publicação', 'TJRJ', $3) returning id`,
+    [caso, cnjPub, ids.lucas])).id
+  const t = c069.pub = await trabalho059(proc, cnjPub, await dia069(0))
+  const fora = mais059(t.dias[29], 40)
+  const r = await propor059(t, 'CREATE_DEADLINE', prazo059(fora), 'k-069-pub')
+  const p0 = await proposta059(r.proposal_id)
+  igual([r.applied, p0.status, p0.revisao], [false, 'PENDING', 'PENDING'], 'foi para Revisões')
+  igual((await publicacao059(t)).st, 'WITH_AGENT', 'publicação continua com o agente')
+  const venc = t.dias[14]
+  const c = await corrigir069(ids.lucas, p0.revisao_id, { ...prazo059(venc).data, legal_process_id: proc, responsible_user_id: ids.lucas })
+  igual(c.fields.includes('due_at'), true, 'a data mudou')
+  const p = await aplicar069(r.proposal_id)
+  const d = await um(db, `select title, legal_process_id, to_char(due_at at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') due from deadlines where id = $1`, [p.efeito])
+  igual([p.status, d.legal_process_id, d.due], ['APPLIED', proc, venc], 'prazo criado com a data corrigida')
+  const pub = await publicacao059(t)
+  igual([pub.st, pub.res, pub.prazo, pub.por], ['DONE', 'DEADLINE', p.efeito, ids.lucas], 'publicação tratada, com quem corrigiu')
+  await db.query(`select private.judicial_release_stuck_publications(now() + interval '3 days')`)
+  igual((await publicacao059(t)).st, 'DONE', 'a vigia não mexe na publicação tratada')
+})
+
+await deve('catálogo [069]: search_path fixo; blocos internos e gatilho fechados; só a função da tela para usuário logado; a pública roda como quem chama', async () => {
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where (n.nspname = 'private' and p.proname = any ($1)) or (n.nspname = 'public' and p.proname = any ($2)) order by 1`,
+    [['agent_proposals_correction_guard', 'proposal_text', 'proposal_instant', 'proposal_correction_data', 'correct_and_approve_review'], ['correct_and_approve_review']])
+  igual(r.length, 6, 'uma versão de cada função')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv || x.wrk).map((x) => x.f), [], 'search_path fixo; sem visitante, service_role nem dg_worker')
+  igual(r.filter((x) => x.usr).map((x) => x.f), ['private.correct_and_approve_review', 'public.correct_and_approve_review'], 'usuário logado: só a da tela')
+  igual(r.filter((x) => x.f.startsWith('public.') && x.def).length, 0, 'a pública roda como quem chama')
+  igual(r.filter((x) => x.f === 'private.correct_and_approve_review' || x.f === 'private.proposal_correction_data').every((x) => x.def), true, 'as internas são definer')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

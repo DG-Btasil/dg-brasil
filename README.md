@@ -157,6 +157,11 @@ sem clique humano. Isso encadeia **trabalho de agente**; não aplica nada. A
 minuta que o agente chamado produzir continua parando em Revisões, e só a
 aprovação de um advogado produz efeito. Desliga-se em DG Brasil → Integrações.
 
+**"Corrigir e aprovar" é uma decisão humana** (migration 069): quem decide a
+revisão muda os dados da proposta e aprova a versão corrigida no mesmo ato; o
+banco guarda o que o agente propôs, e o aplicador continua aplicando só
+proposta aprovada.
+
 Se alguém der ao agente uma ferramenta que escreve direto, o sistema continua
 funcionando e a garantia some sem aviso. É o tipo de mudança que merece
 conversa, não commit.

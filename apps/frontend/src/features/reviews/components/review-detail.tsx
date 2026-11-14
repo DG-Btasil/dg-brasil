@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CheckCircle2, MessageSquareWarning, RotateCcw, XCircle } from "lucide-react";
+import { CheckCircle2, MessageSquareWarning, PencilLine, RotateCcw, XCircle } from "lucide-react";
 import {
   DOCUMENT_CATEGORY_LABEL,
   PRIORITIES,
@@ -24,6 +24,7 @@ import { PageHeader, Timeline } from "@/components/ui/display";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { DefinitionGrid, Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { canRequestChanges } from "@/server/domain/reviews/bulk-rules";
+import { canCorrectProposal, isCorrectableProposalType } from "@/server/domain/reviews/correction-rules";
 import type { ReviewDetailDTO, ReviewTargetDTO } from "@/server/domain/reviews/dto";
 import { PROPOSAL_TYPE_LABEL } from "@/server/domain/reviews/labels";
 import { usePermission, useRole } from "@/features/auth/hooks";
@@ -31,6 +32,7 @@ import { useDirectoryUserMap, useLawyerOptions } from "@/features/directory/dire
 import { REVIEW_KIND_LABEL } from "../list-query";
 import { useReviewActions } from "../use-review-actions";
 import { canEditReview, isEditableMime } from "../manual-revision";
+import { correctionRows } from "../proposal-correction";
 import { AttachDocumentPanel } from "./attach-document-panel";
 import { DecisionDialog } from "./decision-dialog";
 import { DocumentContentPanel } from "./document-content";
@@ -38,6 +40,7 @@ import { DocumentPreviewPanel } from "./document-preview-panel";
 import { DownloadVersionButton } from "./download-version-button";
 import { AnalysisResultView } from "@/features/analyses/components/analysis-result-view";
 import { PriorityBadge } from "./priority-badge";
+import { ProposalCorrectionDialog } from "./proposal-correction-dialog";
 import { DB_STATUS_LABEL, isOpen } from "./review-table";
 
 const PRIORITY_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }));
@@ -61,9 +64,13 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
   const actions = useReviewActions();
   const [deciding, setDeciding] = useState<ReviewDecisionKind | null>(null);
   const [reopening, setReopening] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
   const open = isOpen(review);
   const allowed = canDecide && (!review.requiresAdmin || isAdmin);
   const changesAllowed = canRequestChanges(review.targetKind);
+  // "Corrigir e aprovar" (069): prazo, pedido de documento, atualização do caso e cadastro de processo.
+  const proposal = review.target?.kind === "AGENT_PROPOSAL" ? review.target : null;
+  const correctable = allowed && !!proposal && proposal.proposalStatus === "PENDING" && canCorrectProposal(review, isAdmin);
   const last =[...review.decisions].reverse().find((d) => d.decision !== null);
 
   return (
@@ -106,7 +113,9 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
                 <p className="text-[13px] text-muted">
                   {changesAllowed
                     ? "Leia o material ao lado e decida. Pedir alterações e rejeitar exigem justificativa."
-                    : "Leia a proposta ao lado e decida: aprovar ou rejeitar. Rejeitar exige justificativa."}
+                    : correctable
+                      ? "Leia a proposta ao lado e decida. Se ela está quase certa, corrija o que precisa e aprove de uma vez. Rejeitar exige justificativa."
+                      : "Leia a proposta ao lado e decida: aprovar ou rejeitar. Rejeitar exige justificativa."}
                 </p>
                 <div className="flex gap-2">
                   <Button variant="danger" icon={<XCircle className="size-4" aria-hidden />} onClick={() => setDeciding("REJECTED")}>
@@ -116,6 +125,11 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
                   {changesAllowed && (
                     <Button variant="secondary" icon={<MessageSquareWarning className="size-4" aria-hidden />} onClick={() => setDeciding("CHANGES_REQUESTED")}>
                       Solicitar alterações
+                    </Button>
+                  )}
+                  {correctable && (
+                    <Button variant="secondary" icon={<PencilLine className="size-4" aria-hidden />} onClick={() => setCorrecting(true)}>
+                      Corrigir e aprovar
                     </Button>
                   )}
                   <Button icon={<CheckCircle2 className="size-4" aria-hidden />} onClick={() => setDeciding("APPROVED")}>
@@ -185,6 +199,15 @@ export function ReviewDetail({ review }: { review: ReviewDetailDTO }) {
         />
       )}
       {reopening && <ReopenDialog review={review} onClose={() => setReopening(false)} />}
+      {correcting && proposal && isCorrectableProposalType(proposal.proposalType) && (
+        <ProposalCorrectionDialog
+          reviewId={review.id}
+          proposalType={proposal.proposalType}
+          original={dataOf(proposal.payload)}
+          subject={review.subject}
+          onClose={() => setCorrecting(false)}
+        />
+      )}
     </PageContainer>
   );
 }
@@ -264,26 +287,65 @@ function TargetPanel({ target, reviewId, reviewStatus, canEdit }: { target: Revi
       </div>
     );
   }
+  return <ProposalPanel target={target} />;
+}
+
+/** `payload.data` da proposta (objeto), ou vazio. */
+function dataOf(payload: Record<string, unknown>): Record<string, unknown> {
+  const d = payload.data;
+  return d && typeof d === "object" && !Array.isArray(d) ? (d as Record<string, unknown>) : {};
+}
+
+function ProposalPanel({ target }: { target: Extract<ReviewTargetDTO, { kind: "AGENT_PROPOSAL" }> }) {
+  const users = useDirectoryUserMap();
   // Payload do worker (018/039): { summary, data }. O que será aplicado é `data`, exatamente como está.
   const summary = typeof target.payload.summary === "string" ? target.payload.summary : undefined;
   const data = target.payload.data && typeof target.payload.data === "object" && !Array.isArray(target.payload.data) ? (target.payload.data as Record<string, unknown>) : undefined;
   const entries = Object.entries(data ?? target.payload).filter(([key]) => data || key !== "summary");
+  // Corrigida e aprovada por uma pessoa (069): o que o agente propôs fica guardado.
+  const original = target.originalPayload ? dataOf(target.originalPayload) : null;
+  const changes = original ? correctionRows(original, dataOf(target.payload), (id) => users.get(id)?.name) : [];
+  const correctedBy = (target.correctedById && users.get(target.correctedById)?.name) || "pessoa da equipe";
+  const pending = target.proposalStatus === "PENDING";
   return (
     <Panel>
       <PanelHeader title={PROPOSAL_TYPE_LABEL[target.proposalType] ?? "Proposta do agente"} description={`Criada em ${formatDateTime(target.createdAt)}. Aprovar aplica a proposta automaticamente, em até um minuto.`} />
       <PanelBody className="space-y-4">
         {summary && (
-          <Callout tone="warning" title="Proposta da IA — não aplicada">
+          <Callout tone="warning" title={pending ? "Proposta da IA, ainda não aplicada" : "Resumo do agente"}>
             {summary}
+          </Callout>
+        )}
+        {original && (
+          <Callout tone="info" title={`Corrigida por ${correctedBy}${target.correctedAt ? ` em ${formatDateTime(target.correctedAt)}` : ""}`}>
+            <p className="mb-2">A proposta foi corrigida e a versão corrigida foi aprovada na mesma decisão. O que mudou:</p>
+            <ul className="space-y-1">
+              {changes.map((c) => (
+                <li key={c.key}>
+                  <span className="font-medium">{c.label}:</span> <span className="line-through decoration-muted/60">{c.before}</span> → {c.after}
+                </li>
+              ))}
+            </ul>
           </Callout>
         )}
         {entries.length === 0 ? (
           <EmptyState compact title="Proposta sem conteúdo." />
         ) : (
           <>
-            <p className="text-[12px] text-muted">Se aprovada, será aplicada exatamente com estes dados:</p>
+            <p className="text-[12px] text-muted">{original ? "Aprovada com estes dados, já corrigidos:" : pending ? "Se aprovada, será aplicada exatamente com estes dados:" : "Dados da proposta:"}</p>
             <DefinitionGrid columns={2} items={entries.map(([key, value]) => ({ label: PAYLOAD_LABEL[key] ?? key, value: show(value), wide: typeof value === "string" && value.length > 60 }))} />
           </>
+        )}
+        {original && (
+          <details className="rounded-md border border-line px-3 py-2 text-[13px]">
+            <summary className="cursor-pointer font-medium">Proposta do agente (original)</summary>
+            <div className="mt-3">
+              <DefinitionGrid
+                columns={2}
+                items={Object.entries(original).map(([key, value]) => ({ label: PAYLOAD_LABEL[key] ?? key, value: show(value), wide: typeof value === "string" && value.length > 60 }))}
+              />
+            </div>
+          </details>
         )}
         {target.agentRunId && (
           <p className="text-[12.5px]">

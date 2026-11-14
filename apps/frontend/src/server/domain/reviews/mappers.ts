@@ -92,6 +92,10 @@ export interface ProposalTargetRow {
   payload: unknown;
   requires_human_review: boolean;
   created_at: string;
+  /** "Corrigir e aprovar" (069): o payload que o agente propôs, quem corrigiu e quando. */
+  original_payload?: unknown;
+  corrected_by?: string | null;
+  corrected_at?: string | null;
 }
 
 const opt = <T>(v: T | null | undefined): T | undefined => (v === null ? undefined : v);
@@ -333,6 +337,9 @@ export function proposalTargetFromRow(row: ProposalTargetRow): ReviewTargetDTO {
     payload: isObject(row.payload) ? row.payload : {},
     requiresHumanReview: row.requires_human_review,
     createdAt: row.created_at,
+    originalPayload: isObject(row.original_payload) ? row.original_payload : undefined,
+    correctedById: opt(row.corrected_by),
+    correctedAt: opt(row.corrected_at),
   };
 }
 

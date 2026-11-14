@@ -180,7 +180,7 @@ export async function getDocumentVersionTarget(db: SupabaseClient, id: string): 
 
 export async function getProposalTarget(db: SupabaseClient, id: string): Promise<ProposalTargetRow | null> {
   return unwrap(
-    await db.from("agent_proposals").select("id, agent_run_id, proposal_type, status, payload, requires_human_review, created_at").eq("id", id).maybeSingle(),
+    await db.from("agent_proposals").select("id, agent_run_id, proposal_type, status, payload, requires_human_review, created_at, original_payload, corrected_by, corrected_at").eq("id", id).maybeSingle(),
   ) as ProposalTargetRow | null;
 }
 
@@ -214,6 +214,15 @@ export async function assign(db: SupabaseClient, id: string, payload: Record<str
 /** A ÚNICA porta de decisão: RPC decide_review (o banco valida papel, transição e proposta estrutural). */
 export async function decide(db: SupabaseClient, reviewId: string, decision: DbReviewDecision, notes: string | null): Promise<string> {
   return unwrap(await db.rpc("decide_review", { p_review_id: reviewId, p_decision: decision, p_notes: notes })) as string;
+}
+
+/**
+ * "Corrigir e aprovar" (069): o banco confere quem decide, valida os dados
+ * corrigidos, guarda o original e aprova pela mesma porta de decide_review,
+ * numa transação. Devolve a decisão e os nomes dos campos que mudaram.
+ */
+export async function correctAndApprove(db: SupabaseClient, reviewId: string, data: Record<string, unknown>, notes: string | null): Promise<{ decision_id: string; fields: string[] }> {
+  return unwrap(await db.rpc("correct_and_approve_review", { p_review_id: reviewId, p_data: data, p_notes: notes })) as { decision_id: string; fields: string[] };
 }
 
 /* ------------------------------------------------------------------ */

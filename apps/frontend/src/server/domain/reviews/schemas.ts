@@ -109,6 +109,18 @@ export const decideReviewsBulkSchema = z
   .refine((v) => v.decision === "APPROVED" || !!v.notes, { message: "Informe a justificativa.", path: ["notes"] });
 export type DecideReviewsBulkInput = z.infer<typeof decideReviewsBulkSchema>;
 
+/**
+ * "Corrigir e aprovar" (069). `data` são os dados corrigidos da proposta no
+ * formato do contrato do agente (`PROPOSAL_DATA`); o service confere pelo
+ * tipo da proposta, que vem do banco, e o banco confere de novo.
+ */
+export const correctReviewSchema = z.object({
+  id: zUuid(),
+  data: z.record(z.string(), z.unknown()),
+  notes: zOptionalText(5000),
+});
+export type CorrectReviewInput = z.infer<typeof correctReviewSchema>;
+
 export const reopenReviewSchema = z.object({
   id: zUuid(),
   reason: zOptionalText(5000),

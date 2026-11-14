@@ -142,6 +142,10 @@ export type ReviewTargetDTO =
       payload: Record<string, unknown>;
       requiresHumanReview: boolean;
       createdAt: ISODateTime;
+      /** Presente quando uma pessoa corrigiu e aprovou (069): o que o agente propôs. `payload` é o que foi aprovado. */
+      originalPayload?: Record<string, unknown>;
+      correctedById?: ID;
+      correctedAt?: ISODateTime;
     };
 
 export interface ReviewDecisionDTO {
@@ -178,6 +182,13 @@ export interface ManualRevisionDTO {
   versionId: ID;
   versionNumber: number;
   deduplicated: boolean;
+}
+
+/** Resultado de "Corrigir e aprovar" (069): a decisão registrada e os nomes dos campos que mudaram. */
+export interface CorrectionResultDTO {
+  decisionId: ID;
+  fields: string[];
+  status: ReviewStatus;
 }
 
 export interface ReviewDetailDTO extends ReviewListItem {

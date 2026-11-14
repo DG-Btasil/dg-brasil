@@ -6,6 +6,7 @@ import * as manual from "./manual-revision";
 import * as service from "./service";
 import {
   assignReviewSchema,
+  correctReviewSchema,
   decideReviewSchema,
   decideReviewsBulkSchema,
   listReviewGroupsSchema,
@@ -44,6 +45,11 @@ export async function assignReviewAction(input: unknown) {
 
 export async function decideReviewAction(input: unknown) {
   return runAction({ name: "reviews.decide", permission: "reviews.decide", schema: decideReviewSchema, input, handler: service.decideReview });
+}
+
+/** "Corrigir e aprovar" a proposta do agente (069): corrige os dados e aprova, numa decisão só. */
+export async function correctAndApproveReviewAction(input: unknown) {
+  return runAction({ name: "reviews.correct", permission: "reviews.decide", schema: correctReviewSchema, input, handler: service.correctAndApproveReview });
 }
 
 /** Aprovar ou rejeitar vários itens de uma vez: um laço sobre decide_review, com o resultado item a item (067). */

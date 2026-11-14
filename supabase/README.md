@@ -455,6 +455,7 @@ foi resetado em seguida.
 | `20261113000060_ponte_origem_do_cliente` | Ponte: a pasta do cliente ganha o nível do escritório de origem |
 | `20261113000061_prazo_vira_tarefa` | O prazo do agente de prazos vira tarefa do processo e chama o orquestrador; a minuta continua parando em Revisões |
 | `062`–`064`, `066`–`068` | **Revisão final (13/11/2026), ainda não aplicadas em nenhum Supabase.** Uma por área da revisão; o cabeçalho de cada arquivo diz o que faz |
+| `20261113000069_corrigir_e_aprovar` | **Ainda não aplicada.** "Corrigir e aprovar" em Revisões: a pessoa corrige os dados da proposta do agente (prazo, pedido de documento, caso, processo) e aprova na mesma decisão (`correct_and_approve_review`); o original fica em `agent_proposals.original_payload`; auditoria `AGENT_PROPOSAL_CORRECTED`. Testes `[069]` |
 | `20261113000065_vigia_da_plataforma` | **Revisão final, ainda não aplicada.** Vigia diária (`private.platform_watch`, `dg-vigia-da-plataforma`: avisa as administradoras de falha no agendador, fila de agentes parada e computador do escritório sem contato); agenda o expurgo dos pedidos vencidos (`dg-expurgo-de-pedidos`); contador de consultas de CPF no banco (`consume_rate_limit`). Testes `[065]` |
 
 ### Supabase Advisors (2026-10-09)
