@@ -3,21 +3,14 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isTallArea, TOUR_CARD_W as CARD_W, tourLayout, type TourMeasure as Measure } from "./tour-position";
 import type { TourStep } from "./tour-steps";
 
-interface Measure {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
-  vw: number;
-  vh: number;
+/** Altura do cabeçalho fixo (var --header-height), para nada ficar embaixo dele. */
+function headerHeight(): number {
+  const v = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--header-height"));
+  return Number.isFinite(v) ? v : 60;
 }
-
-const PAD = 6;
-const CARD_W = 360;
-const CARD_EST_H = 210;
-const GAP = 12;
 
 function findAnchor(anchors: string[]): HTMLElement | null {
   for (const name of anchors) {
@@ -72,7 +65,12 @@ export function TourOverlay({ steps, index, onIndexChange, onFinish }: TourOverl
         if (first) {
           first = false;
           // O header é fixo: itens do menu já estão visíveis, sem rolar a página.
-          if (!step.openMenu) el.scrollIntoView({ block: "center", behavior: "smooth" });
+          if (!step.openMenu) {
+            const box = el.getBoundingClientRect();
+            // Área alta: rola até o começo dela (o título à vista), logo abaixo do cabeçalho fixo.
+            if (isTallArea(box.height, window.innerHeight)) window.scrollBy({ top: box.top - headerHeight() - 16, behavior: "smooth" });
+            else el.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
           primaryRef.current?.focus({ preventScroll: true });
         }
         const r = el.getBoundingClientRect();
@@ -118,21 +116,10 @@ export function TourOverlay({ steps, index, onIndexChange, onFinish }: TourOverl
 
   if (!step) return null;
 
-  const hole = measure && {
-    top: measure.top - PAD,
-    left: measure.left - PAD,
-    width: measure.width + PAD * 2,
-    height: measure.height + PAD * 2,
-  };
-
-  let cardStyle: CSSProperties = { visibility: "hidden" };
-  if (measure && hole) {
-    const below = measure.vh - (hole.top + hole.height) > CARD_EST_H + GAP;
-    const left = Math.min(Math.max(16, hole.left), Math.max(16, measure.vw - CARD_W - 16));
-    cardStyle = below
-      ? { top: hole.top + hole.height + GAP, left }
-      : { bottom: Math.max(16, measure.vh - hole.top + GAP), left };
-  }
+  // Destaque recortado na parte visível; cartão sempre inteiro na tela (tour-position).
+  const layout = measure ? tourLayout(measure, headerHeight()) : null;
+  const hole = layout?.hole;
+  const cardStyle: CSSProperties = layout ? { top: layout.card.top, left: layout.card.left } : { visibility: "hidden" };
 
   return (
     <div className="fixed inset-0 z-[65]">

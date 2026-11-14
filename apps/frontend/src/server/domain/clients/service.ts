@@ -89,6 +89,8 @@ export async function exportClients(ctx: ServiceContext, input: ListClientsInput
     filters: { q: input.q, status: input.status, kind: input.kind, originOrganizationId: input.originOrganizationId, acquisitionChannel: input.acquisitionChannel },
     total,
     truncated,
+    // A planilha leva o CPF/CNPJ completo: cada cliente fica no registro de acesso (LGPD).
+    clientIds: rows.map((r) => r.id),
   });
 }
 

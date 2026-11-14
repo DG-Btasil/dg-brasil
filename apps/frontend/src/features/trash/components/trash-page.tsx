@@ -43,7 +43,7 @@ const TAB_ITEMS: TabItem<TrashKind>[] = TRASH_KINDS.map((kind) => ({ key: kind, 
  * vai para a URL (pode ser CPF/CNPJ). Não existe exclusão definitiva.
  */
 export function TrashPage({ initialResult }: { initialResult: ActionResult<Page<TrashItemDTO>> }) {
-  const { query, setQuery, result, pending, retry } = useServerList({
+  const { query, setQuery, result, resultQuery, pending, retry } = useServerList({
     initialQuery: { kind: "CLIENT", search: "", page: 1 } as TrashQuery,
     initialResult,
     load: (q: TrashQuery) => listTrashAction(toInput(q)),
@@ -52,7 +52,8 @@ export function TrashPage({ initialResult }: { initialResult: ActionResult<Page<
   const [restoring, setRestoring] = useState<TrashItemDTO | null>(null);
   const commitSearch = useDebouncedCallback((text: string) => setQuery({ ...query, search: text.trim(), page: 1 }));
   const labels = TRASH_KIND_LABEL[query.kind];
-  const page = result.ok ? result.data : undefined;
+  // Trocou de aba: a lista da aba anterior sai da tela até chegar a da aba certa (colunas e contador são outros).
+  const page = result.ok && resultQuery.kind === query.kind ? result.data : undefined;
 
   function changeKind(kind: TrashKind) {
     setSearch("");
@@ -90,7 +91,7 @@ export function TrashPage({ initialResult }: { initialResult: ActionResult<Page<
           )}
         </div>
         <div aria-busy={pending || undefined} className={cn("transition-opacity", pending && "opacity-60")}>
-          {!result.ok ? (
+          {!result.ok && resultQuery.kind === query.kind ? (
             <ActionErrorState error={result} onRetry={retry} title="Não foi possível abrir a Lixeira." />
           ) : !page ? (
             <SkeletonRows rows={6} />
@@ -139,7 +140,7 @@ function TrashTable({ kind, rows, onRestore }: { kind: TrashKind; rows: TrashIte
       <TBody>
         {rows.map((item) => (
           <Tr key={item.id}>
-            <Td className="max-w-[340px]">
+            <Td className="max-w-[280px]">
               <span className="block truncate font-medium text-foreground">{item.title}</span>
               {item.kind === "CLIENT" && item.clientKind && <span className="block text-[12px] text-muted">{CLIENT_KIND_SHORT[item.clientKind]}</span>}
               {item.kind === "PROCESS" && item.caseTitle && <span className="block truncate text-[12px] text-muted">Caso: {item.caseTitle}</span>}
@@ -148,18 +149,19 @@ function TrashTable({ kind, rows, onRestore }: { kind: TrashKind; rows: TrashIte
             </Td>
             {kind === "CLIENT" && <Td className="tabular whitespace-nowrap">{item.document ? maskDocument(item.document) : "—"}</Td>}
             {kind === "PROCESS" && (
-              <Td className="whitespace-nowrap">
-                <span className="tabular">{item.cnj ? formatCNJ(item.cnj) : "Sem número"}</span>
+              <Td>
+                {/* Número e aviso em linhas separadas: a tabela cabe numa tela de 1366 px sem cortar o "Restaurar". */}
+                <span className="block whitespace-nowrap tabular">{item.cnj ? formatCNJ(item.cnj) : "Sem número"}</span>
                 {item.cnjReleased && (
-                  <Badge tone="warning" className="ml-2" title="Este número foi cadastrado de novo em outro processo depois da exclusão.">
+                  <Badge tone="warning" className="mt-1" title="Este número foi cadastrado de novo em outro processo depois da exclusão.">
                     número usado em outro cadastro
                   </Badge>
                 )}
               </Td>
             )}
-            {kind !== "CLIENT" && <Td className="max-w-[220px] truncate">{item.clientName ?? "—"}</Td>}
+            {kind !== "CLIENT" && <Td className="max-w-[200px] truncate">{item.clientName ?? "—"}</Td>}
             <Td className="tabular whitespace-nowrap">{formatDateTime(item.deletedAt)}</Td>
-            <Td className="max-w-[180px] truncate">{item.deletedByName ?? "Sistema"}</Td>
+            <Td className="max-w-[160px] truncate">{item.deletedByName ?? "Sistema"}</Td>
             <Td className="text-right">
               <Button
                 variant="secondary"

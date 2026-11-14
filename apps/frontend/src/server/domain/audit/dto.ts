@@ -53,4 +53,6 @@ export interface PersonalDataAccessEventDTO {
    */
   purpose?: string;
   requestId?: string;
+  /** Nome do cliente (titular do dado), para a linha do painel. */
+  clientName?: string;
 }

@@ -106,7 +106,7 @@ export function PersonalDataAccessLog() {
                   <Th className="w-[160px]">Data</Th>
                   <Th className="w-[240px]">Quem acessou</Th>
                   <Th className="w-[260px]">Acesso</Th>
-                  <Th className="w-[130px]">Cliente</Th>
+                  <Th className="w-[230px]">Cliente</Th>
                   <Th>Finalidade</Th>
                 </tr>
               </THead>
@@ -121,8 +121,8 @@ export function PersonalDataAccessLog() {
                     <Td className="text-foreground">{accessSummary(e.action, e.resourceType)}</Td>
                     <Td>
                       {/* Abrir a ficha por aqui também fica registrado como acesso. */}
-                      <Link href={`/clientes/${e.clientId}`} className="text-[12.5px] font-medium text-navy hover:underline underline-offset-2">
-                        Abrir ficha
+                      <Link href={`/clientes/${e.clientId}`} className="block max-w-[220px] truncate text-[12.5px] font-medium text-navy hover:underline underline-offset-2" title={e.clientName ? `Abrir a ficha de ${e.clientName}` : "Abrir ficha"}>
+                        {e.clientName ?? "Abrir ficha"}
                       </Link>
                     </Td>
                     <Td className="text-muted">{e.purpose ?? "—"}</Td>

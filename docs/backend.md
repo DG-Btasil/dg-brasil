@@ -110,6 +110,12 @@ texto da busca não é gravado (vira `search: true`) e o banco recusa filtro que
 pareça CPF, CNPJ ou e-mail. CPF/CNPJ sai completo e com máscara no arquivo
 (sem máscara o Excel corta zeros e estraga o CNJ); nunca vai para URL nem log.
 
+Planilha com dado de cliente (clientes, processos, prazos) passa `clientIds` ao
+`exportCsv`: cada cliente ganha um acesso "Exportou · Exportação de dados" em
+"Acessos a dados pessoais (LGPD)", ligado ao `DATA_EXPORTED`
+(`record_personal_data_export`, migration 071). As planilhas do Financeiro
+ainda não passam os clientes.
+
 Para ligar outra lista (três passos):
 
 ```ts

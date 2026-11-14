@@ -122,7 +122,7 @@ export function ProcessDetail({
               <span className="text-muted">Cliente não disponível</span>
             )}
             <StatusBadge status={process.status} labels={PROCESS_STATUS_LABEL} tones={PROCESS_STATUS_TONE} />
-            {process.phase && <span>Fase {PROCESS_PHASE_LABEL[process.phase].toLowerCase()}</span>}
+            {process.phase && <span>Fase: {PROCESS_PHASE_LABEL[process.phase]}</span>}
             <span>Responsável: {responsible?.name ?? "—"}</span>
             <span>
               Caso:{" "}

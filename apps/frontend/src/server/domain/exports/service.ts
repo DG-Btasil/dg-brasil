@@ -16,6 +16,8 @@ import { buildCsv, type CsvColumn } from "./csv";
  * banco confere de novo), limite de linhas, e o registro na auditoria ANTES de
  * o arquivo sair — DATA_EXPORTED com o tipo, os filtros e a quantidade de
  * linhas, nunca o conteúdo (migration 066). Se o registro falha, não há arquivo.
+ * Planilha com dado de cliente (`clientIds`) também entra em "Acessos a dados
+ * pessoais" (LGPD): um acesso "Exportou" por cliente, ligado à exportação (071).
  */
 
 /** Limite de linhas por arquivo. Passou disso, a planilha sai cortada e a tela avisa. */
@@ -109,6 +111,8 @@ export async function exportCsv<R>(
     /** Total que os filtros alcançam e se o limite cortou (de `collectForExport`). */
     total?: number;
     truncated?: boolean;
+    /** Clientes que aparecem na planilha: cada um ganha o registro de acesso "Exportou" (LGPD, 071). */
+    clientIds?: readonly (string | undefined | null)[];
   },
   now = new Date(),
 ): Promise<ExportFileDTO> {
@@ -116,14 +120,18 @@ export async function exportCsv<R>(
   requirePermission(ctx, "data.export");
   const truncated = input.truncated ?? false;
   const content = buildCsv(input.columns, input.rows);
-  unwrap(
+  const exportId = unwrap(
     await ctx.db.rpc("record_data_export", {
       p_kind: input.kind,
       p_filters: auditFilters(input.filters),
       p_row_count: input.rows.length,
       p_truncated: truncated,
     }),
-  );
+  ) as string | null;
+  const clientIds = [...new Set((input.clientIds ?? []).filter((id): id is string => !!id))];
+  if (clientIds.length > 0 && exportId) {
+    unwrap(await ctx.db.rpc("record_personal_data_export", { p_export_id: exportId, p_kind: input.kind, p_client_ids: clientIds }));
+  }
   ctx.log.info("export.csv", { kind: input.kind, rows: input.rows.length, truncated });
   return {
     fileName: `${input.fileName}-${today(now)}.csv`,

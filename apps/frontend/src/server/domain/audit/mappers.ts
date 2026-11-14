@@ -195,7 +195,7 @@ export function auditEventFromRow(row: AuditEventRow, actorNames: ReadonlyMap<st
   };
 }
 
-export function accessEventFromRow(row: AccessEventRow, actorNames: ReadonlyMap<string, string>): PersonalDataAccessEventDTO {
+export function accessEventFromRow(row: AccessEventRow, actorNames: ReadonlyMap<string, string>, clientNames?: ReadonlyMap<string, string>): PersonalDataAccessEventDTO {
   return {
     id: row.id,
     at: row.created_at,
@@ -210,5 +210,6 @@ export function accessEventFromRow(row: AccessEventRow, actorNames: ReadonlyMap<
     action: row.action,
     purpose: opt(row.purpose),
     requestId: opt(row.request_id),
+    clientName: clientNames?.get(row.client_id),
   };
 }

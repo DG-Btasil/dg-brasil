@@ -135,6 +135,8 @@ export async function exportProcesses(ctx: ServiceContext, input: ListProcessesI
     },
     total,
     truncated,
+    // Nome do cliente na planilha: cada cliente fica no registro de acesso (LGPD).
+    clientIds: exportRows.map((p) => p.clientId),
   });
 }
 

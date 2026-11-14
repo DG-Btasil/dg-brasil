@@ -77,6 +77,13 @@ export async function listAccessEvents(
   return { rows: (data ?? []) as AccessEventRow[], total: count ?? 0 };
 }
 
+/** Nomes dos clientes da página do registro LGPD (uma consulta, só id e nome; inclui cliente na Lixeira). */
+export async function getClientNames(db: SupabaseClient, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = (unwrap(await db.from("client_directory").select("id, display_name").in("id", ids)) ?? []) as { id: string; display_name: string | null }[];
+  return new Map(rows.filter((r) => r.display_name).map((r) => [r.id, r.display_name as string]));
+}
+
 /** Nomes dos atores da página (uma consulta, só id e nome). */
 export async function getActorNames(db: SupabaseClient, ids: string[]): Promise<Map<string, string>> {
   if (ids.length === 0) return new Map();

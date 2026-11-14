@@ -31,6 +31,8 @@ export function useServerList<Q, T>({
 }) {
   const [query, setQueryState] = useState(initialQuery);
   const [result, setResult] = useState(initialResult);
+  /** A consulta a que `result` responde (pode ser mais velha que `query` enquanto a nova não chega). */
+  const [resultQuery, setResultQuery] = useState(initialQuery);
   const [pending, startTransition] = useTransition();
   const seq = useRef(0);
   const loadRef = useRef(load);
@@ -44,7 +46,10 @@ export function useServerList<Q, T>({
     const id = ++seq.current;
     startTransition(async () => {
       const r = await callAction(() => loadRef.current(next));
-      if (id === seq.current) setResult(r);
+      if (id === seq.current) {
+        setResult(r);
+        setResultQuery(next);
+      }
     });
   }, []);
 
@@ -68,12 +73,13 @@ export function useServerList<Q, T>({
   if (base !== initialResult) {
     setBase(initialResult);
     setResult(initialResult);
+    setResultQuery(initialQuery);
     setQueryState(initialQuery);
   }
 
   // Depois de uma gravação, a lista fica marcada como ocupada até a recarga do servidor chegar.
   const refreshing = useRefreshing();
-  return { query, setQuery, result, pending: pending || refreshing, retry };
+  return { query, setQuery, result, resultQuery, pending: pending || refreshing, retry };
 }
 
 /** Atraso da busca digitada (ms): não dispara uma consulta por tecla. */

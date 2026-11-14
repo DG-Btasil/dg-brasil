@@ -123,7 +123,11 @@ describe("planilha de clientes", () => {
     expect(lines[2]).toBe('"Empresa; Ltda";Fantasia;Pessoa Jurídica;11.222.333/0001-81;Inativo;;;;;Barbara Cardoso Advocacia;;01/10/2026;13/11/2026');
     expect([file.rowCount, file.total, file.truncated, file.fileName.startsWith("clientes-")]).toEqual([2, 2, false, true]);
 
-    expect(rpc).toHaveBeenCalledExactlyOnceWith("record_data_export", { p_kind: "clients", p_filters: { search: true, status: "ACTIVE" }, p_row_count: 2, p_truncated: false });
+    expect(rpc.mock.calls).toEqual([
+      ["record_data_export", { p_kind: "clients", p_filters: { search: true, status: "ACTIVE" }, p_row_count: 2, p_truncated: false }],
+      // LGPD (C2): cada cliente da planilha entra em "Acessos a dados pessoais", ligado à exportação.
+      ["record_personal_data_export", { p_export_id: "audit-id", p_kind: "clients", p_client_ids: ["c1", "c2"] }],
+    ]);
     // Nem o texto da busca nem CPF/CNPJ vão para a auditoria.
     expect(JSON.stringify(rpc.mock.calls)).not.toMatch(/012|11222333/);
   });

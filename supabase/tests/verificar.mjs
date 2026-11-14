@@ -9270,12 +9270,33 @@ await deve('proposta de prazo só aprovada (sem correção) continua "sem confer
   igual(await conferencia071(p.efeito), { por: ids.lucas, em: true, sem: false }, 'conferido à mão')
 })
 
-await deve('catálogo [071]: função do gatilho com search_path fixo e fechada; um gatilho só', async () => {
+await deve('planilha exportada entra em "Acessos a dados pessoais": um acesso por cliente, ligado à exportação; só ADMIN', async () => {
+  const caso = await um(db, `select client_id from legal_cases where id = $1`, [c069.caso])
+  const outro = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '99907100001', $1) returning id`, [ids.owner])).id
+  const exp = (await como(ids.barbara, (tx) => um(tx, `select public.record_data_export('clients', '{}', 2, false) id`))).id
+  const n = (await como(ids.barbara, (tx) => um(tx, `select public.record_personal_data_export($1, 'clients', $2) n`, [exp, [caso.client_id, outro, caso.client_id, randomUUID()]]))).n
+  igual(n, 2, 'dois clientes (repetido conta uma vez; id que não é cliente fica de fora)')
+  const ev = await linhas(db, `select client_id, actor_user_id, action, resource_type, purpose from personal_data_access_events where resource_id = $1 order by client_id`, [exp])
+  igual(ev.map((e) => [e.actor_user_id, e.action, e.resource_type, e.purpose]), [[ids.barbara, 'EXPORT', 'EXPORT', 'Planilha exportada (clients)'], [ids.barbara, 'EXPORT', 'EXPORT', 'Planilha exportada (clients)']], 'Exportou · Exportação de dados, em nome de quem exportou')
+  igual((await como(ids.barbara, (tx) => um(tx, `select public.record_personal_data_export($1, 'clients', $2) n`, [exp, [outro]]))).n, 0, 'a mesma exportação não duplica')
+  await como(ids.lucas, (tx) => tx.query(`select public.record_personal_data_export($1, 'clients', $2)`, [exp, [outro]])).then(
+    () => { throw new Error('advogado registrou exportação') }, (e) => { if (!/Somente o administrador/.test(e.message)) throw e })
+  await como(ids.barbara, (tx) => tx.query(`select public.record_personal_data_export($1, 'clients', $2)`, [randomUUID(), [outro]])).then(
+    () => { throw new Error('exportação inventada aceita') }, (e) => { if (!/Exportação não encontrada/.test(e.message)) throw e })
+})
+
+await deve('catálogo [071]: funções com search_path fixo; gatilho fechado; exportação só para usuário logado', async () => {
   const r = await um(db, `select coalesce(array_to_string(p.proconfig, ','), '') cfg,
       has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('authenticated', p.oid, 'execute') usr,
       has_function_privilege('service_role', p.oid, 'execute') srv, has_function_privilege('dg_worker', p.oid, 'execute') wrk
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'private' and p.proname = 'agent_proposals_corrected_deadline_checked'`)
   igual([r.cfg.includes('search_path='), r.anon, r.usr, r.srv, r.wrk], [true, false, false, false, false], 'fechada, com search_path fixo')
+  const e = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg, p.prosecdef def,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('authenticated', p.oid, 'execute') usr,
+      has_function_privilege('service_role', p.oid, 'execute') srv
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace where p.proname = 'record_personal_data_export' order by 1`)
+  igual(e.map((x) => [x.f, x.cfg.includes('search_path='), x.def, x.anon, x.usr, x.srv]),
+    [['private.record_personal_data_export', true, true, false, true, false], ['public.record_personal_data_export', true, false, false, true, false]], 'exportação: pública invoker, privada definer; só usuário logado')
   igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.agent_proposals'::regclass and tgname = 'agent_proposals_corrected_deadline_checked'`)).n, 1, 'gatilho')
 })
 

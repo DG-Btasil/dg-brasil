@@ -238,7 +238,10 @@ export function DocumentsPanel({
           onConfirm={() => actions.remove(confirming.id)}
           onClose={() => setConfirming(null)}
         >
-          <p className="text-[13px] text-muted">A exclusão não pode ser desfeita pela tela. Se o documento atende a uma pendência do caso, troque o arquivo da pendência antes.</p>
+          <p className="text-[13px] text-muted">
+            Dá para desfazer: um administrador restaura o documento em <strong className="text-foreground">Configurações</strong>, na{" "}
+            <strong className="text-foreground">Lixeira</strong>. Se o documento atende a uma pendência do caso, troque o arquivo da pendência antes.
+          </p>
         </ConfirmDialog>
       )}
     </div>

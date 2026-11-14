@@ -17,9 +17,10 @@ type Section = "conexoes" | "agentes" | "teses";
 const SECTION_TITLE: Record<Section, string> = { conexoes: "Conexões", agentes: "Agentes", teses: "Teses" };
 const sectionOf = (raw: unknown): Section => (raw === "teses" || raw === "agentes" ? raw : "conexoes");
 
-/** Título da aba: a seção aberta (vem da URL, sem consulta ao servidor). */
+/** Título da aba: "DG Brasil" na entrada (Conexões); nas outras seções, a seção (vem da URL, sem consulta ao servidor). */
 export async function generateMetadata({ searchParams }: PageProps<"/dg-brasil">): Promise<Metadata> {
-  return { title: SECTION_TITLE[sectionOf((await searchParams).secao)] };
+  const section = sectionOf((await searchParams).secao);
+  return { title: section === "conexoes" ? { absolute: "DG Brasil" } : SECTION_TITLE[section] };
 }
 
 /** /dg-brasil — Conexões (padrão), Agentes ou Teses (?secao=), dados do banco. */

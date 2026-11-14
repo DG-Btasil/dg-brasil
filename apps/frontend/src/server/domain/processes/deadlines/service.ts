@@ -106,6 +106,8 @@ export async function exportDeadlines(ctx: ServiceContext, input: ListDeadlinesI
     },
     total,
     truncated,
+    // Nome do cliente na planilha: cada cliente fica no registro de acesso (LGPD).
+    clientIds: exportRows.map((d) => d.clientId),
   });
 }
 

@@ -60,9 +60,9 @@ export async function listPersonalDataAccessEvents(ctx: ServiceContext, input: L
     input,
     { column: input.column, ascending: input.ascending },
   );
-  const names = await repo.getActorNames(ctx.db, distinctActors(rows));
+  const [names, clients] = await Promise.all([repo.getActorNames(ctx.db, distinctActors(rows)), repo.getClientNames(ctx.db, [...new Set(rows.map((r) => r.client_id))])]);
   return toPage(
-    rows.map((r) => accessEventFromRow(r, names)),
+    rows.map((r) => accessEventFromRow(r, names, clients)),
     total,
     input,
   );

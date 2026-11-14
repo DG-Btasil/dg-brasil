@@ -333,6 +333,9 @@ describe("repositório — partes puras", () => {
 
   it("busca: dígitos (com máscara CNJ) → CNJ; texto → título; curingas escapados", () => {
     expect(searchTarget("0001234-56.2026")).toEqual({ kind: "cnj", digits: "0001234562026" });
+    // Busca do cabeçalho (C3): os 20 dígitos sem pontuação, com o zero à esquerda, vão para o número CNJ.
+    expect(searchTarget("09173538620268190042")).toEqual({ kind: "cnj", digits: "09173538620268190042" });
+    expect(cnjPattern("09173538620268190042")).toBe("%09173538620268190042%");
     expect(searchTarget("Banco 123")).toEqual({ kind: "title", text: "Banco 123" });
     expect(searchTarget("12")).toEqual({ kind: "title", text: "12" });
     expect(searchTarget("   ")).toBeNull();

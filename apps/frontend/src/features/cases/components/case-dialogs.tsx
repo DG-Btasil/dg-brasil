@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
 import type { CaseCatalogDTO, CaseInternalDTO } from "@/server/domain/cases/dto";
-import { useLawyerOptions, useOrganizationName, useOrgDirectory } from "@/features/directory/directory-context";
+import { useDirectoryUser, useLawyerOptions, useOrganizationName, useOrgDirectory } from "@/features/directory/directory-context";
 import { useCaseActions } from "../use-case-actions";
 import { CASE_STATUS_OVERRIDES, LINK_PARTNER_LABEL, type CaseStatusOverride } from "../utils";
 import { ACQUISITION_CHANNEL_OPTIONS } from "@/lib/constants/legal";
@@ -27,10 +27,15 @@ export function AcceptCaseDialog({ legalCase, open, onOpenChange }: DialogBase) 
   const { owner } = useOrgDirectory();
   const partnerName = useOrganizationName(legalCase.originOrganizationId);
   const partnerOrigin = legalCase.originOrganizationId !== owner.id;
-  const [lawyerId, setLawyerId] = useState(legalCase.assignedLawyerId ?? "");
+  // O advogado já definido no caso vem escolhido. Se ele não pode ser responsável (sem OAB cadastrada ou
+  // inativo), o campo começa vazio e a tela diz por quê, em vez de parecer que o caso não tinha advogado.
+  const assigned = legalCase.assignedLawyerId ?? "";
+  const assignedUser = useDirectoryUser(assigned || undefined);
+  const assignedOk = !!assigned && lawyers.some((l) => l.value === assigned);
+  const [lawyerId, setLawyerId] = useState(assignedOk ? assigned : "");
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
-  const needsLawyer = !legalCase.assignedLawyerId;
+  const needsLawyer = !assignedOk;
 
   async function confirm() {
     if (!lawyerId) {
@@ -62,6 +67,11 @@ export function AcceptCaseDialog({ legalCase, open, onOpenChange }: DialogBase) 
       }
     >
       <div className="space-y-4">
+        {assigned && !assignedOk && (
+          <Callout tone="warning" title="Escolha outro advogado responsável.">
+            {assignedUser ? `${assignedUser.name} está definido no caso` : "A pessoa definida no caso"}, mas só advogado ou administrador com OAB cadastrada, e ativo, pode ser o responsável.
+          </Callout>
+        )}
         <Field label="Advogado responsável" requirement="required" error={error} hint="Advogados internos ou Administrador inscrito na OAB.">
           {(p) => (
             <Select

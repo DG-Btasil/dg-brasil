@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ACQUISITION_CHANNELS, CONTRACT_PAYMENT_METHODS, GENDERS } from "@/lib/constants/legal";
 import { isCepFormat, isCnpjFormat, isCpfFormat, msg, zCepOptional, zCnpj, zCpf, zEmail, zPhone, zPhoneOptional, zRequired } from "@/lib/validation";
+import { formatCEP, formatCNPJ, formatCPF, formatDocument, formatPhone } from "@/lib/formatting/masks";
 import type { Address, CompanyClient, IndividualClient } from "@/types";
 
 /*
@@ -153,7 +154,8 @@ export function fromAddress(a: Address | undefined): AddressFormValues {
   if (!a) return EMPTY_ADDRESS;
   // O banco guarda o código ISO ("BR"); o formulário mostra o nome.
   const country = !a.country || a.country.toUpperCase() === "BR" ? "Brasil" : a.country;
-  return { ...a, zipCode: a.zipCode ?? "", complement: a.complement ?? "", country };
+  // Edição mostra com a mesma máscara do cadastro novo (o banco guarda só os dígitos).
+  return { ...a, zipCode: a.zipCode ? formatCEP(a.zipCode) : "", complement: a.complement ?? "", country };
 }
 
 export function emptyIndividualValues(originOfficeId = ""): IndividualFormValues {
@@ -170,7 +172,7 @@ export function individualToValues(c: IndividualClient): IndividualFormValues {
   return {
     fullName: c.fullName,
     socialName: c.socialName ?? "",
-    cpf: c.cpf,
+    cpf: formatCPF(c.cpf),
     idType: c.identityDocument?.type ?? "",
     idNumber: c.identityDocument?.number ?? "",
     idIssuer: c.identityDocument?.issuer ?? "",
@@ -182,8 +184,8 @@ export function individualToValues(c: IndividualClient): IndividualFormValues {
     maritalStatus: c.maritalStatus ?? "",
     profession: c.profession ?? "",
     email: c.contact.email ?? "",
-    phone: c.contact.phone ?? "",
-    secondaryPhone: c.contact.secondaryPhone ?? "",
+    phone: c.contact.phone ? formatPhone(c.contact.phone) : "",
+    secondaryPhone: c.contact.secondaryPhone ? formatPhone(c.contact.secondaryPhone) : "",
     address: fromAddress(c.address),
     originOfficeId: c.originOfficeId ?? "",
     acquisitionChannel: c.acquisitionChannel ?? "",
@@ -228,19 +230,19 @@ export function companyToValues(c: CompanyClient): CompanyFormValues {
   return {
     legalName: c.legalName,
     tradeName: c.tradeName ?? "",
-    cnpj: c.cnpj,
+    cnpj: formatCNPJ(c.cnpj),
     openingDate: c.openingDate ?? "",
     legalNature: c.legalNature ?? "",
     email: c.contact.email ?? "",
-    phone: c.contact.phone ?? "",
+    phone: c.contact.phone ? formatPhone(c.contact.phone) : "",
     address: fromAddress(c.address),
     representatives: c.representatives.length
-      ? c.representatives.map((r) => ({ ...r, email: r.email ?? "", phone: r.phone ?? "" }))
+      ? c.representatives.map((r) => ({ ...r, cpf: r.cpf ? formatCPF(r.cpf) : "", email: r.email ?? "", phone: r.phone ? formatPhone(r.phone) : "" }))
       : [newRepresentative(true)],
     partners: c.partners.map((p) => ({
       id: p.id,
       name: p.name,
-      document: p.document,
+      document: p.document ? formatDocument(p.document) : "",
       qualification: p.qualification,
       sharePercent: p.sharePercent === undefined ? "" : String(p.sharePercent).replace(".", ","),
     })),
