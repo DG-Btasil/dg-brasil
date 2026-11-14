@@ -6,10 +6,12 @@ import * as manual from "./manual-revision";
 import * as service from "./service";
 import {
   assignReviewSchema,
+  correctReviewSchema,
   decideReviewSchema,
   decideReviewsBulkSchema,
   listReviewGroupsSchema,
   listReviewsSchema,
+  redoReviewSchema,
   reopenReviewSchema,
   reviewIdSchema,
   saveManualRevisionSchema,
@@ -44,6 +46,16 @@ export async function assignReviewAction(input: unknown) {
 
 export async function decideReviewAction(input: unknown) {
   return runAction({ name: "reviews.decide", permission: "reviews.decide", schema: decideReviewSchema, input, handler: service.decideReview });
+}
+
+/** "Corrigir e aprovar" a proposta do agente (069): corrige os dados e aprova, numa decisão só. */
+export async function correctAndApproveReviewAction(input: unknown) {
+  return runAction({ name: "reviews.correct", permission: "reviews.decide", schema: correctReviewSchema, input, handler: service.correctAndApproveReview });
+}
+
+/** "Pedir para o agente refazer" (070): encerra a revisão com o recado e manda um trabalho novo ao mesmo agente. */
+export async function redoReviewAction(input: unknown) {
+  return runAction({ name: "reviews.redo", permission: "reviews.decide", schema: redoReviewSchema, input, handler: service.redoReview });
 }
 
 /** Aprovar ou rejeitar vários itens de uma vez: um laço sobre decide_review, com o resultado item a item (067). */

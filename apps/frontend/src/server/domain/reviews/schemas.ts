@@ -3,6 +3,7 @@ import { PRIORITIES, REVIEW_DECISIONS } from "@/lib/constants/status";
 import { pageInputSchema, sortSchema } from "@/server/core/pagination";
 import { zIsoDateTime, zOptionalText, zUuid } from "@/server/core/validation";
 import { BULK_DECISIONS, MAX_BULK_REVIEWS } from "./bulk-rules";
+import { REDO_MESSAGE_MAX, REDO_MESSAGE_MIN } from "./redo-rules";
 
 /**
  * Entrada das operações de revisão humana. Decisão no vocabulário do FRONT
@@ -108,6 +109,29 @@ export const decideReviewsBulkSchema = z
   })
   .refine((v) => v.decision === "APPROVED" || !!v.notes, { message: "Informe a justificativa.", path: ["notes"] });
 export type DecideReviewsBulkInput = z.infer<typeof decideReviewsBulkSchema>;
+
+/**
+ * "Corrigir e aprovar" (069). `data` são os dados corrigidos da proposta no
+ * formato do contrato do agente (`PROPOSAL_DATA`); o service confere pelo
+ * tipo da proposta, que vem do banco, e o banco confere de novo.
+ */
+export const correctReviewSchema = z.object({
+  id: zUuid(),
+  data: z.record(z.string(), z.unknown()),
+  notes: zOptionalText(5000),
+});
+export type CorrectReviewInput = z.infer<typeof correctReviewSchema>;
+
+/** "Pedir para o agente refazer" (070): a revisão é encerrada e o mesmo agente recebe o recado. */
+export const redoReviewSchema = z.object({
+  id: zUuid(),
+  message: z
+    .string()
+    .trim()
+    .min(REDO_MESSAGE_MIN, `Escreva o que precisa mudar (no mínimo ${REDO_MESSAGE_MIN} caracteres).`)
+    .max(REDO_MESSAGE_MAX, `Máximo de ${REDO_MESSAGE_MAX} caracteres.`),
+});
+export type RedoReviewInput = z.infer<typeof redoReviewSchema>;
 
 export const reopenReviewSchema = z.object({
   id: zUuid(),

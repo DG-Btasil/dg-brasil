@@ -142,6 +142,10 @@ export type ReviewTargetDTO =
       payload: Record<string, unknown>;
       requiresHumanReview: boolean;
       createdAt: ISODateTime;
+      /** Presente quando uma pessoa corrigiu e aprovou (069): o que o agente propôs. `payload` é o que foi aprovado. */
+      originalPayload?: Record<string, unknown>;
+      correctedById?: ID;
+      correctedAt?: ISODateTime;
     };
 
 export interface ReviewDecisionDTO {
@@ -180,8 +184,51 @@ export interface ManualRevisionDTO {
   deduplicated: boolean;
 }
 
+/** Resultado de "Corrigir e aprovar" (069): a decisão registrada e os nomes dos campos que mudaram. */
+export interface CorrectionResultDTO {
+  decisionId: ID;
+  fields: string[];
+  status: ReviewStatus;
+}
+
+/** Por que não dá para pedir o refazer (070). */
+export type RedoBlock = "NO_RUN" | "DECIDED" | "ALREADY_REDONE" | "LIMIT" | "RUNNING" | "AGENT_INACTIVE" | "ANALYSIS_MOVED";
+
+/**
+ * "Pedir para o agente refazer" (070): o trabalho que gerou o item, a posição
+ * na cadeia de refazeres (0 = trabalho original; no máximo 3) e os dois lados
+ * do vínculo: o refazer já pedido deste trabalho e de qual revisão este
+ * trabalho é o refazer.
+ */
+export interface ReviewRedoDTO {
+  agentRunId?: ID;
+  agentName?: string;
+  runStatus?: string;
+  round: number;
+  /** Este trabalho é o refazer de outro: o anterior e a revisão em que pediram. */
+  redoOfRunId?: ID;
+  redoOfReviewId?: ID;
+  /** O refazer já pedido deste trabalho (por esta revisão ou por outro item do mesmo trabalho). */
+  redone?: { agentRunId: ID; status: string; createdAt: ISODateTime; requestedById?: ID; reviewId?: ID };
+  /** O refazer foi pedido nesta revisão. */
+  redoneFromThisReview: boolean;
+  canRedo: boolean;
+  blocked?: RedoBlock;
+  /** Frase do motivo, quando não dá para pedir. */
+  message?: string;
+}
+
+/** Resposta do pedido de refazer. */
+export interface RedoResultDTO {
+  agentRunId: ID;
+  round: number;
+  deduplicated: boolean;
+}
+
 export interface ReviewDetailDTO extends ReviewListItem {
   /** null quando o alvo não pôde ser lido (ex.: removido). */
   target: ReviewTargetDTO | null;
   decisions: ReviewDecisionDTO[];
+  /** Refazer (070); null quando a situação não pôde ser lida. */
+  redo: ReviewRedoDTO | null;
 }

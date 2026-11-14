@@ -277,6 +277,69 @@ na agenda.
   solicitadas" quando o alvo é proposta do agente (antes, a revisão ficava sem
   saída). Documento e análise continuam aceitando.
 
+### Revisões: "Corrigir e aprovar" (069)
+
+- **O que é.** Na proposta do agente de prazo, pedido de documento,
+  atualização do caso ou cadastro de processo, a pessoa abre o formulário do
+  tipo (o prazo usa as regras do diálogo de prazo da equipe), já preenchido com
+  o que o agente propôs, confere o resumo "antes → depois" e confirma. Corrigir
+  e aprovar é UMA decisão: `correctAndApproveReviewAction` →
+  `correct_and_approve_review`, que troca `payload.data` e aprova pela mesma
+  `private.decide_review`, na mesma transação. "OTHER" e proposta estrutural não
+  se corrigem; a decisão em conjunto não muda.
+- **Quem e quando.** Quem decide a revisão (ADMIN ou advogado; estrutural só
+  ADMIN), só com a revisão em aberto e a proposta PENDING.
+- **Validação em dois lugares.** O service passa os dados pelo mesmo contrato do
+  agente (`PROPOSAL_DATA`, em `server/executor/contract.ts`); o banco
+  (`private.proposal_correction_data`) confere de novo e acrescenta o que o
+  aplicador exigiria: vencimento com fuso e no futuro, responsável interno
+  ativo, caso e processo não excluídos, processo do prazo fixo, caso ainda
+  alterável, CNJ válido e livre.
+- **Rastro.** `agent_proposals.original_payload` guarda o que o agente propôs
+  (com `corrected_by` e `corrected_at`; só a correção escreve e nada muda
+  depois). Auditoria `AGENT_PROPOSAL_CORRECTED` com a revisão, a decisão e os
+  nomes dos campos (nunca os valores). A tela mostra "Corrigida por <pessoa> em
+  <data>" com o que mudou e a proposta original.
+- **Aplicação.** Continua sendo do aplicador, só de proposta aprovada. Prazo de
+  publicação corrigido fecha a publicação como antes (gatilho da 062), com quem
+  corrigiu como quem tratou.
+
+### Revisões: "Pedir para o agente refazer" (070)
+
+- **O que é.** Em revisão em aberto que nasceu de um trabalho de agente
+  (`reviews.agent_run_id`: proposta, minuta ou análise), a pessoa escreve "O que
+  precisa mudar" (10 a 4000 caracteres) e `redoReviewAction` →
+  `redo_agent_review` faz, numa transação: encerra a revisão por
+  `decide_review` como REJEITADA ("Pedido ao agente para refazer: <recado>";
+  nada é aplicado) e pede um trabalho novo ao MESMO agente, no mesmo caso e
+  processo, por `request_agent_run`, em nome de quem pediu. Na minuta de texto,
+  o botão do painel de conteúdo é o mesmo ("Pedir para o agente refazer").
+- **O pedido do trabalho novo** começa com "REFAZER", traz o recado, o que foi
+  entregue antes (proposta com o resumo e os dados, minuta com título, versão e
+  arquivo, ou análise com o resumo), a convenção `_v2`/`_v3`/`_v4` do nome do
+  arquivo e o pedido original. Os parâmetros do trabalho anterior vão junto. É
+  o "Pedido de quem enviou" que o computador do escritório mostra ao agente (e
+  repassa ao agente da máquina na ponte): o conector não mudou.
+- **Análise**: o trabalho novo vira a execução da própria análise (volta para a
+  fila, como o reenvio da 039/045) e o agente recebe o resultado anterior e o
+  recado em `analysis.previous`.
+- **Vínculo e limite.** `agent_runs.redo_of_run_id` e `redo_of_review_id` (só a
+  função grava; não mudam). Um refazer por trabalho; no máximo 3 em cadeia a
+  partir do original (o quarto é recusado e a tela manda tratar à mão).
+  `get_review_redo` dá à tela os dois lados ("Refeito em ..." e "Refazer de
+  ...") e o motivo quando não dá para pedir (agente ainda trabalhando, já
+  refeito, limite, agente desativado).
+- **Publicação.** A publicação do trabalho anterior, sem prazo e ainda não
+  tratada, passa para o trabalho novo e fica "Com o agente": a vigia da 062 não
+  a solta por "revisão terminou sem prazo", e o tempo de espera conta a partir
+  do refazer. O prazo proposto pelo trabalho refeito NUNCA entra direto
+  (`judicial_direct_deadline_check` recusa trabalho com `redo_of_run_id`): vai
+  para Revisões e, aprovado, fecha a publicação pelo gatilho de sempre.
+- **Fila.** Com a execução desligada ou sem computador conectado, o pedido entra
+  na fila do mesmo jeito; o diálogo e o aviso de sucesso dizem isso.
+- Auditoria `AGENT_RUN_REDO_REQUESTED` (sem o recado, que fica na decisão e no
+  pedido).
+
 ## Idempotência
 
 **Contrato com a tela (vale para toda operação com `idempotencyKey`):** a chave
