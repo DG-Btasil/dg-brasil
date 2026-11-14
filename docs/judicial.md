@@ -83,7 +83,7 @@ por minuto). A Barbara escolheu manter a OAB (2026-11-04).
     dias) fica com falha visível na tela; nesse caso, reduzir "Dias revistos" ou
     passar para o plano Pro (deploy/producao.md, item 10);
   - os processos lidos há mais tempo no DataJud vão primeiro.
-- **Leitura do DataJud** (044): cada processo é lido no máximo uma vez a cada 20 h. Falha passageira (tempo esgotado, 429, 5xx, rede) volta em 1 h; "ainda não aparece no DataJud" volta em 20 h. Depois de 3 falhas passageiras, a rodada para de consultar o DataJud (o CNJ costuma estar instável).
+- **Leitura do DataJud** (044, 073): cada processo é lido no máximo uma vez a cada 20 h. Falha passageira (tempo esgotado, 429, 5xx, rede) volta mais cedo, com espera que cresce quando o mesmo processo falha seguidas vezes (073, coluna `process_external_refs.consecutive_failures`): 1 h, 2 h, 4 h, 8 h, 16 h e, daí em diante, 20 h. "Ainda não aparece no DataJud" volta em 20 h e também conta como falha seguida. Leitura com sucesso (e troca do CNJ do processo) zera a contagem. "Buscar agora" num processo ignora a espera. Depois de 3 falhas passageiras, a rodada para de consultar o DataJud (o CNJ costuma estar instável).
 - **Prazo de cada consulta:** nenhuma consulta ao DJEN ou ao DataJud passa do prazo da rodada (4 min na rota de 5 min), para a rodada sempre gravar o fim.
 - **Paciência com o DataJud (13/11/2026):** cada consulta espera até 2 min pela resposta do CNJ (eram 45 s; nesse dia o CNJ levou 49 s e o site desistia antes). Quando o CNJ recusa por sobrecarga (429 ou 5xx), a consulta tenta até 3 vezes, esperando 4 s e depois 12 s. Quem chama a rota (pg_net, 60 s) desiste antes do fim; a função continua e grava o resultado.
 - **Rodadas ao mesmo tempo:** duas rodadas não correm juntas; a segunda recebe "busy". Rodada sem fim gravado há 6 min vira "Interrompida" e avisa os ADMIN (062; mesma chave do aviso de falha, no máximo dois por dia).
@@ -110,6 +110,30 @@ segredos do Vault), ninguém ficava sabendo.
   `judicial.cron_misconfigured` no log; segredo errado registra
   `judicial.cron_unauthorized`. Nada mais responde "skipped" em silêncio.
 - "Última busca completa" vem de `last_full_run`, não das 10 últimas rodadas.
+
+### Bolinhas de conferência (074)
+
+Um ponto colorido, sempre com o rótulo para leitor de tela e ao passar o mouse
+(a cor sozinha não basta). Horário de São Paulo. Regra única em
+`apps/frontend/src/features/judicial/capture-dots.ts`.
+
+- **DJEN, por OAB, vale "hoje":** antes do horário da última busca, na lista de
+  OABs (DG Brasil → Integrações e Minha Conta → OABs acompanhadas). Verde: busca
+  concluída hoje a partir das 05:00. Amarelo: dia útil, antes das 08:00, ainda
+  sem busca. Vermelho: dia útil, depois das 08:00, sem busca concluída. Cinza:
+  OAB pausada, DJEN desligado, fim de semana ou feriado nacional (em
+  Integrações, pelo `capture.applies`).
+- **DataJud, por processo, vale 24 h:** na tela do processo, na linha "DataJud:
+  lido em…". Verde: lido nas últimas 24 h, sem erro. Amarelo: acompanhado e
+  ainda não lido. Vermelho: a última leitura falhou, ou a última leitura tem
+  mais de 24 h. Cinza: pausado ou sem número CNJ.
+- **DataJud, resumo em Integrações:** uma linha sob "Andamentos do DataJud": "X
+  de Y processos lidos nas últimas 24 h · Z com falha" (X é
+  `processes.synced_last_24h`, da 074). Verde: todos lidos e nenhum com falha.
+  Amarelo: falta ler algum. Vermelho: há processo com falha. Cinza: DataJud
+  desligado ou nenhum processo acompanhado. Banco sem a 074 mostra só "Y
+  processos acompanhados · Z com falha" (sem verde).
+- A Home não muda: a faixa de alerta continua sendo o aviso da captura do dia.
 
 ## OABs acompanhadas
 

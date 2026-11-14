@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CalendarX2, Newspaper, Pause, Play, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { Callout, EmptyState, SkeletonRows } from "@/components/feedback/states";
-import { Badge, StatusBadge } from "@/components/ui/badge";
+import { Badge, Dot, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
@@ -22,10 +22,11 @@ import {
 } from "@/server/domain/judicial/actions";
 import type { CourtCalendarDayDTO, JudicialMonitorDTO, JudicialOverviewDTO } from "@/server/domain/judicial/dto";
 import { useToast } from "@/store/ui-store";
+import { datajudSummaryDot } from "../capture-dots";
 import { CALENDAR_HELP, RUN_SCOPE_LABEL, RUN_STATUS_LABEL, RUN_STATUS_TONE, runSummary, weekendName } from "../labels";
 import { JudicialCaptureCallout } from "./judicial-capture-alert";
 import { CoverageDialog } from "./coverage-dialog";
-import { MonitorStatus } from "./monitor-status";
+import { MonitorStatus, type MonitorCaptureContext } from "./monitor-status";
 
 /**
  * Integração judicial em Configurações → Integrações (043). DJEN (publicações
@@ -144,7 +145,7 @@ export function JudicialSettingsPanel() {
         {d.monitors.length === 0 ? (
           <EmptyState compact icon={Newspaper} title="Nenhuma OAB acompanhada." description="Cadastre a OAB de cada advogado do escritório para receber as publicações do DJEN." />
         ) : (
-          <MonitorTable rows={[...own, ...partners]} canManage={d.canManage} onToggle={toggle} onCoverage={setCoverage} busyId={toggling} />
+          <MonitorTable rows={[...own, ...partners]} canManage={d.canManage} onToggle={toggle} onCoverage={setCoverage} busyId={toggling} context={{ djenEnabled: d.settings.djenEnabled, captureApplies: d.capture?.applies }} />
         )}
       </Panel>
 
@@ -238,6 +239,7 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
         <div className="space-y-2">
           <Checkbox label="Publicações do DJEN" description="Busca diária pelas OABs acompanhadas." checked={djen} onChange={(e) => setDjen(e.target.checked)} />
           <Checkbox label="Andamentos do DataJud" description="Dados e andamentos pelo número CNJ." checked={datajud} onChange={(e) => setDatajud(e.target.checked)} />
+          <DatajudSummary overview={overview} />
         </div>
         <div className="space-y-2">
           <Field
@@ -301,6 +303,17 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
   );
 }
 
+/** Uma linha sob "Andamentos do DataJud" (074): quantos processos foram lidos nas últimas 24 h. Usa a configuração salva. */
+function DatajudSummary({ overview: d }: { overview: JudicialOverviewDTO }) {
+  const s = datajudSummaryDot({ datajudEnabled: d.settings.datajudEnabled, tracked: d.processes.tracked, withError: d.processes.withError, syncedLast24h: d.processes.syncedLast24h });
+  return (
+    <p className="-mt-1.5 flex items-center gap-1.5 pl-[26px] text-[12px] text-muted">
+      <Dot tone={s.tone} label={s.label} />
+      {s.text}
+    </p>
+  );
+}
+
 /** Aviso de sucesso ao pausar ou retomar uma OAB (escritório e portal do parceiro). */
 export function monitorToggledToast(m: JudicialMonitorDTO) {
   const oab = `OAB ${m.oabState} ${m.oabNumber}`;
@@ -310,7 +323,7 @@ export function monitorToggledToast(m: JudicialMonitorDTO) {
 }
 
 export function MonitorTable({
-  rows, canManage, onToggle, onCoverage, showOrganization = true, busyId = null,
+  rows, canManage, onToggle, onCoverage, showOrganization = true, busyId = null, context,
 }: {
   rows: JudicialMonitorDTO[];
   canManage: boolean;
@@ -319,6 +332,8 @@ export function MonitorTable({
   showOrganization?: boolean;
   /** OAB com alteração em envio: o botão dela gira e os outros esperam. */
   busyId?: string | null;
+  /** Estado da captura do dia, para a bolinha (074). Só em Integrações. */
+  context?: MonitorCaptureContext;
 }) {
   return (
     <Table caption="OABs acompanhadas">
@@ -351,7 +366,7 @@ export function MonitorTable({
               </Td>
             )}
             <Td className="text-[12.5px]">
-              <MonitorStatus monitor={m} />
+              <MonitorStatus monitor={m} context={context} />
             </Td>
             <Td className="text-right">
               <div className="flex justify-end gap-1.5">

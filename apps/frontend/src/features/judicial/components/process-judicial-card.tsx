@@ -3,15 +3,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pause, Play, RefreshCw, Satellite } from "lucide-react";
 import { Callout } from "@/components/feedback/states";
-import { Badge } from "@/components/ui/badge";
+import { Badge, Dot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
+import { now } from "@/lib/clock";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { formatEventTime } from "@/lib/formatting";
 import { getProcessJudicialStatusAction, setProcessJudicialSyncAction, syncJudicialNowAction } from "@/server/domain/judicial/actions";
 import type { ProcessJudicialStatusDTO } from "@/server/domain/judicial/dto";
 import { useToast } from "@/store/ui-store";
+import { datajudProcessDot } from "../capture-dots";
 import { runSummary } from "../labels";
 
 /**
@@ -37,6 +39,7 @@ export function ProcessJudicialCard({ processId }: { processId: string }) {
 
   if (!data?.ok) return null;
   const s = data.data;
+  const dot = datajudProcessDot({ hasCnj: s.hasCnj, tracked: s.tracked, lastSyncedAt: s.lastSyncedAt, lastError: s.lastError, now: now() });
 
   async function syncNow() {
     if (busy) return;
@@ -79,6 +82,7 @@ export function ProcessJudicialCard({ processId }: { processId: string }) {
         ) : (
           <>
             <p className="text-muted">
+              <Dot tone={dot.tone} label={dot.label} className="mr-1.5 align-middle" />
               DataJud: {s.lastSyncedAt ? `lido em ${formatEventTime(s.lastSyncedAt)}` : "ainda não lido"}
               {s.courtAlias ? ` · índice ${s.courtAlias.toUpperCase()}` : ""}. A cópia pública do DataJud atrasa de 1 a 3 semanas; as intimações chegam antes, pelo DJEN.
             </p>

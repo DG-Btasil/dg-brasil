@@ -84,7 +84,14 @@ export interface JudicialOverviewDTO {
   lastFullRun?: Pick<JudicialRunDTO, "id" | "trigger" | "status" | "startedAt" | "finishedAt">;
   /** Estado da captura do dia (062). Ausente em banco anterior à 062. */
   capture?: JudicialCaptureDTO;
-  processes: { tracked: number; paused: number; neverSynced: number; withError: number };
+  processes: {
+    tracked: number;
+    paused: number;
+    neverSynced: number;
+    withError: number;
+    /** Acompanhados lidos com sucesso nas últimas 24 h (074). Ausente em banco anterior à 074. */
+    syncedLast24h?: number;
+  };
   publications: { pending: number; withAgent: number; doneLast30Days: number };
   agents: { id: string; name: string }[];
   calendar: CourtCalendarDayDTO[];

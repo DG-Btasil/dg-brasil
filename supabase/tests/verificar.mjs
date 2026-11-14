@@ -5140,7 +5140,8 @@ await deve('funções da 043 fixam search_path; anon e service_role não executa
 secao('Integração judicial: correções da validação [044]')
 await deve('DataJud: falha passageira volta em 1 h; "não encontrado" e leitura com sucesso, em 20 h (JUD-04)', async () => {
   const ref = (await um(db, `select id from process_external_refs where provider = 'DATAJUD' and legal_process_id = $1`, [j043.procA])).id
-  await db.query(`update process_external_refs set sync_enabled = true where id = $1`, [ref])
+  // A 073 (já aplicada) conta as falhas seguidas e este processo já falhou na 043: zera para ser a primeira falha.
+  await db.query(`update process_external_refs set sync_enabled = true, consecutive_failures = 0 where id = $1`, [ref])
   const horas = async () => Number((await um(db, `select round(extract(epoch from next_attempt_at - now()) / 3600) h from process_external_refs where id = $1`, [ref])).h)
   const naFila = async () => (await worker043(`select private.judicial_datajud_queue(500) r`)).some((x) => x.ref_id === ref)
   await worker043(`select private.judicial_ingest_datajud($1, $2, false, 'DataJud não respondeu (tempo esgotado)', null, null, true) r`, [j043.run, ref])
@@ -9429,6 +9430,136 @@ await deve('tabelas fechadas; funções com search_path fixo e grants certos [07
   igual(r.filter((x) => JSON.stringify([x.usr, x.wrk]) !== JSON.stringify(esperado[x.f])).map((x) => x.f), [], 'quem executa')
 })
 await db.query(`update organization_memberships set status = 'REMOVED' where user_id = $1`, [ids.adm072])
+
+// ═════════════════════════════ DataJud: espera crescente [073] ═══════════
+
+secao('DataJud: a espera depois de falha cresce por processo (1 h, 2 h, 4 h, 8 h, 16 h, teto 20 h); sucesso zera [073]')
+const j073 = {}
+const cnj073 = (n) => cnj(7300 + n, '2025', '8', '26', '0100')
+const estado073 = async () => {
+  const r = await um(db, `select consecutive_failures n, round(extract(epoch from next_attempt_at - now()) / 3600) h
+    from process_external_refs where id = $1`, [j073.ref])
+  return [Number(r.n), Number(r.h)]
+}
+const falha073 = (transient) => worker043(`select private.judicial_ingest_datajud($1, $2, false, 'DataJud não respondeu (tempo esgotado)', null, null, $3) r`,
+  [j043.run, j073.ref, transient])
+const naFila073 = async () => (await worker043(`select private.judicial_datajud_queue(500) r`)).some((x) => x.ref_id === j073.ref)
+await deve('processo novo com CNJ começa sem falhas', async () => {
+  j073.proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, 'Espera crescente 073') returning id`,
+    [j043.caso, cnj073(1)])).id
+  j073.ref = (await um(db, `select id from process_external_refs where provider = 'DATAJUD' and legal_process_id = $1`, [j073.proc])).id
+  igual(Number((await um(db, `select consecutive_failures n from process_external_refs where id = $1`, [j073.ref])).n), 0, 'zero')
+  igual(await naFila073(), true, 'nunca lido: está na fila')
+})
+await deve('falha passageira seguida: 1 h, 2 h, 4 h, 8 h, 16 h e daí em diante 20 h (teto)', async () => {
+  const visto = []
+  for (let i = 0; i < 7; i++) {
+    await falha073(true)
+    visto.push(await estado073())
+  }
+  igual(visto, [[1, 1], [2, 2], [3, 4], [4, 8], [5, 16], [6, 20], [7, 20]], 'contagem e horas a cada falha')
+  igual(await naFila073(), false, 'fora da fila enquanto espera')
+  await db.query(`update process_external_refs set next_attempt_at = now() - interval '1 minute' where id = $1`, [j073.ref])
+  igual(await naFila073(), true, 'espera vencida: volta à fila')
+})
+await deve('leitura com sucesso zera a contagem (20 h); a próxima falha passageira volta a 1 h', async () => {
+  await worker043(`select private.judicial_ingest_datajud($1, $2, true, null, '{}', '[]') r`, [j043.run, j073.ref])
+  igual(await estado073(), [0, 20], 'zerada, 20 h')
+  igual((await um(db, `select last_error from process_external_refs where id = $1`, [j073.ref])).last_error, null, 'sem erro')
+  await falha073(true)
+  igual(await estado073(), [1, 1], 'recomeça em 1 h')
+})
+await deve('falha não passageira continua 20 h e também conta; chamada antiga (sem o 7º argumento) é não passageira', async () => {
+  await falha073(false)
+  igual(await estado073(), [2, 20], 'não passageira: 20 h, contagem 2')
+  await worker043(`select private.judicial_ingest_datajud($1, $2, false, 'Processo ainda não aparece no DataJud', null, null) r`, [j043.run, j073.ref])
+  igual(await estado073(), [3, 20], 'sem o 7º argumento: 20 h, contagem 3')
+  await falha073(true)
+  igual(await estado073(), [4, 8], 'passageira depois de 3 falhas: 8 h')
+})
+await deve('contagem muito alta não estoura o intervalo: continua 20 h', async () => {
+  await db.query(`update process_external_refs set consecutive_failures = 2000000000 where id = $1`, [j073.ref])
+  await falha073(true)
+  igual(await estado073(), [1001, 20], 'teto de 20 h, contagem limitada')
+})
+await deve('trocar o CNJ do processo zera a contagem', async () => {
+  await db.query(`update legal_processes set cnj_number = $1 where id = $2`, [cnj073(2), j073.proc])
+  const r = await um(db, `select external_id, consecutive_failures n, last_attempt_at from process_external_refs where id = $1`, [j073.ref])
+  igual([r.external_id, Number(r.n), r.last_attempt_at], [cnj073(2), 0, null], 'CNJ novo, sem falhas, sem tentativa')
+  await falha073(true)
+  igual(await estado073(), [1, 1], 'primeira falha do CNJ novo: 1 h')
+  await db.query(`update process_external_refs set sync_enabled = false where id = $1`, [j073.ref])
+})
+await deve('catálogo [073]: assinatura, definer e search_path iguais; gravação só pelo servidor; gatilho fechado', async () => {
+  const r = await linhas(db, `select p.proname f, p.prosecdef def, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      pg_get_function_identity_arguments(p.oid) args,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname in ('judicial_ingest_datajud', 'legal_processes_track_cnj') order by p.proname`)
+  igual(r.map((x) => [x.f, x.def, x.cfg.includes('search_path=""'), x.anon, x.srv, x.usr, x.wrk]), [
+    ['judicial_ingest_datajud', true, true, false, false, false, true],
+    ['legal_processes_track_cnj', true, true, false, false, false, false],
+  ], 'definer, search_path, quem executa')
+  igual(r[0].args, 'p_run_id uuid, p_ref_id uuid, p_ok boolean, p_error text, p_meta jsonb, p_movements jsonb, p_transient boolean',
+    'assinatura de sempre (uma função só)')
+})
+
+// ═════════════════════════════ bolinhas de conferência [074] ═════════════
+
+secao('Integração judicial: visão geral conta os processos lidos nas últimas 24 h [074]')
+const j074 = {}
+const cnj074 = (n) => cnj(7400 + n, '2025', '8', '26', '0100')
+const novo074 = async (n, horas, ativo) => {
+  const proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, $3) returning id`,
+    [j043.caso, cnj074(n), `Bolinha 074 · ${n}`])).id
+  await db.query(`update process_external_refs set sync_enabled = $2,
+      last_synced_at = case when $3::numeric is null then null else now() - make_interval(secs => $3::numeric * 3600) end
+    where provider = 'DATAJUD' and legal_process_id = $1`, [proc, ativo, horas])
+  return proc
+}
+const proc074 = async (uid) => (await rpc043(uid, `select public.get_judicial_overview() r`)).processes
+// As seções da 062 rodam a 062 de novo (idempotência), o que volta a visão geral à versão dela: a 074 roda de novo aqui.
+await deve('a 074 roda de novo sem erro (idempotente)', async () => {
+  await db.exec(await readFile(new URL('migrations/20261114000074_judicial_bolinhas.sql', raiz), 'utf8'))
+})
+await deve('o campo existe e bate com a contagem direta do banco', async () => {
+  j074.antes = await proc074(ids.lucas)
+  igual(typeof j074.antes.synced_last_24h, 'number', 'synced_last_24h é número')
+  const direto = await um(db, `select count(*) filter (where r.sync_enabled and r.last_synced_at >= now() - interval '24 hours') n
+    from process_external_refs r join legal_processes p on p.id = r.legal_process_id and p.deleted_at is null and p.cnj_number = r.external_id
+    where r.provider = 'DATAJUD'`)
+  igual(j074.antes.synced_last_24h, Number(direto.n), 'mesma conta')
+  igual(Object.keys(j074.antes).sort(), ['never_synced', 'paused', 'synced_last_24h', 'tracked', 'with_error'], 'só o campo novo a mais')
+})
+await deve('lido há 1 h conta; lido há 30 h não; pausado (lido há 1 h) não; nunca lido não', async () => {
+  j074.h1 = await novo074(1, 1, true)
+  j074.h30 = await novo074(2, 30, true)
+  j074.pausado = await novo074(3, 1, false)
+  j074.nunca = await novo074(4, null, true)
+  const depois = await proc074(ids.barbara)
+  igual(depois.synced_last_24h - j074.antes.synced_last_24h, 1, 'só o lido há 1 h')
+  igual(depois.tracked - j074.antes.tracked, 3, 'acompanhados: os três ativos')
+  igual(depois.paused - j074.antes.paused, 1, 'pausado')
+})
+await deve('processo excluído deixa de contar, como os outros números', async () => {
+  const antes = await proc074(ids.barbara)
+  await db.query(`update legal_processes set deleted_at = now() where id = $1`, [j074.h1])
+  const depois = await proc074(ids.barbara)
+  igual([antes.synced_last_24h - depois.synced_last_24h, antes.tracked - depois.tracked], [1, 1], 'sai das duas contas')
+  await db.query(`update process_external_refs set sync_enabled = false where legal_process_id = any($1)`, [[j074.h30, j074.nunca]])
+})
+await deveFalhar('assistente continua sem abrir a visão [074]', () => rpc043(ids.ana, `select public.get_judicial_overview() r`), /Somente advogado ou ADMIN/)
+await deve('catálogo [074]: assinatura, definer, search_path e quem executa iguais aos da 062', async () => {
+  const r = await linhas(db, `select p.prosecdef def, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      pg_get_function_identity_arguments(p.oid) args,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname = 'get_judicial_overview'`)
+  igual(r.map((x) => [x.def, x.cfg.includes('search_path=""'), x.args, x.anon, x.srv, x.usr, x.wrk]),
+    [[true, true, '', false, false, true, false]], 'uma função só, definer, search_path vazio, só usuário logado')
+})
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
