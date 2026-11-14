@@ -203,7 +203,7 @@ describe("financeiro — ADMIN", () => {
     const direct = await admin.db.from("financial_agreements").insert({ legal_case_id: caseId, legal_process_id: processId, status: "ACTIVE", fixed_fee: 100 }).select("id").single();
     expect(direct.error).toBeNull();
     const agreementId = (direct.data as { id: string }).id;
-    await expectDomainError(finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: processId, activate: true })), "CONFLICT", /acordo financeiro ativo/);
+    await expectDomainError(finance.createAgreement(admin, createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: processId, activate: true })), "CONFLICT", /contrato de honorários ativo/);
 
     // Reenvio do mesmo formulário (mesma chave) devolve o mesmo rascunho; chave nova cria outro.
     const draftInput = createAgreementSchema.parse({ idempotencyKey: key(), legalProcessId: processId, fixedFee: 10 });

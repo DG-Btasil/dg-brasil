@@ -9,6 +9,12 @@ produção continua em [checklist-da-virada.md](checklist-da-virada.md).
 
 ## 1. Para publicar no DEV (fazer juntos)
 
+> **Situação em 13/11/2026, noite.** Feitos: 1 (computador principal já na 1.3.4), 2 (062 a 068
+> aplicadas no DEV: 68 no total; o único prazo de teste vencido em aberto era o "QA43 prazo
+> inicial"), 3 (8 agendamentos ativos, os três novos rodando), 5, 6 (248 de 248, depois de
+> acertar três testes que não mandavam a versão do conector ou esperavam o texto antigo do
+> contrato) e 7 (ramo no `master`). Falta conferir: 4, 8 a 11.
+
 Na ordem. Banco sempre antes do site: o painel novo usa tabelas e funções que só existem com as
 migrations novas.
 
