@@ -8,7 +8,7 @@ import {
   AGRUPAR_FILA_MS, ESPERA_ERRO_MAX_MS, ESPERA_ERRO_MIN_MS, INTERVALO_DESLIGADA_MS, INTERVALO_MAX_MS, INTERVALO_MIN_MS,
   PARADA_REVER_MS, arquivoParada, arquivoTrava, esperar, situacao, type ApiEsperar, type RespostaVerificar,
 } from '../src/esperar.js'
-import { COMANDO_ESPERAR, ROTEIRO_VIGIA } from '../src/prompt.js'
+import { COMANDO_ESPERAR, ROTEIRO_VIGIA, ROTEIRO_VIGIA_AVULSA } from '../src/prompt.js'
 
 /**
  * "dg-executor esperar" sem rede e sem esperar de verdade: a API é uma lista
@@ -215,6 +215,27 @@ describe('esperar (Verificar agora)', () => {
       await esperar(opcoes(c))
       expect(c.saida).toEqual([expect.stringMatching(/^VERIFICAR_AGORA/)])
     })
+  })
+})
+
+describe('roteiro da Vigia: passada avulsa (avulsa=true)', () => {
+  it('não tem passo de espera nem comando de terminal', () => {
+    expect(ROTEIRO_VIGIA_AVULSA).not.toContain('dg-executor.mjs')
+    expect(ROTEIRO_VIGIA_AVULSA).not.toContain('ESPERA')
+    expect(ROTEIRO_VIGIA_AVULSA).not.toContain('passo 4 (ESPERA)')
+    expect(ROTEIRO_VIGIA_AVULSA).toMatch(/3\. No fim, resuma em poucas linhas[\s\S]*\n4\. FIM \(passada avulsa\)[\s\S]*MODO VIGIA/)
+  })
+
+  it('fila vazia e execução desligada encerram', () => {
+    expect(ROTEIRO_VIGIA_AVULSA).toContain('"Fila vazia" e a hora, numa linha, e encerre.')
+    expect(ROTEIRO_VIGIA_AVULSA).toContain('"Execução desligada no DG Brasil", não tente os outros e encerre.')
+  })
+
+  it('o resto do roteiro é o mesmo da Vigia', () => {
+    const semEspera = ROTEIRO_VIGIA.split('\n4. ESPERA')[0]
+    const avulsaAte3 = ROTEIRO_VIGIA_AVULSA.split('\n4. FIM')[0]
+    expect(avulsaAte3.replace(/e encerre\./g, '')).toBe(semEspera.replace(/e vá direto ao passo 4 \(ESPERA\)\./g, ''))
+    expect(ROTEIRO_VIGIA_AVULSA).toContain('MODO VIGIA (sem ninguém confirmando):')
   })
 })
 

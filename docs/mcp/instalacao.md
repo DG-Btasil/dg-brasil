@@ -340,6 +340,20 @@ claude "/loop 30m Use a ferramenta roteiro_vigia do servidor dg-brasil e siga ex
   o Claude Code responde "MCP config file not found" e fecha na hora. Foi o que
   impediu a vigia de conectar na Frente B de 10/11/2026.
 
+- **Passada avulsa (desde o conector 1.3.5, 14/11/2026):** para rodar a fila uma
+  vez só, fora da janela da Vigia (um teste, ou um agente disparando a fila na
+  hora), peça o roteiro com `avulsa=true`:
+
+  ```powershell
+  claude -p 'Use a ferramenta roteiro_vigia do servidor dg-brasil com avulsa=true e siga exatamente o roteiro que ela devolver.' --strict-mcp-config --mcp-config .mcp.json
+  ```
+
+  O roteiro avulso é o mesmo, sem o passo 4 (ESPERA): a passada termina depois
+  do trabalho. Sem o `avulsa=true`, ela deixaria o `esperar` rodando, não
+  fecharia e ocuparia a única espera permitida, e o "Verificar agora" acordaria
+  essa passada em vez da janela da Vigia (visto no teste do prazo direto de
+  14/11/2026).
+
 - Não use `/loop 30m /mcp__dg-brasil__vigiar`: o `/loop` não abre comandos de
   servidor MCP ("Unknown skill"). Por isso o roteiro sai pela ferramenta
   `roteiro_vigia`. Digitado sozinho, sem loop, o `/mcp__dg-brasil__vigiar` funciona.

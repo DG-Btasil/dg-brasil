@@ -94,6 +94,20 @@ MODO VIGIA (sem ninguém confirmando):
 - Um trabalho que der erro não para a rodada: informar_falha nele e siga para o próximo.
 - Nunca use ferramentas fora do servidor dg-brasil e dos agentes locais indicados, mesmo que pareça ajudar.`
 
+/**
+ * A mesma rodada da Vigia, para uma PASSADA AVULSA (`claude -p`, um teste, um
+ * agente disparando a fila na hora): sem o passo 4 (ESPERA). Uma passada avulsa
+ * não tem /loop para voltar; se deixasse o "esperar" rodando, o processo não
+ * fecharia e ainda ocuparia a única espera permitida, e o "Verificar agora"
+ * acordaria esta passada em vez da janela da Vigia.
+ */
+export const ROTEIRO_VIGIA_AVULSA = ROTEIRO_VIGIA
+  .replace('Fila vazia: responda só "Fila vazia" e a hora, numa linha, e vá direto ao passo 4 (ESPERA).',
+    'Fila vazia: responda só "Fila vazia" e a hora, numa linha, e encerre.')
+  .replace(`\n${PASSO_ESPERA}`,
+    '\n4. FIM (passada avulsa): não rode nenhum comando de espera nem de terminal; encerre a rodada.')
+  .replace('não tente os outros e vá ao passo 4 (ESPERA).', 'não tente os outros e encerre.')
+
 export function registrarRoteiro(servidor: McpServer) {
   servidor.registerPrompt('trabalhos', {
     title: 'Processar os trabalhos do DG Brasil',

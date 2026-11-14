@@ -153,13 +153,33 @@ Ajustes encontrados (nenhum impede o uso):
 
 A correção de "quem corrigiu" não aparece na aba Atividade do caso, só na revisão.
 
-**Prazo direto e prazo que vira tarefa: não testado ainda.** O agente de prazos em Integrações
-está em "Nenhum" (não na Diana): escolher a Diana antes de cadastrar o processo real de teste,
-senão a captura guarda a publicação sem agente e o teste se perde. Publicação escolhida: réplica
-de 15 dias úteis, disponibilizada em 13/11, captura possível até 18/11.
+**Prazo direto e prazo que vira tarefa (059 e 061): PASS, ao vivo em 14/11/2026, 19h23-19h44.**
+Uma publicação real (réplica em 15 dias úteis, de um processo do TJSP cadastrado só para o teste
+no caso fictício 17) entrou pelo "Buscar agora" e ficou "Com o agente"; a Diana calculou
+08/12/2026 (a mesma data pela lista do banco e pelo script); o prazo nasceu direto na agenda do
+processo, com origem "Agente, sem conferência", sem nada em Revisões; a publicação ficou tratada
+("Prazo lançado direto pelo agente de prazos"); e nasceu a tarefa "Preparar: Réplica à
+contestação", aberta, com o motivo "Prazo marcado para conferir" (a Diana pôs "CONFERIR:" por
+possível feriado local). Não conferido: o aviso "Prazo criado pelo agente", que foi para o
+responsável (QA Advogado), não para o administrador.
 
-**Para limpar (fictício):** prazo "Emenda à inicial (QA corrigido)" de 04/12/2026 (caso 7) e os
-três trabalhos refeitos na fila (Paulo, Beatriz, Rafael).
+Achados do teste:
+- **"Dias revistos" está em 1** em Integrações (era 5). Com 1, a busca só relê a véspera.
+  Voltar para 5.
+- A tela da execução diz "Nada é aplicado sem aprovação" ao lado de uma proposta "Aplicado"
+  (prazo direto): ajustar o texto para a exceção.
+- A passada avulsa da vigia (`claude -p`) ficou presa no passo de espera: corrigido no conector
+  1.3.5 (`roteiro_vigia` com `avulsa=true`, [../mcp/instalacao.md](../mcp/instalacao.md)).
+- Os três refazeres rodaram e voltaram para Revisões (minuta v2 de Paulo, Beatriz e Rafael);
+  nos três, o agente perguntou qual era a "outra data", porque o recado do teste não dizia.
+  O marcador "Refazer de…" não aparece na lista de Revisões (não conferido dentro de cada item).
+- Na pasta da sessão ficaram `C:\DGBrasil\sessao\--saida` (criada por engano por um agente) e
+  uma trava velha `esperar.lock`: apagar à mão.
+
+**Para limpar:** prazo "Emenda à inicial (QA corrigido)" de 04/12/2026 (caso 7); as revisões
+dos três refazeres; no caso 17, o processo real do teste (para a Lixeira), o prazo "Réplica à
+contestação" de 08/12, a tarefa "Preparar: Réplica à contestação" e os 2 grupos antigos da Diana
+de 13/11 em Revisões.
 
 ## 3. O que só a Barbara resolve
 

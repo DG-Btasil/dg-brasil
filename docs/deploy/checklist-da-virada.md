@@ -42,7 +42,7 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
   (o ambiente de teste novo pode servir de ensaio antes).
 - [ ] **6. Fechar as validações pendentes:** clones, Google Drive *(pós-MVP urgente
   desde 14/11/2026: [pos-mvp.md](pos-mvp.md), item 15)* e prazo direto
-  ao vivo ([producao.md](producao.md), itens 2 e 14;
+  ao vivo *(prazo direto e prazo que vira tarefa: PASS em 14/11/2026)* ([producao.md](producao.md), itens 2 e 14;
   [docs/mcp/validacao.md](../mcp/validacao.md)).
 - [ ] **7. Decidir as pendências de robustez** de
   [docs/backend.md](../backend.md), "Hardening pendente por domínio"

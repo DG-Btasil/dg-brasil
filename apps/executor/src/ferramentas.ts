@@ -9,7 +9,7 @@ import {
 import type { Log } from './log.js'
 import { registrarFerramentasPonte, type OpcoesPonte } from './ferramentas-ponte.js'
 import { ErroPonte } from './ponte.js'
-import { ROTEIRO_VIGIA } from './prompt.js'
+import { ROTEIRO_VIGIA, ROTEIRO_VIGIA_AVULSA } from './prompt.js'
 import { ErroTrabalho, type Trabalho, type Trabalhos } from './trabalhos.js'
 
 /**
@@ -108,10 +108,11 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
   servidor.registerTool('roteiro_vigia', {
     title: 'Roteiro da sessão vigia',
     description: 'Devolve o roteiro da SESSÃO VIGIA do DG Brasil: as regras e os passos para processar a fila inteira sem perguntar. ' +
-      'Chame no começo de cada rodada da vigia e siga o roteiro à risca.',
-    inputSchema: {},
+      'Chame no começo de cada rodada da vigia e siga o roteiro à risca. ' +
+      'Numa passada avulsa (claude -p, fora da janela da Vigia), use avulsa=true: o roteiro termina sem o passo de espera.',
+    inputSchema: { avulsa: z.boolean().optional() },
     annotations: leitura,
-  }, seguro('roteiro_vigia', async () => texto(ROTEIRO_VIGIA)))
+  }, seguro('roteiro_vigia', async ({ avulsa }) => texto(avulsa ? ROTEIRO_VIGIA_AVULSA : ROTEIRO_VIGIA)))
 
   servidor.registerTool('listar_trabalhos', {
     title: 'Listar trabalhos na fila',
