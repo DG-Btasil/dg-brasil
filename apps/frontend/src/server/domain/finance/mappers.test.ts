@@ -506,8 +506,9 @@ describe("extrato de recebimentos e a receber (064)", () => {
     expect(pending.daysOverdue).toBeUndefined();
     expect(pending.dueDate).toBeUndefined();
     expect(pending.inProcessTotals).toBe(false);
-    expect(receivablesTotalsFromRaw({ count: 3, total: "770.00", overdue: "270.00", overdue_count: 2, outside_totals: "70.00" })).toEqual({ count: 3, total: 770, overdue: 270, overdueCount: 2, outsideTotals: 70 });
-    expect(receivablesTotalsFromRaw(undefined)).toEqual({ count: 0, total: 0, overdue: 0, overdueCount: 0, outsideTotals: 0 });
+    expect(receivablesTotalsFromRaw({ count: 3, total: "770.00", overdue: "270.00", overdue_count: 2, outside_totals: "70.00" })).toEqual({ count: 3, total: 770, overdue: 270, overdueCount: 2, outsideTotals: 70, draftTotal: 0, draftCount: 0 });
+    expect(receivablesTotalsFromRaw({ count: 1, total: "10.00", overdue: "0", overdue_count: 0, outside_totals: "0", draft_total: "450.50", draft_count: 1 })).toMatchObject({ draftTotal: 450.5, draftCount: 1 });
+    expect(receivablesTotalsFromRaw(undefined)).toEqual({ count: 0, total: 0, overdue: 0, overdueCount: 0, outsideTotals: 0, draftTotal: 0, draftCount: 0 });
   });
 
   it("busca das listas novas: mesma regra da visão por processo, na coluna da view; o padrão das funções de total vai escapado", () => {

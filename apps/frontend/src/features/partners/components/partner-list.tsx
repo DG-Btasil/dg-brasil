@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { Handshake, Plus, SearchX, Send } from "lucide-react";
 import { PARTNER_OFFICE_STATUS_LABEL, PARTNER_OFFICE_STATUS_TONE, type PartnerOfficeStatus } from "@/lib/constants/status";
 import { cn } from "@/lib/cn";
-import { formatCNPJ, pluralize } from "@/lib/formatting";
+import { formatCNPJ, formatPercent, pluralize } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { useDebouncedCallback, useServerList } from "@/lib/hooks/use-server-list";
 import { Can, PageContainer } from "@/components/layout/guards";
@@ -168,7 +168,7 @@ export function PartnerList({ insights, initialQuery, initialResult }: {
                           <StatusBadge status={p.status} labels={PARTNER_OFFICE_STATUS_LABEL} tones={PARTNER_OFFICE_STATUS_TONE} />
                         </Td>
                         {canFinance && (
-                          <Td className="whitespace-nowrap text-[12.5px] tabular">{p.share ? `${p.share.partnershipPercentage}% / ${p.share.ownerPercentage}%` : "—"}</Td>
+                          <Td className="whitespace-nowrap text-[12.5px] tabular">{p.share ? `${formatPercent(p.share.partnershipPercentage)} / ${formatPercent(p.share.ownerPercentage)}` : "—"}</Td>
                         )}
                         <Td className="text-right tabular">{p.stats?.clients ?? "—"}</Td>
                         <Td className="text-right tabular">{p.stats?.activeCases ?? "—"}</Td>

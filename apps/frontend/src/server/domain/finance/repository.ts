@@ -322,6 +322,11 @@ export async function getPaymentBalance(db: SupabaseClient, paymentId: string): 
   return check(await db.from("payment_balances").select(BALANCE_COLUMNS).eq("payment_id", paymentId).maybeSingle()) as PaymentBalanceRow | null;
 }
 
+/** Todas as parcelas de um contrato (a gaveta lê junto com os saldos, em paralelo, em vez de uma depois da outra). */
+export async function getPaymentRowsByAgreement(db: SupabaseClient, agreementId: string): Promise<PaymentRow[]> {
+  return (check(await db.from("payments").select(PAYMENT_COLUMNS).eq("financial_agreement_id", agreementId)) ?? []) as PaymentRow[];
+}
+
 export async function getPaymentRows(db: SupabaseClient, ids: string[]): Promise<PaymentRow[]> {
   if (ids.length === 0) return [];
   return (check(await db.from("payments").select(PAYMENT_COLUMNS).in("id", ids)) ?? []) as PaymentRow[];
@@ -418,6 +423,8 @@ export interface ReceivableFilters {
   to?: string;
   overdueOnly?: boolean;
   q?: string;
+  /** Só parcelas de contratos em rascunho (071). Sem isso, só as dos demais contratos. */
+  drafts?: boolean;
 }
 
 /** Parcelas em aberto com saldo (view finance_receivables, 064), por vencimento: filtros e páginas no banco. */
@@ -431,6 +438,8 @@ export async function listReceivables(
   if (filters.from) query = query.gte("due_date", filters.from);
   if (filters.to) query = query.lte("due_date", filters.to);
   if (filters.overdueOnly) query = query.eq("status", "OVERDUE");
+  // Rascunho ainda não recebe: fica numa lista à parte (071).
+  query = filters.drafts ? query.eq("agreement_status", "DRAFT") : query.neq("agreement_status", "DRAFT");
   const target = filters.q ? financeSearch(filters.q, "process_title") : null;
   if (target?.kind === "cnj") query = query.like("cnj_number", `${target.digits}%`);
   if (target?.kind === "text") query = query.or(target.or);
@@ -444,7 +453,7 @@ export async function listReceivables(
 export async function receivablesTotals(
   db: SupabaseClient,
   filters: ReceivableFilters,
-): Promise<{ count: number; total: number | string; overdue: number | string; overdue_count: number; outside_totals: number | string } | null> {
+): Promise<{ count: number; total: number | string; overdue: number | string; overdue_count: number; outside_totals: number | string; draft_total?: number | string; draft_count?: number } | null> {
   const search = financeSearchArgs(filters.q);
   return check(
     await db.rpc("finance_receivables_totals", {
@@ -453,8 +462,9 @@ export async function receivablesTotals(
       p_overdue_only: filters.overdueOnly ?? false,
       p_search: search.pattern,
       p_cnj_prefix: search.cnjPrefix,
+      p_drafts: filters.drafts ?? false,
     }),
-  ) as { count: number; total: number | string; overdue: number | string; overdue_count: number; outside_totals: number | string } | null;
+  ) as { count: number; total: number | string; overdue: number | string; overdue_count: number; outside_totals: number | string; draft_total?: number | string; draft_count?: number } | null;
 }
 
 /** Quanto já foi estornado (soma negativa) de um lançamento de entrada. */
@@ -861,6 +871,19 @@ export async function listExpenses(
   const { data, error, count } = await query.order(sort.column, { ascending: sort.ascending, nullsFirst: false }).order("created_at", { ascending: false }).order("id").range(from, to);
   if (error) throw financeError(error);
   return { rows: (data ?? []) as unknown as ExpenseRow[], total: count ?? 0 };
+}
+
+/** Total das despesas com os MESMOS filtros da lista, somado no banco (071). */
+export async function expensesTotals(db: SupabaseClient, filters: ExpenseFilters): Promise<{ count: number; total: number | string; paid: number | string; open: number | string } | null> {
+  return check(
+    await db.rpc("finance_expenses_totals", {
+      p_process_id: filters.processId ?? null,
+      p_category: filters.category ?? null,
+      p_status: filters.status ?? null,
+      p_from: filters.from ?? null,
+      p_to: filters.to ?? null,
+    }),
+  ) as { count: number; total: number | string; paid: number | string; open: number | string } | null;
 }
 
 export async function getExpense(db: SupabaseClient, id: string): Promise<ExpenseRow | null> {

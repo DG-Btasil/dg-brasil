@@ -8189,14 +8189,17 @@ await deve('finance_summary: os totais são os MESMOS de process_finance_totals;
   const livro = await um(db, `select coalesce(sum(received_amount), 0)::float8 r, coalesce(sum(balance) filter (where status in ('PENDING', 'PARTIAL', 'OVERDUE')), 0)::float8 o,
       count(*) filter (where status in ('PENDING', 'PARTIAL', 'OVERDUE'))::int n from payment_balances`)
   const cent = (v) => Math.round(v * 100)
-  igual([cent(s.totals.received) + cent(s.outside.received), cent(s.totals.outstanding) + cent(s.outside.outstanding), s.totals.open_payments + s.outside.open_payments],
-    [cent(livro.r), cent(livro.o), livro.n], 'dentro + fora = livro inteiro')
+  // 071: parcela de contrato em rascunho fica fora dos dois e vem à parte (`draft`).
+  igual([cent(s.totals.received) + cent(s.outside.received) + cent(s.draft.received), cent(s.totals.outstanding) + cent(s.outside.outstanding) + cent(s.draft.outstanding),
+    s.totals.open_payments + s.outside.open_payments + s.draft.open_payments],
+    [cent(livro.r), cent(livro.o), livro.n], 'dentro + fora + rascunho = livro inteiro')
   if (!(s.outside.outstanding >= 70 && s.outside.open_payments >= 1)) throw new Error(`a parcela do processo excluído deveria estar fora: ${JSON.stringify(s.outside)}`)
   // A lista "A receber" fecha com os dois: total = em aberto dos totais + o que fica fora; a parte vencida também.
   const lista = await como(ids.barbara, async (tx) => (await um(tx, `select public.finance_receivables_totals() r`)).r)
   igual([cent(lista.total), cent(lista.outside_totals), cent(lista.overdue), lista.count],
     [cent(s.totals.outstanding) + cent(s.outside.outstanding), cent(s.outside.outstanding), cent(s.totals.overdue) + cent(s.outside.overdue), s.totals.open_payments + s.outside.open_payments],
     'a receber = em aberto da visão geral')
+  igual([cent(lista.draft_total), lista.draft_count], [cent(s.draft.outstanding), s.draft.open_payments], 'rascunho à parte, com a mesma conta')
   const porSituacao = await um(db, `select count(*) filter (where status = 'DRAFT')::int d, count(*) filter (where status = 'ACTIVE')::int a,
       count(*) filter (where status = 'COMPLETED')::int c, count(*) filter (where status = 'CANCELLED')::int x from financial_agreements`)
   igual([s.agreements_by_status.DRAFT, s.agreements_by_status.ACTIVE, s.agreements_by_status.COMPLETED, s.agreements_by_status.CANCELLED], [porSituacao.d, porSituacao.a, porSituacao.c, porSituacao.x], 'contratos por situação')
@@ -9285,6 +9288,52 @@ await deve('planilha exportada entra em "Acessos a dados pessoais": um acesso po
     () => { throw new Error('exportação inventada aceita') }, (e) => { if (!/Exportação não encontrada/.test(e.message)) throw e })
 })
 
+await deve('financeiro [071]: parcela de contrato em rascunho sai do "em aberto" (visão geral, por processo e a receber) e vem à parte', async () => {
+  const resumo = () => como(ids.barbara, async (tx) => (await um(tx, `select public.finance_summary() r`)).r)
+  const porProcesso = () => como(ids.barbara, (tx) => um(tx, `select open_total::float8 o, overdue_total::float8 a, contracted_total::float8 c from process_finance_totals`))
+  const antes = await resumo()
+  const pAntes = await porProcesso()
+  const caso = await caso064('Caso 071 rascunho')
+  const proc = await processo064(caso, 'Processo 071 rascunho')
+  const fa = await contrato064(caso, proc, 'DRAFT')
+  const parcela = await parcela064(fa, 450.5, '2020-02-10')
+  const depois = await resumo()
+  const cent = (v) => Math.round(Number(v) * 100)
+  igual([cent(depois.totals.outstanding), cent(depois.totals.overdue), depois.totals.open_payments, cent(depois.totals.contracted)],
+    [cent(antes.totals.outstanding), cent(antes.totals.overdue), antes.totals.open_payments, cent(antes.totals.contracted)], 'em aberto, em atraso, parcelas e contratado não mudam')
+  igual([cent(depois.draft.outstanding) - cent(antes.draft.outstanding), cent(depois.draft.overdue) - cent(antes.draft.overdue), depois.draft.open_payments - antes.draft.open_payments],
+    [45050, 45050, 1], 'a parcela aparece à parte, no rascunho')
+  igual(await porProcesso(), pAntes, 'totais por processo também sem o rascunho')
+  const linha = await como(ids.barbara, (tx) => um(tx, `select in_process_totals t, agreement_status s from finance_receivables where payment_id = $1`, [parcela]))
+  igual([linha.t, linha.s], [false, 'DRAFT'], 'a receber: "Nos totais" = não')
+  igual((await como(ids.barbara, (tx) => um(tx, `select in_process_totals t from finance_agreement_list where id = $1`, [fa]))).t, false, 'contratos: "Nos totais" = não')
+  const so = await como(ids.barbara, async (tx) => (await um(tx, `select public.finance_receivables_totals(null, null, false, null, null, true) r`)).r)
+  igual([so.count >= 1, cent(so.total) >= 45050, cent(so.outside_totals)], [true, true, 0], 'lista à parte dos rascunhos')
+  // Ativado, a parcela entra no "em aberto".
+  await situacao064(fa, 'ACTIVE')
+  const ativo = await resumo()
+  igual(cent(ativo.totals.outstanding) - cent(antes.totals.outstanding), 45050, 'ativo: entra no em aberto')
+})
+
+await deve('despesas [071]: total com os mesmos filtros da lista; cancelada fora, a não ser na lista das canceladas; advogado não vê', async () => {
+  const caso = await caso064('Caso 071 despesas')
+  const proc = await processo064(caso, 'Processo 071 despesas')
+  const desp = (valor, paga = false) => como(ids.barbara, async (tx) => (await um(tx,
+    `insert into process_expenses (legal_process_id, legal_case_id, category, description, amount, incurred_on, paid_on)
+     values ($1, $2, 'COURT_COSTS', 'Despesa 071', $3, '2026-11-10', case when $4 then current_date end) returning id`, [proc, caso, valor, paga])).id)
+  await desp(100)
+  await desp(50.25, true)
+  const cancelada = await desp(30)
+  await como(ids.barbara, (tx) => tx.query(`update process_expenses set cancelled_at = now(), cancelled_by = $2, cancellation_reason = 'Lançada em dobro' where id = $1`, [cancelada, ids.barbara]))
+  const tot = (status = null, de = null, uid = ids.barbara) => como(uid, async (tx) => (await um(tx, `select public.finance_expenses_totals($1, null, $2, $3, null) r`, [proc, status, de])).r)
+  const todas = await tot()
+  igual([todas.count, Number(todas.total), Number(todas.paid), Number(todas.open)], [2, 150.25, 50.25, 100], 'sem filtro: as ativas')
+  igual(Number((await tot('CANCELLED')).total), 30, 'lista das canceladas')
+  igual(Number((await tot('PAID')).total), 50.25, 'pagas')
+  igual((await tot(null, '2026-11-11')).count, 0, 'período')
+  igual((await tot(null, null, ids.lucas)).count, 0, 'advogado não vê despesa (RLS)')
+})
+
 await deve('catálogo [071]: funções com search_path fixo; gatilho fechado; exportação só para usuário logado', async () => {
   const r = await um(db, `select coalesce(array_to_string(p.proconfig, ','), '') cfg,
       has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('authenticated', p.oid, 'execute') usr,
@@ -9297,6 +9346,8 @@ await deve('catálogo [071]: funções com search_path fixo; gatilho fechado; ex
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace where p.proname = 'record_personal_data_export' order by 1`)
   igual(e.map((x) => [x.f, x.cfg.includes('search_path='), x.def, x.anon, x.usr, x.srv]),
     [['private.record_personal_data_export', true, true, false, true, false], ['public.record_personal_data_export', true, false, false, true, false]], 'exportação: pública invoker, privada definer; só usuário logado')
+  const tot = await linhas(db, `select pg_get_function_identity_arguments(p.oid) a from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'finance_receivables_totals'`)
+  igual(tot.map((x) => x.a), ['p_from date, p_to date, p_overdue_only boolean, p_search text, p_cnj_prefix text, p_drafts boolean'], 'a receber: uma versão só, com p_drafts')
   igual((await um(db, `select count(*)::int n from pg_trigger where tgrelid = 'public.agent_proposals'::regclass and tgname = 'agent_proposals_corrected_deadline_checked'`)).n, 1, 'gatilho')
 })
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { OWNER_OFFICE_NAME } from "@/lib/constants/office";
-import { formatCNPJ, formatDate, formatPhone } from "@/lib/formatting";
+import { formatCNPJ, formatDate, formatPercent, formatPhone } from "@/lib/formatting";
 import type { ActionResult } from "@/lib/actions/result";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { Can, PageContainer } from "@/components/layout/guards";
@@ -88,8 +88,8 @@ export function PortalAccount({
                 <DefinitionGrid
                   columns={2}
                   items={[
-                    { label: "Seu escritório", value: `${settings.data.partnerPercentage}%` },
-                    { label: OWNER_OFFICE_NAME, value: `${settings.data.ownerPercentage}%` },
+                    { label: "Seu escritório", value: formatPercent(settings.data.partnerPercentage) },
+                    { label: OWNER_OFFICE_NAME, value: formatPercent(settings.data.ownerPercentage) },
                   ]}
                 />
               </PanelBody>

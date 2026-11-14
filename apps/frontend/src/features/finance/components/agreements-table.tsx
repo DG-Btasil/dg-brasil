@@ -269,7 +269,7 @@ export function AgreementsPanel({
           </>
         )}
       </div>
-      {selected && <AgreementDrawer agreement={selected} onClose={() => setSelectedId(null)} />}
+      {selected && <AgreementDrawer agreement={selected} onClose={() => setSelectedId(null)} onChanged={retry} />}
     </Panel>
   );
 }

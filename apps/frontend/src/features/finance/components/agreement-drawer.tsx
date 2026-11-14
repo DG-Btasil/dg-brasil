@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarRange, MoreHorizontal, Plus, RotateCcw } from "lucide-react";
 import { formatCNJ, formatCurrency, formatDate, formatDateTime, formatPercent } from "@/lib/formatting";
 import { loadAllPages } from "@/lib/actions/all-pages";
@@ -18,6 +18,9 @@ import type { Page } from "@/server/core/pagination";
 import { listPaymentsAction, listReceiptsAction } from "@/server/domain/finance/actions";
 import type { AgreementListItemDTO, PaymentDTO, ReceiptDTO } from "@/server/domain/finance/dto";
 import { AGREEMENT_DB_STATUS_LABEL, AGREEMENT_DB_STATUS_TONE, PAYMENT_DB_STATUS_LABEL, PAYMENT_DB_STATUS_TONE, PAYMENT_TYPE_LABEL, RECEIPT_KIND_LABEL, RECEIPT_METHOD_LABEL } from "../labels";
+import { useRefresh } from "@/lib/hooks/use-refresh";
+import { FinanceRefreshDeferralProvider } from "../refresh-deferral";
+import { receiptRemaining } from "../receipts";
 import { useFinanceActions } from "../use-finance-actions";
 import { AdjustmentDialog, ConfirmDialog, PaymentDialog, ReasonDialog, ReceiptDialog, ReversalDialog, ScheduleDialog } from "./finance-dialogs";
 
@@ -58,19 +61,53 @@ const CLOSED_COPY = {
  * cada resposta. Lançamento (recebimento, estorno, ajuste) só em contrato
  * ATIVO: concluído ou cancelado precisa ser reaberto, com motivo.
  */
-export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementListItemDTO; onClose: () => void }) {
+export function AgreementDrawer({ agreement, onClose, onChanged }: { agreement: AgreementListItemDTO; onClose: () => void; onChanged?: () => void }) {
+  // Gravações na gaveta não recarregam a página (ela atrasava a leitura das parcelas); ao fechar, se algo mudou, recarrega.
+  const refresh = useRefresh();
+  const dirty = useRef(false);
+  const deferral = useMemo(
+    () => ({
+      markDirty: () => {
+        dirty.current = true;
+      },
+    }),
+    [],
+  );
+  const close = useCallback(() => {
+    if (dirty.current) refresh();
+    onClose();
+  }, [onClose, refresh]);
+  return (
+    <FinanceRefreshDeferralProvider value={deferral}>
+      <AgreementDrawerContent agreement={agreement} onClose={close} onChanged={onChanged} />
+    </FinanceRefreshDeferralProvider>
+  );
+}
+
+function AgreementDrawerContent({ agreement, onClose, onChanged }: { agreement: AgreementListItemDTO; onClose: () => void; onChanged?: () => void }) {
   const canManage = usePermission("finance.manage");
   const [payments, setPayments] = useState<ActionResult<Page<PaymentDTO>> | null>(null);
   const [modal, setModal] = useState<Modal | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [ledger, setLedger] = useState<Record<string, ActionResult<Page<ReceiptDTO>>>>({});
   const [version, setVersion] = useState(0);
-  const reload = useCallback(() => setVersion((v) => v + 1), []);
+  // Versão das parcelas já na tela: diferente de `version` = relendo (a lista fica marcada até chegar).
+  const [loaded, setLoaded] = useState(0);
+  // Depois de gravar: relê as parcelas e o contrato (situação e totais vêm da lista de contratos).
+  const reload = useCallback(() => {
+    setVersion((v) => v + 1);
+    onChanged?.();
+  }, [onChanged]);
   const actions = useFinanceActions(reload);
+  const reloading = loaded !== version;
 
   useEffect(() => {
     let alive = true;
-    callAction(() => loadAllPages((page, pageSize) => listPaymentsAction({ agreementId: agreement.id, page, pageSize, sortBy: "dueDate", sortDirection: "asc" }))).then((r) => alive && setPayments(r));
+    callAction(() => loadAllPages((page, pageSize) => listPaymentsAction({ agreementId: agreement.id, page, pageSize, sortBy: "dueDate", sortDirection: "asc" }))).then((r) => {
+      if (!alive) return;
+      setPayments(r);
+      setLoaded(version);
+    });
     return () => {
       alive = false;
     };
@@ -164,6 +201,11 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
               </div>
             )}
           </div>
+          {reloading && payments && (
+            <p role="status" className="mb-2 text-[12px] text-muted">
+              Atualizando as parcelas…
+            </p>
+          )}
           {!payments ? (
             <SkeletonRows rows={3} />
           ) : !payments.ok ? (
@@ -171,6 +213,7 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
           ) : payments.data.items.length === 0 ? (
             <EmptyState compact title="Nenhuma parcela neste contrato." />
           ) : (
+            <div aria-busy={reloading || undefined} className={reloading ? "opacity-60 transition-opacity" : "transition-opacity"}>
             <Table caption="Parcelas do contrato">
               <THead>
                 <tr>
@@ -203,6 +246,8 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
                       : []),
                   ];
                   const entries = ledger[p.id];
+                  // Recebimento já estornado por inteiro não oferece "Estornar" de novo.
+                  const left = entries?.ok ? receiptRemaining(entries.data.items) : new Map<string, number>();
                   return (
                     <Fragment key={p.id}>
                       <Tr className={cancelled ? "text-muted" : undefined}>
@@ -240,7 +285,8 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
                                     </span>
                                     <span className="flex items-center gap-3">
                                       <span className={r.amount < 0 ? "tabular text-danger" : "tabular text-foreground"}>{formatCurrency(r.amount)}</span>
-                                      {canManage && active && r.amount > 0 && (
+                                      {r.amount > 0 && (left.get(r.id) ?? r.amount) <= 0 && <span className="text-[12px] text-muted">Estornado</span>}
+                                      {canManage && active && r.amount > 0 && (left.get(r.id) ?? r.amount) > 0 && (
                                         <Button size="sm" variant="ghost" onClick={() => setModal({ kind: "reversal", receipt: r })}>
                                           Estornar
                                         </Button>
@@ -258,6 +304,7 @@ export function AgreementDrawer({ agreement, onClose }: { agreement: AgreementLi
                 })}
               </TBody>
             </Table>
+            </div>
           )}
         </section>
         <p className="text-[12px] text-subtle">Valores em reais. Recebido, saldo e situação são calculados pelo sistema a partir dos lançamentos. A divisão com parceiros também, a cada lançamento.</p>

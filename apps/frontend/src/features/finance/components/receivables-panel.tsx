@@ -82,6 +82,23 @@ export function ReceivablesPanel({
         />
         <PeriodFilter label="Vencimento" from={query.from} to={query.to} onChange={(from, to) => setQuery({ ...query, from, to, page: 1 })} />
         <Checkbox className="h-9 items-center" label="Só vencidas" checked={query.overdueOnly} onChange={(e) => setQuery({ ...query, overdueOnly: e.target.checked, page: 1 })} />
+        {/* Contrato em rascunho ainda não recebe: as parcelas dele ficam numa lista à parte, fora do total. */}
+        <div role="group" aria-label="Contratos" className="inline-flex h-9 items-center rounded-md border border-line-strong bg-surface p-0.5">
+          {([false, true] as const).map((drafts) => (
+            <button
+              key={String(drafts)}
+              type="button"
+              aria-pressed={query.drafts === drafts}
+              onClick={() => query.drafts !== drafts && setQuery({ ...query, drafts, page: 1 })}
+              className={cn(
+                "inline-flex h-7 items-center rounded-[5px] px-2.5 text-[12.5px] font-medium transition-colors",
+                query.drafts === drafts ? "bg-navy text-white" : "text-muted hover:bg-surface-sunken hover:text-foreground",
+              )}
+            >
+              {drafts ? "Contratos em rascunho" : "Contratos ativos"}
+            </button>
+          ))}
+        </div>
         {filtered && (
           <Button
             variant="ghost"
@@ -100,7 +117,9 @@ export function ReceivablesPanel({
         ) : !page ? (
           <SkeletonRows rows={5} />
         ) : page.items.length === 0 ? (
-          filtered ? (
+          query.drafts ? (
+            <EmptyState compact title="Nenhuma parcela de contrato em rascunho." description="As parcelas de um contrato em rascunho aparecem aqui até ele ser ativado." />
+          ) : filtered ? (
             <EmptyState compact title="Nenhuma parcela em aberto com estes filtros." />
           ) : (
             <EmptyState icon={Wallet} title="Nenhuma parcela em aberto." description="Quando um contrato tiver parcela a receber, ela aparece aqui pelo vencimento." />
@@ -109,12 +128,12 @@ export function ReceivablesPanel({
           <>
             <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line px-5 py-2.5 text-[12.5px]" aria-live="polite">
               <p className="text-muted">
-                {pluralize(page.totals.count, "parcela em aberto", "parcelas em aberto")}
+                {pluralize(page.totals.count, query.drafts ? "parcela de contrato em rascunho" : "parcela em aberto", query.drafts ? "parcelas de contratos em rascunho" : "parcelas em aberto")}
                 {filtered ? " com estes filtros" : ""}
               </p>
               <p className="flex flex-wrap items-baseline gap-x-5">
                 <span className="text-muted">
-                  Total a receber <strong className="ml-1 tabular text-navy">{formatCurrency(page.totals.total)}</strong>
+                  {query.drafts ? "Total em rascunho" : "Total a receber"} <strong className="ml-1 tabular text-navy">{formatCurrency(page.totals.total)}</strong>
                 </span>
                 {page.totals.overdue > 0 && (
                   <span className="inline-flex items-center gap-1 text-danger">
@@ -125,6 +144,19 @@ export function ReceivablesPanel({
                 )}
               </p>
             </div>
+            {query.drafts && (
+              <p className="border-b border-line bg-surface-muted px-5 py-2 text-[12px] text-muted">
+                Estas parcelas ainda não podem ser recebidas e ficam fora do “Em aberto” e do “Em atraso” até o contrato ser ativado.
+              </p>
+            )}
+            {!query.drafts && page.totals.draftCount > 0 && (
+              <p className="border-b border-line bg-surface-muted px-5 py-2 text-[12px] text-muted">
+                Fora deste total: {formatCurrency(page.totals.draftTotal)} em contratos em rascunho ({pluralize(page.totals.draftCount, "parcela", "parcelas")}).{" "}
+                <button type="button" className="font-medium text-navy-700 underline underline-offset-2" onClick={() => setQuery({ ...query, drafts: true, page: 1 })}>
+                  Ver as parcelas
+                </button>
+              </p>
+            )}
             {page.totals.outsideTotals > 0 && (
               <p className="border-b border-line bg-surface-muted px-5 py-2 text-[12px] text-muted">
                 {formatCurrency(page.totals.outsideTotals)} deste total estão em contratos antigos, ligados só ao caso, ou de processos excluídos. Esse valor não entra no “Em aberto” da visão geral.

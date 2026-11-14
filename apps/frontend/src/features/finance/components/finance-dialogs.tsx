@@ -6,6 +6,7 @@ import { formatCurrency, formatDate } from "@/lib/formatting";
 import { loadAllPages } from "@/lib/actions/all-pages";
 import { callAction, mapFieldErrors, type ActionResult } from "@/lib/actions/result";
 import { useIdempotencyKey } from "@/lib/hooks/use-idempotency-key";
+import { Callout } from "@/components/feedback/states";
 import { Button, type ButtonVariant } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/form";
@@ -17,6 +18,7 @@ import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
 import { FREQUENCY_LABEL, previewSchedule } from "../schedule";
 import { PAYMENT_TYPE_LABEL, RECEIPT_METHOD_LABEL } from "../labels";
 import { moneyField, moneyInput, occurredAtInput } from "../server-input";
+import { receiptRemaining } from "../receipts";
 import { useFinanceActions } from "../use-finance-actions";
 
 const TYPE_OPTIONS = PAYMENT_TYPES.map((t) => ({ value: t, label: PAYMENT_TYPE_LABEL[t] }));
@@ -265,8 +267,9 @@ export function AdjustmentDialog({ payment, onClose, onSaved }: { payment: Payme
     callAction(() => loadAllPages((page, pageSize) => listReceiptsAction({ paymentId: payment.id, page, pageSize }))).then((r) => {
       if (!alive) return;
       setReceipts(r);
-      // Um recebimento só: já vem escolhido. Nenhum: só cabe ajuste para mais.
-      const found = r.ok ? r.data.items.filter((x) => x.amount > 0) : [];
+      // Um recebimento só: já vem escolhido. Nenhum: só cabe ajuste para mais. Já estornado por inteiro não conta.
+      const left = r.ok ? receiptRemaining(r.data.items) : new Map<string, number>();
+      const found = r.ok ? r.data.items.filter((x) => x.amount > 0 && (left.get(x.id) ?? 0) > 0) : [];
       if (found.length === 1) setOriginal(found[0].id);
       if (r.ok && found.length === 0) setDirection("INCREASE");
     });
@@ -275,7 +278,8 @@ export function AdjustmentDialog({ payment, onClose, onSaved }: { payment: Payme
     };
   }, [payment.id]);
 
-  const entries = receipts?.ok ? receipts.data.items.filter((r) => r.amount > 0) : [];
+  const left = receipts?.ok ? receiptRemaining(receipts.data.items) : new Map<string, number>();
+  const entries = receipts?.ok ? receipts.data.items.filter((r) => r.amount > 0 && (left.get(r.id) ?? 0) > 0) : [];
   const decrease = direction === "DECREASE";
   const noEntries = !!receipts?.ok && entries.length === 0;
   return (
@@ -334,7 +338,10 @@ export function AdjustmentDialog({ payment, onClose, onSaved }: { payment: Payme
               {...p}
               placeholder={decrease ? "Escolha o recebimento" : "Nenhum"}
               disabled={!receipts?.ok || noEntries}
-              options={entries.map((r) => ({ value: r.id, label: `#${r.sequence} · ${formatDate(r.occurredAt)} · ${formatCurrency(r.amount)}` }))}
+              options={entries.map((r) => {
+                const rest = left.get(r.id) ?? r.amount;
+                return { value: r.id, label: `#${r.sequence} · ${formatDate(r.occurredAt)} · ${formatCurrency(r.amount)}${rest < r.amount ? ` (resta ${formatCurrency(rest)})` : ""}` };
+              })}
               value={original}
               onChange={(e) => setOriginal(e.target.value)}
             />
@@ -416,6 +423,7 @@ export function ConfirmDialog({
   onClose: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
   return (
     <FinanceDialog
       title={title}
@@ -426,12 +434,20 @@ export function ConfirmDialog({
       onClose={onClose}
       onConfirm={async () => {
         setSaving(true);
+        setError(undefined);
         const r = await onConfirm();
         setSaving(false);
         if (r.ok) onClose();
+        // Recusado (ex.: concluir com parcela em aberto): o motivo aparece aqui, não por baixo do diálogo.
+        else setError(r.error.message);
       }}
     >
       <span className="sr-only">{title}</span>
+      {error && (
+        <Callout tone="danger" title="O sistema não aceitou.">
+          {error}
+        </Callout>
+      )}
     </FinanceDialog>
   );
 }

@@ -20,6 +20,7 @@ import type { Page } from "@/server/core/pagination";
 import type { PartnerAgreementShareDTO, PartnerFinanceDTO, TransferListItemDTO } from "@/server/domain/finance/dto";
 import { TRANSFER_STATUS_LABEL, TRANSFER_STATUS_TONE } from "../labels";
 import { moneyField, moneyInput } from "../server-input";
+import { availableHint } from "../receipts";
 import { useFinanceActions } from "../use-finance-actions";
 import { ConfirmDialog, ReasonDialog } from "./finance-dialogs";
 import { PartnershipValuesDialog } from "./partnership-values-dialog";
@@ -66,7 +67,7 @@ export function PartnerShareView({
             label="Disponível"
             value={formatCurrency(summary.data.totals.availableAmount)}
             tone={summary.data.totals.availableAmount > 0 ? "gold" : summary.data.totals.availableAmount < 0 ? "danger" : "neutral"}
-            hint={summary.data.totals.availableAmount < 0 ? "Repassado a mais: recebimento estornado depois do repasse" : "Ainda sem repasse"}
+            hint={availableHint(summary.data.totals.availableAmount, summary.data.totals.pendingTransferAmount)}
           />
         </div>
       )}

@@ -25,6 +25,7 @@ import {
   updatePaymentAction,
 } from "@/server/domain/finance/actions";
 import { useToast } from "@/store/ui-store";
+import { useFinanceRefreshDeferral } from "./refresh-deferral";
 
 type Notice = { title: string; description?: string };
 
@@ -37,6 +38,8 @@ type Notice = { title: string; description?: string };
  */
 export function useFinanceActions(onDone?: () => void) {
   const refresh = useRefresh();
+  // Dentro da gaveta do contrato, a página só recarrega quando a gaveta fecha (refresh-deferral).
+  const deferral = useFinanceRefreshDeferral();
   const toast = useToast();
   const failed = useActionFeedback();
 
@@ -49,10 +52,11 @@ export function useFinanceActions(onDone?: () => void) {
       }
       toast({ tone: "success", ...success });
       onDone?.();
-      refresh();
+      if (deferral) deferral.markDirty();
+      else refresh();
       return result;
     },
-    [failed, toast, refresh, onDone],
+    [failed, toast, refresh, onDone, deferral],
   );
 
   return useMemo(

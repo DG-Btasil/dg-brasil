@@ -55,7 +55,7 @@ function html(role: Role, node: ReactElement): string {
 
 const exportAction: ExportAction = async () => ({ ok: true, data: { fileName: "x.csv", content: "", rowCount: 0, total: 0, truncated: false, limit: 5000 }, requestId: "r" });
 const empty = { ok: true as const, data: { items: [], page: 1, pageSize: 25, total: 0, hasMore: false }, requestId: "r" };
-const receivables = { ...empty, data: { ...empty.data, totals: { count: 0, total: 0, overdue: 0, overdueCount: 0, outsideTotals: 0 } } };
+const receivables = { ...empty, data: { ...empty.data, totals: { count: 0, total: 0, overdue: 0, overdueCount: 0, outsideTotals: 0, draftTotal: 0, draftCount: 0 } } };
 const statement = { ...empty, data: { ...empty.data, totals: { count: 0, received: 0, deducted: 0, net: 0 } } };
 const statementQuery = { search: "", from: "2026-11-01", to: "2026-11-13", method: "" as const, kind: "" as const, page: 1 };
 

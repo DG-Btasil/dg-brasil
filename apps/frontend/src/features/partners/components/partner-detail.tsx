@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Handshake, Pencil, Percent } from "lucide-react";
 import { CLIENT_KIND_SHORT, CLIENT_STATUS_LABEL, CLIENT_STATUS_TONE, PARTNER_OFFICE_STATUS_LABEL, PARTNER_OFFICE_STATUS_TONE } from "@/lib/constants/status";
-import { formatCNPJ, formatDate, formatPhone, maskCNPJ, maskCPF } from "@/lib/formatting";
+import { formatCNPJ, formatDate, formatPercent, formatPhone, maskCNPJ, maskCPF } from "@/lib/formatting";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { useUrlTab } from "@/lib/hooks/use-url-tab";
 import type { PartnerAgreementShareDTO, PartnerFinanceDTO, TransferListItemDTO } from "@/server/domain/finance/dto";
@@ -249,11 +249,11 @@ function OverviewTab({
             <PanelBody className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[12px] text-muted">Participação do parceiro</p>
-                <p className="mt-1 font-serif text-[26px] text-navy tabular">{admin.partnershipPercentage}%</p>
+                <p className="mt-1 font-serif text-[26px] text-navy tabular">{formatPercent(admin.partnershipPercentage)}</p>
               </div>
               <div>
                 <p className="text-[12px] text-muted">Participação {owner.name}</p>
-                <p className="mt-1 font-serif text-[26px] text-navy tabular">{admin.ownerPercentage}%</p>
+                <p className="mt-1 font-serif text-[26px] text-navy tabular">{formatPercent(admin.ownerPercentage)}</p>
               </div>
             </PanelBody>
           </Panel>

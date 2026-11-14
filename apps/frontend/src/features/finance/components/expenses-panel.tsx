@@ -19,7 +19,7 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/table";
 import type { Page } from "@/server/core/pagination";
 import { listExpensesAction } from "@/server/domain/finance/actions";
-import type { ExpenseCategory, ExpenseDTO, ExpenseStatus } from "@/server/domain/finance/dto";
+import type { ExpenseCategory, ExpenseDTO, ExpensesDTO, ExpenseStatus } from "@/server/domain/finance/dto";
 import { EXPENSE_CATEGORIES, EXPENSE_STATUSES } from "@/server/domain/finance/schemas";
 import { ExportButton, type ExportAction } from "@/features/export/export-button";
 import { EXPENSE_CATEGORY_LABEL, EXPENSE_STATUS_LABEL, EXPENSE_STATUS_TONE } from "../labels";
@@ -76,6 +76,7 @@ export function ExpensesPanel({
   const reload = useCallback(() => undefined, []);
   const actions = useFinanceActions();
   const page = result.ok ? result.data : undefined;
+  const totals = page && "totals" in page ? (page as ExpensesDTO).totals : undefined;
   const filtered = !!(query.category || query.status || query.from || query.to);
 
   // Escopo montado de novo (e não o `scope` de cima): o mesmo objeto usado depois dos hooks impede o React Compiler de otimizar o painel.
@@ -135,9 +136,23 @@ export function ExpensesPanel({
           )
         ) : (
           <>
-            <p className="border-b border-line px-5 py-2 text-[12px] text-muted" aria-live="polite">
-              {pluralize(page.total, "despesa", "despesas")}
-            </p>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line px-5 py-2 text-[12px]" aria-live="polite">
+              <p className="text-muted">{pluralize(page.total, "despesa", "despesas")}</p>
+              {/* Total de todas as páginas, com os mesmos filtros (vem somado do servidor). */}
+              {totals && (
+                <p className="flex flex-wrap items-baseline gap-x-4 text-muted">
+                  <span>
+                    {query.from || query.to ? "Total no período" : "Total"} <strong className="ml-1 tabular text-navy">{formatCurrency(totals.total)}</strong>
+                  </span>
+                  {query.status !== "CANCELLED" && (
+                    <span>
+                      Pagas {formatCurrency(totals.paid)} · a pagar {formatCurrency(totals.open)}
+                      {!query.status && " · canceladas fora do total"}
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
             <Table caption={title}>
               <THead>
                 <tr>

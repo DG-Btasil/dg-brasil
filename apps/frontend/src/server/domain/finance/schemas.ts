@@ -311,6 +311,8 @@ export const listReceivablesSchema = pageInputSchema
     to: zIsoDate().optional(),
     /** Só parcelas vencidas. */
     overdueOnly: z.boolean().optional(),
+    /** Só parcelas de contratos em rascunho (071). */
+    drafts: z.boolean().optional(),
     q: zSearch(),
   })
   .refine((v) => periodInOrder(v.from, v.to), { message: PERIOD_MESSAGE, path: ["to"] })

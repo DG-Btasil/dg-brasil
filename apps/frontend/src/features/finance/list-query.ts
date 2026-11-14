@@ -140,14 +140,23 @@ export interface ReceivableListQuery {
   from: string;
   to: string;
   overdueOnly: boolean;
+  /** Lista à parte: só parcelas de contratos em rascunho (ainda não recebem). */
+  drafts: boolean;
   page: number;
 }
 
 export const RECEIVABLE_PAGE_SIZE = 25;
-export const DEFAULT_RECEIVABLE_QUERY: ReceivableListQuery = { search: "", from: "", to: "", overdueOnly: false, page: 1 };
+export const DEFAULT_RECEIVABLE_QUERY: ReceivableListQuery = { search: "", from: "", to: "", overdueOnly: false, drafts: false, page: 1 };
 
 export function receivableQueryFromSearchParams(params: Params): ReceivableListQuery {
-  return { search: searchParam(params), from: isoDateParam(params.de), to: isoDateParam(params.ate), overdueOnly: first(params.mostrar) === "vencidas", page: pageOf(params) };
+  return {
+    search: searchParam(params),
+    from: isoDateParam(params.de),
+    to: isoDateParam(params.ate),
+    overdueOnly: first(params.mostrar) === "vencidas",
+    drafts: first(params.contratos) === "rascunho",
+    page: pageOf(params),
+  };
 }
 
 export function receivableQueryToSearchParams(q: ReceivableListQuery): URLSearchParams {
@@ -156,6 +165,7 @@ export function receivableQueryToSearchParams(q: ReceivableListQuery): URLSearch
   if (q.from) p.set("de", q.from);
   if (q.to) p.set("ate", q.to);
   if (q.overdueOnly) p.set("mostrar", "vencidas");
+  if (q.drafts) p.set("contratos", "rascunho");
   if (q.page > 1) p.set("pagina", String(q.page));
   return p;
 }
@@ -166,6 +176,7 @@ export function receivableQueryToInput(q: ReceivableListQuery): Record<string, u
     from: q.from || undefined,
     to: q.to || undefined,
     overdueOnly: q.overdueOnly || undefined,
+    drafts: q.drafts || undefined,
     page: q.page,
     pageSize: RECEIVABLE_PAGE_SIZE,
     sortBy: "dueDate",

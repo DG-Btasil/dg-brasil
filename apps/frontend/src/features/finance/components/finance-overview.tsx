@@ -5,7 +5,7 @@ import type { ActionResult } from "@/lib/actions/result";
 import { ActionErrorState } from "@/components/feedback/action-error";
 import { Callout } from "@/components/feedback/states";
 import type { ExpenseSummaryDTO, FinanceSummaryDTO, ProcessFinanceTotalsDTO, ReceivableAgingDTO } from "@/server/domain/finance/dto";
-import { hasOutsideTotals, outsideTotalsNotice } from "../outside-totals";
+import { draftTotalsNotice, hasDraftTotals, hasOutsideTotals, outsideTotalsNotice } from "../outside-totals";
 import { CompositionChart, ExpensesByCategoryChart, MonthlyReceiptsChart, ReceivableAgingChart, ReceivedVsExpensesChart } from "./finance-charts";
 import { FinanceStats } from "./finance-stats";
 
@@ -41,6 +41,15 @@ export function FinanceOverviewTab({
       )}
       {!totals.ok && <ActionErrorState error={totals} title="Não foi possível carregar os totais por processo." />}
       <FinanceStats summary={summary.data} totals={t} />
+      {hasDraftTotals(summary.data.draft) && (
+        <Callout tone="neutral" title="Contratos em rascunho">
+          {draftTotalsNotice(summary.data.draft)} Veja as parcelas na aba{" "}
+          <Link href="/financeiro?aba=a-receber&contratos=rascunho" className="text-navy-700 underline underline-offset-2">
+            A receber
+          </Link>
+          .
+        </Callout>
+      )}
       {hasOutsideTotals(outside) && (
         <Callout tone="info" title="Contratos fora dos totais">
           {outsideTotalsNotice(outside)} Veja-os na aba{" "}

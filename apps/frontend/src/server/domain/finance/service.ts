@@ -6,7 +6,7 @@ import type {
   AgreementListItemDTO,
   AllocationDTO,
   CasePartnershipDTO,
-  ExpenseDTO,
+  ExpensesDTO,
   ExpenseSummaryDTO,
   FeeModelDTO,
   FinanceSummaryDTO,
@@ -364,11 +364,15 @@ function ledgerBlockedMessage(status: string | undefined, entry: boolean): strin
 
 export async function listPayments(ctx: ServiceContext, input: ListPaymentsInput): Promise<Page<PaymentDTO>> {
   requireFinance(ctx, "finance.view");
-  const { rows, total } = await repo.listPaymentBalances(ctx.db, { agreementId: input.agreementId, legalCaseId: input.legalCaseId, status: input.status }, input, {
-    column: input.column,
-    ascending: input.ascending,
-  });
-  const details = new Map((await repo.getPaymentRows(ctx.db, rows.map((r) => r.payment_id))).map((p) => [p.id, p]));
+  // Parcelas de um contrato (gaveta): saldos e dados das parcelas em paralelo (F4: a gaveta demorava).
+  const [{ rows, total }, ofAgreement] = await Promise.all([
+    repo.listPaymentBalances(ctx.db, { agreementId: input.agreementId, legalCaseId: input.legalCaseId, status: input.status }, input, {
+      column: input.column,
+      ascending: input.ascending,
+    }),
+    input.agreementId ? repo.getPaymentRowsByAgreement(ctx.db, input.agreementId) : Promise.resolve(undefined),
+  ]);
+  const details = new Map((ofAgreement ?? (await repo.getPaymentRows(ctx.db, rows.map((r) => r.payment_id)))).map((p) => [p.id, p]));
   return toPage(
     rows.map((b) => paymentFromRows(b, details.get(b.payment_id))),
     total,
@@ -495,7 +499,7 @@ function receiptStatementFilters(input: ListReceiptStatementInput): repo.Receipt
 
 /** Filtros do "a receber" como o repositório espera (os mesmos na tela e na planilha). */
 function receivableFilters(input: ListReceivablesInput): repo.ReceivableFilters {
-  return { from: input.from, to: input.to, overdueOnly: input.overdueOnly, q: input.q };
+  return { from: input.from, to: input.to, overdueOnly: input.overdueOnly, q: input.q, drafts: input.drafts };
 }
 
 /**
@@ -861,10 +865,18 @@ export async function getProcessFinanceTotals(ctx: ServiceContext): Promise<Proc
 }
 
 /** Despesas: todas (com rótulos do processo) ou de um processo; filtros por categoria, situação e período (data da despesa). */
-export async function listExpenses(ctx: ServiceContext, input: ListExpensesInput): Promise<Page<ExpenseDTO>> {
+export async function listExpenses(ctx: ServiceContext, input: ListExpensesInput): Promise<ExpensesDTO> {
   requireFinance(ctx, "finance.view");
-  const { rows, total } = await repo.listExpenses(ctx.db, expenseFilters(input), input, { column: input.column, ascending: input.ascending }, !input.processId);
-  return toPage(rows.map(expenseFromRow), total, input);
+  const filters = expenseFilters(input);
+  // O total do período vem junto (mesmos filtros). Se a soma falhar, a lista sai sem ele.
+  const [{ rows, total }, sums] = await Promise.all([
+    repo.listExpenses(ctx.db, filters, input, { column: input.column, ascending: input.ascending }, !input.processId),
+    repo.expensesTotals(ctx.db, filters).catch(() => null),
+  ]);
+  const page = toPage(rows.map(expenseFromRow), total, input);
+  if (!sums) return page;
+  const num = (v: number | string | undefined) => Math.round(Number(v ?? 0) * 100) / 100;
+  return { ...page, totals: { count: Number(sums.count ?? 0), total: num(sums.total), paid: num(sums.paid), open: num(sums.open) } };
 }
 
 /** Filtros da lista de despesas como o repositório espera (os mesmos na tela e na planilha). */

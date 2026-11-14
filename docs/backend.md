@@ -480,6 +480,18 @@ Fechado na revisão final (migration 064, testes `[064]` do verificador):
   funções `*_totals`): a Home e o Financeiro leem a mesma conta. Listas de
   contratos, recebimentos e parcelas a receber filtram e paginam no banco.
 - Despesa com chave de idempotência.
+- Contrato em **rascunho** fica fora do "Em aberto", do "Em atraso" e do contador
+  de parcelas (visão geral, Home, totais por processo) e aparece à parte
+  ("Em contratos em rascunho: R$ X"); na aba A receber, numa lista separada
+  (`?contratos=rascunho`); na planilha, "Nos totais por processo" = Não (071).
+- Despesas com o total do período, com os filtros da lista
+  (`finance_expenses_totals`, 071).
+- Gaveta do contrato: as gravações não recarregam a página na hora (a recarga
+  entrava na fila do Next antes da leitura das parcelas); a gaveta relê as
+  parcelas e o contrato, e a página recarrega ao fechar (`refresh-deferral`).
+  Recebimento já estornado por inteiro não oferece "Estornar" nem entra como
+  "Recebimento corrigido" no ajuste. Percentual de contrato aparece com até duas
+  casas (2,5%), sem arredondar.
 - Valor digitado: `readCurrencyInput`/`readPercentInput` (`lib/validation`) aceitam
   só o formato brasileiro e distinguem vazio de inválido; data de lançamento é
   validada pelo dia civil de São Paulo (`zPastDateTime`), e o instante gravado

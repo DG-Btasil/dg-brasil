@@ -283,6 +283,6 @@ describe("listas novas: página e total do período saem dos mesmos filtros", ()
     const filters = { from: undefined, to: undefined, overdueOnly: true, q: undefined };
     expect(repo.listReceivables.mock.calls[0][1]).toEqual(filters);
     expect(repo.receivablesTotals.mock.calls[0][1]).toEqual(filters);
-    expect(out.totals).toEqual({ count: 0, total: 0, overdue: 0, overdueCount: 0, outsideTotals: 0 });
+    expect(out.totals).toEqual({ count: 0, total: 0, overdue: 0, overdueCount: 0, outsideTotals: 0, draftTotal: 0, draftCount: 0 });
   });
 });

@@ -110,6 +110,8 @@ export interface FinanceSummaryDTO {
   totals: FinanceTotals;
   /** Fora dos totais por processo. Tudo zero quando não há contrato antigo nem de processo excluído. */
   outside: FinanceTotals;
+  /** Parcelas de contratos em RASCUNHO (071): ainda não podem ser recebidas, ficam fora dos totais e aparecem à parte. */
+  draft: FinanceTotals;
   agreementsByStatus: Record<AgreementDbStatus, number>;
   /** Recebido líquido por mês (America/Sao_Paulo), últimos 12 meses, do mais antigo ao atual. */
   monthly: { month: string; amount: number }[];
@@ -244,11 +246,27 @@ export interface ReceivablesTotalsDTO {
   overdueCount: number;
   /** Parte do total em contrato antigo ou de processo excluído (fora dos totais por processo). */
   outsideTotals: number;
+  /** Em contratos em rascunho, com os mesmos filtros (071): fora do total da lista dos contratos ativos. */
+  draftTotal: number;
+  draftCount: number;
 }
 
 /** Página do "a receber" + os totais de todas as páginas (mesmos filtros). */
 export interface ReceivablesDTO extends Page<ReceivableItemDTO> {
   totals: ReceivablesTotalsDTO;
+}
+
+/** Total das despesas com os mesmos filtros da lista (071). Canceladas só contam quando a lista mostra as canceladas. */
+export interface ExpensesTotalsDTO {
+  count: number;
+  total: number;
+  paid: number;
+  open: number;
+}
+
+/** Página de despesas + o total do período (todas as páginas, mesmos filtros). Sem `totals` = não deu para somar. */
+export interface ExpensesDTO extends Page<ExpenseDTO> {
+  totals?: ExpensesTotalsDTO;
 }
 
 /** Resultado de um lançamento. `deduplicated` = clique repetido; nada novo foi gravado. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { agentRunEventKindLabel, agentRunOperationLabel, agentRunProviderLabel } from "@/features/agent-runs/labels";
 import { organizationStatusNotice } from "@/lib/constants/status";
-import { capitalizeFirst, displayCNJ, formatCEP, formatEventDay, formatPhone, formatUsd, INPUT_MASKS } from "./index";
+import { capitalizeFirst, displayCNJ, formatCEP, formatEventDay, formatPercent, formatPhone, formatUsd, INPUT_MASKS } from "./index";
 
 /** Espaço comum no lugar do espaço sem quebra que o Intl usa em moeda. */
 const plain = (s: string) => s.replace(/ /g, " ");
@@ -86,6 +86,17 @@ describe("audiência: dia marcado, não vencimento (S5)", () => {
     expect(formatEventDay(inDays(12))).toBe("Em 12 dias");
     expect(formatEventDay(inDays(0))).toBe("Hoje");
     expect(formatEventDay(inDays(1))).toBe("Amanhã");
+  });
+});
+
+describe("percentual sem arredondar na tela (F2)", () => {
+  it("até 2 casas, vírgula, sem zeros à direita; casas fixas só quando pedidas", () => {
+    expect(formatPercent(2.5)).toBe("2,5%");
+    expect(formatPercent(30)).toBe("30%");
+    expect(formatPercent(33.33)).toBe("33,33%");
+    expect(formatPercent(12.345)).toBe("12,35%");
+    expect(formatPercent(66.666, 0)).toBe("67%");
+    expect(formatPercent(undefined)).toBe("—");
   });
 });
 

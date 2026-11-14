@@ -47,9 +47,9 @@ export const RECEIPT_METHOD_LABEL: Record<(typeof RECEIPT_METHODS)[number], stri
 export const TRANSFER_STATUS_LABEL: Record<TransferStatus, string> = { PENDING: "Pendente", PAID: "Pago", CANCELLED: "Cancelado" };
 export const TRANSFER_STATUS_TONE: Record<TransferStatus, Tone> = { PENDING: "warning", PAID: "success", CANCELLED: "neutral" };
 
-/** 30 → "30%"; 33.33 → "33,33%". */
+/** 30 → "30%"; 2.5 → "2,5%"; 33.33 → "33,33%". */
 export function percentLabel(value: number | undefined): string {
-  return formatPercent(value, value !== undefined && !Number.isInteger(value) ? 2 : 0);
+  return formatPercent(value);
 }
 
 /** Despesas do processo (046). */

@@ -53,8 +53,16 @@ export function formatCompact(value: number): string {
   return compactFmt.format(value);
 }
 
-export function formatPercent(value: number | undefined, digits = 0): string {
+const percentFmt = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2, useGrouping: false });
+
+/**
+ * Percentual em pt-BR. Sem `digits`: até 2 casas, sem zeros à direita
+ * (30 → "30%", 2,5 → "2,5%", 33,33 → "33,33%"): percentual de contrato nunca
+ * é arredondado na tela. Com `digits`: casas fixas (proporções calculadas).
+ */
+export function formatPercent(value: number | undefined, digits?: number): string {
   if (value == null) return "—";
+  if (digits === undefined) return `${percentFmt.format(value)}%`;
   return `${value.toFixed(digits).replace(".", ",")}%`;
 }
 

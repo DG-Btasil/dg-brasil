@@ -467,6 +467,8 @@ export function agreementListItemFromRow(row: AgreementListRow): AgreementListIt
 export interface FinanceSummaryRaw {
   totals: { contracted: Numeric; received: Numeric; outstanding: Numeric; overdue: Numeric; open_payments: number };
   outside: { contracted: Numeric; received: Numeric; outstanding: Numeric; overdue: Numeric; open_payments: number };
+  /** 071: contratos em rascunho, à parte. Banco antigo (sem o bloco): zero. */
+  draft?: { contracted: Numeric; received: Numeric; outstanding: Numeric; overdue: Numeric; open_payments: number };
   agreements_by_status: Record<AgreementDbStatus, number>;
   monthly: { month: string; amount: Numeric }[];
 }
@@ -476,6 +478,7 @@ export function financeSummaryFromRaw(raw: FinanceSummaryRaw, byFeeModel: Contra
   return {
     totals: totalsFrom(raw.totals),
     outside: totalsFrom(raw.outside),
+    draft: totalsFrom(raw.draft ?? { contracted: 0, received: 0, outstanding: 0, overdue: 0, open_payments: 0 }),
     agreementsByStatus: { DRAFT: count("DRAFT"), ACTIVE: count("ACTIVE"), COMPLETED: count("COMPLETED"), CANCELLED: count("CANCELLED") },
     monthly: (raw.monthly ?? []).map((m) => ({ month: m.month, amount: money(m.amount) })),
     byFeeModel,
@@ -582,7 +585,7 @@ export function receivableFromRow(r: ReceivableRow): ReceivableItemDTO {
 }
 
 export function receivablesTotalsFromRaw(
-  raw: { count: number; total: Numeric; overdue: Numeric; overdue_count: number; outside_totals: Numeric } | null | undefined,
+  raw: { count: number; total: Numeric; overdue: Numeric; overdue_count: number; outside_totals: Numeric; draft_total?: Numeric; draft_count?: number } | null | undefined,
 ): ReceivablesTotalsDTO {
   return {
     count: Number(raw?.count ?? 0),
@@ -590,6 +593,8 @@ export function receivablesTotalsFromRaw(
     overdue: money(raw?.overdue ?? 0),
     overdueCount: Number(raw?.overdue_count ?? 0),
     outsideTotals: money(raw?.outside_totals ?? 0),
+    draftTotal: money(raw?.draft_total ?? 0),
+    draftCount: Number(raw?.draft_count ?? 0),
   };
 }
 

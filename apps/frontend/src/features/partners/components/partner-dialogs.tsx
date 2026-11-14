@@ -1,5 +1,7 @@
 "use client";
 
+import { formatPercent } from "@/lib/formatting";
+
 import { useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -45,7 +47,7 @@ export function ChangeShareDialog({ partner, open, onOpenChange }: { partner: Pa
       open={open}
       onOpenChange={onOpenChange}
       title="Alterar divisão da parceria"
-      description={`${partner.name} · divisão atual: ${partner.partnershipPercentage}% parceiro / ${partner.ownerPercentage}% escritório.`}
+      description={`${partner.name} · divisão atual: ${formatPercent(partner.partnershipPercentage)} parceiro / ${formatPercent(partner.ownerPercentage)} escritório.`}
       footer={
         <>
           <Button variant="secondary" onClick={() => (pending ? setPending(null) : onOpenChange(false))} disabled={saving}>
@@ -63,7 +65,7 @@ export function ChangeShareDialog({ partner, open, onOpenChange }: { partner: Pa
             <div className="rounded-md border border-line bg-surface-muted px-4 py-3">
               <dt className="text-[11.5px] font-medium uppercase tracking-[0.05em] text-subtle">Divisão atual</dt>
               <dd className="mt-1 font-semibold tabular text-foreground">
-                Parceiro {partner.partnershipPercentage}% · Escritório {partner.ownerPercentage}%
+                Parceiro {formatPercent(partner.partnershipPercentage)} · Escritório {formatPercent(partner.ownerPercentage)}
               </dd>
             </div>
             <div className="rounded-md border border-navy-600/40 bg-surface px-4 py-3">

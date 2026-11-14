@@ -25,7 +25,7 @@ import { JudicialCaptureAlert } from "@/features/judicial/components/judicial-ca
 import { agendaHref } from "@/features/deadlines/list-query";
 import { useDirectoryUserMap, useOrganizationNames } from "@/features/directory/directory-context";
 import { formatCNJ, maskCNPJ, maskCPF } from "@/lib/formatting";
-import { hasOutsideTotals, outsideTotalsNotice } from "@/features/finance/outside-totals";
+import { draftTotalsNotice, hasDraftTotals, hasOutsideTotals, outsideTotalsNotice } from "@/features/finance/outside-totals";
 import type { InternalHomeData } from "../load";
 import { EntriesTrend, MetricsBoard } from "@/features/metrics/components/metrics-board";
 import type { DashboardMetricsDTO } from "@/server/domain/metrics/dto";
@@ -206,6 +206,7 @@ function FinanceSnapshot({ finance }: { finance: NonNullable<InternalHomeData["f
       </div>
       {/* O mesmo aviso da visão geral do Financeiro, com os mesmos valores. */}
       {hasOutsideTotals(outside) && <p className="border-t border-line px-5 py-2 text-[12px] text-muted">{outsideTotalsNotice(outside)}</p>}
+      {hasDraftTotals(finance.data.draft) && <p className="border-t border-line px-5 py-2 text-[12px] text-muted">{draftTotalsNotice(finance.data.draft)}</p>}
     </section>
   );
 }
@@ -377,7 +378,7 @@ function ProcessDistribution({ distribution }: { distribution: InternalHomeData[
                 <span aria-hidden className="size-2.5 shrink-0 rounded-xs" style={{ background: s.color }} />
                 <span className="min-w-0 flex-1 text-foreground">{s.name}</span>
                 <span className="tabular font-medium text-foreground">{formatNumber(s.count)}</span>
-                <span className="w-10 text-right tabular text-subtle">{formatPercent((s.count / total) * 100)}</span>
+                <span className="w-10 text-right tabular text-subtle">{formatPercent((s.count / total) * 100, 0)}</span>
               </li>
             ))}
           </ul>

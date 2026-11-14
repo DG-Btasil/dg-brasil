@@ -71,7 +71,7 @@ export function PartnersBlock({ client }: { client: CompanyClient }) {
                   <Td>{p.name}</Td>
                   <Td className="tabular text-muted">{p.document ? maskDocument(p.document) : "—"}</Td>
                   <Td>{p.qualification || "—"}</Td>
-                  <Td className="text-right tabular">{formatPercent(p.sharePercent, p.sharePercent && p.sharePercent % 1 ? 1 : 0)}</Td>
+                  <Td className="text-right tabular">{formatPercent(p.sharePercent)}</Td>
                 </Tr>
               ))}
             </TBody>

@@ -15,7 +15,7 @@ import {
   receivableQueryToInput,
   receivableQueryToSearchParams,
 } from "./list-query";
-import { hasOutsideTotals, outsideTotalsNotice } from "./outside-totals";
+import { draftTotalsNotice, hasDraftTotals, hasOutsideTotals, outsideTotalsNotice } from "./outside-totals";
 import { expenseMissingFields, expenseToValues, feeModelCreateInput, feeModelMissingFields, feeModelToValues, feeTermsErrors, feeTermsInput, moneyField } from "./server-input";
 
 /** Correções da revisão final nas telas do Financeiro: valores digitados, listas novas e o aviso Home × Financeiro. */
@@ -110,7 +110,7 @@ describe("abas e datas da URL", () => {
 
 describe("a receber ↔ URL ↔ schema real", () => {
   it("ida e volta; padrão sem filtro; vencimento mais antigo primeiro", () => {
-    const q = { search: "Maria", from: "2026-11-01", to: "2026-11-30", overdueOnly: true, page: 3 };
+    const q = { search: "Maria", from: "2026-11-01", to: "2026-11-30", overdueOnly: true, drafts: false, page: 3 };
     expect(params(receivableQueryToSearchParams(q))).toEqual({ busca: "Maria", de: "2026-11-01", ate: "2026-11-30", mostrar: "vencidas", pagina: "3" });
     expect(receivableQueryFromSearchParams(params(receivableQueryToSearchParams(q)))).toEqual(q);
     expect(receivableQueryFromSearchParams({ mostrar: "tudo", de: "ontem" })).toEqual(DEFAULT_RECEIVABLE_QUERY);
@@ -118,6 +118,11 @@ describe("a receber ↔ URL ↔ schema real", () => {
     expect(receivableQueryIsFiltered({ ...DEFAULT_RECEIVABLE_QUERY, overdueOnly: true })).toBe(true);
     expect(listReceivablesSchema.parse(receivableQueryToInput(q))).toMatchObject({ q: "Maria", from: "2026-11-01", to: "2026-11-30", overdueOnly: true, page: 3, column: "due_date", ascending: true });
     expect(listReceivablesSchema.parse(receivableQueryToInput(DEFAULT_RECEIVABLE_QUERY)).overdueOnly).toBeUndefined();
+    // F1: contratos em rascunho numa lista à parte, que também vai para a URL.
+    const drafts = { ...DEFAULT_RECEIVABLE_QUERY, drafts: true };
+    expect(params(receivableQueryToSearchParams(drafts))).toEqual({ contratos: "rascunho" });
+    expect(receivableQueryFromSearchParams({ contratos: "rascunho" })).toEqual(drafts);
+    expect(listReceivablesSchema.parse(receivableQueryToInput(drafts)).drafts).toBe(true);
   });
 });
 
@@ -161,3 +166,14 @@ describe("Home × Financeiro: o mesmo aviso, com os mesmos valores", () => {
     expect(text).toContain("não entram nos totais");
   });
 });
+
+describe("contratos em rascunho fora do em aberto (F1)", () => {
+  it("aviso igual na Home e no Financeiro, só quando há parcela em rascunho", () => {
+    const zero = { contracted: 0, received: 0, outstanding: 0, overdue: 0, openPayments: 0 };
+    expect(hasDraftTotals(zero)).toBe(false);
+    const draft = { ...zero, outstanding: 1350.5, openPayments: 3 };
+    expect(hasDraftTotals(draft)).toBe(true);
+    expect(draftTotalsNotice(draft)).toMatch(/^Em contratos em rascunho: R\$\s?1\.350,50 \(3 parcelas\)/);
+  });
+});
+

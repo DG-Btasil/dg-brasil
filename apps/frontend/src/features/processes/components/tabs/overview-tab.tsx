@@ -194,7 +194,7 @@ export function OverviewTab({
                   { label: "Honorários", value: p.feeAmount !== undefined ? <span className="tabular">{formatCurrency(p.feeAmount)}</span> : undefined },
                   {
                     label: "Honorários de êxito",
-                    value: p.feePercentage !== undefined ? <span className="tabular">{formatPercent(p.feePercentage, Number.isInteger(p.feePercentage) ? 0 : 2)}</span> : undefined,
+                    value: p.feePercentage !== undefined ? <span className="tabular">{formatPercent(p.feePercentage)}</span> : undefined,
                   },
                 ]}
               />
