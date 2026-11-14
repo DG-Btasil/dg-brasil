@@ -88,9 +88,12 @@ export interface JudicialOverviewDTO {
     tracked: number;
     paused: number;
     neverSynced: number;
+    /** Acompanhados com erro na última leitura. Desde a 075, sem os que ainda não aparecem no DataJud. */
     withError: number;
     /** Acompanhados lidos com sucesso nas últimas 24 h (074). Ausente em banco anterior à 074. */
     syncedLast24h?: number;
+    /** Acompanhados que ainda não aparecem no DataJud (075; a cópia pública atrasa semanas). Ausente em banco anterior à 075. */
+    notInDatajud?: number;
   };
   publications: { pending: number; withAgent: number; doneLast30Days: number };
   agents: { id: string; name: string }[];
@@ -181,6 +184,8 @@ export interface ProcessJudicialStatusDTO {
   baselineAt?: ISODateTime;
   courtAlias?: string;
   lastError?: string;
+  /** Tipo do último erro (075): NOT_FOUND é "ainda não aparece no DataJud", não falha. Só para a equipe; ausente em banco anterior à 075. */
+  lastErrorKind?: "NOT_FOUND" | "TRANSIENT" | "OTHER";
   lastAttemptAt?: ISODateTime;
   canManage: boolean;
   publications?: { total: number; open: number };

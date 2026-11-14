@@ -267,7 +267,18 @@ describe("rodada", () => {
     const fin = calls.find((c) => c.fn === "judicial_sync_finish")!;
     expect(fin.args.slice(0, 2)).toEqual(["run-1", "COMPLETED"]);
     const notFound = calls.find((c) => c.fn === "judicial_ingest_datajud" && c.args[1] === "r2")!;
-    expect(notFound.args.slice(2, 4)).toEqual([false, "ainda não aparece"]);
+    // 075: o "não encontrado" vai marcado em p_meta, com a mesma assinatura (6 argumentos).
+    expect(notFound.args).toEqual(["run-1", "r2", false, "ainda não aparece", { error_kind: "NOT_FOUND" }, null]);
+  });
+  it("sem índice no DataJud: falha sem a marca de não encontrado (075)", async () => {
+    const { d, calls } = deps({ datajud: { process: async () => ({ kind: "unsupported" as const, message: "sem índice" }) } });
+    const r = await runJudicialSync(d, { trigger: "CRON" });
+    if (r.busy || r.idle) throw new Error("busy");
+    expect([r.status, r.stats.processesNotFound]).toEqual(["COMPLETED", 2]);
+    expect(calls.filter((c) => c.fn === "judicial_ingest_datajud").map((c) => c.args.slice(2))).toEqual([
+      [false, "sem índice", null, null],
+      [false, "sem índice", null, null],
+    ]);
   });
   it("limite do DJEN: registra a falha, para o DJEN da rodada e segue para o DataJud; PARTIAL", async () => {
     const byOab = vi.fn(async () => {

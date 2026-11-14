@@ -39,7 +39,7 @@ export function ProcessJudicialCard({ processId }: { processId: string }) {
 
   if (!data?.ok) return null;
   const s = data.data;
-  const dot = datajudProcessDot({ hasCnj: s.hasCnj, tracked: s.tracked, lastSyncedAt: s.lastSyncedAt, lastError: s.lastError, now: now() });
+  const dot = datajudProcessDot({ hasCnj: s.hasCnj, tracked: s.tracked, lastSyncedAt: s.lastSyncedAt, lastError: s.lastError, lastErrorKind: s.lastErrorKind, now: now() });
 
   async function syncNow() {
     if (busy) return;

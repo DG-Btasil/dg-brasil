@@ -9561,6 +9561,130 @@ await deve('catálogo [074]: assinatura, definer, search_path e quem executa igu
     [[true, true, '', false, false, true, false]], 'uma função só, definer, search_path vazio, só usuário logado')
 })
 
+// ═════════════════════════════ não encontrado no DataJud [075] ═══════════
+
+secao('DataJud: "ainda não aparece no DataJud" tem tipo próprio e não conta como falha [075]')
+const j075 = {}
+const cnj075 = (n) => cnj(7500 + n, '2025', '8', '26', '0100')
+const NAO_APARECE075 = 'Processo ainda não aparece no DataJud (a cópia pública atrasa semanas).'
+const novo075 = async (n) => {
+  const proc = (await um(db, `insert into legal_processes (legal_case_id, cnj_number, title) values ($1, $2, $3) returning id`,
+    [j043.caso, cnj075(n), `Não encontrado 075 · ${n}`])).id
+  const ref = (await um(db, `select id from process_external_refs where provider = 'DATAJUD' and legal_process_id = $1`, [proc])).id
+  return { proc, ref }
+}
+const estado075 = async (ref) => {
+  const r = await um(db, `select last_error e, last_error_kind k, consecutive_failures n,
+      round(extract(epoch from next_attempt_at - now()) / 3600) h from process_external_refs where id = $1`, [ref])
+  return { e: r.e, k: r.k, n: Number(r.n), h: r.h === null ? null : Number(r.h) }
+}
+const ingere075 = (ref, ok, erro, meta, transient) =>
+  worker043(`select private.judicial_ingest_datajud($1, $2, $3, $4, $5, null, $6) r`,
+    [j043.run, ref, ok, erro, meta === null ? null : JSON.stringify(meta), transient])
+const proc075 = async (uid) => (await rpc043(uid, `select public.get_judicial_overview() r`)).processes
+await deve('linhas de antes da 075: o "não encontrado" vira NOT_FOUND, outro erro vira OTHER, sem erro fica sem tipo; rodar de novo não muda o que já tem tipo', async () => {
+  j075.velhoNf = await novo075(1)
+  j075.velhoOutro = await novo075(2)
+  j075.velhoOk = await novo075(3)
+  j075.jaTem = await novo075(4)
+  await db.query(`update process_external_refs set last_error = $2, last_error_kind = null where id = $1`, [j075.velhoNf.ref, NAO_APARECE075])
+  await db.query(`update process_external_refs set last_error = 'DataJud não respondeu (tempo esgotado)', last_error_kind = null where id = $1`, [j075.velhoOutro.ref])
+  await db.query(`update process_external_refs set last_error = 'DataJud não respondeu (tempo esgotado)', last_error_kind = 'TRANSIENT' where id = $1`, [j075.jaTem.ref])
+  // As seções da 062 e da 074 rodam essas migrations de novo (idempotência), o que volta a visão geral à versão delas: a 075 roda de novo aqui.
+  await db.exec(await readFile(new URL('migrations/20261114000075_datajud_nao_encontrado.sql', raiz), 'utf8'))
+  igual([(await estado075(j075.velhoNf.ref)).k, (await estado075(j075.velhoOutro.ref)).k, (await estado075(j075.velhoOk.ref)).k, (await estado075(j075.jaTem.ref)).k],
+    ['NOT_FOUND', 'OTHER', null, 'TRANSIENT'], 'tipos')
+  igual((await estado075(j075.velhoNf.ref)).e, NAO_APARECE075, 'o texto do erro fica')
+})
+await deve('não encontrado avisado pelo servidor (p_meta): NOT_FOUND; espera 20 h e soma nas falhas seguidas, como na 073', async () => {
+  j075.nf = await novo075(5)
+  await ingere075(j075.nf.ref, false, NAO_APARECE075, { error_kind: 'NOT_FOUND' }, false)
+  igual(await estado075(j075.nf.ref), { e: NAO_APARECE075, k: 'NOT_FOUND', n: 1, h: 20 }, '1ª')
+  await ingere075(j075.nf.ref, false, 'outro texto qualquer', { error_kind: 'NOT_FOUND' }, false)
+  igual(await estado075(j075.nf.ref), { e: 'outro texto qualquer', k: 'NOT_FOUND', n: 2, h: 20 }, 'vale o aviso, não o texto')
+})
+await deve('servidor anterior à 075 (sem p_meta, sem o 7º argumento): o texto fixo do não encontrado basta', async () => {
+  j075.antigo = await novo075(6)
+  await worker043(`select private.judicial_ingest_datajud($1, $2, false, $3, null, null) r`, [j043.run, j075.antigo.ref, NAO_APARECE075])
+  igual(await estado075(j075.antigo.ref), { e: NAO_APARECE075, k: 'NOT_FOUND', n: 1, h: 20 }, 'NOT_FOUND')
+})
+await deve('falha passageira: TRANSIENT, com a espera crescente da 073', async () => {
+  j075.tr = await novo075(7)
+  await ingere075(j075.tr.ref, false, 'DataJud não respondeu (tempo esgotado)', null, true)
+  igual(await estado075(j075.tr.ref), { e: 'DataJud não respondeu (tempo esgotado)', k: 'TRANSIENT', n: 1, h: 1 }, '1 h')
+  await ingere075(j075.tr.ref, false, 'DataJud respondeu HTTP 503', null, true)
+  igual(await estado075(j075.tr.ref), { e: 'DataJud respondeu HTTP 503', k: 'TRANSIENT', n: 2, h: 2 }, '2 h')
+})
+await deve('o resto é OTHER: sem índice, chave recusada, p_meta com outro tipo, processo excluído ou com outro CNJ', async () => {
+  j075.outro = await novo075(8)
+  await ingere075(j075.outro.ref, false, 'Tribunal sem índice público no DataJud (ex.: STF).', null, false)
+  igual((await estado075(j075.outro.ref)).k, 'OTHER', 'sem índice')
+  await ingere075(j075.outro.ref, false, 'DataJud recusou a chave pública', { error_kind: 'QUALQUER' }, false)
+  igual(await estado075(j075.outro.ref), { e: 'DataJud recusou a chave pública', k: 'OTHER', n: 2, h: 20 }, 'tipo desconhecido no p_meta')
+  j075.excluido = await novo075(9)
+  await ingere075(j075.excluido.ref, false, NAO_APARECE075, { error_kind: 'NOT_FOUND' }, false)
+  await db.query(`update legal_processes set deleted_at = now() where id = $1`, [j075.excluido.proc])
+  await worker043(`select private.judicial_ingest_datajud($1, $2, true, null, '{}', '[]') r`, [j043.run, j075.excluido.ref])
+  igual([(await estado075(j075.excluido.ref)).e, (await estado075(j075.excluido.ref)).k], ['Processo excluído ou com outro CNJ', 'OTHER'], 'excluído')
+})
+await deve('leitura com sucesso zera o erro, o tipo e a contagem; trocar o CNJ também zera o tipo', async () => {
+  await worker043(`select private.judicial_ingest_datajud($1, $2, true, null, '{}', '[]') r`, [j043.run, j075.nf.ref])
+  igual(await estado075(j075.nf.ref), { e: null, k: null, n: 0, h: 20 }, 'sucesso')
+  await db.query(`update legal_processes set cnj_number = $1 where id = $2`, [cnj075(10), j075.tr.proc])
+  const t = await estado075(j075.tr.ref)
+  igual([t.e, t.k, t.n], [null, null, 0], 'CNJ novo: sem erro, sem tipo, sem falhas')
+  await ingere075(j075.tr.ref, false, NAO_APARECE075, { error_kind: 'NOT_FOUND' }, false)
+})
+await deveFalhar('tipo fora da lista é recusado', () => db.query(`update process_external_refs set last_error_kind = 'NOT_FOUNDX' where id = $1`, [j075.outro.ref]), /last_error_kind_check/)
+await deveFalhar('tipo sem erro é recusado', () => db.query(`update process_external_refs set last_error = null, last_error_kind = 'OTHER' where id = $1`, [j075.outro.ref]), /last_error_kind_check/)
+await deve('visão geral: with_error sem os NOT_FOUND; not_in_datajud conta os acompanhados com NOT_FOUND; pausado não conta', async () => {
+  const antes = await proc075(ids.lucas)
+  igual(Object.keys(antes).sort(), ['never_synced', 'not_in_datajud', 'paused', 'synced_last_24h', 'tracked', 'with_error'], 'só o campo novo a mais')
+  const direto = await um(db, `select count(*) filter (where r.sync_enabled and r.last_error is not null and r.last_error_kind is distinct from 'NOT_FOUND') e,
+      count(*) filter (where r.sync_enabled and r.last_error_kind = 'NOT_FOUND') nf
+    from process_external_refs r join legal_processes p on p.id = r.legal_process_id and p.deleted_at is null and p.cnj_number = r.external_id
+    where r.provider = 'DATAJUD'`)
+  igual([antes.with_error, antes.not_in_datajud], [Number(direto.e), Number(direto.nf)], 'mesma conta do banco')
+  const a = await novo075(11), b = await novo075(12), c = await novo075(13), d = await novo075(14)
+  await ingere075(a.ref, false, NAO_APARECE075, { error_kind: 'NOT_FOUND' }, false)
+  await ingere075(b.ref, false, 'DataJud não respondeu (tempo esgotado)', null, true)
+  await ingere075(c.ref, false, 'DataJud recusou a chave pública', null, false)
+  await ingere075(d.ref, false, NAO_APARECE075, { error_kind: 'NOT_FOUND' }, false)
+  await db.query(`update process_external_refs set sync_enabled = false where id = $1`, [d.ref])
+  const depois = await proc075(ids.barbara)
+  igual([depois.with_error - antes.with_error, depois.not_in_datajud - antes.not_in_datajud, depois.tracked - antes.tracked, depois.paused - antes.paused],
+    [2, 1, 3, 1], 'falhas: passageira e outra; não aparece: só o acompanhado')
+  j075.overview = [a, b, c, d]
+})
+await deve('situação do processo: a equipe vê o tipo; o parceiro não vê erro nem tipo', async () => {
+  const ref = (await um(db, `select id from process_external_refs where legal_process_id = $1 and provider = 'DATAJUD'`, [j043.procA])).id
+  await ingere075(ref, false, NAO_APARECE075, { error_kind: 'NOT_FOUND' }, false)
+  const s = await rpc043(ids.lucas, `select public.get_process_judicial_status($1) r`, [j043.procA])
+  igual([s.last_error, s.last_error_kind], [NAO_APARECE075, 'NOT_FOUND'], 'interno')
+  const sp = await rpc043(ids.almeidaUsr, `select public.get_process_judicial_status($1) r`, [j043.procA])
+  igual([sp.last_error, sp.last_error_kind], [null, null], 'parceiro')
+  await worker043(`select private.judicial_ingest_datajud($1, $2, true, null, '{}', '[]') r`, [j043.run, ref])
+  igual((await rpc043(ids.lucas, `select public.get_process_judicial_status($1) r`, [j043.procA])).last_error_kind, null, 'lido: sem tipo')
+  await db.query(`update process_external_refs set sync_enabled = false where id = any($1)`,
+    [[j075.velhoNf, j075.velhoOutro, j075.velhoOk, j075.jaTem, j075.nf, j075.antigo, j075.tr, j075.outro, ...j075.overview].map((x) => x.ref)])
+})
+await deveFalhar('assistente continua sem abrir a visão [075]', () => rpc043(ids.ana, `select public.get_judicial_overview() r`), /Somente advogado ou ADMIN/)
+await deve('catálogo [075]: assinaturas, definer, search_path e quem executa iguais aos de antes', async () => {
+  const r = await linhas(db, `select p.proname f, p.prosecdef def, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      pg_get_function_identity_arguments(p.oid) args,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'private' and p.proname in ('judicial_ingest_datajud', 'legal_processes_track_cnj', 'get_judicial_overview', 'get_process_judicial_status')
+    order by p.proname`)
+  igual(r.map((x) => [x.f, x.def, x.cfg.includes('search_path=""'), x.args, x.anon, x.srv, x.usr, x.wrk]), [
+    ['get_judicial_overview', true, true, '', false, false, true, false],
+    ['get_process_judicial_status', true, true, 'p_process_id uuid', false, false, true, false],
+    ['judicial_ingest_datajud', true, true, 'p_run_id uuid, p_ref_id uuid, p_ok boolean, p_error text, p_meta jsonb, p_movements jsonb, p_transient boolean', false, false, false, true],
+    ['legal_processes_track_cnj', true, true, '', false, false, false, false],
+  ], 'uma função de cada, definer, search_path vazio, mesmos grants')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

@@ -68,19 +68,27 @@ export function djenMonitorDot(input: {
   return { tone: "danger", label: "Sem conferência hoje" };
 }
 
+/** Tipo do último erro da leitura do DataJud (075). */
+export type DatajudErrorKind = "NOT_FOUND" | "TRANSIENT" | "OTHER";
+
 /**
  * DataJud por processo, validade 24 h (o DataJud lê pelo número CNJ). 24 h
  * exatas ainda contam, como no banco (`>= now() - interval '24 hours'`).
+ * "Ainda não aparece no DataJud" (075, `lastErrorKind` NOT_FOUND) é amarelo: a
+ * cópia pública atrasa semanas, não é falha. Sem o tipo (banco anterior à
+ * 075), todo erro é vermelho, como antes.
  */
 export function datajudProcessDot(input: {
   hasCnj: boolean;
   tracked: boolean;
   lastSyncedAt?: string;
   lastError?: string;
+  lastErrorKind?: DatajudErrorKind;
   now: Date;
 }): CaptureDot {
   if (!input.hasCnj) return { tone: "neutral", label: "Sem número CNJ" };
   if (!input.tracked) return { tone: "neutral", label: "Acompanhamento pausado" };
+  if (input.lastError && input.lastErrorKind === "NOT_FOUND") return { tone: "warning", label: "Ainda não aparece no DataJud" };
   if (input.lastError) return { tone: "danger", label: "A última leitura falhou" };
   if (!input.lastSyncedAt) return { tone: "warning", label: "Ainda não lido" };
   const age = input.now.getTime() - new Date(input.lastSyncedAt).getTime();
@@ -89,26 +97,41 @@ export function datajudProcessDot(input: {
 }
 
 /**
- * Resumo do DataJud em Integrações: "X de Y processos lidos nas últimas 24 h ·
- * Z com falha". Sem `syncedLast24h` (banco anterior à 074): "Y processos
- * acompanhados · Z com falha", e sem X não dá para dizer verde.
+ * Resumo do DataJud em Integrações. Com a 075 (`notInDatajud` presente): "X de
+ * Y processos lidos nas últimas 24 h · Z com falha · N ainda não aparecem no
+ * DataJud", cada parte depois da primeira só quando o número passa de 0; Z já
+ * não conta os N (o banco separa). Sem `notInDatajud` (banco anterior à 075):
+ * "X de Y processos lidos nas últimas 24 h · Z com falha", como na 074. Sem
+ * `syncedLast24h` (banco anterior à 074): "Y processos acompanhados · Z com
+ * falha", e sem X não dá para dizer verde.
+ *
+ * Cor: cinza (desligado ou nenhum acompanhado), vermelho (Z > 0), verde (X = Y),
+ * amarelo no resto, inclusive quando só faltam os N.
  */
 export function datajudSummaryDot(input: {
   datajudEnabled: boolean;
   tracked: number;
   withError: number;
   syncedLast24h?: number;
+  notInDatajud?: number;
 }): CaptureDot & { text: string } {
-  const { tracked: y, withError: z, syncedLast24h: x } = input;
+  const { tracked: y, withError: z, syncedLast24h: x, notInDatajud: n } = input;
+  const read = x === undefined ? "" : `${x} de ${y} ${y === 1 ? "processo lido" : "processos lidos"} nas últimas 24 h`;
   const text =
     y === 0
       ? "Nenhum processo acompanhado"
       : x === undefined
         ? `${y} ${y === 1 ? "processo acompanhado" : "processos acompanhados"} · ${z} com falha`
-        : `${x} de ${y} ${y === 1 ? "processo lido" : "processos lidos"} nas últimas 24 h · ${z} com falha`;
+        : n === undefined
+          ? `${read} · ${z} com falha`
+          : [read, z > 0 ? `${z} com falha` : "", n > 0 ? `${n} ainda não ${n === 1 ? "aparece" : "aparecem"} no DataJud` : ""]
+              .filter(Boolean)
+              .join(" · ");
   if (!input.datajudEnabled) return { tone: "neutral", label: "DataJud desligado", text };
   if (y === 0) return { tone: "neutral", label: "Nenhum processo acompanhado", text };
   if (z > 0) return { tone: "danger", label: "Há processo com falha na leitura", text };
   if (x !== undefined && x >= y) return { tone: "success", label: "Todos lidos nas últimas 24 h", text };
-  return { tone: "warning", label: x === undefined ? "Leitura das últimas 24 h não informada" : "Há processo ainda não lido nas últimas 24 h", text };
+  if (x === undefined) return { tone: "warning", label: "Leitura das últimas 24 h não informada", text };
+  if (n !== undefined && n > 0 && y - x <= n) return { tone: "warning", label: "Os que faltam ainda não aparecem no DataJud (a cópia pública atrasa semanas)", text };
+  return { tone: "warning", label: "Há processo ainda não lido nas últimas 24 h", text };
 }

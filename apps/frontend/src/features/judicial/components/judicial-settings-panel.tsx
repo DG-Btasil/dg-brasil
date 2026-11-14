@@ -303,9 +303,18 @@ function SettingsForm({ overview, onSaved }: { overview: JudicialOverviewDTO; on
   );
 }
 
-/** Uma linha sob "Andamentos do DataJud" (074): quantos processos foram lidos nas últimas 24 h. Usa a configuração salva. */
+/**
+ * Uma linha sob "Andamentos do DataJud" (074): quantos processos foram lidos nas últimas 24 h e,
+ * desde a 075, quantos ainda não aparecem no DataJud (não é falha). Usa a configuração salva.
+ */
 function DatajudSummary({ overview: d }: { overview: JudicialOverviewDTO }) {
-  const s = datajudSummaryDot({ datajudEnabled: d.settings.datajudEnabled, tracked: d.processes.tracked, withError: d.processes.withError, syncedLast24h: d.processes.syncedLast24h });
+  const s = datajudSummaryDot({
+    datajudEnabled: d.settings.datajudEnabled,
+    tracked: d.processes.tracked,
+    withError: d.processes.withError,
+    syncedLast24h: d.processes.syncedLast24h,
+    notInDatajud: d.processes.notInDatajud,
+  });
   return (
     <p className="-mt-1.5 flex items-center gap-1.5 pl-[26px] text-[12px] text-muted">
       <Dot tone={s.tone} label={s.label} />

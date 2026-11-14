@@ -259,8 +259,11 @@ export async function runJudicialSync(d: JudicialSyncDeps, opts: JudicialSyncOpt
               stats.movementsNew += x.inserted ?? 0;
             } else {
               // Não encontrado / sem índice: situação do processo, não falha da rodada.
+              // 075: o "não encontrado" vai marcado em p_meta (na falha o banco não lê
+              // os dados), para não contar como falha. A assinatura não muda: banco sem
+              // a 075 ignora o campo.
               stats.processesNotFound++;
-              await d.db("judicial_ingest_datajud", [runId, q.ref_id, false, r.message, null, null]);
+              await d.db("judicial_ingest_datajud", [runId, q.ref_id, false, r.message, r.kind === "not_found" ? { error_kind: "NOT_FOUND" } : null, null]);
             }
           } catch (e) {
             // Faltou tempo antes de começar: fica para o próximo lote, sem falha.

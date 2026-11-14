@@ -123,16 +123,31 @@ Um ponto colorido, sempre com o rótulo para leitor de tela e ao passar o mouse
   sem busca. Vermelho: dia útil, depois das 08:00, sem busca concluída. Cinza:
   OAB pausada, DJEN desligado, fim de semana ou feriado nacional (em
   Integrações, pelo `capture.applies`).
+- **"Ainda não aparece no DataJud" não é falha (075):** a cópia pública do
+  DataJud atrasa de 1 a 3 semanas, então todo processo novo passa um tempo sem
+  aparecer lá. O banco guarda o tipo do último erro
+  (`process_external_refs.last_error_kind`: `NOT_FOUND`, `TRANSIENT` ou
+  `OTHER`; sucesso zera). O servidor avisa o não encontrado em `p_meta` da
+  falha (`{"error_kind": "NOT_FOUND"}`), sem mudar a assinatura de
+  `judicial_ingest_datajud`; servidor anterior à 075 é reconhecido pelo texto
+  fixo da mensagem. A espera não muda: o não encontrado é lido de novo a cada
+  20 h e soma nas falhas seguidas da 073 (só pesa se vier uma falha passageira
+  depois).
 - **DataJud, por processo, vale 24 h:** na tela do processo, na linha "DataJud:
   lido em…". Verde: lido nas últimas 24 h, sem erro. Amarelo: acompanhado e
-  ainda não lido. Vermelho: a última leitura falhou, ou a última leitura tem
-  mais de 24 h. Cinza: pausado ou sem número CNJ.
+  ainda não lido, ou "Ainda não aparece no DataJud" (o texto do aviso continua
+  embaixo). Vermelho: a última leitura falhou por outro motivo, ou a última
+  leitura tem mais de 24 h. Cinza: pausado ou sem número CNJ.
 - **DataJud, resumo em Integrações:** uma linha sob "Andamentos do DataJud": "X
-  de Y processos lidos nas últimas 24 h · Z com falha" (X é
-  `processes.synced_last_24h`, da 074). Verde: todos lidos e nenhum com falha.
-  Amarelo: falta ler algum. Vermelho: há processo com falha. Cinza: DataJud
-  desligado ou nenhum processo acompanhado. Banco sem a 074 mostra só "Y
-  processos acompanhados · Z com falha" (sem verde).
+  de Y processos lidos nas últimas 24 h · Z com falha · N ainda não aparecem no
+  DataJud" (X é `processes.synced_last_24h`, da 074; N é
+  `processes.not_in_datajud` e Z, `processes.with_error`, já sem os N, da 075).
+  Cada parte depois da primeira só aparece com número maior que 0. Verde: todos
+  lidos e nenhum com falha. Amarelo: falta ler algum, inclusive quando só faltam
+  os que ainda não aparecem. Vermelho: há processo com falha. Cinza: DataJud
+  desligado ou nenhum processo acompanhado. Banco sem a 075 mostra "X de Y
+  processos lidos nas últimas 24 h · Z com falha" (o não encontrado conta como
+  falha); sem a 074, só "Y processos acompanhados · Z com falha" (sem verde).
 - A Home não muda: a faixa de alerta continua sendo o aviso da captura do dia.
 
 ## OABs acompanhadas
