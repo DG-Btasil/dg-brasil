@@ -13,6 +13,11 @@ escritório. O site publicado antes do banco pronto mostra erro para todo mundo.
 
 Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
 
+> **O que "pós-MVP" quer dizer aqui (definição da dona, 14/11/2026):** não é "depois de ter
+> clientes". É a **última etapa antes do primeiro cliente real**: os preparativos finais, já com as
+> assinaturas pagas. Os passos marcados *pós-MVP* abaixo continuam obrigatórios antes do primeiro
+> dado real; só saem da frente do lançamento técnico.
+
 ## Antes do dia
 
 - [ ] **1. Contratar:** Vercel Pro, Supabase Pro, Zoho Mail com SMTP, Claude
@@ -23,18 +28,29 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
   `apps/frontend/src/lib/auth/legal-documents.ts`
   ([producao.md](producao.md), item 9; [docs/auth.md](../auth.md)).
 - [ ] **3. Revisão LGPD** do provedor de IA e do Google Drive
-  ([producao.md](producao.md), itens 7 e 9).
+  ([producao.md](producao.md), itens 7 e 9). *Pós-MVP desde 14/11/2026, ainda antes
+  do primeiro cliente real.*
 - [ ] **4. Next.js atualizado e `npm run check` passando.** Feito em 13/11/2026
   (Next.js 16.4.6, commit `ee1e831`). Repetir o `npm run check` no commit que
   vai para a produção. **[novo]**
 - [ ] **5. Ensaiar todas as migrations num projeto vazio** e apagar o projeto
   depois ([organizacao-pre-producao.md](organizacao-pre-producao.md), seções 4 e 7).
-- [ ] **6. Fechar as validações pendentes:** clones, Google Drive e prazo direto
+  *Decisão de 14/11/2026: o ensaio é feito no próprio projeto de produção, que nasce
+  vazio (passo 13).* Se o `db push` parar no meio, não tente consertar migration
+  aplicada: anote o erro, corrija numa migration nova ou, como o projeto ainda não
+  tem dado, apague-o e crie de novo. Ver também [producao.md](producao.md), item 19
+  (o ambiente de teste novo pode servir de ensaio antes).
+- [ ] **6. Fechar as validações pendentes:** clones, Google Drive *(pós-MVP urgente
+  desde 14/11/2026: [pos-mvp.md](pos-mvp.md), item 15)* e prazo direto
   ao vivo ([producao.md](producao.md), itens 2 e 14;
   [docs/mcp/validacao.md](../mcp/validacao.md)).
 - [ ] **7. Decidir as pendências de robustez** de
   [docs/backend.md](../backend.md), "Hardening pendente por domínio"
-  ([producao.md](producao.md), item 9).
+  ([producao.md](producao.md), item 9). Situação em 14/11/2026: "iniciar a análise
+  e pedir o agente" já é uma gravação só desde a migration 029 (o texto estava
+  desatualizado); a espera do DataJud depois de falha
+  ([organizacao-pre-producao.md](organizacao-pre-producao.md), achado 2) já existe
+  desde a 044 e ganha espera crescente na 073 (ramo `datajud-espera-crescente`).
 - [ ] **8. Cópia de segurança dos documentos:** *(pós-MVP desde 13/11/2026: [pos-mvp.md](pos-mvp.md), itens 8 a 13)* decidir o destino, decidir se
   contrata o PITR do Supabase e **ensaiar uma restauração**
   ([producao.md](producao.md), item 15;
@@ -126,7 +142,7 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
   prazos; "prazo entra direto na agenda"; "prazo vira tarefa". Só então ligar
   DJEN e DataJud ([docs/judicial.md](../judicial.md);
   [producao.md](producao.md), itens 10 e 14).
-- [ ] **29. Google Drive:** pasta dos clientes e as ligações das pastas
+- [ ] **29. Google Drive** *(os agentes da ponte não dependem dele: ver [producao.md](producao.md), item 2)*: pasta dos clientes e as ligações das pastas
   ([docs/mcp/google-drive.md](../mcp/google-drive.md), seções 2 e 5). Advogado
   só liga pasta de dentro da pasta dos clientes; de fora, só a administradora.
 - [ ] **30. Sequência automática** (análise aprovada chama os próximos
@@ -152,7 +168,10 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
   Agentes, que a "Análise Bancária" usa a Clara do kit
   ([producao.md](producao.md), item 14).
 - [ ] **36. Decidir os agendamentos antigos** do computador do escritório
-  ([producao.md](producao.md), item 9; [pos-mvp.md](pos-mvp.md), item 3).
+  ([producao.md](producao.md), item 9; [pos-mvp.md](pos-mvp.md), item 3). Em
+  14/11/2026 só um está ligado: "BC - Beto tarefas do Caio" (seg/qua/sex, 11h),
+  com `--dangerously-skip-permissions`; os outros seis estão desligados. Risco aceito
+  pela dona em 14/11/2026 ([pos-mvp.md](pos-mvp.md), item 3).
 
 ## Depois
 

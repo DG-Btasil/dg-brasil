@@ -26,7 +26,7 @@ hora de contratar.
 | # | O quê | Por que não agora | Custo |
 |---|---|---|---|
 | 1 | Vercel Pro | O plano gratuito (Hobby) é só para uso pessoal, não comercial | US$ 20 por mês por pessoa que publica |
-| 2 | Google Drive a cada 15 minutos (**no lançamento, depois da validação do Drive**) | O Hobby só aceita agendamento uma vez por dia | Já vem com o Vercel Pro |
+| 2 | Google Drive a cada 15 minutos (**pós-MVP urgente desde 14/11/2026**, [pos-mvp.md](pos-mvp.md) item 15) | O Hobby só aceita agendamento uma vez por dia | Já vem com o Vercel Pro |
 | 3 | Supabase de produção, no plano Pro | O gratuito pausa sem uso e não tem backup | A partir de US$ 25 por mês |
 | 4 | Segurança do login | Recursos do Supabase Pro | Já vem com o Supabase Pro |
 | 5 | E-mail de suporte e envio de e-mails | O envio que recebe e manda é pago | Plano pago do Zoho Mail |
@@ -43,6 +43,7 @@ hora de contratar.
 | 16 | Monitoramento: monitor externo e destino dos erros | São contas de terceiros, a escolher | Há opções gratuitas; conferir |
 | 17 | Procedimento para pedido de titular de dados | Falta definir quem atende | Sem custo |
 | 18 | Prazos de guarda dos registros que hoje não têm limpeza | Decisão da dona do escritório | Sem custo |
+| 19 | Onde fica o ambiente de teste depois da virada (**decisão pendente**; [ambiente-de-teste.md](ambiente-de-teste.md)) | Hoje `app.dgbrasil.adv.br` é o teste; na virada vira a produção | Grátis numa organização gratuita do Supabase; ~US$ 10 por mês dentro da organização Pro |
 
 ---
 
@@ -58,6 +59,15 @@ hora de contratar.
   Ver o item 2.
 
 ## 2. Google Drive: sincronizar a cada 15 minutos
+
+> **O que depende disto (conferido em 14/11/2026).** Os agentes da ponte **não** dependem desta
+> integração: eles leem e gravam na pasta do cliente pelo Google Drive para computador
+> (`G:\Meu Drive\DG BRASIL\...`), e o Arquivista e o Mensageiro levam e trazem os arquivos
+> entre o DG Brasil e essa pasta. No DEV, a integração está "Não configurado" e os clones
+> entregaram em Revisões normalmente. O que só esta integração faz: (1) arquivo que a equipe
+> põe na pasta do Drive entra sozinho no DG Brasil; (2) a versão aprovada em Revisões é gravada
+> sozinha na pasta, como "Título (vN, DG Brasil).pdf". Sem ela, os dois passam a ser manuais
+> (anexar na tela; baixar a versão aprovada).
 
 - **Hoje:**
   - `apps/frontend/vercel.json` agenda a rodada do Drive **uma vez por dia**, por
@@ -97,7 +107,14 @@ hora de contratar.
   2. **Plano Pro:**
      - a partir de US$ 25 por mês, com backup diário guardado por 7 dias;
      - voltar o banco a qualquer momento (PITR) é um adicional de US$ 100 por mês
-       para 7 dias. Avaliar se vale para dado jurídico.
+       para 7 dias (preço conferido em 14/11/2026; não entra no teto de gasto).
+       **Decisão de 14/11/2026: sem PITR.** Fica o backup diário que já vem
+       no Pro (perde no máximo o último dia). Os prazos em dupla do primeiro
+       ciclo (item 9) cobrem o dia que um backup diário perderia. Reforço
+       opcional e quase sem custo: uma cópia própria do banco (`pg_dump`) toda
+       noite, feita pelo computador do escritório e guardada fora do Supabase
+       (nunca pelo GitHub Actions: o repositório é público). Reavaliar o PITR
+       quando o volume de trabalho por dia crescer.
   3. **Aplicar todas as migrations** (`npx supabase db push`, com a CLI ligada ao
      projeto de produção). Se o `pg_cron` não ligar sozinho, ligar em **Database →
      Extensions**.
@@ -543,3 +560,18 @@ acrescente:
   orientação jurídica (são o registro de quem fez e de quem viu).
 - **Como conferir:** `select jobname from cron.job order by 1;` mostra um
   agendamento de limpeza para cada tabela com prazo definido.
+
+## 19. Ambiente de teste depois da virada (decisão pendente)
+
+- **Hoje:** `app.dgbrasil.adv.br` e `portal.dgbrasil.adv.br` apontam para o
+  projeto **DEV**. Na virada, o mesmo endereço passa a ser a produção (item 6).
+  Sem outro lugar, toda correção depois do lançamento iria direto para os
+  clientes, e os scripts de teste não teriam onde rodar: eles recusam a
+  produção (item 3).
+- **Proposta:** um projeto de teste novo e vazio no Supabase gratuito (criá-lo
+  antes da virada já é o ensaio das migrations), no endereço
+  `app.teste.dgbrasil.adv.br`, ligado ao ramo `teste` na Vercel; o DEV antigo é
+  apagado 1 a 2 semanas depois da virada. A dona ainda decide se mantém um
+  ambiente de teste ou se apaga tudo.
+- **Passo a passo completo, inclusive para manter e para apagar:**
+  [ambiente-de-teste.md](ambiente-de-teste.md).

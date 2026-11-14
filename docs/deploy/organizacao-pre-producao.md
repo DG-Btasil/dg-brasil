@@ -268,8 +268,17 @@ como melhoria para depois do lançamento.
 
 Os itens 1, 3 e 4 estão na migration 057
 (`20261112000057_judicial_notice_cap_and_cron_history.sql`), com 6 conferências
-novas no `verificar`. O item 6 foi corrigido. Os itens 2 e 5
-seguem abertos.
+novas no `verificar`. O item 6 foi corrigido. O item 5 segue aberto.
+
+**Item 2, conferido no código em 14/11/2026:** procedia em parte. Desde a 044 o
+processo que falha já espera 1 h (falha passageira) ou 20 h (as outras) antes de
+voltar à fila; o que faltava era a espera crescer, e um processo que dava tempo
+esgotado toda vez era consultado de hora em hora o dia inteiro. **Migration 073**
+(`20261114000073_datajud_espera_crescente.sql`, ramo `datajud-espera-crescente`,
+commit `5a07611`, ainda **não aplicada no DEV**): coluna `consecutive_failures`
+em `process_external_refs`; falha passageira espera 1, 2, 4, 8, 16 h e depois
+20 h; leitura com sucesso ou troca de CNJ zera. `npm run verificar`: 1169 de
+1169 (7 conferências novas em `[073]`).
 
 ### Observado, sem ação agora
 

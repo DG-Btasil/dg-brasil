@@ -14,6 +14,11 @@ produção continua em [checklist-da-virada.md](checklist-da-virada.md).
 > inicial"), 3 (8 agendamentos ativos, os três novos rodando), 5, 6 (248 de 248, depois de
 > acertar três testes que não mandavam a versão do conector ou esperavam o texto antigo do
 > contrato) e 7 (ramo no `master`). Falta conferir: 4, 8 a 11.
+>
+> **Situação em 14/11/2026.** Feitos também: 4 (`DG_ENV=development` criada e
+> `NEXT_PUBLIC_DEMO_MODE` apagada na Vercel), 8 (telas abertas nos testes ao vivo da seção 2b) e
+> 11. Do item 10, o convite foi colado; **falta o `recovery.html`**. Item 9 (instalador e a pergunta
+> do token) feito pelo usuário em 14/11/2026.
 
 Na ordem. Banco sempre antes do site: o painel novo usa tabelas e funções que só existem com as
 migrations novas.
@@ -44,8 +49,14 @@ migrations novas.
    - Configurações (Lixeira, acessos LGPD), busca no cabeçalho (Ctrl+K), página não encontrada;
    - Home (faixa da captura judicial, prazos vencidos, financeiro igual ao da tela Financeiro).
 9. **Instalador do conector:** testar a pergunta nova (manter ou trocar o token). Enter mantém.
+   **Feito em 14/11/2026.** Como foi: neste computador, no PowerShell: `irm
+   https://app.dgbrasil.adv.br/executor/instalar.ps1 | iex`. Ele mostra o começo do token guardado
+   e pergunta "M mantém, T troca": aperte Enter. Deu certo se o diagnóstico no fim passar e, em
+   DG Brasil → Computador do escritório, ele continuar autorizado. Serve para confirmar que, no
+   dia da virada, a resposta **T** vai mesmo trocar o token (checklist, passo 33).
 10. **Modelos de e-mail no painel do Supabase:** colar de novo `invite.html` e `recovery.html` e o
-    assunto do convite, agora "Barbara Cardoso Advocacia" sem acento.
+    assunto do convite, agora "Barbara Cardoso Advocacia" sem acento. **Convite colado em
+    14/11/2026; falta o `recovery.html`** (Authentication → Emails → Reset password).
 11. **Nome do escritório no cadastro:** a migration 019 gravou "Bárbara Cardoso Advocacia" com
     acento. Corrigir pela tela, em Configurações → Geral, e o nome do perfil da administradora.
 
@@ -116,6 +127,39 @@ corrigida com datas e nomes legíveis, tour sem travar. O "número do processo c
 pontuação" não era defeito: a ferramenta de teste convertia o texto em número.
 Os registros criados pelos testes ("QA RF") foram cancelados ou estão na Lixeira; ficaram dois
 casos "QA RF" (casos não têm exclusão).
+
+## 2c. Testes ao vivo de 14/11/2026
+
+**"Corrigir e aprovar" (069): PASS com ressalva.** A proposta de prazo do caso 7 (Laura) foi
+corrigida e aprovada: o prazo nasceu com o vencimento e o responsável corrigidos, a revisão
+mostra "Corrigida por" com o antes e depois e guarda a proposta original. Campo vazio é recusado
+na tela; vencimento já passado só é recusado no servidor.
+
+**"Pedir para o agente refazer" (070): PASS com ressalva.** Testado numa proposta de prazo (caso
+8, Paulo) e em duas minutas (casos 10 e 11, Rafael e Beatriz): recado com menos de 10 caracteres
+é recusado, a revisão fecha como rejeitada com o recado, nada é aplicado e um trabalho novo entra
+na fila. Refazer duas vezes o mesmo trabalho e refazer com o agente desativado são barrados. Não
+testado: o limite de 3 refazeres e o item refeito chegando (os trabalhos não rodaram).
+
+Ajustes encontrados (nenhum impede o uso):
+1. Formulário de correção não barra vencimento passado; só o servidor
+   (`features/reviews/proposal-correction.ts`).
+2. A tela da execução refeita não mostra o recado nem de qual trabalho ela é o refazer
+   (`features/agent-runs/components/run-detail.tsx`). O recado só aparece na revisão original.
+3. Numa minuta, a tela demorou a mostrar "Rejeitada" depois do refazer (uma vez em duas).
+4. Revisão encerrada pelo refazer oferece "Reabrir": decidir se deve.
+5. Texto do bloqueio de minuta sugere "corrija e aprove", que documento não tem
+   (`server/domain/reviews/redo-rules.ts`).
+
+A correção de "quem corrigiu" não aparece na aba Atividade do caso, só na revisão.
+
+**Prazo direto e prazo que vira tarefa: não testado ainda.** O agente de prazos em Integrações
+está em "Nenhum" (não na Diana): escolher a Diana antes de cadastrar o processo real de teste,
+senão a captura guarda a publicação sem agente e o teste se perde. Publicação escolhida: réplica
+de 15 dias úteis, disponibilizada em 13/11, captura possível até 18/11.
+
+**Para limpar (fictício):** prazo "Emenda à inicial (QA corrigido)" de 04/12/2026 (caso 7) e os
+três trabalhos refeitos na fila (Paulo, Beatriz, Rafael).
 
 ## 3. O que só a Barbara resolve
 

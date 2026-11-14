@@ -459,12 +459,17 @@ recusa ação fora da lista. Chave `account-security:user:<id>`.
 ## Hardening pendente por domínio
 
 ### Agents / Analysis
-Iniciar análise e pedir a execução do agente ainda são duas escritas (a chave
-de idempotência torna a repetição segura, mas uma corrida com chaves
-diferentes pode deixar execução órfã). **Antes de conectar a execução real do
-agente/Claude: tornar atômico** (função que trava a análise, chama
-`request_agent_run` e grava QUEUED + `agent_run_id` na mesma transação).
-`legal_analyses` também não tem trigger de transição de status.
+**Resolvido desde a migration 029** (conferido em 14/11/2026; este texto estava
+desatualizado): `start_legal_analysis_once` cria a análise e pede a execução numa
+transação só, e `send_legal_analysis_once` trava a linha, confere o status, pede
+a execução e grava QUEUED + `agent_run_id` juntos. Dois envios com chaves
+diferentes: o segundo espera a trava e é recusado. Chamados por
+`startAnalysis`/`sendAnalysisToAgent` em `server/domain/analyses/service.ts`.
+
+Sobra uma coisa, aceita para o lançamento: `legal_analyses` não tem trigger que
+recuse transição de status inválida (as funções do banco é que conferem). Um
+trigger agora poderia barrar caminhos legítimos (entrega do conector, cancelar,
+refazer da 070) sem teste ao vivo; fica para o pós-MVP.
 
 ### Finance
 Fechado na revisão final (migration 064, testes `[064]` do verificador):

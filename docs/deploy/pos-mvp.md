@@ -23,6 +23,8 @@ Este arquivo junta só o que fica **para depois do lançamento**.
 | 11 | Pedido de titular de dados (LGPD) | Procedimento escrito, sem tela | Definir quem atende e por qual canal | Sem custo |
 | 12 | Resumo diário por e-mail | Avisos só no sino do site | Depende do e-mail do escritório (SMTP) | Plano pago do Zoho |
 | 13 | Termos de uso e política de privacidade definitivos | Texto provisório (versão `0.1-provisorio`) | Texto jurídico definitivo | Sem custo |
+| 16 | Segurança da captura judicial: como a equipe fica sabendo quando o DJEN ou o DataJud falham | Releitura de 30 dias, vigia, faixa, avisos no sino e Cobertura já existem | Conversa com a dona do escritório: aviso fora do site, monitor externo, tribunais que intimam fora do DJEN | Sem custo, salvo o canal de aviso |
+| 15 | **URGENTE:** integração do Google Drive pelo site (B.1) | Não configurada; a ponte funciona sem ela | Credencial OAuth da conta Gmail do escritório (precisa da dona da conta, com a verificação em duas etapas), variáveis na Vercel e o teste da Parte 4 | Sem custo |
 | 14 | OAB e assinatura nas peças de caso de parceiro | Os dados de quem assina vêm do `escritorio.json` (dentro do setup) | Decidir como a peça e a procuração levam a OAB do advogado parceiro, dono do cliente | Sem custo |
 
 ---
@@ -50,6 +52,24 @@ termos de uso da Anthropic), fora do escopo por decisão
 ([../mcp/relatorio-final.md](../mcp/relatorio-final.md)). Com a ponte ligada,
 parte desse trabalho pode passar a vir pelo DG Brasil, com permissões
 controladas. Decidir na versão final.
+
+**Estado em 14/11/2026 (conferido no Agendador de Tarefas, só leitura):** só um
+está ligado, "BC - Beto tarefas do Caio" (seg/qua/sex, 11h,
+`rodar_beto.cmd`). Bruno, Clara, Lucas, as duas da Luísa e o "Sistema BC -
+Otavio" estão desligados. O que a flag faz: o Claude roda sem pedir permissão
+para nada (qualquer comando, qualquer arquivo, internet). Se um documento ou
+mensagem de cliente trouxer instrução maliciosa, não há trava nem pessoa para
+barrar. Caminhos, do mais barato ao mais seguro: (a) aceitar como está, só para
+o Beto; (b) trocar a flag por uma lista fechada de ferramentas
+(`--allowedTools` ou `permissions` no `settings.json` da pasta do Beto), com
+internet e apagar arquivo negados; (c) levar o trabalho do Beto para dentro do
+DG Brasil, pela ponte, com as permissões da pasta da sessão.
+
+**Decisão de 14/11/2026: risco aceito pela dona do escritório.** O argumento: a ponte e o
+Porteiro conferem se os documentos têm conteúdo malicioso antes de um agente tocar neles.
+Ressalva registrada: o Porteiro protege os trabalhos que vêm do DG Brasil. O "BC - Beto" roda
+fora da ponte, pelo Agendador do Windows, e lê mensagens e arquivos do ChatJurídico e do Drive
+sem passar pelo Porteiro. Se o Beto um dia passar a rodar pela ponte, a ressalva acaba.
 
 ## 4. Correções nos arquivos dos agentes do escritório
 
@@ -215,6 +235,11 @@ A Barbara decidiu que estes itens não serão montados no ambiente de teste: dep
 gasto ou decisão, e entram já na produção, depois do lançamento. O que já está pronto no código
 fica como está.
 
+> **Pós-MVP não é "depois de ter clientes" (definição da dona, 14/11/2026).** É a última etapa
+> antes do primeiro cliente real: os preparativos finais, já com as assinaturas pagas. Tudo
+> desta seção, a revisão LGPD (provedor de IA e Google Drive) e os termos definitivos ficam
+> prontos antes do primeiro dado real.
+
 - **8. Cópia de segurança dos documentos.** O backup do Supabase Pro guarda o banco, não os
   arquivos enviados (procurações, minutas, extratos). O script copia esses arquivos para outro
   lugar. Falta escolher o destino e ensaiar a restauração
@@ -232,7 +257,10 @@ fica como está.
   ([producao.md](producao.md), item 5).
 - **13. Termos de uso e política de privacidade.** O texto provisório diz isso na própria tela.
   Atenção: [producao.md](producao.md), item 9, recomenda ter o texto definitivo antes do
-  primeiro cliente real.
+  primeiro cliente real. **Decisão de 14/11/2026:** fica no pós-MVP, que pela definição acima
+  já é antes do primeiro cliente real; lança tecnicamente com o provisório.
+- **Revisão LGPD** do provedor de IA e do Google Drive ([producao.md](producao.md), itens 7 e
+  9): também pós-MVP desde 14/11/2026, obrigatória antes do primeiro dado real.
 
 ## 14. OAB e assinatura nas peças de caso de parceiro
 
@@ -247,6 +275,86 @@ Hoje os dados de quem assina vêm do `escritorio.json` que vai no setup (item 6)
 Falta decidir de onde o agente tira a OAB e o nome do advogado parceiro em cada
 caso (o cadastro do parceiro no site já tem as OABs das pessoas, migration 048).
 Junto, mais tarde: termos de uso e LGPD da parceria (item 13).
+
+## 15. URGENTE: integração do Google Drive pelo site (decisão de 14/11/2026)
+
+Saiu da frente do lançamento porque criar a credencial exige a dona da conta Google, com a
+verificação em duas etapas, e ela não estava disponível. É o primeiro item do pós-MVP: tem de
+estar pronto antes do primeiro cliente real.
+
+- **O que já se sabe:** a pasta "DG BRASIL", onde os agentes da ponte trabalham, é de uma conta
+  **Gmail** do escritório e fica no "Meu Drive". Então o caminho é o **A (OAuth)** de
+  [../mcp/google-drive.md](../mcp/google-drive.md), seção 3A. O caminho B (conta de serviço) não
+  serve: ela não grava em "Meu Drive".
+- **Raiz (`GOOGLE_DRIVE_ROOT_FOLDER_ID`):** usar a pasta "DG BRASIL", para a sincronização olhar
+  as mesmas pastas que os agentes usam (o guia cita `01. ADVOCACIA — CLIENTES`, que é a pasta
+  dos agentes do escritório, fora do DG Brasil).
+- **A ponte não depende disto** ([producao.md](producao.md), item 2): sem a integração, o arquivo
+  posto na pasta pela equipe não entra sozinho no DG Brasil e a versão aprovada não vai sozinha
+  para a pasta. Não economiza tokens: roda no servidor, sem Claude, e não substitui o Arquivista
+  nem o Mensageiro.
+- **Custo:** nenhum (projeto do Google Cloud e Drive API são grátis; a rodada a cada 15 minutos
+  vem com o Vercel Pro).
+- **Passos:** seção 3A do guia (projeto, tela de consentimento **publicada**, credencial,
+  refresh token no OAuth Playground), as 4 variáveis `GOOGLE_DRIVE_*` na Vercel, Redeploy e a
+  Parte 4 de [../qa/maquina-principal/qa-maquina-principal.md](../qa/maquina-principal/qa-maquina-principal.md)
+  (as telas o Claude testa).
+
+## 16. Segurança da captura judicial (conversa, 14/11/2026)
+
+Preocupação do usuário: muita gente vai depender da atualização do DJEN e do DataJud para
+trabalhar. Se a busca der erro de novo e de novo, a publicação não aparece, ninguém fica
+sabendo, e um prazo aberto pelo juiz passa sem ser visto. Fica como conversa com a dona do
+escritório, depois do lançamento técnico e antes do primeiro cliente real.
+
+**Distinção:** o prazo nasce de publicação do **DJEN**. O **DataJud** só traz andamentos
+(juntada, conclusão, sentença); falha nele atrasa a linha do tempo do processo, não o prazo.
+
+**O que já existe** ([../judicial.md](../judicial.md)):
+- um dia do DJEN só fica "assentado" depois de conferido com sucesso a partir de D+5; enquanto
+  isso, toda rodada relê os dias não assentados, até 30 dias para trás. Falha de 2 ou 3 dias é
+  recuperada na primeira busca que der certo;
+- vigia a cada 15 min (`private.judicial_watchdog`, 062): em dia útil, depois das 08:00, avisa
+  os ADMIN se uma OAB ficou sem busca concluída no dia. Roda no banco, então avisa mesmo com o
+  site fora;
+- faixa de alerta na Home e em Integrações; aviso de rodada com falha, no máximo dois por dia
+  por pessoa (057); botão "Cobertura" com a conferência dia a dia;
+- publicação "com o agente" volta para a equipe depois de 4 h; prazo vencido avisa todo dia útil.
+
+**Brechas:**
+1. os avisos ficam só no sino do site: sem alguém abrir o DG Brasil, ninguém vê;
+2. nada de fora vigia o sistema: se o banco cair, a vigia cai junto;
+3. intimação feita fora do DJEN (portal do tribunal, ciência automática em alguns sistemas) não
+   entra no DG Brasil.
+
+**Propostas para a conversa:**
+- (a) aviso fora do site quando a captura falhar ou um dia ficar sem conferência: e-mail
+  (depende do item 12, SMTP) ou WhatsApp pelo ChatJurídico;
+- (b) monitor externo gratuito em `/api/health` (item 9);
+- (c) prazos em dupla no primeiro ciclo ([checklist-da-virada.md](checklist-da-virada.md),
+  passo 38);
+- (d) lista dos tribunais em que o escritório atua e de como cada um intima, para saber se
+  algum intima fora do DJEN e como cobrir;
+- (e) na tela do processo, "andamentos sem atualizar há X dias" quando o DataJud falhar seguido
+  para aquele processo (a contagem de falhas já existe com a migration 073).
+
+**Bolinhas de conferência (desenho decidido em 14/11/2026, a programar no pós-MVP).** Encaixar
+nas telas que existem, sem mudar o layout: nada de coluna, card ou cor nova; usar o `Badge`
+com `dot` que o card judicial do processo já usa ("Ativo").
+- **DJEN, por OAB, validade "hoje":** em DG Brasil → Integrações, na coluna da última busca
+  (`features/judicial/components/monitor-status.tsx`), a bolinha entra antes do horário que já
+  aparece; o texto fica igual.
+- **DataJud, por processo, validade 24 h** (o DataJud não é por OAB): uma linha a mais, no cinza
+  da descrição, logo abaixo da opção "Andamentos do DataJud" em Integrações ("42 de 45
+  processos lidos nas últimas 24 h · 3 com falha"); e a bolinha na frente da linha "DataJud:
+  lido em ..." do card judicial do processo (`process-judicial-card.tsx`).
+- **Cores:** verde = conferido (DJEN hoje; DataJud nas últimas 24 h) e sem erro; amarelo =
+  ainda não conferido hoje, antes das 08:00 (normal); vermelho = falhou ou sem conferência
+  depois das 08:00 de dia útil (DataJud: falhando ou mais de 24 h sem ler); cinza = pausada ou
+  fim de semana sem busca.
+- **Home:** nada muda; a faixa de alerta que já existe continua.
+- **Esforço:** pequeno, quase só tela. Talvez falte só um campo "último sucesso" por OAB.
+- Só ajuda quem abre o site: combina com a proposta (a), o aviso fora do site.
 
 ## Depois do lançamento: o que anotar
 
