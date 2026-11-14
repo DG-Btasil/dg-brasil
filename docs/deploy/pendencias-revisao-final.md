@@ -45,7 +45,10 @@ migrations novas.
 
 ## 2. Decisões da Barbara
 
-Cada agente escolheu a opção mais conservadora e seguiu. Vale confirmar.
+Cada agente escolheu a opção mais conservadora e seguiu. **A Barbara confirmou todas em
+13/11/2026**, menos uma: em Revisões, proposta do agente com só "Aprovar" e "Rejeitar". Para o
+caso "está quase certo", ela escolheu acrescentar "Corrigir e aprovar" (a pessoa edita a proposta
+e aprova) e, depois, "Pedir para o agente refazer" (com o recado, também para minutas).
 
 **Prazos e publicações**
 - Publicação "com o agente" volta para a equipe depois de **4 horas corridas** sem proposta
