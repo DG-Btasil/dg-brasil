@@ -164,8 +164,6 @@ possível feriado local). Não conferido: o aviso "Prazo criado pelo agente", qu
 responsável (QA Advogado), não para o administrador.
 
 Achados do teste:
-- **"Dias revistos" está em 1** em Integrações (era 5). Com 1, a busca só relê a véspera.
-  Voltar para 5.
 - A tela da execução diz "Nada é aplicado sem aprovação" ao lado de uma proposta "Aplicado"
   (prazo direto): ajustar o texto para a exceção.
 - A passada avulsa da vigia (`claude -p`) ficou presa no passo de espera: corrigido no conector
@@ -176,10 +174,12 @@ Achados do teste:
 - Na pasta da sessão ficaram `C:\DGBrasil\sessao\--saida` (criada por engano por um agente) e
   uma trava velha `esperar.lock`: apagar à mão.
 
-**Para limpar:** prazo "Emenda à inicial (QA corrigido)" de 04/12/2026 (caso 7); as revisões
-dos três refazeres; no caso 17, o processo real do teste (para a Lixeira), o prazo "Réplica à
-contestação" de 08/12, a tarefa "Preparar: Réplica à contestação" e os 2 grupos antigos da Diana
-de 13/11 em Revisões.
+**Limpeza feita em 14/11/2026, 20h50:** cancelados o prazo "Réplica à contestação" (08/12), a
+tarefa "Preparar: Réplica à contestação" e o prazo "Emenda à inicial (QA corrigido)" (04/12); o
+processo real do caso 17 foi para a Lixeira (o caso e o cliente fictícios ficam); rejeitadas as
+duas propostas antigas da Diana no caso 17 e os três grupos refeitos (Rafael 18 itens, Beatriz
+17, Paulo 15, mais as três minutas v2); apagadas a pasta `C:\DGBrasil\sessao\--saida` e a trava
+velha `esperar.lock`. Ficaram, de antes: cerca de 23 itens da Laura (13/11) pendentes no caso 17.
 
 ## 3. O que só a Barbara resolve
 
