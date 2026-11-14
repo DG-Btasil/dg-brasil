@@ -14,6 +14,8 @@
 param(
   [string]$Repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path,
   [string]$Escritorio = 'C:\DGBrasil\agentes\escritorio.json',
+  # Pasta onde fica uma cópia do pacote publicado (vazio: não guarda).
+  [string]$Guardar = 'C:\DGBrasil\setup-publicado',
   [switch]$Simular
 )
 $ErrorActionPreference = 'Stop'
@@ -92,6 +94,12 @@ try {
   Invoke-WebRequest -UseBasicParsing -Method Put -Uri $prep.upload_url -InFile $Zip -ContentType 'application/zip' -Headers @{ 'x-upsert' = 'false'; 'cache-control' = 'no-store' } | Out-Null
   $pub = Api "setup/$($prep.id)/publish" @{}
   Ok "Versão $($pub.version) publicada. A dona do escritório foi avisada no sino."
+  if ($Guardar) {
+    New-Item -ItemType Directory -Force -Path $Guardar | Out-Null
+    $copia = Join-Path $Guardar "setup-$($pub.version).zip"
+    Copy-Item -LiteralPath $Zip -Destination $copia -Force
+    Ok "Cópia neste computador: $copia"
+  }
 } finally {
   Remove-Item -LiteralPath $Tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
