@@ -9431,6 +9431,95 @@ await deve('tabelas fechadas; funções com search_path fixo e grants certos [07
 })
 await db.query(`update organization_memberships set status = 'REMOVED' where user_id = $1`, [ids.adm072])
 
+// ═════════════════════════════ Setup: adicionar visibilidade [076] ═══════
+
+secao('Setup do escritório: a conta principal dá acesso a outro ADMIN, que também pode dar [076]')
+const setupLista = (uid) => como(uid, async (tx) => (await um(tx, `select public.dg_list_office_setup_access() r`)).r)
+const setupAcesso = (uid, alvo, sim) => como(uid, async (tx) => (await um(tx, `select public.dg_set_office_setup_access($1, $2) r`, [alvo, sim])).r)
+await db.query(`update organization_memberships set status = 'ACTIVE' where user_id = $1`, [ids.adm072])
+ids.adm076 = await usuario('Débora', ids.owner, 'ADMIN')
+await deve('a lista traz os ADMINs ativos do escritório, com a conta principal primeiro', async () => {
+  const l = await setupLista(ids.barbara)
+  igual(l.map((x) => [x.name, x.main, x.access, x.me]), [['Bárbara Cardoso', true, true, true], ['Clarice', false, false, false], ['Débora', false, false, false]], 'lista')
+  igual(l[1].email, 'clarice@exemplo.com.br', 'e-mail')
+})
+await deve('quem não vê o setup não lista nem dá acesso', async () => {
+  for (const u of [ids.adm072, ids.lucas, ids.almeidaAdm]) {
+    await setupLista(u).then(() => { throw new Error('listou') }, (e) => { if (!/Sem permissão/.test(e.message)) throw e })
+    await setupAcesso(u, u, true).then(() => { throw new Error('deu acesso a si') }, (e) => { if (!/Sem permissão/.test(e.message)) throw e })
+  }
+})
+await deve('acesso só para ADMIN ativo do escritório; a conta principal não perde', async () => {
+  for (const u of [ids.lucas, ids.ana, ids.almeidaAdm]) {
+    await setupAcesso(ids.barbara, u, true).then(() => { throw new Error('acesso a não ADMIN') }, (e) => { if (!/administrador ativo/.test(e.message)) throw e })
+  }
+  await setupAcesso(ids.barbara, ids.barbara, false).then(() => { throw new Error('tirou a principal') }, (e) => { if (!/sempre vê/.test(e.message)) throw e })
+})
+await deve('a principal dá acesso; o novo ADMIN vê o setup, gera o código e dá acesso a outro', async () => {
+  igual((await setupAcesso(ids.barbara, ids.adm072, true)).changed, true, 'deu')
+  igual((await setupAcesso(ids.barbara, ids.adm072, true)).changed, false, 'repetir não duplica')
+  igual(await setupPode(ids.adm072), true, 'vê o setup')
+  igual(await setupPode(ids.adm076), false, 'a outra ainda não')
+  igual((await setupPede(ids.adm072, 'dgs_reserva-076')).version, ids.v072.version, 'gera o código')
+  igual((await setupAcesso(ids.adm072, ids.adm076, true)).changed, true, 'a reserva dá acesso')
+  igual(await setupPode(ids.adm076), true, 'a outra vê')
+  igual((await setupLista(ids.adm076)).map((x) => [x.name, x.access, x.me]), [['Bárbara Cardoso', true, false], ['Clarice', true, false], ['Débora', true, true]], 'lista com acesso')
+  const n = await linhas(db, `select user_id, title from notifications where type = 'SECURITY_NOTICE' and title = 'Acesso ao setup' and user_id = any($1)`, [[ids.barbara, ids.adm072, ids.adm076]])
+  igual(n.filter((x) => x.user_id === ids.barbara).length, 1, 'a principal sabe da que não foi ela que deu (quem faz não é avisado)')
+  igual(n.filter((x) => x.user_id === ids.adm076).length, 1, 'quem recebeu sabe')
+})
+await deve('versão nova avisa todos que veem o setup', async () => {
+  // a versão é por segundo: a da 072 sai do caminho
+  await db.query(`update office_setup_versions set version = '2000.01.01-000072', storage_object_name = organization_id || '/2000.01.01-000072.zip' where id = $1`, [ids.v072.id])
+  const p = await setupPrepara(hA)
+  await db.query(`insert into storage.objects (bucket_id, name) values ('office-setup', $1)`, [p.storage_object_name])
+  await setupPublica(hA, p.id)
+  const n = await linhas(db, `select user_id from notifications where event_key = $1`, [`office_setup_published:${p.id}`])
+  igual(n.map((x) => x.user_id).sort(), [ids.barbara, ids.adm072, ids.adm076].sort(), 'três avisos')
+  ids.v072 = p
+})
+await deve('tirar o acesso: some o botão; quem perdeu é avisado', async () => {
+  igual((await setupAcesso(ids.adm076, ids.adm072, false)).changed, true, 'tirou')
+  igual(await setupPode(ids.adm072), false, 'não vê mais')
+  igual((await linhas(db, `select 1 from notifications where user_id = $1 and title = 'Acesso ao setup retirado'`, [ids.adm072])).length, 1, 'avisada')
+  igual((await linhas(db, `select distinct action from audit_events where action like 'OFFICE_SETUP_ACCESS_%'`)).map((x) => x.action).sort(),
+    ['OFFICE_SETUP_ACCESS_GRANTED', 'OFFICE_SETUP_ACCESS_REVOKED'], 'auditoria')
+})
+await deve('deixou de ser ADMIN: o acesso sai e não volta sozinho', async () => {
+  await db.query(`update organization_memberships set role = 'LAWYER' where user_id = $1`, [ids.adm076])
+  igual((await um(db, `select count(*)::int n from office_setup_access where user_id = $1`, [ids.adm076])).n, 0, 'apagado')
+  await db.query(`update organization_memberships set role = 'ADMIN' where user_id = $1`, [ids.adm076])
+  igual(await setupPode(ids.adm076), false, 'voltou a ADMIN sem setup')
+})
+await deve('conta principal perdida: a reserva continua com o setup', async () => {
+  await setupAcesso(ids.barbara, ids.adm076, true)
+  await db.query(`update profiles set active = false where id = $1`, [ids.barbara])
+  try {
+    igual(await setupPode(ids.adm076), true, 'a reserva vê')
+  } finally {
+    await db.query(`update profiles set active = true where id = $1`, [ids.barbara])
+  }
+})
+await deve('tabela fechada; funções com search_path fixo e grants certos [076]', async () => {
+  await como(ids.barbara, (tx) => tx.query(`select * from office_setup_access`)).then(() => { throw new Error('leu') }, (e) => { if (!/permission denied/.test(e.message)) throw e })
+  const r = await linhas(db, `select n.nspname || '.' || p.proname f, coalesce(array_to_string(p.proconfig, ','), '') cfg,
+      has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv,
+      has_function_privilege('authenticated', p.oid, 'execute') usr, has_function_privilege('dg_worker', p.oid, 'execute') wrk
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private') and p.proname = any ($1)`,
+  [['office_setup_access_cleanup', 'office_setup_user_ids', 'dg_list_office_setup_access', 'dg_set_office_setup_access', 'can_use_office_setup', 'executor_setup_publish']])
+  igual(r.length, 9, 'funções')
+  igual(r.filter((x) => !x.cfg.includes('search_path=') || x.anon || x.srv).map((x) => x.f), [], 'search_path / anon / service_role')
+  const esperado = {
+    'private.office_setup_access_cleanup': [false, false], 'private.office_setup_user_ids': [false, false],
+    'private.dg_list_office_setup_access': [true, false], 'private.dg_set_office_setup_access': [true, false],
+    'public.dg_list_office_setup_access': [true, false], 'public.dg_set_office_setup_access': [true, false],
+    'private.can_use_office_setup': [true, false], 'public.can_use_office_setup': [true, false], 'private.executor_setup_publish': [false, true],
+  }
+  igual(r.filter((x) => JSON.stringify([x.usr, x.wrk]) !== JSON.stringify(esperado[x.f])).map((x) => x.f), [], 'quem executa')
+})
+await db.query(`update organization_memberships set status = 'REMOVED' where user_id = $1`, [ids.adm076])
+
 // ═════════════════════════════ DataJud: espera crescente [073] ═══════════
 
 secao('DataJud: a espera depois de falha cresce por processo (1 h, 2 h, 4 h, 8 h, 16 h, teto 20 h); sucesso zera [073]')

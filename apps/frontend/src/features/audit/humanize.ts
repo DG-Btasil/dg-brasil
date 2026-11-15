@@ -111,6 +111,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   OFFICE_SETUP_ISSUED: "Setup baixado",
   OFFICE_SETUP_REDEEMED: "Setup instalado num computador",
   OFFICE_SETUP_PUBLISHED: "Versão nova do setup publicada",
+  OFFICE_SETUP_ACCESS_GRANTED: "Acesso ao setup dado",
+  OFFICE_SETUP_ACCESS_REVOKED: "Acesso ao setup retirado",
   PARTNER_REQUEST_CREATED: "Solicitação ao parceiro criada",
   PARTNER_REQUEST_OPEN: "Solicitação ao parceiro reaberta",
   PARTNER_REQUEST_ANSWERED: "Solicitação respondida pelo parceiro",

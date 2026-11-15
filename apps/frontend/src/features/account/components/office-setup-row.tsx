@@ -1,23 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Download } from "lucide-react";
+import { Copy, Download, Eye } from "lucide-react";
 import { callAction } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { canUseOfficeSetupAction, issueOfficeSetupAction } from "@/server/domain/account/actions";
 import { useToast } from "@/store/ui-store";
+import { OfficeSetupAccessDialog } from "./office-setup-access-dialog";
 
 /**
- * Setup do DG Brasil (072). Só aparece para a dona do escritório (o banco
- * decide); para os outros, nada é desenhado. "Autorizar" copia um comando para
+ * Setup do DG Brasil (072). Só aparece para a conta principal do escritório e
+ * para os ADMINs a quem ela (ou outro com acesso) deu visibilidade (076); o
+ * banco decide. Para os outros, nada é desenhado. "Autorizar" copia um comando para
  * colar no PowerShell (não baixa arquivo: o Windows 11 bloqueia .cmd vindo da
  * internet). O comando leva só um código de uso único, que vence em 15 minutos.
  */
 export function OfficeSetupRow() {
   const [allowed, setAllowed] = useState(false);
   const [open, setOpen] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [command, setCommand] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -67,9 +70,15 @@ export function OfficeSetupRow() {
         <p className="text-[13px] font-medium text-foreground">Setup</p>
         <p className="text-[12px] text-muted">DG Brasil</p>
       </div>
-      <Button size="sm" onClick={() => setOpen(true)}>
-        Setup
-      </Button>
+      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+        <Button size="sm" variant="secondary" icon={<Eye className="size-4" aria-hidden />} onClick={() => setAccessOpen(true)}>
+          Adicionar visibilidade
+        </Button>
+        <Button size="sm" onClick={() => setOpen(true)}>
+          Setup
+        </Button>
+      </div>
+      <OfficeSetupAccessDialog open={accessOpen} onClose={() => setAccessOpen(false)} />
       <Dialog
         open={open}
         onOpenChange={(o) => !o && !busy && close()}

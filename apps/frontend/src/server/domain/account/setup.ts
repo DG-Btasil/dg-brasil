@@ -6,9 +6,10 @@ import { enforceAccountSecurityLimit } from "@/server/core/rate-limit";
 
 /**
  * Setup do escritório (072): os agentes do kit, os scripts e os dados de quem
- * assina, guardados no DG Brasil. Só a DONA do escritório (o primeiro ADMIN do
- * escritório principal) vê o botão, em Sua conta e sessões; quem decide é o
- * banco (can_use_office_setup / dg_issue_office_setup).
+ * assina, guardados no DG Brasil. Só a conta principal (o primeiro ADMIN do
+ * escritório principal) e os ADMINs a quem foi dada visibilidade (076) veem o
+ * botão, em Sua conta e sessões; quem decide é o banco (can_use_office_setup /
+ * dg_issue_office_setup / dg_set_office_setup_access).
  *
  * "Autorizar" devolve um comando para colar no PowerShell: leva um código de uso
  * único (15 minutos, uma vez) e chama o /executor/setup.ps1, que troca o código
@@ -66,4 +67,55 @@ export async function issueOfficeSetup(ctx: ServiceContext, origin: string): Pro
   const version = String((data as { version?: unknown } | null)?.version ?? "");
   ctx.log.info("account.office_setup_issued", { version });
   return { command: setupCommand(origin, code), version };
+}
+
+/* ── Adicionar visibilidade (076): quem, além da conta principal, vê o setup ── */
+
+export interface OfficeSetupAdminDTO {
+  userId: string;
+  name: string;
+  email: string | null;
+  /** A conta principal (primeiro ADMIN): sempre vê, não perde o acesso. */
+  main: boolean;
+  access: boolean;
+  me: boolean;
+}
+
+interface OfficeSetupAdminRow {
+  user_id: string;
+  name: string;
+  email: string | null;
+  main: boolean;
+  access: boolean;
+  me: boolean;
+}
+
+export function toOfficeSetupAdmins(data: unknown): OfficeSetupAdminDTO[] {
+  return (Array.isArray(data) ? (data as OfficeSetupAdminRow[]) : []).map((r) => ({
+    userId: r.user_id,
+    name: r.name,
+    email: r.email ?? null,
+    main: r.main === true,
+    access: r.access === true,
+    me: r.me === true,
+  }));
+}
+
+/** Os ADMINs ativos do escritório, com quem vê o setup. Só para quem já vê. */
+export async function listOfficeSetupAccess(ctx: ServiceContext): Promise<OfficeSetupAdminDTO[]> {
+  const { data, error } = await ctx.db.rpc("dg_list_office_setup_access");
+  if (error) throw fromDbError(error);
+  return toOfficeSetupAdmins(data);
+}
+
+/** Dá ou tira o acesso ao setup; devolve a lista atualizada. */
+export async function setOfficeSetupAccess(
+  ctx: ServiceContext,
+  input: { userId: string; access: boolean },
+): Promise<OfficeSetupAdminDTO[]> {
+  enforceAccountSecurityLimit(ctx);
+  const { error } = await ctx.db.rpc("dg_set_office_setup_access", { p_user_id: input.userId, p_access: input.access });
+  if (error) throw fromDbError(error);
+  ctx.log.info("account.office_setup_access", { access: input.access });
+  return listOfficeSetupAccess(ctx);
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLogger } from "@/server/core/logger";
 import { SlidingWindowLimiter } from "@/server/core/rate-limit";
-import { SETUP_CODE, newSetupCode, setupCodeHash, setupCommand, setupOrigin } from "@/server/domain/account/setup";
+import { SETUP_CODE, newSetupCode, setupCodeHash, setupCommand, setupOrigin, toOfficeSetupAdmins } from "@/server/domain/account/setup";
 import { handleSetupRedeem } from "./redeem";
 
 const ROW = { version: "2026.11.14-101500", storage_object_name: "org/2026.11.14-101500.zip", size_bytes: "2048", checksum_sha256: "d".repeat(64) };
@@ -82,5 +82,19 @@ describe("setup do escritório (072): /api/setup/v1/baixar", () => {
     const r = await handleSetupRedeem({ code: newSetupCode() }, "9.9.9.9", d);
     expect(r.status).toBe(429);
     expect(d.redeem).toHaveBeenCalledTimes(10);
+  });
+});
+
+describe("setup do escritório (076): visibilidade", () => {
+  it("lista do banco vira DTO; resposta estranha vira lista vazia", () => {
+    const rows = [
+      { user_id: "u1", name: "Principal", email: "p@x.com", main: true, access: true, me: true },
+      { user_id: "u2", name: "Reserva", email: null, main: false, access: false, me: false },
+    ];
+    expect(toOfficeSetupAdmins(rows)).toEqual([
+      { userId: "u1", name: "Principal", email: "p@x.com", main: true, access: true, me: true },
+      { userId: "u2", name: "Reserva", email: null, main: false, access: false, me: false },
+    ]);
+    expect(toOfficeSetupAdmins(null)).toEqual([]);
   });
 });

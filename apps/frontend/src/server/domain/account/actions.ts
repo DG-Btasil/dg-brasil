@@ -54,6 +54,18 @@ export async function issueOfficeSetupAction(input?: unknown) {
   });
 }
 
+/** "Adicionar visibilidade" (076): os ADMINs do escritório e quem vê o setup. */
+export async function listOfficeSetupAccessAction(input?: unknown) {
+  return runAction({ name: "account.office_setup.access.list", schema: noInput, input, handler: (ctx) => setup.listOfficeSetupAccess(ctx) });
+}
+
+const setupAccessSchema = z.object({ userId: z.string().uuid(), access: z.boolean() });
+
+/** Dá ou tira o acesso ao setup de outro ADMIN do escritório. Quem decide é o banco. */
+export async function setOfficeSetupAccessAction(input: unknown) {
+  return runAction({ name: "account.office_setup.access.set", schema: setupAccessSchema, input, handler: setup.setOfficeSetupAccess });
+}
+
 /* ── OABs da própria pessoa (Roadmap 2.0, 048) ───────────────────────── */
 
 const oabSchema = z.object({
