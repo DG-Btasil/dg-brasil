@@ -78,7 +78,11 @@ hora de contratar.
 - **Por quê:** em 2026-10-29, o deploy foi recusado com o erro "Hobby accounts are
   limited to daily cron jobs". A rodada a cada 15 minutos virou diária só para o
   deploy passar. A rota, a proteção e o botão continuam iguais.
-- **Na produção, com o Vercel Pro (item 1):**
+- **Decisão de 17/11/2026 (Vercel Pro já assinado):** a troca fica para o dia em
+  que o Drive for configurado na produção (checklist, passo 29). Sem o Drive, a
+  rota responde 503 e registra `drive.cron_not_configured` como erro em toda
+  rodada: a cada 15 minutos, seriam 96 erros falsos por dia escondendo os reais.
+- **Na produção, com o Vercel Pro (item 1) e o Drive configurado:**
   1. Em `apps/frontend/vercel.json`, trocar `"0 9 * * *"` por `"*/15 * * * *"`.
   2. Atualizar os textos que falam em "uma vez por dia":
      - o comentário de `apps/frontend/src/app/api/cron/drive-sync/route.ts`;

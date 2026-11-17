@@ -314,9 +314,11 @@ npm run emails:preview   # pré-visualização em supabase/.preview-emails/index
   (`firstNameOf`, em `src/lib/auth/first-name.ts`); o template do Supabase
   (`html/template` do Go, sem funções extras) não consegue recortar o nome.
   Contas criadas antes disso ou pelo painel caem no nome completo ou em "Olá!".
-- **Suporte**: preencha `supportEmail` em `supabase/templates/email.config.json`
-  e rode `npm run emails`. Vazio = a seção não aparece. Domínios de exemplo
-  (`.test`, `.exemplo`, `example.com`…) são recusados.
+- **Suporte**: `supportWhatsapp` (DDD + número; vira link `wa.me`) e/ou
+  `supportEmail` em `supabase/templates/email.config.json`, depois
+  `npm run emails`. Os dois vazios = a seção não aparece. Domínios de exemplo
+  (`.test`, `.exemplo`, `example.com`…) são recusados. Produção (17/11/2026):
+  só WhatsApp, (24) 99263-1241.
 - **Aplicar no projeto remoto** (manual): Authentication → Email Templates →
   *Invite user*: assunto `Seu convite para o DG Brasil | Barbara Cardoso Advocacia`
   e o conteúdo de `invite.html`; *Reset password*: assunto

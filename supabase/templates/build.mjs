@@ -15,8 +15,9 @@
  *  - não há como recortar o primeiro nome no template → ele vem pronto em
  *    `user_metadata.first_name` (gravado no convite), com `full_name` e "Olá!"
  *    como fallback;
- *  - não há variável de configuração → o e-mail de suporte entra aqui, na
- *    geração, e a seção só existe quando `supportEmail` está preenchido.
+ *  - não há variável de configuração → o contato de suporte entra aqui, na
+ *    geração, e a seção só existe quando `supportWhatsapp` ou `supportEmail`
+ *    está preenchido.
  *
  * Os dados de `user_metadata` usados aqui (first_name, full_name, invite_role,
  * organization_name, invite_pending) servem SÓ para o texto do e-mail — o
@@ -69,7 +70,13 @@ function loadConfig() {
   const supportEmail = String(raw.supportEmail ?? "").trim();
   if (supportEmail && !EMAIL_FORMAT.test(supportEmail)) fail(`supportEmail inválido: "${supportEmail}"`);
   if (supportEmail && PLACEHOLDER_EMAIL.test(supportEmail)) fail(`supportEmail é um endereço de exemplo: "${supportEmail}"`);
-  return { supportEmail };
+  // WhatsApp brasileiro com DDD: só os dígitos contam ("24 99263-1241" → 24992631241).
+  const waDigits = String(raw.supportWhatsapp ?? "").replace(/\D/g, "");
+  if (waDigits && !/^\d{10,11}$/.test(waDigits)) fail(`supportWhatsapp inválido: "${raw.supportWhatsapp}" (use DDD + número)`);
+  const supportWhatsapp = waDigits
+    ? { display: `(${waDigits.slice(0, 2)}) ${waDigits.slice(2, -4)}-${waDigits.slice(-4)}`, url: `https://wa.me/55${waDigits}` }
+    : null;
+  return { supportEmail, supportWhatsapp };
 }
 
 /* ------------------------------------------------------------------ */
@@ -195,19 +202,21 @@ function signature() {
 const divider = () =>
   `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0;"><tr><td class="dg-rule" style="border-top:1px solid ${C.line};font-size:0;line-height:0;height:1px;">&nbsp;</td></tr></table>`;
 
-function supportBlock(supportEmail) {
-  if (!supportEmail) return "";
-  const address = esc(supportEmail);
-  return muted(
-    `Precisa de ajuda? Escreva para <a class="dg-link" href="mailto:${address}" style="color:${C.navy600};text-decoration:underline;">${address}</a>.`,
-    { size: 12, margin: "0 0 10px" },
-  );
+function supportBlock({ supportEmail, supportWhatsapp }) {
+  const link = (href, text) =>
+    `<a class="dg-link" href="${href}" style="color:${C.navy600};text-decoration:underline;">${text}</a>`;
+  const ways = [];
+  if (supportWhatsapp) ways.push(`fale conosco pelo WhatsApp ${link(esc(supportWhatsapp.url), esc(supportWhatsapp.display))}`);
+  if (supportEmail) ways.push(`escreva para ${link(`mailto:${esc(supportEmail)}`, esc(supportEmail))}`);
+  if (!ways.length) return "";
+  const text = ways.join(" ou ");
+  return muted(`Precisa de ajuda? ${text[0].toUpperCase()}${text.slice(1)}.`, { size: 12, margin: "0 0 10px" });
 }
 
 /* ------------------------------------------------------------------ */
 /* Layout                                                              */
 
-function layout({ pageTitle, preheader, body, notice, vars, supportEmail }) {
+function layout({ pageTitle, preheader, body, notice, vars, support }) {
   const spacer = "&#8199;&#65279;&#847; ".repeat(40);
   return `<!DOCTYPE html>
 <!-- GERADO por supabase/templates/build.mjs — não edite à mão. -->
@@ -277,7 +286,7 @@ function layout({ pageTitle, preheader, body, notice, vars, supportEmail }) {
         <tr>
           <td class="dg-footer dg-pad" bgcolor="${C.footer}" style="background:${C.footer};border-top:1px solid ${C.line};border-radius:0 0 10px 10px;padding:24px 48px 26px;">
           ${muted(notice, { size: 12, margin: "0 0 10px" })}
-          ${supportBlock(supportEmail)}
+          ${supportBlock(support)}
           ${muted(`Mensagem enviada para ${vars.email}.`, { size: 12, margin: "0" })}
           </td>
         </tr>
@@ -423,7 +432,7 @@ function invite(vars, config) {
     notice:
       "Este convite é individual e deve ser usado apenas por quem o recebeu. O link tem validade limitada e pode ser usado uma única vez; se ele expirar, peça um novo convite a quem enviou. Se você não esperava este convite, basta ignorar esta mensagem.",
     vars,
-    supportEmail: config.supportEmail,
+    support: config,
   });
 }
 
@@ -471,7 +480,7 @@ function recovery(vars, config) {
       `Recebeu esta mensagem depois de um convite para o ${BRAND}? Use o mesmo botão para concluir seu primeiro acesso.`,
     ),
     vars,
-    supportEmail: config.supportEmail,
+    support: config,
   });
 }
 
@@ -560,7 +569,7 @@ function writePreviews(outDir, config) {
   iframe{height:1180px;border:1px solid #c7ced6;border-radius:8px;background:#fff}
 </style></head><body>
 <h1>DG Brasil — pré-visualização dos e-mails</h1>
-<p class="sub">Gerado por supabase/templates/build.mjs com dados de exemplo. Links desativados para envio real; ${config.supportEmail ? "seção de suporte ATIVA" : "sem e-mail de suporte configurado (seção oculta)"}.</p>
+<p class="sub">Gerado por supabase/templates/build.mjs com dados de exemplo. Links desativados para envio real; ${config.supportEmail || config.supportWhatsapp ? "seção de suporte ATIVA" : "sem contato de suporte configurado (seção oculta)"}.</p>
 ${section("invite", "Convite de primeiro acesso — “Seu convite para o DG Brasil | Barbara Cardoso Advocacia”")}
 ${section("recovery", "Redefinição de senha — “Redefinição de senha | DG Brasil”")}
 </body></html>

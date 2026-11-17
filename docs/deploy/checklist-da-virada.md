@@ -116,7 +116,10 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
   **ausentes**: `SERPRO_CPF_TRIAL`, `SERPRO_CPF_TRIAL_TOKEN`,
   `NEXT_PUBLIC_DEMO_MODE` e `AUTH_FALLBACK_SITE_URL`. **[novo]**
 - [ ] **22. `vercel.json`:** Google Drive a cada 15 minutos e os textos de
-  frequência ([producao.md](producao.md), itens 2 e 10).
+  frequência ([producao.md](producao.md), itens 2 e 10). *Adiado em 17/11/2026
+  para o passo 29:* sem o Drive configurado, a rota registra um erro a cada
+  rodada (503, de propósito); a cada 15 minutos seriam 96 erros falsos por dia
+  nos logs. Fazer no mesmo dia em que o Drive for ligado na produção.
 - [ ] **23. Novo deploy** (as variáveis `NEXT_PUBLIC_` entram no build) e
   conferir os agendamentos em Settings → Cron Jobs
   ([producao.md](producao.md), itens 2 e 12).
