@@ -7,6 +7,7 @@ import type { SessionContextRow } from "@/lib/auth/types";
 import { createServiceContext, type ServiceContext } from "@/server/core/context";
 import * as security from "@/server/domain/account/security";
 import { integrationEnv } from "./support/env";
+import { markProfileCompleted } from "./support/profile";
 import { totp } from "./support/totp";
 import { dbFor, serviceDb, world } from "./support/world";
 
@@ -85,6 +86,7 @@ beforeAll(async () => {
   if (m.error) throw new Error(m.error.message);
   account.membershipId = m.data.id;
   await svc.from("user_legal_acceptances").insert(LEGAL_DOCUMENTS.map((d) => ({ user_id: account.id, document_type: d.type, document_version: d.version })));
+  await markProfileCompleted(svc, account.id);
 
   // 1º login: cadastra o autenticador (vira a sessão A, "Chrome no Windows").
   const client = newClient(UA.chromeWindows);

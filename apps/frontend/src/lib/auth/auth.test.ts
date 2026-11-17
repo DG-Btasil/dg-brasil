@@ -38,6 +38,26 @@ describe("evaluateSession", () => {
     expect(r.session?.role).toBe("LAWYER");
     expect(r.session?.surface).toBe("INTERNAL");
   });
+  it("cadastro pessoal pendente (079): só depois de tudo o mais, e com a sessão montada", () => {
+    const pendente = (over: Partial<SessionContextRow> = {}) =>
+      ctx({ profile: { full_name: "Ana Teste", preferred_name: null, job_title: null, active: true, completed: false }, ...over });
+    const r = evaluateSession(pendente(), AAL2);
+    expect(r.state).toBe("PROFILE_PENDING");
+    expect(r.session?.role).toBe("LAWYER");
+    // Termos e MFA vêm antes: o cadastro é a última etapa.
+    expect(evaluateSession(pendente({ legal_acceptances: [] }), AAL2).state).toBe("LEGAL_PENDING");
+    expect(evaluateSession(pendente(), { currentLevel: "aal1", hasVerifiedFactor: false }).state).toBe("MFA_ENROLL");
+    expect(evaluateSession(pendente(), { currentLevel: "aal1", hasVerifiedFactor: true }).state).toBe("MFA_VERIFY");
+    // Bloqueio continua valendo mais que o cadastro.
+    expect(evaluateSession(pendente(), AAL2).state).not.toBe("READY");
+    const suspenso = pendente();
+    suspenso.membership!.status = "SUSPENDED";
+    expect(evaluateSession(suspenso, AAL2).state).toBe("MEMBERSHIP_INACTIVE");
+  });
+  it("cadastro concluído, ou banco anterior à 079 (sem a chave), libera", () => {
+    expect(evaluateSession(ctx({ profile: { full_name: "Ana Teste", preferred_name: null, job_title: null, active: true, completed: true } }), AAL2).state).toBe("READY");
+    expect(evaluateSession(ctx(), AAL2).state).toBe("READY");
+  });
   it("perfil ausente / inativo", () => {
     expect(evaluateSession(ctx({ profile: null }), AAL2).state).toBe("PROFILE_MISSING");
     expect(evaluateSession(ctx({ profile: { full_name: "A", preferred_name: null, job_title: null, active: false } }), AAL2).state).toBe("PROFILE_INACTIVE");
@@ -132,6 +152,11 @@ describe("destinationFor", () => {
     expect(destinationFor({ state: "MFA_VERIFY" })).toBe(AUTH_ROUTES.mfaVerify);
     expect(destinationFor({ state: "MFA_ENROLL" })).toBe(AUTH_ROUTES.mfaEnroll);
     expect(destinationFor({ state: "LEGAL_PENDING" })).toBe(AUTH_ROUTES.terms);
+    expect(destinationFor({ state: "PROFILE_PENDING" })).toBe("/cadastro");
+    expect(destinationFor({ state: "PROFILE_PENDING" }, "/clientes/1")).toBe("/cadastro?next=%2Fclientes%2F1");
+    expect(destinationFor({ state: "PROFILE_PENDING" }, "https://evil.com")).toBe("/cadastro");
+    // A própria etapa nunca vira destino de retorno (criaria laço).
+    expect(safeNextPath("/cadastro")).toBe(AUTH_ROUTES.home);
     expect(destinationFor({ state: "PROFILE_INACTIVE" })).toBe("/acesso?motivo=conta-inativa");
     expect(destinationFor({ state: "ORGANIZATION_BLOCKED" })).toBe("/acesso?motivo=escritorio-suspenso");
     expect(destinationFor({ state: "READY" }, "//evil.com")).toBe(AUTH_ROUTES.home);

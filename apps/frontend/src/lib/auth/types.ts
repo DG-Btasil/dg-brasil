@@ -27,13 +27,16 @@ export type AuthOnboardingState =
   | "MFA_VERIFY"
   | "LEGAL_PENDING"
   | "MFA_ENROLL"
+  /** Tudo liberado (conta, termos, aal2), mas o cadastro pessoal ainda não foi concluído (079). */
+  | "PROFILE_PENDING"
   | "READY";
 
 /** O que `public.get_my_session_context()` devolve (migration 022). */
 export interface SessionContextRow {
   user_id: string;
   email: string | null;
-  profile: { full_name: string; preferred_name: string | null; job_title: string | null; active: boolean } | null;
+  /** `completed` (079): cadastro pessoal concluído. Ausente em banco anterior à 079, e aí ninguém é barrado. */
+  profile: { full_name: string; preferred_name: string | null; job_title: string | null; active: boolean; completed?: boolean } | null;
   membership: {
     id: string;
     role: AppRole;

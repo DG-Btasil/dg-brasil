@@ -26,6 +26,8 @@ import { createLogger } from "./logger";
 export async function runAction<I, O>(options: {
   name: string;
   permission?: Permission;
+  /** Só as actions da etapa "Complete seu cadastro" (079): aceita a sessão que só não concluiu o cadastro pessoal. */
+  allowPendingProfile?: boolean;
   schema: ZodType<I>;
   input: unknown;
   handler: (ctx: ServiceContext, input: I) => Promise<O>;
@@ -35,7 +37,7 @@ export async function runAction<I, O>(options: {
   const log = createLogger({ requestId, action: options.name });
 
   try {
-    const session = await authorizeAction(options.permission).catch((error: unknown) => {
+    const session = await authorizeAction(options.permission, { allowPendingProfile: options.allowPendingProfile }).catch((error: unknown) => {
       if (error instanceof AuthorizationError) {
         throw new DomainError(/sessão/i.test(error.message) ? "UNAUTHORIZED" : "FORBIDDEN");
       }

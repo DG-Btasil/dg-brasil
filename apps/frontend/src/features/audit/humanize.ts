@@ -119,6 +119,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   PARTNER_REQUEST_RESOLVED: "Solicitação ao parceiro resolvida",
   PARTNER_REQUEST_CANCELLED: "Solicitação ao parceiro cancelada",
   PARTNER_PROFILE_COMPLETED: "Cadastro do escritório parceiro completado",
+  PERSONAL_PROFILE_COMPLETED: "Cadastro pessoal concluído",
   PARTNERSHIP_AGREEMENT_CREATED: "Parceria do caso registrada",
   PARTNERSHIP_AGREEMENT_CANCELLED: "Parceria do caso cancelada",
   PARTNER_SETTINGS_CREATED: "Divisão do parceiro registrada",

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { REMEMBER_COOKIE } from "@/lib/auth/session-cookies";
 import { runAction } from "@/server/core/action";
 import * as oabs from "./oabs";
+import * as profile from "./profile";
 import * as security from "./security";
 import * as setup from "./setup";
 
@@ -75,8 +76,9 @@ const oabSchema = z.object({
 });
 const oabIdSchema = z.object({ id: z.string().uuid() });
 
+/** Também vale na etapa "Complete seu cadastro" (079), para mostrar a OAB que veio do convite. */
 export async function listMyOabsAction(input?: unknown) {
-  return runAction({ name: "account.oabs.list", schema: noInput, input, handler: (ctx) => oabs.listMyOabs(ctx) });
+  return runAction({ name: "account.oabs.list", allowPendingProfile: true, schema: noInput, input, handler: (ctx) => oabs.listMyOabs(ctx) });
 }
 
 export async function addMyOabAction(input: unknown) {
@@ -89,4 +91,19 @@ export async function removeMyOabAction(input: unknown) {
 
 export async function setMyPrimaryOabAction(input: unknown) {
   return runAction({ name: "account.oabs.primary", schema: oabIdSchema, input, handler: oabs.setMyPrimaryOab });
+}
+
+/* ── Cadastro pessoal (079): etapa obrigatória e "Meu perfil" ─────────── */
+
+/**
+ * As duas valem com o cadastro pessoal ainda pendente (`allowPendingProfile`):
+ * são as actions da própria etapa. Nenhuma recebe id de perfil: a conta é
+ * sempre a da sessão.
+ */
+export async function getMyProfileAction(input?: unknown) {
+  return runAction({ name: "account.profile.get", allowPendingProfile: true, schema: noInput, input, handler: (ctx) => profile.getMyProfile(ctx) });
+}
+
+export async function saveMyProfileAction(input: unknown) {
+  return runAction({ name: "account.profile.save", allowPendingProfile: true, schema: profile.personalProfileSchema, input, handler: profile.saveMyProfile });
 }

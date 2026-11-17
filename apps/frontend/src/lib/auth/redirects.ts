@@ -10,6 +10,8 @@ export const AUTH_ROUTES = {
   terms: "/termos",
   mfaEnroll: "/seguranca/mfa",
   mfaVerify: "/seguranca/verificar",
+  /** Etapa obrigatória "Complete seu cadastro" (079), depois da verificação em duas etapas. */
+  profile: "/cadastro",
   blocked: "/acesso",
   confirm: "/auth/confirm",
   home: "/home",
@@ -46,6 +48,7 @@ export const ONBOARDING_PATHS = [
   AUTH_ROUTES.terms,
   AUTH_ROUTES.mfaEnroll,
   AUTH_ROUTES.mfaVerify,
+  AUTH_ROUTES.profile,
 ] as const;
 
 export function isPublicPath(pathname: string): boolean {
@@ -114,6 +117,8 @@ export function destinationFor(result: SessionResult, next?: string | null): str
       return keep(AUTH_ROUTES.terms);
     case "MFA_ENROLL":
       return keep(AUTH_ROUTES.mfaEnroll);
+    case "PROFILE_PENDING":
+      return keep(AUTH_ROUTES.profile);
     case "READY":
       return safeNextPath(next, AUTH_ROUTES.home);
     default:

@@ -13,6 +13,10 @@ escritório. O site publicado antes do banco pronto mostra erro para todo mundo.
 
 Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
 
+> **Situação em 17/11/2026:** projeto de produção `Digital_Group_Brasil_Prod` criado, com as
+> extensões e as 79 migrations (001–079); o site publicado (`app.` e `portal.dgbrasil.adv.br`, ambiente
+> *Production* da Vercel) **já aponta para a produção**. O DEV ficou para os testes locais e de integração.
+
 > **O que "pós-MVP" quer dizer aqui (definição da dona, 14/11/2026):** não é "depois de ter
 > clientes". É a **última etapa antes do primeiro cliente real**: os preparativos finais, já com as
 > assinaturas pagas. Os passos marcados *pós-MVP* abaixo continuam obrigatórios antes do primeiro
@@ -63,13 +67,13 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
 
 ## Banco de produção
 
-- [ ] **11. Criar o projeto** em São Paulo, plano Pro, com a máquina escolhida
+- [x] **11. Criar o projeto** em São Paulo, plano Pro, com a máquina escolhida
   ([producao.md](producao.md), item 3;
   [organizacao-pre-producao.md](organizacao-pre-producao.md), seção 3).
-- [ ] **12. Ligar as extensões** `pgmq`, `pg_cron` e `pg_net` em Database →
+- [x] **12. Ligar as extensões** `pgmq`, `pg_cron` e `pg_net` em Database →
   Extensions ([supabase/README.md](../../supabase/README.md), "Aplicar no
   Supabase"; [producao.md](producao.md), itens 3 e 10).
-- [ ] **13. `supabase link` e `supabase db push`:** todas as migrations, em
+- [x] **13. `supabase link` e `supabase db push`:** todas as migrations, em
   ordem ([supabase/README.md](../../supabase/README.md);
   [producao.md](producao.md), item 3).
 - [ ] **14. Conferir os agendamentos:**
@@ -111,7 +115,7 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
 
 ## Site (sempre depois do banco)
 
-- [ ] **21. Variáveis do ambiente Production na Vercel**, conforme a tabela de
+- [x] **21. Variáveis do ambiente Production na Vercel**, conforme a tabela de
   [producao.md](producao.md), item 8. Conferir também as que devem estar
   **ausentes**: `SERPRO_CPF_TRIAL`, `SERPRO_CPF_TRIAL_TOKEN`,
   `NEXT_PUBLIC_DEMO_MODE` e `AUTH_FALLBACK_SITE_URL`. **[novo]**

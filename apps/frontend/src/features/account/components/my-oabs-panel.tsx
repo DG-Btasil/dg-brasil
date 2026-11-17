@@ -114,7 +114,7 @@ export function MyOabsPanel() {
           <Field label="UF" requirement="optional">
             {(p) => <Select {...p} placeholder="—" options={OAB_UF_OPTIONS} value={state} onChange={(e) => setState(e.target.value)} />}
           </Field>
-          <Button variant="secondary" icon={<Plus className="size-4" aria-hidden />} loading={busy === "add"} disabled={!!busy && busy !== "add"} onClick={add} className="mb-[1px]">
+          <Button variant="secondary" icon={<Plus className="size-4" aria-hidden />} loading={busy === "add"} disabled={!!busy && busy !== "add"} onClick={add} className="mb-[1px] justify-self-start">
             Adicionar OAB
           </Button>
         </div>

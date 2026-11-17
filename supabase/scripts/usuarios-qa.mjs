@@ -9,6 +9,11 @@
 // não duplica nada: só redefine a senha e confere os vínculos. Termos e MFA
 // ficam para o primeiro login, pelo próprio app (como um usuário de verdade).
 //
+// Cadastro pessoal (079): os usuários de QA já nascem com ele concluído, para
+// o QA do dia a dia não parar na etapa "Complete seu cadastro". Para testar a
+// própria etapa, rode com `-- --cadastro-pendente`: o cadastro deles volta a
+// ficar pendente e a tela aparece no próximo login.
+//
 // Os usuários das rodadas automáticas (validar:real, test:integration) têm
 // senha aleatória que nunca é gravada; estes aqui existem só para o QA.
 //
@@ -84,6 +89,9 @@ for (let page = 1; ; page++) {
   if (users.length < 1000) break
 }
 
+// 079: `-- --cadastro-pendente` deixa a etapa "Complete seu cadastro" para o login.
+const CADASTRO_PENDENTE = process.argv.includes('--cadastro-pendente')
+
 const linhas = []
 for (const u of USUARIOS) {
   let id = porEmail.get(u.email)
@@ -105,9 +113,15 @@ for (const u of USUARIOS) {
   } else if (vinculo.organization_id !== orgs[u.org] || vinculo.role !== u.papel) {
     throw new Error(`${u.email} já tem outro vínculo ativo; confira em organization_memberships antes de seguir`)
   }
+  await r(
+    service.from('profiles').update(CADASTRO_PENDENTE
+      ? { profile_completed_at: null }
+      : { office_city: 'São Paulo', office_state: 'SP', profile_completed_at: new Date().toISOString() }).eq('id', id),
+    `cadastro pessoal ${u.email}`,
+  )
   linhas.push([u.email, u.papel, nomes[u.org], porEmail.has(u.email) ? 'senha redefinida' : 'criado'])
 }
 
-console.log('\nUsuários de QA (senha = QA_SENHA; MFA e termos no primeiro login):\n')
+console.log(`\nUsuários de QA (senha = QA_SENHA; MFA e termos no primeiro login; cadastro pessoal ${CADASTRO_PENDENTE ? 'PENDENTE: a etapa aparece no próximo login' : 'concluído'}):\n`)
 for (const [email, papel, org, situacao] of linhas) console.log(`  ${email.padEnd(38)} ${papel.padEnd(14)} ${org.padEnd(22)} ${situacao}`)
 console.log('')

@@ -9,7 +9,12 @@ import type { AppSession, MfaStatus, SessionContextRow, SessionResult } from "./
  * por isso mudança de papel, inativação e suspensão valem na hora.
  *
  * Ordem: sessão ainda válida (038) → conta válida (perfil → vínculo →
- * organização) → MFA de quem já tem fator → termos → cadastro do MFA → liberado.
+ * organização) → MFA de quem já tem fator → termos → cadastro do MFA →
+ * cadastro pessoal (079) → liberado.
+ *
+ * O cadastro pessoal vem por último de propósito: a pessoa só cai nele com
+ * tudo o mais liberado (aal2). Só barra quando o banco diz `completed: false`;
+ * sem a chave (banco anterior à 079) segue como antes.
  */
 export function evaluateSession(ctx: SessionContextRow | null, mfa: MfaStatus): SessionResult {
   if (!ctx) return { state: "ANONYMOUS" };
@@ -66,5 +71,6 @@ export function evaluateSession(ctx: SessionContextRow | null, mfa: MfaStatus): 
   if (pending.length) return { ...base, state: "LEGAL_PENDING", session };
   if (!mfa.hasVerifiedFactor) return { ...base, state: "MFA_ENROLL", session };
   if (mfa.currentLevel !== "aal2") return { ...base, state: "MFA_VERIFY", session };
+  if (ctx.profile.completed === false) return { ...base, state: "PROFILE_PENDING", session };
   return { ...base, state: "READY", session };
 }
