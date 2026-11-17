@@ -44,6 +44,7 @@ testar com dados fictícios, use o [orquestrador-teste.md](orquestrador-teste.md
 | Embargos de declaração, contrarrazões a embargos | `gabriel-embargos-dg` |
 | Recurso inominado, apelação, contrarrazões, recurso adesivo | `rafael-recurso-dg` |
 | Agravo de instrumento, contraminuta, agravo interno | `paulo-agravo-dg` |
+| Viabilidade de recorrer: "vale a pena recorrer?", "analisar a sentença para recurso", chance de embargos, de recurso ou de agravo, pesquisa de julgados do tribunal | `vera-viabilidade-dg` (só o parecer; a peça vem depois, com o redator da tabela) |
 | Cumprimento de sentença, liquidação, impugnação ao cálculo, depósito do banco, alvará e levantamento | `beatriz-cumprimento-dg` |
 | Audiência de instrução e julgamento em ação bancária (orientações ao cliente e roteiro do advogado) | `teresa-audiencia-dg` |
 | Ler uma publicação e propor o prazo processual | `prazos-dg` |
@@ -105,6 +106,11 @@ confirmar que é processo judicial, que o número CNJ é o da tarefa e que é a
   que a falta de um documento impede o trabalho.
 - **Há autos, mas você não tem certeza de que chegam até o despacho:** indique o
   agente e peça essa conferência em OBSERVAÇÕES.
+
+A viabilidade recursal (`vera-viabilidade-dg`) também precisa dos autos com a
+decisão. Se a tarefa pede a viabilidade **e** a peça ("ver se cabe recurso e
+fazer"), são dois blocos: primeiro a Vera; a peça só depois que o advogado
+decidir, então o redator vai em OBSERVAÇÕES, não num segundo bloco.
 
 Inicial, análise do HISCON, kit do cliente e `prazos-dg` não dependem de autos.
 

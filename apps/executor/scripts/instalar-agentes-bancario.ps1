@@ -136,6 +136,7 @@ $trazer = @{
   'clara-hiscon-dg'     = @('ROTEIRO_CONSIGNADO_*.html', 'ROTEIRO_CONSIGNADO_*.pdf', 'TETO_NORMATIVO_*.html', 'TETO_NORMATIVO_*.pdf', $ficha)
   'lucas-procuracao-dg' = @('Procuracao_*.pdf', 'Declaracao_Hipossuficiencia_*.pdf', 'Contrato_Honorarios_*.pdf', 'Declaracao_Residencia_*.pdf', $ficha)
   'alice-inicial-dg'    = $minuta + @('PARECER_*.docx', 'TABELA_*.docx', 'TABELA_*.xlsx')
+  'vera-viabilidade-dg' = @('PARECER_VIABILIDADE_*.html', 'PARECER_VIABILIDADE_*.pdf', $ficha)
 }
 if (Test-Path $Ponte) {
   $cfg = Get-Content -Raw -Encoding UTF8 $Ponte | ConvertFrom-Json
