@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import pg from "pg";
 import type { TestProject } from "vitest/node";
 import { LEGAL_DOCUMENTS } from "../../../src/lib/auth/legal-documents";
 import { integrationEnv } from "./env";
@@ -44,6 +45,29 @@ async function verifyCode(client: SupabaseClient, factorId: string, secret: stri
   // Código da mesma janela de 30 s pode ser recusado (proteção contra reuso).
   await new Promise((r) => setTimeout(r, 30_000 - (Date.now() % 30_000) + 1_000));
   await ok(client.auth.mfa.challengeAndVerify({ factorId, code: totp(secret) }), "MFA (2ª tentativa)");
+}
+
+/**
+ * Desde a 077, só quem vê o setup do escritório cria e edita agentes. O ADMIN
+ * de teste recebe o acesso como em "Adicionar visibilidade" (076), concedido
+ * pela conta principal. A tabela é fechada à API (nem a service_role grava),
+ * por isso a gravação vai direto pelo banco (SUPABASE_DB_URL).
+ */
+async function grantOfficeSetup(ownerOrgId: string, adminId: string) {
+  if (!process.env.SUPABASE_DB_URL) throw new Error("[setup] falta SUPABASE_DB_URL em supabase/.env.real (acesso ao setup do ADMIN de teste, 077).");
+  const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+  await db.connect();
+  try {
+    const r = await db.query(
+      `insert into public.office_setup_access (organization_id, user_id, granted_by)
+       select $1, $2, o from private.office_owner_user_id() o where o is not null
+       on conflict do nothing`,
+      [ownerOrgId, adminId],
+    );
+    if (r.rowCount !== 1) throw new Error("[setup] acesso ao setup do ADMIN de teste: o escritório não tem conta principal");
+  } finally {
+    await db.end();
+  }
 }
 
 export default async function setup(project: TestProject) {
@@ -91,6 +115,8 @@ export default async function setup(project: TestProject) {
     if (!session.session) throw new Error(`[setup] sem sessão para ${r.role}`);
     users[r.role] = { id, email, organizationId: orgs[r.org], accessToken: session.session.access_token };
   }
+
+  await grantOfficeSetup(orgs.owner, users.ADMIN.id);
 
   const world: World = { run, owner: orgs.owner, partnerA: orgs.partnerA, partnerB: orgs.partnerB, bankingAreaId: area.id, users };
   project.provide("world", world);
