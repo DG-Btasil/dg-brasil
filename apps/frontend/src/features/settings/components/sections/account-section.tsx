@@ -1,5 +1,6 @@
 "use client";
 
+import { ButtonLink } from "@/components/ui/button";
 import { AccountSecurity } from "@/features/account/components/account-security";
 import { MyOabsPanel } from "@/features/account/components/my-oabs-panel";
 import { SectionHeader } from "../section-header";
@@ -8,7 +9,15 @@ import { SectionHeader } from "../section-header";
 export function AccountSection() {
   return (
     <div className="space-y-5">
-      <SectionHeader title="Sua conta e sessões" description="Suas OABs, senha, verificação em duas etapas e os dispositivos com a sua conta aberta." />
+      <SectionHeader
+        title="Sua conta e sessões"
+        description="Suas OABs, senha, verificação em duas etapas e os dispositivos com a sua conta aberta. Nome, telefone, cargo e cidade ficam em Meu perfil."
+        actions={
+          <ButtonLink href="/meu-perfil" variant="secondary" size="sm">
+            Abrir Meu perfil
+          </ButtonLink>
+        }
+      />
       <MyOabsPanel />
       <AccountSecurity />
     </div>

@@ -4,6 +4,7 @@ import pg from "pg";
 import type { TestProject } from "vitest/node";
 import { LEGAL_DOCUMENTS } from "../../../src/lib/auth/legal-documents";
 import { integrationEnv } from "./env";
+import { markProfileCompleted } from "./profile";
 import { totp } from "./totp";
 import type { World, WorldRole } from "./world-types";
 
@@ -106,6 +107,8 @@ export default async function setup(project: TestProject) {
       service.from("user_legal_acceptances").insert(LEGAL_DOCUMENTS.map((d) => ({ user_id: id, document_type: d.type, document_version: d.version }))),
       `termos ${r.role}`,
     );
+    // 079: cadastro pessoal concluído, senão a sessão sai PROFILE_PENDING.
+    await markProfileCompleted(service, id);
 
     const client = createClient(env.url, env.anonKey, options);
     await ok(client.auth.signInWithPassword({ email, password }), `login ${r.role}`);

@@ -9922,6 +9922,92 @@ await deve('limpeza [078]: só o agendador chama; search_path fixo; toda tabela 
   igual(sem.map((x) => x.relname), [], 'tabelas sem descrição')
 })
 
+// ═════════════════════════════ Cadastro pessoal [079] ════════════════════
+
+secao('Cadastro pessoal: etapa obrigatória e "Meu perfil" [079]')
+const cadastro079 = (extra = {}) => ({ full_name: 'Lucas  Andrade', preferred_name: 'Lucas', gender: 'MALE', birth_date: '1990-05-17',
+  phone: '(11) 98888-7777', job_title: 'Advogado', office_city: ' São  Paulo ', office_state: 'sp', ...extra })
+const completar079 = (uid, dados) => como(uid, (tx) => um(tx, `select public.complete_my_profile($1::jsonb) r`, [JSON.stringify(dados)])).then((x) => x.r)
+const contexto079 = (uid) => como(uid, (tx) => um(tx, `select public.get_my_session_context() c`)).then((x) => x.c)
+await deve('conta que já existia fica com o cadastro pendente; o contexto da sessão diz completed = false [079]', async () => {
+  igual((await um(db, `select count(*)::int n from profiles where profile_completed_at is not null`)).n, 0, 'ninguém concluído de fábrica')
+  const c = await contexto079(ids.lucas)
+  igual(c.profile.completed, false, 'completed')
+  igual(Object.keys(c).sort(), ['aal', 'email', 'legal_acceptances', 'membership', 'profile', 'session_state', 'user_id'], 'chaves do contexto iguais às da 038')
+  igual(Object.keys(c.profile).sort(), ['active', 'completed', 'full_name', 'job_title', 'preferred_name'], 'chaves do perfil')
+})
+await deve('profile_completed_at e os campos novos não são editáveis direto; os antigos continuam [079]', async () => {
+  for (const col of ['profile_completed_at', 'gender', 'birth_date', 'office_city', 'office_state']) {
+    const v = col === 'profile_completed_at' ? 'now()' : col === 'birth_date' ? "date '1990-01-01'" : col === 'office_state' ? "'SP'" : col === 'gender' ? "'MALE'" : "'Santos'"
+    await deveFalhar(`UPDATE direto de ${col} recusado`, () => como(ids.lucas, (tx) => tx.query(`update profiles set ${col} = ${v} where id = $1`, [ids.lucas])), /permission denied|permissão/i)
+  }
+  await como(ids.lucas, (tx) => tx.query(`update profiles set job_title = 'Advogado pleno' where id = $1`, [ids.lucas]))
+  igual((await um(db, `select job_title from profiles where id = $1`, [ids.lucas])).job_title, 'Advogado pleno', 'cargo editável como antes')
+})
+await deve('a RPC recusa sem os obrigatórios e com dado inválido, e nada é gravado [079]', async () => {
+  const casos = [
+    [{ full_name: '' }, /nome completo/], [{ full_name: 'Acesse www.golpe.com' }, /nome completo/],
+    [{ office_city: '' }, /cidade/], [{ office_city: 'Rua 9, 123' }, /cidade/], [{ office_state: '' }, /UF/], [{ office_state: 'S1' }, /UF/],
+    [{ gender: 'X' }, /Gênero/], [{ birth_date: '17/05/1990' }, /nascimento/], [{ birth_date: '1990-02-31' }, /nascimento/],
+    [{ birth_date: '2020-01-01' }, /nascimento/], [{ birth_date: '1850-01-01' }, /nascimento/],
+    [{ phone: '98888-7777' }, /telefone/], [{ phone: '0198888777' }, /telefone/], [{ preferred_name: 'x'.repeat(41) }, /prefere ser chamado/],
+    [{ job_title: 'c'.repeat(81) }, /Cargo/],
+  ]
+  for (const [extra, padrao] of casos) {
+    let msg = ''
+    try { await completar079(ids.lucas, cadastro079(extra)) } catch (e) { msg = e.message }
+    if (!padrao.test(msg)) throw new Error(`${JSON.stringify(extra)}: esperava ${padrao}, veio "${msg}"`)
+  }
+  igual((await um(db, `select profile_completed_at c, office_city from profiles where id = $1`, [ids.lucas])), { c: null, office_city: null }, 'nada gravado')
+})
+await deve('sem sessão, sem a verificação em duas etapas ou com a conta inativa: recusado [079]', async () => {
+  const dados = JSON.stringify(cadastro079())
+  const comClaims = (claims) => db.transaction(async (tx) => {
+    await tx.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)])
+    await tx.query('set local role authenticated')
+    return tx.query(`select public.complete_my_profile($1::jsonb)`, [dados])
+  })
+  await deveFalhar('aal1', () => comClaims({ sub: ids.lucas, role: 'authenticated', aal: 'aal1' }), /duas etapas/)
+  await deveFalhar('sem sub', () => comClaims({ role: 'authenticated', aal: 'aal2' }), /Sem sessão/)
+  await db.query('begin')
+  try {
+    await db.query(`update profiles set active = false where id = $1`, [ids.ana])
+    let msg = ''
+    try {
+      await db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: ids.ana, role: 'authenticated', aal: 'aal2' })])
+      await db.query(`select public.complete_my_profile($1::jsonb)`, [dados])
+    } catch (e) { msg = e.message }
+    if (!/Conta inativa/.test(msg)) throw new Error(`conta inativa: veio "${msg}"`)
+  } finally { await db.query('rollback') }
+  const anon = await um(db, `select has_function_privilege('anon', 'public.complete_my_profile(jsonb)', 'execute') a, has_function_privilege('authenticated', 'public.complete_my_profile(jsonb)', 'execute') u`)
+  igual([anon.a, anon.u], [false, true], 'grants')
+})
+await deve('a primeira gravação conclui o cadastro, normaliza os dados e audita uma vez; a segunda só atualiza [079]', async () => {
+  const r1 = await completar079(ids.lucas, cadastro079())
+  igual(r1.first_time, true, 'primeira vez')
+  const p1 = await um(db, `select full_name, preferred_name, gender, birth_date::text b, phone, job_title, office_city, office_state::text uf, profile_completed_at c from profiles where id = $1`, [ids.lucas])
+  igual([p1.full_name, p1.preferred_name, p1.gender, p1.b, p1.phone, p1.job_title, p1.office_city, p1.uf],
+    ['Lucas Andrade', 'Lucas', 'MALE', '1990-05-17', '11988887777', 'Advogado', 'São Paulo', 'SP'], 'gravado e normalizado')
+  igual((await contexto079(ids.lucas)).profile.completed, true, 'contexto: completed')
+  // Opcionais vazios apagam o que estava; a data da conclusão não muda.
+  const r2 = await completar079(ids.lucas, { full_name: 'Lucas Andrade', office_city: 'Campinas', office_state: 'SP' })
+  igual(r2.first_time, false, 'segunda vez')
+  const p2 = await um(db, `select preferred_name, gender, birth_date, phone, job_title, office_city, profile_completed_at c from profiles where id = $1`, [ids.lucas])
+  igual([p2.preferred_name, p2.gender, p2.birth_date, p2.phone, p2.job_title, p2.office_city], [null, null, null, null, null, 'Campinas'], 'opcionais apagados')
+  igual(new Date(p2.c).getTime(), new Date(p1.c).getTime(), 'data da conclusão preservada')
+  const ev = await linhas(db, `select actor_user_id, metadata from audit_events where action = 'PERSONAL_PROFILE_COMPLETED' and entity_id = $1`, [ids.lucas])
+  igual(ev.map((e) => [e.actor_user_id, e.metadata]), [[ids.lucas, {}]], 'auditoria: uma vez, sem dado pessoal')
+})
+await deve('cada pessoa só mexe no próprio cadastro; cadastro concluído não perde a cidade [079]', async () => {
+  // Não há parâmetro de id: "id" no pedido é ignorado e quem muda é sempre quem chamou.
+  await completar079(ids.almeidaAdm, cadastro079({ full_name: 'Roberto Almeida', id: ids.ana, user_id: ids.ana }))
+  igual((await um(db, `select profile_completed_at c from profiles where id = $1`, [ids.ana])).c, null, 'a outra conta não mudou')
+  igual((await um(db, `select full_name from profiles where id = $1`, [ids.almeidaAdm])).full_name, 'Roberto Almeida', 'mudou a de quem chamou')
+  igual((await como(ids.lucas, (tx) => tx.query(`update profiles set job_title = 'Invadido' where id = $1`, [ids.ana]))).affectedRows ?? 0, 0, 'UPDATE em perfil alheio não pega linha')
+  await deveFalhar('apagar a cidade de cadastro concluído', () => db.query(`update profiles set office_city = null where id = $1`, [ids.lucas]), /profiles_completed_has_office/)
+  await deveFalhar('gênero fora da lista', () => db.query(`update profiles set gender = 'X' where id = $1`, [ids.lucas]), /profiles_gender_known/)
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(

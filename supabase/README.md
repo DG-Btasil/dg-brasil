@@ -9,9 +9,9 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 
 > **Regra de migrations.** Migration aplicada **nunca** é reescrita: mudança
 > nova é sempre um arquivo novo, com o número seguinte. Em 17/11/2026 o
-> repositório tem **78 migrations (001–078)**. No Supabase de desenvolvimento,
-> **a 077 e a 078 ainda precisam do `db push`**; antes de aplicar, confira o que
-> já está lá com `npx supabase migration list`.
+> repositório tem **79 migrations (001–079)**. No Supabase de desenvolvimento,
+> **a 077, a 078 e a 079 ainda precisam do `db push`**; antes de aplicar,
+> confira o que já está lá com `npx supabase migration list`.
 > Nenhuma das aplicadas pode ser editada. (As 19 primeiras foram corrigidas no
 > lugar só até 2026-10-09, antes do primeiro `db push` real; a conferência de
 > que o DEV bate com os arquivos está em
@@ -22,7 +22,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As migrations, em ordem. As 19 primeiras seguem a seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade, com a RLS testada por papel: aplica **todas** as migrations do zero e confere cada uma (os blocos são marcados com o número da migration, de `[020]` a `[078]`). 1.210 verificações até a 078; cada migration nova acrescenta as suas, e o total aparece no fim de `npm run verificar` |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade, com a RLS testada por papel: aplica **todas** as migrations do zero e confere cada uma (os blocos são marcados com o número da migration, de `[020]` a `[079]`). 1.228 verificações até a 079; cada migration nova acrescenta as suas, e o total aparece no fim de `npm run verificar` |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq`, `pg_cron` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 | `scripts/usuarios-qa.mjs` | Usuários **fixos** para QA manual no DEV (LAWYER, ASSISTANT e PARTNER_ADMIN/PARTNER_USER de "Parceiro QA A/B"), senha em `QA_SENHA`; termos e MFA no primeiro login (`npm run usuarios:qa`) |
@@ -117,6 +117,7 @@ revalida contra o usuário que está agindo:
 | `change_case_origin(caso, nova_origem, motivo, ator?)` | Troca a origem comercial; após o aceite, só ADMIN e com motivo; cancela/cria o snapshot de parceria → audita |
 | `override_case_status(caso, status, motivo, ator?)` | Exceção de status de ADMIN (reabrir encerrado, reconsiderar rejeição), com motivo → audita |
 | `record_personal_data_access(cliente, recurso, id, ação, finalidade?, ator?)` | Registra acesso a dado pessoal (LGPD) |
+| `complete_my_profile(dados)` | A pessoa grava o PRÓPRIO cadastro pessoal (nome, tratamento, gênero, nascimento, telefone, cargo, cidade e UF de trabalho). Sempre `auth.uid()`, sem parâmetro de id, exige `aal2`. A primeira gravação marca `profiles.profile_completed_at` → audita (079) |
 | `get_agent_run_summaries(caso?, limite?)` | Execuções de agente para ADMIN (todas) e LAWYER (casos que acessa), com colunas fixas e sem dado técnico |
 
 `ator` (p_actor) só é usado quando o backend chama com a service role: informa o
@@ -520,6 +521,7 @@ foi resetado em seguida.
 | `20261114000076_setup_visibilidade` | Setup: "Adicionar visibilidade". Outros ADMINs do escritório principal podem receber acesso ao setup (`office_setup_access`); o acesso some se a pessoa deixar de ser ADMIN ativa. Testes `[076]` |
 | `20261117000077_agentes_so_setup` | O conteúdo dos agentes (`agent_versions`: orientações e configuração) só para quem vê o setup; ADMIN sem setup vê a lista, pausa, ativa e executa. `dg_save_agent_once` (039) refeita. Testes `[077]`. **Falta aplicar no DEV** |
 | `20261117000078_indices_e_limpeza` | Revisão do banco antes do lançamento: índices por processo, por execução e por responsável (`deadlines_process_idx`, `reviews_process_idx`, `legal_analyses_agent_run_idx`, `legal_processes_responsible_idx`); CPF de escritório parceiro único (`organizations_cpf_key`, só é criado se não houver repetido); `updated_at` automático em quatro tabelas de configuração; limpeza diária dos dados operacionais com mais de 120 dias (`private.operational_housekeeping`, `dg-limpeza-operacional`); guarda de 5 anos da auditoria e dos acessos LGPD (`private.audit_retention_housekeeping`, na mesma rotina); descrição em todas as tabelas. Não muda regra, permissão nem assinatura. Testes `[078]`. **Falta aplicar no DEV** |
+| `20261118000079_cadastro_pessoal` | Cadastro pessoal: etapa obrigatória "Complete seu cadastro" e tela "Meu perfil". `profiles` ganha `gender`, `birth_date`, `office_city`, `office_state` e `profile_completed_at` (nulo = pendente; contas existentes ficam pendentes de propósito, sem preenchimento retroativo); `complete_my_profile(jsonb)` grava e valida (as colunas novas não têm `UPDATE` direto pela API); `get_my_session_context()` (038) refeita com o corpo idêntico e a chave `profile.completed`. **Ordem de publicação: migration primeiro, site depois.** Testes `[079]`. **Falta aplicar no DEV** |
 
 ### Revisão do banco (2026-11-17)
 

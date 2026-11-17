@@ -122,13 +122,18 @@ export class AuthorizationError extends Error {
 }
 
 /**
- * Para Server Actions e Route Handlers: exige acesso liberado (MFA + termos) e,
- * se informado, a permissão. Lança AuthorizationError (a action converte em
- * mensagem); nunca confia em papel vindo do navegador.
+ * Para Server Actions e Route Handlers: exige acesso liberado (MFA + termos +
+ * cadastro pessoal) e, se informado, a permissão. Lança AuthorizationError (a
+ * action converte em mensagem); nunca confia em papel vindo do navegador.
+ *
+ * `allowPendingProfile`: só para as actions da própria etapa "Complete seu
+ * cadastro" (079). A sessão já passou por tudo, inclusive aal2; falta só o
+ * cadastro pessoal. Nenhuma outra action deve ligar isto.
  */
-export async function authorizeAction(permission?: Permission): Promise<AppSession> {
+export async function authorizeAction(permission?: Permission, options?: { allowPendingProfile?: boolean }): Promise<AppSession> {
   const result = await getCurrentSession();
-  if (result.state !== "READY" || !result.session) {
+  const allowed = result.state === "READY" || (options?.allowPendingProfile === true && result.state === "PROFILE_PENDING");
+  if (!allowed || !result.session) {
     throw new AuthorizationError("Sua sessão não está liberada. Entre novamente.");
   }
   if (permission && !can(result.session.role, permission)) throw new AuthorizationError();

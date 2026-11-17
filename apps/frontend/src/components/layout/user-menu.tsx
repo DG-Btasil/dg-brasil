@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { Compass, LogOut, Settings, UserRound } from "lucide-react";
+import { Compass, IdCard, LogOut, Settings, UserRound } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
@@ -67,6 +67,9 @@ export function UserMenu() {
             </div>
           </div>
           <div className="py-1.5">
+            <Link role="menuitem" href="/meu-perfil" className={item} onClick={() => setOpen(false)}>
+              <IdCard className="size-4 text-subtle" aria-hidden /> Meu perfil
+            </Link>
             {canSettings ? (
               <Link role="menuitem" href="/configuracoes" className={item} onClick={() => setOpen(false)}>
                 <Settings className="size-4 text-subtle" aria-hidden /> Configurações

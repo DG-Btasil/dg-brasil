@@ -51,6 +51,7 @@ Este arquivo só diz **onde as coisas ficam**; não repita aqui o que os docs j�
 | `dg-brasil` | `dg-brasil`, `agent-runs` | `dg`, `agents` |
 | `configuracoes` | `settings`, `data-import`, `integrations` | `organizations`, `imports` |
 | `notificacoes` | `notifications` | `notifications` |
+| `meu-perfil` e a etapa `cadastro` (fora de `(app)`) | `account`, `auth` | `account` (`profile.ts`) |
 | login, MFA, termos (fora de `(app)`) | `auth` | `server/auth/` |
 
 ## Receita: mexer num domínio

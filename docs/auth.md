@@ -48,6 +48,7 @@ ORGANIZATION_PENDING → /acesso?motivo=escritorio-pendente
 MFA_VERIFY (tem fator, sessão aal1) → /seguranca/verificar
 LEGAL_PENDING (versão vigente não aceita) → /termos
 MFA_ENROLL (sem fator) → /seguranca/mfa
+PROFILE_PENDING (tudo liberado, falta o cadastro pessoal, 079) → /cadastro
 READY → app
 ```
 
@@ -65,6 +66,39 @@ para em `/acesso?motivo=contas-em-conflito`. Em `localhost` não há
 redirecionamento.
 
 ## Fluxos
+
+**Cadastro pessoal** (`/cadastro`, migration 079): etapa obrigatória "Complete
+seu cadastro", para **todos os papéis**, nas duas superfícies, **uma vez por
+conta**. É a última: só aparece com conta válida, termos aceitos e sessão
+`aal2`; depois dela vem a introdução do produto. Vale também para quem já
+tinha conta antes da 079 (todos passam uma vez).
+
+- O estado é derivado a cada requisição: `get_my_session_context()` devolve
+  `profile.completed` (`profiles.profile_completed_at is not null`) e
+  `evaluateSession` responde `PROFILE_PENDING`. Nada em cookie nem em
+  `localStorage`. Banco anterior à 079 não devolve a chave, e aí ninguém é
+  barrado (o site novo não quebra sobre o banco antigo).
+- Campos: nome completo, cidade e UF **onde a pessoa trabalha** (obrigatórios);
+  como prefere ser chamada, gênero, data de nascimento, telefone, cargo e OAB
+  (opcionais). Regras em `src/lib/account/personal-profile.ts`, as mesmas no
+  formulário e no servidor; o banco confere de novo.
+- Quem grava é `complete_my_profile(p jsonb)`: sempre `auth.uid()`, sem
+  parâmetro de id, exige `aal2`. A primeira gravação marca
+  `profile_completed_at` e registra `PERSONAL_PROFILE_COMPLETED` (sem dado
+  pessoal). As colunas novas não têm `UPDATE` direto pela API.
+- As actions da etapa (`getMyProfileAction`, `saveMyProfileAction`,
+  `listMyOabsAction`) são as únicas com `allowPendingProfile` em `runAction`:
+  aceitam `PROFILE_PENDING` além de `READY`. Todas as outras continuam
+  recusando.
+- O nome digitado em `/primeiro-acesso` chega pré-preenchido. Conta criada
+  fora do convite (a primeira administradora) nasce com o nome tirado do e-mail:
+  nesse caso o campo vem vazio, para a pessoa escrever.
+- **Meu perfil** (`/meu-perfil`, menu do usuário, equipe e portal): o mesmo
+  formulário, para ver e editar os próprios dados e as OABs. O perfil é sempre
+  o da sessão; nenhum id vem do navegador.
+- LGPD (minimização): gênero serve ao tratamento nos textos; data de
+  nascimento, ao aviso de aniversário à equipe (função futura). Sem CPF,
+  endereço residencial ou documento pessoal.
 
 **Login** (`/login`): `signInWithPassword` no navegador (o Auth vê o IP real →
 limite de tentativas). Erro sempre "E-mail ou senha incorretos." Depois, `/`
@@ -236,8 +270,8 @@ só é gravado com a sessão nova; não há id de sessão aceito por URL ou form
 erro cru do Auth/SQL nem o `session_id`.
 
 **Introdução do produto (tour)** — separada do onboarding de segurança
-(convite → senha → termos → MFA): aparece **uma vez por usuário**, na Home,
-depois do acesso liberado. O estado é `user_preferences.tour_completed_at` no
+(convite → senha → termos → MFA → cadastro pessoal): aparece **uma vez por
+usuário**, na Home, depois do acesso liberado. O estado é `user_preferences.tour_completed_at` no
 banco (RLS: só o próprio usuário, com `aal2` — migration 024), lido pelo
 servidor em `(app)/layout.tsx`; vale em qualquer navegador. Concluir ou
 "Pular introdução" grava a data (`completeProductTour`, idempotente). Fechar o
@@ -348,17 +382,24 @@ npm run emails:preview   # pré-visualização em supabase/.preview-emails/index
    *auto confirm*).
 2. SQL Editor (postgres): `select private.bootstrap_owner_admin('<uuid>');`
    (só funciona sem ADMIN ativo — usuários do harness de validação contam).
-3. Entrar em `/login` → termos → cadastrar MFA → app. Daí em diante, convites.
+3. Entrar em `/login` → termos → cadastrar MFA → completar o cadastro pessoal
+   (o nome vem vazio, porque o bootstrap usa o e-mail) → app. Daí em diante, convites.
 
 ## Testes
 
 - `apps/frontend`: `npm test` (vitest) — matriz de permissões por papel,
-  `evaluateSession`, anti open-redirect (`safeNextPath`), superfície por host,
-  política de senha, mensagens de login e redação de logs.
+  `evaluateSession` (inclusive `PROFILE_PENDING`), anti open-redirect
+  (`safeNextPath`), superfície por host, política de senha, mensagens de login,
+  redação de logs e as regras do cadastro pessoal (`personal-profile.test.ts`).
 - `supabase/tests`: `npm run verificar` (PGlite) — seção "Auth (022)": aal1 não vê
   nada, RPCs exigem MFA, convites (inclusive IDOR entre escritórios), aceite
   idempotente/revogado/expirado, troca de papel imediata, último ADMIN, escritório
-  proprietário protegido.
+  proprietário protegido. Seção "Cadastro pessoal [079]": só a própria conta,
+  `profile_completed_at` sem `UPDATE` direto, RPC recusa sem os obrigatórios,
+  `get_my_session_context` devolve `completed`.
+- Usuários de teste já nascem com o cadastro concluído: o setup dos testes de
+  integração (`tests/integration/support/profile.ts`) e `npm run usuarios:qa`
+  marcam isso. Para ver a etapa no QA manual: `npm run usuarios:qa -- --cadastro-pendente`.
 - `npm run validar:real` (Supabase DEV, `.env.real`) — login com MFA (TOTP real)
   nos 5 papéis, convite ponta a ponta via `generateLink` + `verifyOtp` + aceite,
   IDOR do parceiro, troca de papel com efeito imediato.
@@ -390,3 +431,10 @@ npm run emails:preview   # pré-visualização em supabase/.preview-emails/index
 15. Trocar a senha em A → B cai; A continua; aviso "Sua senha foi alterada".
 16. Suspender o usuário com A aberto → próximo clique em A vai para `/acesso`.
 17. Nenhuma tela mostra IP, user agent completo, token ou id completo de sessão.
+18. **Cadastro pessoal (079)**: `npm run usuarios:qa -- --cadastro-pendente`; entrar com
+    cada papel → depois do código, cai em `/cadastro`. Tentar abrir `/home` ou
+    `/clientes` volta para `/cadastro`. Salvar sem cidade ou UF aponta os campos.
+    Salvar certo → Home, e a introdução é oferecida (equipe).
+19. Menu do usuário → **Meu perfil**: alterar "Como prefere ser chamado" e o cargo →
+    o topo da tela muda depois de salvar; adicionar e remover OAB. No portal do
+    parceiro o item também aparece.

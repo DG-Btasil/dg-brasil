@@ -259,6 +259,12 @@ fica como está.
   Atenção: [producao.md](producao.md), item 9, recomenda ter o texto definitivo antes do
   primeiro cliente real. **Decisão de 14/11/2026:** fica no pós-MVP, que pela definição acima
   já é antes do primeiro cliente real; lança tecnicamente com o provisório.
+  **Para o texto definitivo, dados da própria equipe e dos parceiros (cadastro pessoal, migration 079):**
+  a política precisa dizer que o sistema guarda, de cada pessoa com acesso, nome, como prefere ser
+  chamada, cargo, telefone, cidade e UF onde trabalha e OAB; e, **só se a pessoa informar**, o
+  **gênero** (finalidade: tratá-la corretamente nos textos do sistema) e a **data de nascimento**
+  (finalidade: aviso de aniversário à equipe, função ainda não implementada). Os dois são opcionais,
+  a pessoa altera ou apaga em "Meu perfil", e não há CPF, endereço residencial nem documento pessoal.
 - **Revisão LGPD** do provedor de IA e do Google Drive ([producao.md](producao.md), itens 7 e
   9): também pós-MVP desde 14/11/2026, obrigatória antes do primeiro dado real.
 
