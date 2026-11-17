@@ -10,7 +10,9 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 > **Regra de migrations.** Migration aplicada **nunca** é reescrita: mudança
 > nova é sempre um arquivo novo, com o número seguinte. Em 17/11/2026 o
 > repositório tem **79 migrations (001–079)**. No Supabase de desenvolvimento,
-> **todas estão aplicadas (a 079 em 17/11/2026)**; antes de aplicar uma nova,
+> **todas estão aplicadas (a 079 em 17/11/2026)**, e na produção também
+> (`Digital_Group_Brasil_Prod`, que é o banco do site publicado). Migration nova vai
+> **primeiro no DEV, depois na produção, e só então o site**; antes de aplicar uma nova,
 > confira o que já está lá com `npx supabase migration list`.
 > Nenhuma das aplicadas pode ser editada. (As 19 primeiras foram corrigidas no
 > lugar só até 2026-10-09, antes do primeiro `db push` real; a conferência de

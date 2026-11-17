@@ -30,9 +30,9 @@ hora de contratar.
 | 3 | Supabase de produção, no plano Pro | O gratuito pausa sem uso e não tem backup | A partir de US$ 25 por mês |
 | 4 | Segurança do login | Recursos do Supabase Pro | Já vem com o Supabase Pro |
 | 5 | E-mail de suporte e envio de e-mails | O envio que recebe e manda é pago | Plano pago do Zoho Mail |
-| 6 | Domínios `app.` e `portal.dgbrasil.adv.br` (já no ar) | Falta só ligar ao Supabase de produção | Já pago |
+| 6 | Domínios `app.` e `portal.dgbrasil.adv.br` (já no ar) | Ligados ao Supabase de produção desde 17/11/2026 | Já pago |
 | 7 | Claude com dados de clientes | Hoje só há dados fictícios | Plano Team ou Enterprise |
-| 8 | Variáveis e chaves de produção | Hoje tudo aponta para o DEV | Sem custo |
+| 8 | Variáveis e chaves de produção | O site publicado aponta para a produção desde 17/11/2026; o DEV fica para os testes | Sem custo |
 | 9 | Conferências antes do primeiro dado real | Exigência para dado real | Sem custo |
 | 10 | Integração judicial: mais buscas por dia | Hobby: 1 rodada por dia pela Vercel (os lotes saem do agendador do banco) | Já vem com o Vercel Pro |
 | 11 | ~~Conferir as publicações com o APOGEU~~ | Removido em 2026-11-09: o APOGEU não será usado | — |
@@ -567,8 +567,8 @@ acrescente:
 
 ## 19. Ambiente de teste depois da virada (decisão pendente)
 
-- **Hoje:** `app.dgbrasil.adv.br` e `portal.dgbrasil.adv.br` apontam para o
-  projeto **DEV**. Na virada, o mesmo endereço passa a ser a produção (item 6).
+- **Antes de 17/11/2026:** `app.dgbrasil.adv.br` e `portal.dgbrasil.adv.br` apontavam para o
+  projeto **DEV**. **Desde 17/11/2026 apontam para a produção** (item 6).
   Sem outro lugar, toda correção depois do lançamento iria direto para os
   clientes, e os scripts de teste não teriam onde rodar: eles recusam a
   produção (item 3).
