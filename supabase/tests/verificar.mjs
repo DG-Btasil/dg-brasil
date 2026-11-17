@@ -3843,7 +3843,7 @@ await deve('ADMIN cria agente com versão, skill e configuração; LAWYER não',
   igual([a.status, a.m], ['ACTIVE', 'claude-opus-5-5'], 'agente ativo com a versão')
   igual((await linhas(db, `select 1 from agent_skill_bindings where agent_id = $1 and enabled`, [ids.ag039])).length, 1, 'skill vinculada')
   await salvarAgente(ids.lucas, randomUUID(), { slug: 'x-lawyer', name: 'X', instructions: 'x' }).then(
-    () => { throw new Error('LAWYER criou agente') }, (e) => { if (!/Somente ADMIN/.test(e.message)) throw e })
+    () => { throw new Error('LAWYER criou agente') }, (e) => { if (!/Somente ADMIN|setup do escritório/.test(e.message)) throw e })
 })
 await deve('salvar sem mudar instruções/configuração não cria versão; mudar cria v2; desvincular desabilita sem apagar', async () => {
   const base = { id: ids.ag039, name: 'Lucas (kit)', status: 'ACTIVE', instructions: 'Você gera o kit de documentos do cliente.',
@@ -9772,6 +9772,48 @@ await deve('catálogo [075]: assinaturas, definer, search_path e quem executa ig
     ['judicial_ingest_datajud', true, true, 'p_run_id uuid, p_ref_id uuid, p_ok boolean, p_error text, p_meta jsonb, p_movements jsonb, p_transient boolean', false, false, false, true],
     ['legal_processes_track_cnj', true, true, '', false, false, false, false],
   ], 'uma função de cada, definer, search_path vazio, mesmos grants')
+})
+
+// ═════════════════════════════ Agentes só com o setup [077] ══════════════
+
+secao('Agentes: orientações, configuração e versões só para quem vê o setup [077]')
+const versoes077 = (uid) => como(uid, async (tx) => (await um(tx, `select count(*)::int n from agent_versions`)).n)
+const salvar077 = (uid) => salvarAgente(uid, randomUUID(), { id: ids.ag039, name: 'Lucas (kit)', status: 'ACTIVE',
+  instructions: 'Conteúdo 077.', configuration: { model: 'claude-opus-5-5' } })
+await deve('ADMIN sem setup vê a lista de agentes, mas não lê nenhuma versão (orientações e configuração)', async () => {
+  igual(await setupPode(ids.adm072), false, 'Clarice sem setup')
+  const n = await como(ids.adm072, async (tx) => (await um(tx, `select count(*)::int n from agents where deleted_at is null`)).n)
+  igual(n > 0, true, 'vê os agentes')
+  igual(await versoes077(ids.adm072), 0, 'nenhuma versão')
+  igual((await versoes077(ids.barbara)) > 0, true, 'a conta principal lê')
+})
+await deve('ADMIN sem setup não edita, não cria agente nem versão direto; pausa e ativa continuam', async () => {
+  await salvar077(ids.adm072).then(() => { throw new Error('editou') }, (e) => { if (!/setup do escritório/.test(e.message)) throw e })
+  await salvarAgente(ids.adm072, randomUUID(), { slug: 'novo-077', name: 'Novo 077', instructions: 'x' })
+    .then(() => { throw new Error('criou') }, (e) => { if (!/setup do escritório/.test(e.message)) throw e })
+  await como(ids.adm072, (tx) => tx.query(`insert into agents (slug, name) values ('direto-077', 'Direto')`))
+    .then(() => { throw new Error('inseriu agente') }, (e) => { if (!/row-level security/.test(e.message)) throw e })
+  await como(ids.adm072, (tx) => tx.query(`insert into agent_versions (agent_id, instructions) values ($1, 'x')`, [ids.ag039]))
+    .then(() => { throw new Error('inseriu versão') }, (e) => { if (!/row-level security/.test(e.message)) throw e })
+  await como(ids.adm072, (tx) => tx.query(`select public.dg_set_agent_status($1, 'INACTIVE')`, [ids.ag039]))
+  await como(ids.adm072, (tx) => tx.query(`select public.dg_set_agent_status($1, 'ACTIVE')`, [ids.ag039]))
+  igual((await um(db, `select status from agents where id = $1`, [ids.ag039])).status, 'ACTIVE', 'pausou e ativou')
+})
+await deve('quem recebe acesso ao setup lê e edita; quem perde, deixa de ler', async () => {
+  await setupAcesso(ids.barbara, ids.adm072, true)
+  try {
+    igual((await versoes077(ids.adm072)) > 0, true, 'lê com o setup')
+    igual((await salvar077(ids.adm072)).version_created, true, 'editou: versão nova')
+  } finally {
+    await setupAcesso(ids.barbara, ids.adm072, false)
+  }
+  igual(await versoes077(ids.adm072), 0, 'sem o setup, não lê mais')
+})
+await deve('advogado e parceiro continuam sem ver; o worker continua lendo [077]', async () => {
+  for (const u of [ids.lucas, ids.almeidaAdm]) igual(await versoes077(u), 0, 'sem versões')
+  igual((await comoWorker(async (tx) => (await um(tx, `select count(*)::int n from agent_versions`)).n)) > 0, true, 'worker lê')
+  const pol = await linhas(db, `select tablename t, policyname p from pg_policies where tablename in ('agents', 'agent_versions') and cmd in ('SELECT', 'INSERT') and 'authenticated' = any(roles) order by 1, 2`)
+  igual(pol.map((x) => `${x.t}.${x.p}`), ['agent_versions.agent_versions_insert_setup', 'agent_versions.agent_versions_select_setup', 'agents.agents_insert_setup', 'agents.agents_select_admin'], 'políticas')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

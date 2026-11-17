@@ -2,7 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { REFERENCE_FILE_TYPES } from "@/lib/constants/ai";
 import type { AgentStatus, ReferenceMaterialStatus, ReferenceMaterialType, ThesisStatus } from "@/lib/constants/status";
 import { requireInternal, requirePermission, type ServiceContext } from "@/server/core/context";
-import { DomainError, notFound } from "@/server/core/errors";
+import { DomainError, forbidden, notFound } from "@/server/core/errors";
+import { canUseOfficeSetup } from "@/server/domain/account/setup";
 import type {
   AgentDetailDTO, AgentListItemDTO, AiRuntimeStatusDTO, CreatedExecutorDTO, DgCatalogDTO, DgOverviewDTO, ExecutorDTO, ExecutorWakeDTO, ExecutorWakeStatus, HistoryEntryDTO,
   OfficeStatusDTO, PreparedReferenceFileDTO, ReferenceItemDTO, SaveResultDTO, ThesisDetailDTO, ThesisListItemDTO, VersionItemDTO,
@@ -84,13 +85,19 @@ export async function catalog(ctx: ServiceContext): Promise<DgCatalogDTO> {
 
 /* ─── agentes ────────────────────────────────────────────────────────── */
 
+/**
+ * O conteúdo dos agentes (orientações, configuração e versões) é de quem vê o
+ * setup do escritório (077): os outros ADMINs veem a lista, pausam, ativam e
+ * executam, mas não leem nem editam. O banco já esconde (RLS em
+ * agent_versions); aqui nem se pergunta.
+ */
 export async function listAgents(ctx: ServiceContext): Promise<AgentListItemDTO[]> {
   requireAdmin(ctx);
-  const [agents, thesisB, runs] = await Promise.all([
-    repo.listAgents(ctx.db), repo.bindings(ctx.db, "agent_thesis_bindings"), repo.recentRuns(ctx.db, daysAgo(7)),
+  const [agents, thesisB, runs, content] = await Promise.all([
+    repo.listAgents(ctx.db), repo.bindings(ctx.db, "agent_thesis_bindings"), repo.recentRuns(ctx.db, daysAgo(7)), canUseOfficeSetup(ctx),
   ]);
   const [vers, last] = await Promise.all([
-    repo.agentVersionsByIds(ctx.db, agents.map((a) => a.current_version_id).filter((v): v is string => !!v)),
+    content ? repo.agentVersionsByIds(ctx.db, agents.map((a) => a.current_version_id).filter((v): v is string => !!v)) : Promise.resolve([]),
     repo.lastRunPerAgent(ctx.db, agents.map((a) => a.id)),
   ]);
   const vById = new Map(vers.map((v) => [v.id, v]));
@@ -109,11 +116,11 @@ export async function listAgents(ctx: ServiceContext): Promise<AgentListItemDTO[
 
 export async function getAgent(ctx: ServiceContext, id: string): Promise<AgentDetailDTO> {
   requireAdmin(ctx);
-  const a = await repo.getAgent(ctx.db, id);
+  const [a, content] = await Promise.all([repo.getAgent(ctx.db, id), canUseOfficeSetup(ctx)]);
   if (!a) throw notFound("Agente não encontrado.");
   const [allVersions, current, thesisB, refB, tpl, last, runs] = await Promise.all([
-    repo.agentVersions(ctx.db, id),
-    a.current_version_id ? repo.agentVersionsByIds(ctx.db, [a.current_version_id], true) : Promise.resolve([]),
+    content ? repo.agentVersions(ctx.db, id) : Promise.resolve([]),
+    content && a.current_version_id ? repo.agentVersionsByIds(ctx.db, [a.current_version_id], true) : Promise.resolve([]),
     repo.bindings(ctx.db, "agent_thesis_bindings"), repo.bindings(ctx.db, "agent_reference_bindings"),
     repo.templates(ctx.db), repo.lastRunPerAgent(ctx.db, [id]), repo.recentRuns(ctx.db, daysAgo(7)),
   ]);
@@ -129,6 +136,7 @@ export async function getAgent(ctx: ServiceContext, id: string): Promise<AgentDe
     versionId: v?.id, instructions: v?.instructions ?? "", config: cfg, versions: versions(allVersions, names),
     thesisIds, referenceIds: pairs(refB).byA.get(id) ?? [],
     templates: tpl.filter((t) => t.primary_agent_id === id).map((t) => ({ id: t.id, name: t.name })),
+    canEdit: content,
   };
 }
 
@@ -144,6 +152,7 @@ function toSaveResult(r: Record<string, unknown>, idKey: string): SaveResultDTO 
 
 export async function saveAgent(ctx: ServiceContext, input: SaveAgentInput): Promise<SaveResultDTO> {
   requireAdmin(ctx);
+  if (!(await canUseOfficeSetup(ctx))) throw forbidden("Só quem vê o setup do escritório cria ou edita agentes.");
   const payload: Record<string, unknown> = {
     ...(input.id ? { id: input.id } : { slug: slugify(input.name, input.key.slice(0, 6)) }),
     name: input.name,

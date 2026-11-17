@@ -36,20 +36,22 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
   const [tab, setTab] = useUrlTab<AgentTab>(TABS, "visao-geral");
   const [editing, setEditing] = useState(false);
   const [running, setRunning] = useState(false);
+  // Orientações e versões são de quem vê o setup do escritório (077).
   const items: TabItem<AgentTab>[] = [
     { key: "visao-geral", label: "Visão geral" },
-    { key: "instrucoes", label: "Orientações" },
+    ...(agent.canEdit ? [{ key: "instrucoes" as const, label: "Orientações" }] : []),
     { key: "conhecimento", label: "Teses e referências", count: agent.thesisIds.length + agent.referenceIds.length },
     { key: "execucoes", label: "Execuções" },
-    { key: "versoes", label: "Versões", count: agent.versions.length },
+    ...(agent.canEdit ? [{ key: "versoes" as const, label: "Versões", count: agent.versions.length }] : []),
   ];
+  const shown = agent.canEdit || (tab !== "instrucoes" && tab !== "versoes") ? tab : "visao-geral";
   return (
     <>
       <Header agent={agent} onEdit={() => setEditing(true)} onRun={() => setRunning(true)} />
-      <Tabs items={items} value={tab} onChange={setTab} label="Seções do agente" className="mb-5" />
-      <TabPanel tabKey={tab}>
-        {tab === "visao-geral" && <Overview agent={agent} catalog={catalog} />}
-        {tab === "instrucoes" && (
+      <Tabs items={items} value={shown} onChange={setTab} label="Seções do agente" className="mb-5" />
+      <TabPanel tabKey={shown}>
+        {shown === "visao-geral" && <Overview agent={agent} catalog={catalog} />}
+        {shown === "instrucoes" && (
           <Panel>
             <PanelHeader
               title={`Orientações do DG Brasil · ${formatVersion(agent.version)}`}
@@ -60,7 +62,7 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
             </PanelBody>
           </Panel>
         )}
-        {tab === "conhecimento" && (
+        {shown === "conhecimento" && (
           <div className="space-y-5">
             <Panel>
               <PanelHeader title="Teses autorizadas" description="O agente consulta só as ativas, quando precisa." />
@@ -76,10 +78,10 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
             </Panel>
           </div>
         )}
-        {tab === "execucoes" && (
+        {shown === "execucoes" && (
           <AgentRunsPanel initialQuery={DEFAULT_AGENT_RUN_QUERY} initialResult={runs} agentId={agent.id} title="Execuções deste agente" />
         )}
-        {tab === "versoes" && (
+        {shown === "versoes" && (
           <Panel>
             <PanelHeader title="Versões" description="Append-only. Cada execução registra a versão que usou." />
             <PanelBody>
@@ -88,7 +90,7 @@ export function AgentDetail({ agent, catalog, runs }: { agent: AgentDetailDTO; c
           </Panel>
         )}
       </TabPanel>
-      {editing && <AgentFormDrawer open onOpenChange={setEditing} agent={agent} catalog={catalog} />}
+      {editing && agent.canEdit && <AgentFormDrawer open onOpenChange={setEditing} agent={agent} catalog={catalog} />}
       {running && <RunAgentDialog agent={agent} onClose={() => setRunning(false)} />}
     </>
   );
@@ -125,7 +127,7 @@ function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () =>
         meta={
           <>
             <StatusBadge status={agent.status} labels={AGENT_STATUS_LABEL} tones={AGENT_STATUS_TONE} />
-            <span>Versão {formatVersion(agent.version)}</span>
+            {agent.canEdit && <span>Versão {formatVersion(agent.version)}</span>}
             <span>Última execução: {agent.lastRunAt ? formatEventTime(agent.lastRunAt) : "sem execuções"}</span>
           </>
         }
@@ -135,9 +137,11 @@ function Header({ agent, onEdit, onRun }: { agent: AgentDetailDTO; onEdit: () =>
               <Button variant="secondary" icon={<Rocket className="size-4" aria-hidden />} onClick={onRun} disabled={agent.status !== "ACTIVE"}>
                 Executar em um caso
               </Button>
-              <Button variant="secondary" icon={<Pencil className="size-4" aria-hidden />} onClick={onEdit}>
-                Editar
-              </Button>
+              {agent.canEdit && (
+                <Button variant="secondary" icon={<Pencil className="size-4" aria-hidden />} onClick={onEdit}>
+                  Editar
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 icon={pausing ? <Pause className="size-4" aria-hidden /> : <Play className="size-4" aria-hidden />}
@@ -182,13 +186,20 @@ function Overview({ agent, catalog }: { agent: AgentDetailDTO; catalog: DgCatalo
         <PanelBody className="space-y-3">
           <DefinitionGrid
             columns={2}
-            items={[
-              { label: "Agente no Claude Code", value: agent.localAgent ? <code className="font-mono text-[12.5px]">{agent.localAgent}</code> : "Não definido" },
-              { label: "Versão do registro", value: formatVersion(agent.version) },
-              { label: "Objetivo", value: agent.purpose, wide: true },
-            ]}
+            items={
+              agent.canEdit
+                ? [
+                    { label: "Agente no Claude Code", value: agent.localAgent ? <code className="font-mono text-[12.5px]">{agent.localAgent}</code> : "Não definido" },
+                    { label: "Versão do registro", value: formatVersion(agent.version) },
+                    { label: "Objetivo", value: agent.purpose, wide: true },
+                  ]
+                : [{ label: "Objetivo", value: agent.purpose, wide: true }]
+            }
           />
-          {!agent.localAgent && (
+          {!agent.canEdit && (
+            <p className="text-[12.5px] text-muted">As orientações, a configuração e as versões deste agente ficam com quem vê o setup do escritório.</p>
+          )}
+          {agent.canEdit && !agent.localAgent && (
             <Callout tone="warning">Sem agente local definido, os trabalhos deste agente falham no computador do escritório. Edite e informe o nome.</Callout>
           )}
         </PanelBody>

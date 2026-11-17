@@ -49,6 +49,8 @@ export interface AgentDetailDTO extends AgentListItemDTO {
   thesisIds: ID[];
   referenceIds: ID[];
   templates: NamedRef[];
+  /** Vê o setup do escritório (077): lê as orientações, a configuração e as versões, e edita. */
+  canEdit: boolean;
 }
 
 export interface ThesisListItemDTO {

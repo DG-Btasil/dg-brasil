@@ -7,6 +7,7 @@ import { DgHeader } from "@/features/dg-brasil/components/shared/dg-header";
 import { ThesisTable } from "@/features/dg-brasil/components/theses/thesis-views";
 import { getDgCatalogAction, getDgOverviewAction, getOfficeStatusAction, listDgAgentsAction, listDgThesesAction } from "@/server/domain/dg/actions";
 import type { DgCatalogDTO, DgOverviewDTO } from "@/server/domain/dg/dto";
+import { canUseOfficeSetupAction } from "@/server/domain/account/actions";
 import { getDriveStatusAction } from "@/server/domain/drive/actions";
 import { getJudicialOverviewAction } from "@/server/domain/judicial/actions";
 import { listTaskAgentsAction } from "@/server/domain/process-tasks/actions";
@@ -51,6 +52,6 @@ async function Theses({ catalog }: { catalog: DgCatalogDTO }) {
 }
 
 async function Agents({ catalog }: { catalog: DgCatalogDTO }) {
-  const r = await listDgAgentsAction();
-  return r.ok ? <AgentList agents={r.data} catalog={catalog} /> : <ActionErrorState error={r} title="Não foi possível carregar os agentes." />;
+  const [r, setup] = await Promise.all([listDgAgentsAction(), canUseOfficeSetupAction()]);
+  return r.ok ? <AgentList agents={r.data} catalog={catalog} canEdit={setup.ok && setup.data === true} /> : <ActionErrorState error={r} title="Não foi possível carregar os agentes." />;
 }

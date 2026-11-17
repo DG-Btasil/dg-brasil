@@ -14,9 +14,10 @@ import type { AgentListItemDTO, DgCatalogDTO } from "@/server/domain/dg/dto";
 import { dgRoutes, formatVersion } from "../../utils";
 import { AgentFormDrawer } from "./agent-form-drawer";
 
-export function AgentList({ agents, catalog }: { agents: AgentListItemDTO[]; catalog: DgCatalogDTO }) {
+/** `canEdit`: vê o setup do escritório (077). Sem ele, a lista não mostra o Criar agente nem o conteúdo dos agentes. */
+export function AgentList({ agents, catalog, canEdit }: { agents: AgentListItemDTO[]; catalog: DgCatalogDTO; canEdit: boolean }) {
   const [creating, setCreating] = useState(false);
-  const createButton = (
+  const createButton = canEdit && (
     <Can permission="dgbrasil.manage">
       <Button icon={<Plus className="size-4" aria-hidden />} onClick={() => setCreating(true)}>
         Criar agente
@@ -31,7 +32,11 @@ export function AgentList({ agents, catalog }: { agents: AgentListItemDTO[]; cat
         <EmptyState
           icon={Users}
           title="Nenhum agente configurado."
-          description="Crie um agente com as instruções que você já usa no Claude Code (dá para importar o arquivo .md)."
+          description={
+            canEdit
+              ? "Crie um agente com as instruções que você já usa no Claude Code (dá para importar o arquivo .md)."
+              : "Os agentes são cadastrados por quem vê o setup do escritório."
+          }
           action={createButton}
         />
         {drawer}
@@ -53,7 +58,7 @@ export function AgentList({ agents, catalog }: { agents: AgentListItemDTO[]; cat
       <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
         {agents.map((agent) => (
           <li key={agent.id}>
-            <AgentCard agent={agent} />
+            <AgentCard agent={agent} canEdit={canEdit} />
           </li>
         ))}
       </ul>
@@ -62,7 +67,7 @@ export function AgentList({ agents, catalog }: { agents: AgentListItemDTO[]; cat
   );
 }
 
-function AgentCard({ agent }: { agent: AgentListItemDTO }) {
+function AgentCard({ agent, canEdit }: { agent: AgentListItemDTO; canEdit: boolean }) {
   return (
     <Link
       href={dgRoutes.agent(agent.id)}
@@ -77,13 +82,19 @@ function AgentCard({ agent }: { agent: AgentListItemDTO }) {
       </div>
       <p className="mt-3 text-[12px] text-muted">
         <span className="text-subtle">No Claude Code: </span>
-        {agent.localAgent ? <code className="font-mono text-foreground">{agent.localAgent}</code> : <span className="text-warning">não definido</span>}
+        {!canEdit ? (
+          <span className="text-subtle">reservado ao setup</span>
+        ) : agent.localAgent ? (
+          <code className="font-mono text-foreground">{agent.localAgent}</code>
+        ) : (
+          <span className="text-warning">não definido</span>
+        )}
       </p>
       <dl className="mt-3 grid grid-cols-4 gap-3 border-t border-line pt-3 text-[12px]">
         <Metric label="Teses" value={pluralize(agent.thesisCount, "Tese", "Teses")} />
         <Metric label="Última execução" value={agent.lastRunAt ? formatEventTime(agent.lastRunAt) : "Sem execuções"} />
         <Metric label="Execuções (7 dias)" value={String(agent.runsLast7Days)} />
-        <Metric label="Versão" value={formatVersion(agent.version)} />
+        <Metric label="Versão" value={canEdit ? formatVersion(agent.version) : "—"} />
       </dl>
       <span className="mt-3 inline-flex items-center gap-1 self-end text-[12px] font-medium text-navy-700">
         Ver agente <ChevronRight aria-hidden className="size-3.5" />
