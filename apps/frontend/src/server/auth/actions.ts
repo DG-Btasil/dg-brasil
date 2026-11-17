@@ -173,6 +173,10 @@ export async function completeInvitation(input: {
     });
     if (officeError) {
       console.error("[auth] cadastro do escritório no primeiro acesso", sanitizeForLog(officeError));
+      // CNPJ e CPF de escritório são únicos no banco (organizations_cnpj_key, organizations_cpf_key).
+      if (officeError.code === "23505") {
+        return { ok: false, error: "Já existe um escritório cadastrado com este CNPJ/CPF. Confira o número ou fale com o escritório que enviou o convite." };
+      }
       return { ok: false, error: "Não foi possível salvar os dados do escritório. Confira CNPJ/CPF e telefone e tente de novo." };
     }
   } else if (oab && (oab.number !== before.oabNumber || oab.state !== before.oabState)) {

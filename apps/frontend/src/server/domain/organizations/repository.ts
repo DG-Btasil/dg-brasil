@@ -27,6 +27,7 @@ const OWNER_SETTINGS_COLUMNS = "organization_id, principal_lawyer_name, principa
 
 const ORGANIZATION_UNIQUE: Record<string, string> = {
   organizations_cnpj_key: "Já existe um escritório com este CNPJ.",
+  organizations_cpf_key: "Já existe um escritório com este CPF.",
   // Índice parcial: um único OWNER não excluído. Nenhum caminho daqui cria
   // OWNER, mas a mensagem fica pronta caso o banco recuse.
   organizations_single_owner: "Já existe um escritório proprietário. Não é possível criar outro.",

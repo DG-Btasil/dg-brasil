@@ -79,7 +79,8 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
   ```
 
   Esperado, no mínimo: `dg-expurgo-de-pedidos`, `dg-importacoes`, `dg-judicial`,
-  `dg-lembretes-de-prazo`, `dg-limpeza-do-agendador`, `dg-manutencao` e
+  `dg-judicial-vigia`, `dg-lembretes-de-prazo`, `dg-limpeza-do-agendador`,
+  `dg-limpeza-operacional` (078), `dg-manutencao` e
   `dg-vigia-da-plataforma`, mais os que as outras migrations da revisão final
   criarem (o cabeçalho de cada uma diz). `dg-deadline-reminders` **não** deve
   aparecer ([organizacao-pre-producao.md](organizacao-pre-producao.md), seção 7).

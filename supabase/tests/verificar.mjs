@@ -3238,7 +3238,8 @@ await deve('cronograma cria só OBRIGAÇÕES: nenhum recebimento, divisão ou re
   igual((await um(db, `select count(*)::int n from payment_receipts r join payments p on p.id = r.payment_id where p.financial_agreement_id = $1`, [a])).n, 0, 'recebimentos')
   const ev = await um(db, `select actor_user_id, metadata from audit_events where action = 'PAYMENT_SCHEDULE_CREATED' and entity_id = $1`, [a])
   igual([ev.actor_user_id, ev.metadata.count, ev.metadata.frequency], [ids.barbara, 2, 'MONTHLY'], 'auditoria')
-  if (JSON.stringify(ev.metadata).includes('300')) throw new Error('valor na auditoria')
+  // payment_ids fica fora da busca: UUID aleatório pode conter "300" por acaso.
+  if (JSON.stringify({ ...ev.metadata, payment_ids: undefined }).includes('300')) throw new Error('valor na auditoria')
 })
 for (const [rotulo, args, padrao] of [
   ['acordo concluído ou cancelado', 'CANCELLED', /concluído ou cancelado/],
@@ -4208,7 +4209,7 @@ await deve('manutenção (pg_cron): proposta aprovada vira prazo; execução fec
 })
 await deve('agendamentos do pg_cron registrados (manutenção a cada minuto; lembretes de prazo; importações diária [042]; DataJud a cada 20 min [043])', async () => {
   const j = await linhas(db, `select jobname, schedule from cron.job where jobname like 'dg-%' order by jobname`)
-  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-expurgo-de-pedidos', '27 6 * * *'], ['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-judicial-vigia', '*/15 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-limpeza-do-agendador', '43 6 * * *'], ['dg-manutencao', '* * * * *'], ['dg-vigia-da-plataforma', '30 11 * * 1-5']], 'jobs')
+  igual(j.map((x) => [x.jobname, x.schedule]), [['dg-expurgo-de-pedidos', '27 6 * * *'], ['dg-importacoes', '17 6 * * *'], ['dg-judicial', '*/5 * * * *'], ['dg-judicial-vigia', '*/15 * * * *'], ['dg-lembretes-de-prazo', '*/15 * * * *'], ['dg-limpeza-do-agendador', '43 6 * * *'], ['dg-limpeza-operacional', '37 6 * * *'], ['dg-manutencao', '* * * * *'], ['dg-vigia-da-plataforma', '30 11 * * 1-5']], 'jobs')
 })
 
 secao('Computador do escritório: interrupção, falha, devolução e queda [040]')
@@ -9814,6 +9815,111 @@ await deve('advogado e parceiro continuam sem ver; o worker continua lendo [077]
   igual((await comoWorker(async (tx) => (await um(tx, `select count(*)::int n from agent_versions`)).n)) > 0, true, 'worker lê')
   const pol = await linhas(db, `select tablename t, policyname p from pg_policies where tablename in ('agents', 'agent_versions') and cmd in ('SELECT', 'INSERT') and 'authenticated' = any(roles) order by 1, 2`)
   igual(pol.map((x) => `${x.t}.${x.p}`), ['agent_versions.agent_versions_insert_setup', 'agent_versions.agent_versions_select_setup', 'agents.agents_insert_setup', 'agents.agents_select_admin'], 'políticas')
+})
+
+// ═════════════════════════════ Índices e limpeza operacional [078] ══════
+
+secao('Revisão do banco: índices, limpeza de 120 dias e acabamento [078]')
+await deve('índices por processo, por execução e por responsável existem [078]', async () => {
+  const nomes = ['deadlines_process_idx', 'legal_analyses_agent_run_idx', 'legal_processes_responsible_idx', 'organizations_cpf_key', 'reviews_process_idx']
+  const r = await linhas(db, `select indexname from pg_indexes where schemaname = 'public' and indexname = any($1) order by 1`, [nomes])
+  igual(r.map((x) => x.indexname), nomes, 'índices')
+})
+await deve('dois escritórios parceiros ativos não ficam com o mesmo CPF [078]', async () => {
+  const cpf = '52998224725'
+  const livre = await linhas(db, `select id from organizations where type = 'PARTNER' and cpf is null and deleted_at is null order by created_at limit 2`)
+  igual(livre.length, 2, 'dois parceiros sem CPF para o teste')
+  await db.query('begin')
+  try {
+    await db.query(`update organizations set cnpj = null, cpf = $2 where id = $1`, [livre[0].id, cpf])
+    let recusou = false
+    await db.query('savepoint s')
+    try { await db.query(`update organizations set cnpj = null, cpf = $2 where id = $1`, [livre[1].id, cpf]) }
+    catch (e) { recusou = /organizations_cpf_key/.test(e.message); await db.query('rollback to savepoint s') }
+    igual(recusou, true, 'segundo CPF igual recusado')
+  } finally { await db.query('rollback') }
+})
+await deve('updated_at anda sozinho nas tabelas de configuração [078]', async () => {
+  const tabelas = ['ai_runtime_settings', 'judicial_monitor_status', 'judicial_settings', 'process_task_settings']
+  const t = await linhas(db, `select c.relname t from pg_trigger g join pg_class c on c.oid = g.tgrelid
+                              where not g.tgisinternal and g.tgname = c.relname || '_set_updated_at' and c.relname = any($1) order by 1`, [tabelas])
+  igual(t.map((x) => x.t), tabelas, 'gatilhos')
+})
+await deve('limpeza [078]: apaga o operacional com mais de 120 dias e deixa o recente, a auditoria, os acessos LGPD e a linha do tempo', async () => {
+  const contar = () => um(db, `select (select count(*)::int from audit_events) a, (select count(*)::int from personal_data_access_events) p,
+                                      (select count(*)::int from agent_run_events) e`)
+  await db.query('begin')
+  try {
+    await db.query(`insert into notifications (user_id, type, title, created_at) values ($1, 'CASE_UPDATE', 'velho-078', now() - interval '121 days'),
+                                                                                       ($1, 'CASE_UPDATE', 'novo-078', now() - interval '119 days')`, [ids.barbara])
+    await db.query(`insert into private.idempotency_operations (actor_user_id, operation, idempotency_key, request_hash, created_at)
+                    values ($1, 'teste.limpeza', gen_random_uuid(), $2, now() - interval '121 days'), ($1, 'teste.limpeza', gen_random_uuid(), $2, now() - interval '10 days')`, [ids.barbara, sha('a')])
+    await db.query(`insert into judicial_sync_runs (trigger, scope, status, started_at, finished_at) values
+                      ('CRON', 'ALL', 'COMPLETED', now() - interval '130 days', now() - interval '130 days'),
+                      ('CRON', 'ALL', 'RUNNING', now() - interval '130 days', null),
+                      ('CRON', 'ALL', 'COMPLETED', now() - interval '5 days', now() - interval '5 days')`)
+    const antes = await contar()
+    const sync0 = (await um(db, `select count(*)::int n from judicial_sync_runs`)).n
+    const r = (await um(db, `select private.operational_housekeeping() r`)).r
+    igual(r.errors ?? null, null, 'sem erros')
+    igual((await linhas(db, `select title from notifications where title like '%-078' order by 1`)).map((x) => x.title), ['novo-078'], 'avisos')
+    igual((await um(db, `select count(*)::int n from private.idempotency_operations where operation = 'teste.limpeza'`)).n, 1, 'idempotência')
+    igual(Number(r.judicial_sync_runs) >= 1, true, 'rodada antiga terminada apagada')
+    igual((await um(db, `select count(*)::int n from judicial_sync_runs`)).n, sync0 - Number(r.judicial_sync_runs), 'rodadas')
+    igual((await um(db, `select count(*)::int n from judicial_sync_runs where status = 'RUNNING' and started_at < now() - interval '120 days'`)).n >= 1, true, 'rodada em andamento fica')
+    igual(await contar(), antes, 'auditoria, acessos LGPD e linha do tempo intactos')
+    // Intervalo menor que 30 dias não vale: o piso protege o que é recente.
+    await db.query(`select private.operational_housekeeping(interval '1 day')`)
+    igual((await um(db, `select count(*)::int n from private.idempotency_operations where operation = 'teste.limpeza'`)).n, 1, 'piso de 30 dias')
+  } finally { await db.query('rollback') }
+})
+await deve('guarda de 5 anos [078]: auditoria e acessos LGPD com mais de 5 anos saem; o resto fica; a limpeza deixa registro', async () => {
+  await db.query('begin')
+  try {
+    const cli = (await um(db, `select id from clients order by created_at limit 1`)).id
+    // Linhas antigas só existem em teste: entram com a mesma chave que a limpeza usa.
+    await db.query(`insert into audit_events (actor_type, action, entity_type, created_at) values
+                      ('SYSTEM', 'TESTE_078_VELHO', 'teste', now() - interval '5 years 2 days'),
+                      ('SYSTEM', 'TESTE_078_NOVO', 'teste', now() - interval '4 years 11 months')`)
+    const col = (await linhas(db, `select column_name c from information_schema.columns where table_name = 'personal_data_access_events' and is_nullable = 'NO' and column_default is null order by 1`)).map((x) => x.c)
+    const antigo = await um(db, `select * from personal_data_access_events order by created_at limit 1`)
+    if (!antigo) throw new Error('sem acesso LGPD de exemplo para copiar: ' + col.join(','))
+    await db.query(`insert into personal_data_access_events select (jsonb_populate_record(e, jsonb_build_object('id', gen_random_uuid(), 'created_at', now() - interval '6 years'))).*
+                    from personal_data_access_events e where e.id = $1`, [antigo.id])
+    const acessos0 = (await um(db, `select count(*)::int n from personal_data_access_events`)).n
+    const r = (await um(db, `select private.operational_housekeeping() r`)).r
+    igual(r.errors ?? null, null, 'sem erros')
+    igual([Number(r.audit_retention.audit_events), Number(r.audit_retention.personal_data_access_events)], [1, 1], 'apagou só o vencido')
+    igual((await linhas(db, `select action from audit_events where action like 'TESTE_078_%'`)).map((x) => x.action), ['TESTE_078_NOVO'], 'auditoria recente fica')
+    igual((await um(db, `select count(*)::int n from personal_data_access_events`)).n, acessos0 - 1, 'acessos recentes ficam')
+    const reg = await um(db, `select actor_type, metadata from audit_events where action = 'AUDIT_RETENTION_PURGED' order by created_at desc limit 1`)
+    igual([reg.actor_type, reg.metadata.audit_events, reg.metadata.personal_data_access_events], ['SYSTEM', 1, 1], 'registro da limpeza')
+    // Prazo menor que 5 anos não vale.
+    igual(Number((await um(db, `select private.audit_retention_housekeeping(interval '1 day') r`)).r.audit_events), 0, 'piso de 5 anos')
+    // A chave volta a ficar desligada: a auditoria continua só-acréscimo.
+    igual((await um(db, `select coalesce(current_setting('dg.allow_physical_delete', true), '') v`)).v, 'off', 'chave desligada')
+    await db.query('savepoint s')
+    let recusou = false
+    try { await db.query(`delete from audit_events where action = 'TESTE_078_NOVO'`) } catch (e) { recusou = /append-only/.test(e.message) }
+    await db.query('rollback to savepoint s')
+    igual(recusou, true, 'DELETE direto continua recusado')
+  } finally { await db.query('rollback') }
+})
+await deve('guarda de 5 anos [078]: só o agendador chama; search_path fixo', async () => {
+  const f = await um(db, `select p.prosecdef, (p.proconfig @> array['search_path=""']) cfg, has_function_privilege('authenticated', p.oid, 'execute') auth,
+                                 has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv
+                          from pg_proc p where p.oid = 'private.audit_retention_housekeeping(interval)'::regprocedure`)
+  igual([f.prosecdef, f.cfg, f.auth, f.anon, f.srv], [true, true, false, false, false], 'função')
+})
+await deve('limpeza [078]: só o agendador chama; search_path fixo; toda tabela tem descrição', async () => {
+  const f = await um(db, `select p.prosecdef, (p.proconfig @> array['search_path=""']) cfg, has_function_privilege('authenticated', p.oid, 'execute') auth,
+                                 has_function_privilege('anon', p.oid, 'execute') anon, has_function_privilege('service_role', p.oid, 'execute') srv
+                          from pg_proc p where p.oid = 'private.operational_housekeeping(interval)'::regprocedure`)
+  igual([f.prosecdef, f.cfg, f.auth, f.anon, f.srv], [true, true, false, false, false], 'função')
+  igual(await linhas(db, `select schedule, command from cron.job where jobname = 'dg-limpeza-operacional'`), [{ schedule: '37 6 * * *', command: 'select private.operational_housekeeping()' }], 'agendamento')
+  const sem = await linhas(db, `select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                                where n.nspname in ('public', 'private') and c.relkind = 'r' and obj_description(c.oid) is null order by 1`)
+  igual(sem.map((x) => x.relname), [], 'tabelas sem descrição')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════

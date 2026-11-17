@@ -8,9 +8,10 @@ papéis: ADMIN, LAWYER, ASSISTANT (internos); PARTNER_ADMIN, PARTNER_USER.
 Domínio central: **Client → LegalCase → LegalProcess**.
 
 > **Regra de migrations.** Migration aplicada **nunca** é reescrita: mudança
-> nova é sempre um arquivo novo, com o número seguinte. Em 13/11/2026 o Supabase
-> de desenvolvimento tem **68 aplicadas (001–068)**; as da revisão final
-> (062–068) entraram no mesmo dia.
+> nova é sempre um arquivo novo, com o número seguinte. Em 17/11/2026 o
+> repositório tem **78 migrations (001–078)**. No Supabase de desenvolvimento,
+> **a 077 e a 078 ainda precisam do `db push`**; antes de aplicar, confira o que
+> já está lá com `npx supabase migration list`.
 > Nenhuma das aplicadas pode ser editada. (As 19 primeiras foram corrigidas no
 > lugar só até 2026-10-09, antes do primeiro `db push` real; a conferência de
 > que o DEV bate com os arquivos está em
@@ -21,7 +22,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As migrations, em ordem. As 19 primeiras seguem a seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade, com a RLS testada por papel: aplica **todas** as migrations do zero e confere cada uma (os blocos são marcados com o número da migration, de `[020]` a `[065]`). 951 verificações até a 061; cada migration nova acrescenta as suas, e o total aparece no fim de `npm run verificar` |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade, com a RLS testada por papel: aplica **todas** as migrations do zero e confere cada uma (os blocos são marcados com o número da migration, de `[020]` a `[078]`). 1.210 verificações até a 078; cada migration nova acrescenta as suas, e o total aparece no fim de `npm run verificar` |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq`, `pg_cron` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 | `scripts/usuarios-qa.mjs` | Usuários **fixos** para QA manual no DEV (LAWYER, ASSISTANT e PARTNER_ADMIN/PARTNER_USER de "Parceiro QA A/B"), senha em `QA_SENHA`; termos e MFA no primeiro login (`npm run usuarios:qa`) |
@@ -58,9 +59,9 @@ npx supabase db push
 Antes do `db push`, habilite as extensões (Dashboard → Database → Extensions):
 
 - **pgmq**: a fila dos agentes (a migration 018 também tenta habilitar);
-- **pg_cron**: os agendamentos do banco (manutenção a cada minuto, lembretes de
-  prazo, busca judicial, limpezas, vigia diária). A 040 tenta habilitar; sem
-  ele, nada roda sozinho;
+- **pg_cron**: os agendamentos do banco (lista completa em
+  [Agendamentos e retenção](#agendamentos-e-retenção)). A 040 tenta habilitar;
+  sem ele, nada roda sozinho;
 - **pg_net**: o agendador do banco chama a rota da busca judicial
   ([producao.md](../docs/deploy/producao.md), item 10).
 
@@ -336,6 +337,59 @@ origem Barbara Cardoso Advocacia continua vendo o caso, sem parceria financeira.
 - `personal_data_access_events` (append-only): quem abriu a ficha de qual
   titular, baixou qual documento, exportou o quê. Só IDs e ação. Abertura
   repetida da mesma ficha em 10 minutos não gera evento novo. Só ADMIN lê.
+- **Guarda de 5 anos** (decisão da dona do escritório, 17/11/2026):
+  `private.audit_retention_housekeeping` apaga de `audit_events` e de
+  `personal_data_access_events` o que tem mais de 5 anos, nunca menos, e deixa
+  o registro `AUDIT_RETENTION_PURGED` com as contagens. É a única função que
+  apaga dessas tabelas; `DELETE` direto continua recusado para todo mundo.
+
+### Agendamentos e retenção
+
+Tudo roda no próprio banco, pelo `pg_cron` (horários em UTC; Brasília = UTC−3).
+
+| Agendamento | Quando | O que faz |
+|---|---|---|
+| `dg-manutencao` | a cada minuto | Aplica proposta aprovada, fecha execução decidida, devolve à fila a reserva de computador que parou |
+| `dg-judicial` | a cada 5 min | Dispara a busca judicial quando é hora |
+| `dg-judicial-vigia` | a cada 15 min | Destrava rodada judicial presa |
+| `dg-lembretes-de-prazo` | a cada 15 min | Avisos de prazo chegando |
+| `dg-importacoes` | 06:17 todo dia | Cancela importação parada e apaga linha bruta |
+| `dg-expurgo-de-pedidos` | 06:27 todo dia | Apaga o texto dos pedidos a agente com mais de 180 dias |
+| `dg-limpeza-operacional` | 06:37 todo dia | Apaga dados operacionais com mais de 120 dias e, da auditoria e dos acessos LGPD, o que passou de 5 anos (078) |
+| `dg-limpeza-do-agendador` | 06:43 todo dia | Apaga o histórico do próprio agendador com mais de 7 dias |
+| `dg-vigia-da-plataforma` | 11:30, dias úteis | Avisa as administradoras de falha no agendador, fila parada e computador sem contato |
+
+Quanto tempo cada coisa fica guardada:
+
+| Dado | Guarda | Quem apaga |
+|---|---|---|
+| Avisos do sino (`notifications`) | 120 dias | `private.operational_housekeeping` |
+| Chaves de idempotência (`private.idempotency_operations`) | 120 dias | idem |
+| Pedidos de "Verificar agora" atendidos ou vencidos (`executor_wake_requests`) | 120 dias | idem |
+| Rodadas terminadas da busca judicial (`judicial_sync_runs`) | 120 dias | idem |
+| Arquivo morto da fila dos agentes (`pgmq.a_agent_execution`) | 120 dias | idem |
+| Texto do pedido ao agente (`agent_run_inputs`) | 180 dias | `private.purge_expired_agent_run_inputs` |
+| Linha bruta de planilha importada | até o fim do job | `private.purge_import_raw_data` |
+| Histórico do agendador (`cron.job_run_details`) | 7 dias | `private.cron_history_housekeeping` |
+| Auditoria (`audit_events`) e acessos a dados pessoais (`personal_data_access_events`) | 5 anos | `private.audit_retention_housekeeping` |
+| Linha do tempo das execuções (`agent_run_events`), financeiro, documentos | sempre | ninguém |
+
+A guarda de 5 anos nunca aceita menos de 5 anos. A limpeza de 120 dias nunca aceita menos de 30 dias, e a falha numa tabela
+não impede as outras (o retorno da função diz o que apagou e o que falhou).
+
+### Gatilhos das três tabelas centrais
+
+Um único `UPDATE` nestas tabelas dispara vários gatilhos. O Postgres roda os
+`BEFORE` e depois os `AFTER`, cada grupo **em ordem alfabética do nome**. Antes
+de criar um gatilho novo aqui, veja onde ele cai na ordem.
+
+| Tabela | Antes de gravar (valida e preenche) | Depois de gravar (efeitos) |
+|---|---|---|
+| `legal_cases` | `capture_partner_split` (congela a divisão do parceiro), `default_channel`, `guard` (máquina de estados), `set_updated_at` | `audit`, `ensure_partner_relationship` (parceiro passa a ver o cliente), `notify`, `partnership_snapshot` (retrato da parceria no aceite), `record_acceptance` |
+| `reviews` | `fill_on_insert`, `guard_status` (status só por decisão), `set_updated_at`, `validate_analysis_result`, `validate_target` | `analysis_sequence` (chama os próximos agentes), `audit`, `notify`, `queue_drive_export` (aprovado vai para a pasta do cliente), `sync_analysis` |
+| `agent_runs` | `cancel_request_guard`, `guard`, `redo_guard`, `retry_guard`, `set_updated_at` | `audit`, `judicial_publications` (publicação segue a execução), `log_status` (linha do tempo), `notify`, `process_tasks` (tarefa segue a execução), `sync_analysis` |
+
+O nome completo de cada gatilho é `<tabela>_<nome acima>`.
 
 ### Importação (CSV/XLSX)
 
@@ -459,9 +513,28 @@ foi resetado em seguida.
 | `20261113000069_corrigir_e_aprovar` | **Aplicada no DEV em 13/11/2026.** "Corrigir e aprovar" em Revisões: a pessoa corrige os dados da proposta do agente (prazo, pedido de documento, caso, processo) e aprova na mesma decisão (`correct_and_approve_review`); o original fica em `agent_proposals.original_payload`; auditoria `AGENT_PROPOSAL_CORRECTED`. Testes `[069]` |
 | `20261113000070_pedir_para_o_agente_refazer` | **Aplicada no DEV em 13/11/2026.** "Pedir para o agente refazer" em Revisões (`redo_agent_review`, `get_review_redo`): a revisão é rejeitada com o recado e o mesmo agente recebe um trabalho novo (`agent_runs.redo_of_run_id`, `redo_of_review_id`; um por trabalho, até 3 em cadeia); publicação continua ligada ao trabalho novo; o prazo do refeito nunca entra direto (redefine `private.judicial_direct_deadline_check` da 062). Testes `[070]` |
 | `20261113000071_prazo_corrigido_nasce_conferido` | **Aplicada no DEV em 13/11/2026.** Correções dos testes ao vivo: prazo de "Corrigir e aprovar" nasce conferido por quem corrigiu; exportação de planilha com dado de cliente entra em "Acessos a dados pessoais"; parcela de contrato em rascunho fica fora do "Em aberto" e do "Em atraso" (redefine as views do Financeiro e troca a assinatura de `finance_receivables_totals`); total do período em Despesas |
+| `20261114000072_setup_do_escritorio` | Setup do escritório: os agentes do kit, os scripts deles e os dados de quem assina passam a morar no DG Brasil, em lugar privado (bucket `office-setup`, `office_setup_versions`, `office_setup_codes`); só a conta principal usa. Testes `[072]` |
 | `20261114000073_datajud_espera_crescente` | DataJud: espera crescente por processo depois de falha (achado 2 da revisão pré-produção). Coluna `process_external_refs.consecutive_failures`; falha passageira espera 1 h, 2 h, 4 h, 8 h, 16 h, teto de 20 h; não passageira continua 20 h; sucesso e troca de CNJ zeram (redefine `private.judicial_ingest_datajud` da 044 e `private.legal_processes_track_cnj` da 043). Testes `[073]` |
 | `20261114000074_judicial_bolinhas` | Bolinhas de conferência da captura judicial: `private.get_judicial_overview()` (definição vigente, da 062) ganha `processes.synced_last_24h`, os processos acompanhados lidos nas últimas 24 h (pausado não conta); o resto da função, assinatura e permissões ficam iguais. O painel usa o campo no resumo do DataJud em Integrações e, sem ele, mostra só acompanhados e falhas. Testes `[074]` |
 | `20261114000075_datajud_nao_encontrado` | DataJud: "ainda não aparece no DataJud" deixa de contar como falha (teste ao vivo de 14/11). Coluna `process_external_refs.last_error_kind` (`NOT_FOUND`, `TRANSIENT`, `OTHER`; só com erro), com as linhas antigas classificadas pelo texto; `private.judicial_ingest_datajud` grava o tipo (o servidor marca o não encontrado em `p_meta` da falha, sem mudar a assinatura; a espera da 073 não muda), sucesso e troca de CNJ zeram; `private.get_judicial_overview()` conta em `with_error` só o que não é `NOT_FOUND` e ganha `processes.not_in_datajud`; `private.get_process_judicial_status` devolve `last_error_kind` à equipe (redefine as funções da 073, 074 e 043). Testes `[075]` |
+| `20261114000076_setup_visibilidade` | Setup: "Adicionar visibilidade". Outros ADMINs do escritório principal podem receber acesso ao setup (`office_setup_access`); o acesso some se a pessoa deixar de ser ADMIN ativa. Testes `[076]` |
+| `20261117000077_agentes_so_setup` | O conteúdo dos agentes (`agent_versions`: orientações e configuração) só para quem vê o setup; ADMIN sem setup vê a lista, pausa, ativa e executa. `dg_save_agent_once` (039) refeita. Testes `[077]`. **Falta aplicar no DEV** |
+| `20261117000078_indices_e_limpeza` | Revisão do banco antes do lançamento: índices por processo, por execução e por responsável (`deadlines_process_idx`, `reviews_process_idx`, `legal_analyses_agent_run_idx`, `legal_processes_responsible_idx`); CPF de escritório parceiro único (`organizations_cpf_key`, só é criado se não houver repetido); `updated_at` automático em quatro tabelas de configuração; limpeza diária dos dados operacionais com mais de 120 dias (`private.operational_housekeeping`, `dg-limpeza-operacional`); guarda de 5 anos da auditoria e dos acessos LGPD (`private.audit_retention_housekeeping`, na mesma rotina); descrição em todas as tabelas. Não muda regra, permissão nem assinatura. Testes `[078]`. **Falta aplicar no DEV** |
+
+### Revisão do banco (2026-11-17)
+
+Revisão geral antes do lançamento, sobre o banco montado do zero com todas as
+migrations. Corrigido na 078: o que está na linha dela, acima. Ficou para
+depois, de propósito:
+
+| Ponto | Por que não agora |
+|---|---|
+| Consolidar as migrations numa base única | 62 funções foram reescritas inteiras 82 vezes (`get_judicial_overview`, 6). Reescrever a partir de uma versão antiga apaga correção sem aviso; hoje os testes seguram. Consolidar só depois do lançamento, com produção estável. **Ao redefinir função, copie sempre da última migration que a define** (`grep -l "function <nome>" migrations/`) |
+| Busca de cliente por nome com índice de texto (`pg_trgm`) | A busca usa `ilike` sobre a view `client_directory`, que junta PF e PJ; índice de texto pede reescrever a busca. Só compensa com milhares de clientes |
+| Tipos TypeScript gerados do banco | Pede o Supabase CLI ligado ao projeto e troca a tipagem das consultas do painel. Tarefa própria |
+| Linha do tempo das execuções (`agent_run_events`) sem limpeza | É só-acréscimo por desenho (gatilho) e é o histórico do trabalho; no máximo 200 eventos por execução |
+| OAB em dois lugares (`profiles` e `profile_oabs`) | Espelho mantido pelo banco desde a 048; remover a cópia mexe em telas e funções |
+| Índice em toda chave estrangeira | Só foram criados os que alguma consulta usa. Coluna de autoria (`created_by` e parecidas) não precisa: `profiles` nunca é apagado |
 
 ### Supabase Advisors (2026-10-09)
 

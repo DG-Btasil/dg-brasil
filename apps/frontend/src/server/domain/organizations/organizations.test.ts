@@ -163,6 +163,8 @@ describe("erros e filtros", () => {
   it("unicidades de organização viram CONFLICT com mensagem própria", () => {
     const cnpj = fromOrganizationDbError({ code: "23505", message: 'duplicate key value violates unique constraint "organizations_cnpj_key"' });
     expect(cnpj).toMatchObject({ code: "CONFLICT", publicMessage: "Já existe um escritório com este CNPJ." });
+    const cpf = fromOrganizationDbError({ code: "23505", message: 'duplicate key value violates unique constraint "organizations_cpf_key"' });
+    expect(cpf).toMatchObject({ code: "CONFLICT", publicMessage: "Já existe um escritório com este CPF." });
     const owner = fromOrganizationDbError({ code: "23505", message: 'duplicate key value violates unique constraint "organizations_single_owner"' });
     expect(owner.publicMessage).toMatch(/proprietário/);
   });
