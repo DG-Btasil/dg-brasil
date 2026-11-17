@@ -1,0 +1,44 @@
+{
+  "arquivos": [
+    {
+      "arquivo": "comprovante-residencia-ficticio.pdf",
+      "sha256": "b9a99c5df61f0353c5c2316d557fe1bbf40ffeb29b6cd9bc5aaca30fe3302cde",
+      "tamanho": 1058,
+      "tipo": "PDF",
+      "resultado": "liberado",
+      "motivos": []
+    },
+    {
+      "arquivo": "hiscon-ficticio.pdf",
+      "sha256": "9768a1730546f7e7fc36f9e60e4e1f382d0c93a8172bfac271b0b77469029b0d",
+      "tamanho": 2045,
+      "tipo": "PDF",
+      "resultado": "liberado",
+      "motivos": []
+    },
+    {
+      "arquivo": "identidade-ficticia.pdf",
+      "sha256": "bf0ef3adb73bb2384ea2427e6612ec30e163f0a108cef0480116e1fe91d34249",
+      "tamanho": 944,
+      "tipo": "PDF",
+      "resultado": "liberado",
+      "motivos": []
+    },
+    {
+      "arquivo": "TETO_NORMATIVO_DG_TESTE_JOSE_DA_SILVA_FICTICIO_NB_0000000000_2026-11-11 _versao HTML_.pdf",
+      "sha256": "fd5aeeff8bbb0addf2770e498fcc166e9abe939fc91af8d8ae534712164cacb9",
+      "tamanho": 110634,
+      "tipo": "PDF",
+      "resultado": "liberado",
+      "motivos": []
+    },
+    {
+      "arquivo": "ROTEIRO_CONSIGNADO_DG_TESTE__JOSE_DA_SILVA_FICTICIO_NB_0000000000_2026-11-11 _versao HTML_.pdf",
+      "sha256": "c0a85480aa93325f1561823b229034c4e61a6b6e86252c4560bf731d6427a386",
+      "tamanho": 64270,
+      "tipo": "PDF",
+      "resultado": "liberado",
+      "motivos": []
+    }
+  ]
+}

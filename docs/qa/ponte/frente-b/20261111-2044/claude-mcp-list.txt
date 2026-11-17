@@ -1,0 +1,27 @@
+Checking MCP server healthÔÇª
+
+plugin:make-skills:make: https://mcp.make.com (HTTP) - ! Needs authentication
+plugin:data:snowflake:  (HTTP) - - Not configured
+plugin:data:databricks:  (HTTP) - - Not configured
+plugin:data:hex: https://app.hex.tech/mcp (HTTP) - ! Needs authentication
+plugin:data:amplitude: https://mcp.amplitude.com/mcp (HTTP) - ! Needs authentication
+plugin:data:amplitude-eu: https://mcp.eu.amplitude.com/mcp (HTTP) - ! Needs authentication
+plugin:data:atlassian: https://mcp.atlassian.com/v1/mcp (HTTP) - ! Needs authentication
+plugin:data:definite: https://api.definite.app/v3/mcp/http (HTTP) - ├ù Failed to connect ÔÇö MCP endpoint not found at https://api.definite.app. Check the URL in your MCP config.
+plugin:productivity:slack: https://mcp.slack.com/mcp (HTTP) - ! Needs authentication
+plugin:productivity:notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
+plugin:productivity:linear: https://mcp.linear.app/mcp (HTTP) - ! Needs authentication
+plugin:productivity:monday: https://mcp.monday.com/mcp (HTTP) - ! Needs authentication
+plugin:productivity:clickup: https://mcp.clickup.com/mcp (HTTP) - ! Needs authentication
+plugin:productivity:google calendar:  (HTTP) - - Not configured
+plugin:productivity:gmail:  (HTTP) - - Not configured
+plugin:marketing:canva: https://mcp.canva.com/mcp (HTTP) - ! Needs authentication
+plugin:marketing:figma: https://mcp.figma.com/mcp (HTTP) - ! Needs authentication
+plugin:marketing:ahrefs: https://api.ahrefs.com/mcp/mcp (HTTP) - ! Needs authentication
+plugin:marketing:similarweb: https://mcp.similarweb.com (HTTP) - ! Needs authentication
+plugin:marketing:klaviyo: https://mcp.klaviyo.com/mcp (HTTP) - ! Needs authentication
+plugin:marketing:supermetrics: https://mcp.supermetrics.com/mcp (HTTP) - ! Needs authentication
+plugin:marketing:google calendar:  (HTTP) - - Not configured
+plugin:marketing:gmail:  (HTTP) - - Not configured
+djen: python C:\Users\Micro\.claude\conector-djen\servidor.py - ÔêÜ Connected
+dg-brasil: node C:\DGBrasil\executor\dg-executor.mjs mcp - ÔêÜ Connected

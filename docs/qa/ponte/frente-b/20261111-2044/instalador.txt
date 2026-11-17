@@ -1,0 +1,63 @@
+DG Brasil â conectar o computador do escritÃ³rio (https://app.dgbrasil.adv.br)
+
+==> Conferindo o Node.js e o Claude Code
+    OK  Node.js 24.19.0
+    OK  Claude Code instalado
+
+==> Baixando o conector do DG Brasil
+    OK  C:\DGBrasil\executor\dg-executor.mjs
+
+==> Token deste computador
+    OK  Token deste computador reaproveitado da instalaÃ§Ã£o anterior
+    OK  C:\Users\Micro\AppData\Roaming\DGBrasil\executor.json
+
+==> Preparando a pasta de sessÃ£o (permissÃµes seguras)
+    OK  Mantidas 1 regra(s) de bloqueio acrescentadas neste computador
+    OK  C:\DGBrasil\sessao
+
+==> Ponte com os agentes da mÃ¡quina
+    OK  Mantido o C:\Users\Micro\AppData\Roaming\DGBrasil\ponte.json que jÃ¡ existe (nÃ£o Ã© sobrescrito)
+    OK  Agente porteiro-dg instalado em C:\Users\Micro\.claude\agents
+    OK  Agente arquivista-dg instalado em C:\Users\Micro\.claude\agents
+    OK  Agente mensageiro-dg instalado em C:\Users\Micro\.claude\agents
+
+==> Atalhos na Ã¡rea de trabalho
+    OK  C:\Users\Micro\OneDrive\Desktop\DG Brasil - SessÃ£o.lnk
+    OK  C:\Users\Micro\OneDrive\Desktop\DG Brasil - Vigia.lnk
+
+==> DiagnÃ³stico
+dg-executor 1.1.0 — diagnóstico
+  OK   Node 24.19.0
+  OK   Configuração: C:\Users\Micro\AppData\Roaming\DGBrasil\executor.json (token dg?_***…)
+  OK   DG Brasil em https://app.dgbrasil.adv.br reconhece este computador como "Computador principal"
+  OK   Execução pelo escritório: LIGADA
+  OK   Pasta de trabalhos: C:\DGBrasil\sessao\trabalhos
+  OK   Ponte: 13 agente(s), raiz encontrada (G:\Meu Drive\000. PASTA CLIENTES NOVOS; G:\Meu Drive\01. ADVOCACIA — CLIENTES)
+  OK   Ponte: clara-hiscon → G:\Meu Drive\000. PASTA CLIENTES NOVOS\7. KIT DO CLIENTE | G:\Meu Drive\000. PASTA CLIENTES NOVOS\3. PROCURAÇÃO ASSINADA
+  OK   Ponte: lucas-procuracao → G:\Meu Drive\000. PASTA CLIENTES NOVOS\7. KIT DO CLIENTE
+  OK   Ponte: alice-inicial → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: atlas-revisional → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: vicente-agregados → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: murilo-replica → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: pedro-provas → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: laura-emenda → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: gabriel-embargos → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: rafael-recurso → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: paulo-agravo → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: beatriz-cumprimento → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: teresa-audiencia → G:\Meu Drive\01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO
+  OK   Ponte: agente porteiro-dg instalado
+  OK   Ponte: agente arquivista-dg instalado
+  OK   Ponte: agente mensageiro-dg instalado
+  OK   Ponte: antivírus do Windows encontrado
+  OK   Ponte: Microsoft Edge encontrado (HTML e Markdown viram PDF)
+  OK   Claude Code 2.1.322 (Claude Code)
+
+Tudo certo.
+
+Pronto. Para processar os trabalhos:
+  - Modo assistido: abra o atalho "DG Brasil - SessÃ£o" e digite /mcp__dg-brasil__trabalhos
+  - Sozinho, a cada 15 minutos: abra o atalho "DG Brasil - Vigia" (feche no fim do dia)
+Abra sempre pelos atalhos: eles carregam sÃ³ o DG Brasil, sem os conectores do claude.ai.
+Nunca autorize um conector (link de login) pedido nessa janela.
+No DG Brasil, a aba ConexÃµes mostra este computador como conectado.
