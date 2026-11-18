@@ -185,15 +185,23 @@ cliente, nem na sugestão nem na busca. Para trazer os clientes de um parceiro,
 coloque as pastas deles em `<pasta dos clientes>\<NOME DO PARCEIRO>\CLIENTE
 BANCÁRIO\`, cadastre (ou importe) os clientes e use a sugestão.
 
-**Quem pode ligar qual pasta (desde 13/11/2026).** A conta do Google do
-escritório enxerga mais do que as pastas dos clientes. Por isso:
-- pasta **dentro** da pasta dos clientes (`GOOGLE_DRIVE_ROOT_FOLDER_ID`), em
-  qualquer nível: administradora ou advogado;
-- pasta **de fora** dela, ou enquanto a pasta dos clientes não estiver
-  configurada: só a administradora;
-- a própria pasta dos clientes nunca é ligada a um cliente.
+**O DG Brasil só trabalha abaixo da pasta DG BRASIL (desde 18/11/2026).** A
+conta do Google é a mesma do escritório e enxerga o Drive inteiro, mas o DG
+Brasil e o escritório são coisas separadas. Por isso:
+- sugestão de ligação e busca de pasta: só dentro da DG BRASIL
+  (`GOOGLE_DRIVE_ROOT_FOLDER_ID`). Sem ela configurada, não aparece nada;
+- ligar pasta: só pasta **dentro** da DG BRASIL, em qualquer nível
+  (administradora ou advogado). Pasta **de fora**: ninguém liga, nem a
+  administradora (até 18/11 ela podia). A própria DG BRASIL nunca é ligada a um
+  cliente;
+- rodada automática, "Sincronizar agora" e "Sincronizar tudo agora": antes de
+  ler a pasta ou de enviar um documento aprovado para ela, conferem de novo se
+  ela está dentro da DG BRASIL. Pasta que foi movida para fora (ou ligação
+  antiga de fora) fica parada, com o motivo na ficha do cliente, e nada é lido
+  nem gravado nela.
 
-A regra está em `apps/frontend/src/server/domain/drive/folder-scope.ts`.
+As regras estão em `apps/frontend/src/server/domain/drive/folder-scope.ts` e
+`apps/frontend/src/server/integrations/google-drive/sync.ts`.
 
 Na ficha do cliente aparecem:
 - a pasta ligada, com o link para abrir no Drive;

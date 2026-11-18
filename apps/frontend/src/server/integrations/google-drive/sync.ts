@@ -1,9 +1,30 @@
 import { createHash } from "node:crypto";
 import type { Logger } from "@/server/core/logger";
+import { isInsideRoot } from "@/server/domain/drive/folder-scope";
 import { DriveError, type DriveClient, type DriveFile } from "./client";
 import { normalizeName } from "./folder-tree";
 
 export { normalizeName };
+
+/**
+ * O DG Brasil só lê e grava ABAIXO da pasta DG BRASIL (GOOGLE_DRIVE_ROOT_FOLDER_ID):
+ * o resto do Drive é do escritório (decisão de 18/11/2026). A ligação já recusa
+ * pasta de fora, mas a pasta pode ser movida no Drive depois, e ligações antigas
+ * podem ter sido feitas de fora: por isso a rodada confere de novo, antes de ler
+ * e antes de enviar.
+ */
+export const OUTSIDE_DG_BRASIL =
+  "Esta pasta não está dentro da pasta DG BRASIL no Drive (foi movida, ou a DG BRASIL não está configurada). O DG Brasil não lê nem grava nela: ligue o cliente a uma pasta de dentro da DG BRASIL.";
+
+async function insideDgBrasil(folderId: string, d: SyncDeps, cache?: Map<string, boolean>): Promise<boolean> {
+  const root = d.drive.rootFolderId;
+  if (!root) return false;
+  const known = cache?.get(folderId);
+  if (known !== undefined) return known;
+  const ok = await isInsideRoot(folderId, root, (id) => d.drive.parents(id));
+  cache?.set(folderId, ok);
+  return ok;
+}
 
 /**
  * Sincronização com o Google Drive, rodada pelo SERVIDOR (rota agendada ou
@@ -79,6 +100,10 @@ export async function syncLink(link: Link, d: SyncDeps, maxImports = 30): Promis
   const result: LinkSyncResult = { imported: 0, skipped: 0, failed: 0, more: false };
   let error: string | null = null;
   try {
+    if (!(await insideDgBrasil(link.folder_id, d))) {
+      d.log.warn("drive.link_outside_root", { folderLinkId: link.id });
+      throw new DriveError(403, OUTSIDE_DG_BRASIL);
+    }
     const known = await d.db<{ imported: string[]; exported: (string | null)[] }>("drive_known_files", [link.id]);
     const imported = new Set(known.imported);
     const exported = new Set(known.exported.filter(Boolean));
@@ -176,8 +201,15 @@ export async function processExports(d: SyncDeps, limit = 5): Promise<ExportResu
   if (outOfTime(d)) return result;
   const pending = await d.db<PendingExport[]>("drive_claim_exports", [limit]);
   const publicFolder = new Map<string, boolean | null>();
+  const inside = new Map<string, boolean>();
   for (const e of pending) {
     try {
+      if (!(await insideDgBrasil(e.folder_id, d, inside))) {
+        await d.db("drive_mark_export", [e.id, null, OUTSIDE_DG_BRASIL]);
+        result.failed++;
+        d.log.warn("drive.export_outside_root", { exportId: e.id });
+        continue;
+      }
       if (!publicFolder.has(e.folder_id)) publicFolder.set(e.folder_id, await d.drive.isPublic(e.folder_id));
       if (publicFolder.get(e.folder_id) === true) {
         await d.db("drive_mark_export", [e.id, null, "A pasta do cliente está compartilhada com qualquer pessoa com o link. Tire o compartilhamento público no Drive."]);

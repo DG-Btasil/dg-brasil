@@ -123,10 +123,9 @@ export async function linkFolder(ctx: ServiceContext, clientId: string, folderId
   let name: string;
   try {
     const f = await c.folder(folderId);
-    const scope = await assertFolderAllowed({
+    await assertFolderAllowed({
       role: ctx.session.role, folderId, rootFolderId: c.rootFolderId, parentsOf: (id) => c.parents(id),
     });
-    if (scope === "OUTSIDE_ROOT_BY_ADMIN") ctx.log.warn("drive.folder_linked_outside_root", { clientId });
     if ((await c.isPublic(folderId)) === true) {
       throw new DomainError("INVALID_STATE", "Esta pasta está compartilhada com qualquer pessoa com o link. Tire o compartilhamento público no Drive antes de ligar.");
     }

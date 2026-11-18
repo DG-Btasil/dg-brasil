@@ -158,13 +158,8 @@ export class DriveClient {
   async searchFolders(term: string, limit = 25): Promise<{ id: string; name: string; path?: string }[]> {
     const t = term.trim().slice(0, 100);
     const size = Math.min(limit, 100);
-    if (!this.config.rootFolderId) {
-      const parts = [`mimeType = '${FOLDER}'`, "trashed = false"];
-      if (t) parts.push(`name contains '${quote(t)}'`);
-      const q = encodeURIComponent(parts.join(" and "));
-      const j = (await (await this.call(`${API}/files?q=${q}&fields=files(id,name)&orderBy=name&pageSize=${size}&${ALL}`)).json()) as { files?: { id: string; name: string }[] };
-      return j.files ?? [];
-    }
+    // Sem a pasta DG BRASIL configurada, não procura nada: o resto do Drive é do escritório, não do DG Brasil.
+    if (!this.config.rootFolderId) return [];
     const tree = await this.clientFolderTree();
     const found = await this.childFolders([this.config.rootFolderId, ...tree.containers.map((c) => c.id)], 500, t || undefined);
     const fromRoot = new Set(tree.rootClients.map((f) => f.id));

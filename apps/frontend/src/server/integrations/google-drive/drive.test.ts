@@ -2,7 +2,7 @@ import { createHash, createVerify, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createLogger } from "@/server/core/logger";
 import { DriveClient, driveConfigFromEnv, type DriveConfig, type DriveFile } from "./client";
-import { exportName, normalizeName, processExports, suggestLinks, syncAllBatch, syncLink, type DriveDbFunction, type SyncDeps } from "./sync";
+import { OUTSIDE_DG_BRASIL, exportName, normalizeName, processExports, suggestLinks, syncAllBatch, syncLink, type DriveDbFunction, type SyncDeps } from "./sync";
 
 const oauth: DriveConfig = { auth: { mode: "oauth", clientId: "cid", clientSecret: "sec", refreshToken: "rt" }, rootFolderId: "raizClientes_0001" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -134,13 +134,17 @@ describe("cliente do Drive", () => {
   });
 });
 
-function deps(over: Partial<SyncDeps> & { files?: DriveFile[]; bytes?: Uint8Array; known?: { imported: string[]; exported: string[] }; publicFolder?: boolean | null; pending?: unknown[] } = {}) {
+function deps(over: Partial<SyncDeps> & { files?: DriveFile[]; bytes?: Uint8Array; known?: { imported: string[]; exported: string[] }; publicFolder?: boolean | null; pending?: unknown[]; outside?: string[] } = {}) {
   const calls: { fn: DriveDbFunction; args: unknown[] }[] = [];
   const uploaded: string[] = [];
   const driveUploads: string[] = [];
+  const listed: string[] = [];
   const d: SyncDeps = {
     drive: {
-      listFiles: async () => over.files ?? [],
+      // Pastas dentro da DG BRASIL ("RAIZ_DG"), menos as de `outside`, que ficam no resto do Drive do escritório.
+      rootFolderId: "RAIZ_DG",
+      parents: async (id: string) => (id === "MEU_DRIVE" ? [] : over.outside?.includes(id) ? ["MEU_DRIVE"] : ["RAIZ_DG"]),
+      listFiles: async (folder: string) => { listed.push(folder); return over.files ?? []; },
       download: async () => over.bytes ?? new TextEncoder().encode("%PDF HISCON"),
       isPublic: async () => over.publicFolder ?? false,
       upload: async (_f: string, name: string) => { driveUploads.push(name); return { id: "arquivoNovo_0001" }; },
@@ -156,7 +160,7 @@ function deps(over: Partial<SyncDeps> & { files?: DriveFile[]; bytes?: Uint8Arra
     log: createLogger(),
     ...over,
   };
-  return { d, calls, uploaded, driveUploads };
+  return { d, calls, uploaded, driveUploads, listed };
 }
 
 describe("sincronização (entrada)", () => {
@@ -240,6 +244,21 @@ describe("sincronização (entrada)", () => {
     expect(await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d, 3)).toMatchObject({ imported: 3, more: false });
   });
 
+  it("pasta ligada que está fora da DG BRASIL (movida ou ligação antiga): nem lista os arquivos; fica parada com o motivo", async () => {
+    const { d, calls, listed } = setupWith({ files: [file()], bytes: pdf, outside: ["pasta_000001"] });
+    expect(await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d)).toEqual({ imported: 0, skipped: 0, failed: 0, more: false });
+    expect(listed).toEqual([]);
+    expect(calls.map((c) => c.fn)).toEqual(["drive_mark_synced"]);
+    expect(calls[0]!.args).toEqual(["l1", OUTSIDE_DG_BRASIL]);
+  });
+
+  it("sem a pasta DG BRASIL configurada, a rodada não lê pasta nenhuma", async () => {
+    const { d, listed } = setupWith({ files: [file()], bytes: pdf });
+    (d.drive as unknown as { rootFolderId?: string }).rootFolderId = undefined;
+    await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
+    expect(listed).toEqual([]);
+  });
+
   function setupWith(o: Parameters<typeof deps>[0]) {
     return deps(o);
   }
@@ -262,6 +281,8 @@ describe("sincronizar tudo agora (lotes)", () => {
     let current = "";
     const d: SyncDeps = {
       drive: {
+        rootFolderId: "RAIZ_DG",
+        parents: async () => ["RAIZ_DG"],
         listFiles: async (folder: string) => filesOf.get(folder) ?? [],
         download: async () => pdf,
       } as unknown as DriveClient,
@@ -350,6 +371,13 @@ describe("sincronização (saída)", () => {
     expect(await processExports(d)).toEqual({ exported: 0, failed: 1 });
     expect(driveUploads).toEqual([]);
     expect(String(calls.find((c) => c.fn === "drive_mark_export")!.args[2])).toMatch(/qualquer pessoa com o link/);
+  });
+
+  it("pasta fora da DG BRASIL: não envia nada para o Drive do escritório; registra o motivo", async () => {
+    const { d, calls, driveUploads } = deps({ pending, outside: ["pasta_000001"] });
+    expect(await processExports(d)).toEqual({ exported: 0, failed: 1 });
+    expect(driveUploads).toEqual([]);
+    expect(calls.find((c) => c.fn === "drive_mark_export")!.args).toEqual(["e1", null, OUTSIDE_DG_BRASIL]);
   });
 
   it("nome exportado sem caracteres proibidos no Drive/Windows", () => {
