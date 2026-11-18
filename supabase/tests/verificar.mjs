@@ -160,16 +160,16 @@ await deve('agente de prazos [058/059]: a Diana vem cadastrada e ativa, chamando
   const s = await um(db, `select deadline_agent_id, updated_by, deadline_auto_apply from judicial_settings where id`)
   igual([s.deadline_agent_id, s.updated_by, s.deadline_auto_apply], [a.id, null, true], 'agente que propõe prazos (ninguém "escolheu": updated_by fica vazio); prazo direto ligado')
 })
-// Viabilidade recursal (077): a Vera entra no kit, ativa, chamando o agente de mesmo nome.
-const KIT077 = 'vera-viabilidade-dg'
-await deve('viabilidade recursal [077]: a Vera vem cadastrada e ativa, chamando o vera-viabilidade-dg, com a ficha de revisão; rodar de novo não duplica nem sobrescreve', async () => {
+// Viabilidade recursal (080): a Vera entra no kit, ativa, chamando o agente de mesmo nome.
+const KIT080 = 'vera-viabilidade-dg'
+await deve('viabilidade recursal [080]: a Vera vem cadastrada e ativa, chamando o vera-viabilidade-dg, com a ficha de revisão; rodar de novo não duplica nem sobrescreve', async () => {
   const a = await um(db, `select a.name, a.status, v.version_number, v.configuration ->> 'local_agent' local, v.instructions
-                            from agents a join agent_versions v on v.id = a.current_version_id where a.slug = $1 and a.deleted_at is null`, [KIT077])
-  igual([a.name, a.status, a.version_number, a.local], ['Vera · Viabilidade recursal', 'ACTIVE', 1, KIT077], 'agente')
+                            from agents a join agent_versions v on v.id = a.current_version_id where a.slug = $1 and a.deleted_at is null`, [KIT080])
+  igual([a.name, a.status, a.version_number, a.local], ['Vera · Viabilidade recursal', 'ACTIVE', 1, KIT080], 'agente')
   if (!/FICHA_REVISAO_VIABILIDADE_/.test(a.instructions) || !/PARECER_VIABILIDADE_/.test(a.instructions)) throw new Error('orientações sem o parecer ou a ficha')
-  await db.query(`update agents set name = 'Vera editada no site' where slug = $1`, [KIT077])
-  await db.exec(await readFile(new URL('migrations/20261117000077_agente_viabilidade_recursal.sql', raiz), 'utf8'))
-  const r = await um(db, `select count(*)::int n, max(name) nome from agents where slug = $1`, [KIT077])
+  await db.query(`update agents set name = 'Vera editada no site' where slug = $1`, [KIT080])
+  await db.exec(await readFile(new URL('migrations/20261118000080_agente_viabilidade_recursal.sql', raiz), 'utf8'))
+  const r = await um(db, `select count(*)::int n, max(name) nome from agents where slug = $1`, [KIT080])
   igual([r.n, r.nome], [1, 'Vera editada no site'], 'sem duplicar, sem sobrescrever')
 })
 // Os testes seguintes montam os próprios agentes e supõem o banco sem agentes do kit (modelo sem agente, sem
@@ -177,7 +177,7 @@ await deve('viabilidade recursal [077]: a Vera vem cadastrada e ativa, chamando 
 // tivesse sido arquivado no site.
 await db.query(`update analysis_templates set primary_agent_id = null, next_agent_ids = '{}', next_agent_requests = '{}' where name = 'Análise Bancária'`)
 await db.query(`update judicial_settings set deadline_agent_id = null where id`)
-await db.query(`update agents set slug = slug || '-kit054', status = 'INACTIVE', deleted_at = now() where slug = any($1)`, [[...KIT054, KIT058, KIT077]])
+await db.query(`update agents set slug = slug || '-kit054', status = 'INACTIVE', deleted_at = now() where slug = any($1)`, [[...KIT054, KIT058, KIT080]])
 
 // ═════════════════════════════ cenário ═══════════════════════════════════
 // Montado como faria o backend/bootstrap (dono do banco).
