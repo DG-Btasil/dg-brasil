@@ -10043,7 +10043,8 @@ await deve('com o parceiro: cliente e caso novos com origem nele, caso ligado a 
   igual((await um(db, `select options ->> 'partner_organization_id' p from import_jobs where id = $1`, [job])).p, ids.almeida, 'opção guardada')
   const pf = (n, nome) => ({ kind: 'INDIVIDUAL', document: cpf042(n), name: nome })
   const lote = [
-    { row_number: 2, status: 'VALID', payload: { client: pf(82, 'Hugo do Parceiro'), process: { cnj: cnj042(82), legal_class: 'Revisional', status: 'ACTIVE' } } },
+    { row_number: 2, status: 'VALID', payload: { client: { ...pf(82, 'Hugo do Parceiro'), birth_date: '1956-04-08', gender: 'MALE',
+      marital_status: 'SINGLE', profession: 'Aposentado', rg: '9930151' }, process: { cnj: cnj042(82), legal_class: 'Revisional', status: 'ACTIVE' } } },
     { row_number: 3, status: 'VALID', payload: { client: pf(82, 'Hugo do Parceiro'), process: { cnj: cnj042(83), legal_class: 'Declaratória', status: 'APPEAL' } } },
     { row_number: 4, status: 'VALID', payload: { client: pf(84, 'Iara Só Cadastro') } },
     { row_number: 5, status: 'VALID', payload: { client: { kind: 'INDIVIDUAL', document: existente.cpf, name: 'Lia Já Cadastrada 082' },
@@ -10061,6 +10062,9 @@ await deve('com o parceiro: cliente e caso novos com origem nele, caso ligado a 
   const hugo = await um(db, `select id, origin_organization_id o from clients where cpf = $1`, [cpf042(82)])
   const iara = await um(db, `select id, origin_organization_id o from clients where cpf = $1`, [cpf042(84)])
   igual([hugo.o, iara.o], [ids.almeida, ids.almeida], 'cliente novo com origem no parceiro')
+  const q = await um(db, `select birth_date::text b, gender g, marital_status m, profession p, identity_document_type t, identity_document_number n
+    from individual_client_details where client_id = $1`, [hugo.id])
+  igual([q.b, q.g, q.m, q.p, q.t, q.n], ['1956-04-08', 'MALE', 'SINGLE', 'Aposentado', 'RG', '9930151'], 'qualificação da pessoa física')
   const casos = await linhas(db, `select lc.id, lc.status, lc.origin_organization_id o, lc.partner_organization_id p, lc.client_id
     from legal_processes lp join legal_cases lc on lc.id = lp.legal_case_id where lp.cnj_number = any($1) order by lp.cnj_number`, [[cnj042(82), cnj042(83), cnj042(85)]])
   igual(casos.map((c) => [c.status, c.o, c.p]), [['IN_PROGRESS', ids.almeida, ids.almeida], ['IN_PROGRESS', ids.almeida, ids.almeida], ['IN_PROGRESS', ids.almeida, ids.almeida]], 'casos do parceiro')

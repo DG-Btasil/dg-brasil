@@ -22,8 +22,33 @@
 --     nem de parceiro.
 --
 -- Sem a opção, tudo segue como na 042. get_import_reference_data devolve
--- também os parceiros ativos. Assinaturas iguais: as permissões da 042 valem.
--- 001–081 não são alteradas.
+-- também os parceiros ativos.
+--
+-- Qualificação da pessoa física (a exportação de clientes do ADVBOX traz):
+-- data de nascimento, sexo, estado civil, profissão e RG viram campos da
+-- importação (import_target_fields) e vão para individual_client_details pelo
+-- save_client (025), que já aceita essas chaves. Os agentes do kit (procuração,
+-- declarações) leem a qualificação do cadastro. Atualização de cliente
+-- existente: só o que veio preenchido, como os demais campos.
+--
+-- Assinaturas iguais: as permissões da 042 valem. 001–081 não são alteradas.
+
+create or replace function private.import_target_fields()
+returns text[]
+language sql
+immutable
+set search_path = ''
+as $$
+  select array[
+    'client.name', 'client.document', 'client.kind', 'client.email', 'client.phone',
+    'client.zipCode', 'client.street', 'client.number', 'client.complement', 'client.district',
+    'client.city', 'client.state', 'client.notes',
+    'client.birthDate', 'client.gender', 'client.maritalStatus', 'client.profession', 'client.rg',
+    'process.cnj', 'process.title', 'process.actionType', 'process.subject', 'process.court',
+    'process.courtUnit', 'process.district', 'process.state', 'process.opposingParty',
+    'process.clientSide', 'process.responsible', 'process.status', 'process.distributionDate',
+    'process.caseValue', 'process.dueDate', 'process.notes']
+$$;
 
 create or replace function private.import_save_mapping(p_job_id uuid, p_mappings jsonb, p_options jsonb default '{}')
 returns jsonb
@@ -183,6 +208,17 @@ begin
   if v_address is not null and v_address <> '{}'::jsonb then v_out := v_out || jsonb_build_object('address', v_address); end if;
   if nullif(c ->> 'responsible_user_id', '') is not null then
     v_out := v_out || jsonb_build_object('responsible_user_id', c ->> 'responsible_user_id');
+  end if;
+  -- (082) Qualificação da pessoa física: só as chaves preenchidas.
+  if coalesce(v_kind, 'INDIVIDUAL') = 'INDIVIDUAL' then
+    v_out := v_out || jsonb_strip_nulls(jsonb_build_object(
+      'birth_date', nullif(c ->> 'birth_date', ''),
+      'gender', nullif(c ->> 'gender', ''),
+      'marital_status', nullif(c ->> 'marital_status', ''),
+      'profession', nullif(btrim(coalesce(c ->> 'profession', '')), '')));
+    if nullif(btrim(coalesce(c ->> 'rg', '')), '') is not null then
+      v_out := v_out || jsonb_build_object('identity_document', jsonb_build_object('type', 'RG', 'number', btrim(c ->> 'rg')));
+    end if;
   end if;
 
   if p_existing is null then

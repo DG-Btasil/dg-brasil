@@ -81,13 +81,31 @@ ilegível) e `CANCELLED` (antes da gravação).
 ## Campos aceitos
 
 Cliente: nome/razão social\*, CPF/CNPJ, tipo (PF/PJ), e-mail, telefone, CEP,
-logradouro, número, complemento, bairro, cidade, UF, observações internas.
+logradouro, número, complemento, bairro, cidade, UF, observações internas e,
+desde a 082, a qualificação da pessoa física: data de nascimento, sexo, estado
+civil (união estável não entra: confira na ficha), profissão e RG.
 Processo: número CNJ, nome resumido, tipo de ação/classe, assunto, tribunal,
-vara, comarca, UF, parte contrária, polo do cliente, responsável, status, data de
-distribuição, valor da causa, próximo vencimento, observações internas.
+vara, comarca, UF, parte contrária, polo do cliente, responsável, status (ou
+"Etapa"), data de distribuição, valor da causa, próximo vencimento, observações
+internas.
 
 A lista é a mesma no front (`src/lib/domain/import-fields.ts`) e no banco
-(`private.import_target_fields()`); um teste unitário confere.
+(a última definição de `private.import_target_fields()`); um teste unitário confere.
+
+## Migração do ADVBOX (as duas exportações)
+
+1. **Clientes** (exportação de contatos). Todas as colunas úteis são sugeridas
+   sozinhas, inclusive RG, nascimento, estado civil, profissão e sexo. "Anotações
+   Gerais" fica **sem campo** de propósito: no ADVBOX ela costuma guardar senha do
+   cliente, que não deve entrar no DG Brasil. "Origem", "Nome da mãe", PIS, CTPS e
+   CID também ficam de fora. Escolha o parceiro em "Escritório de origem".
+2. **Processos** (relatório de processos). O ADVBOX escreve o cliente como
+   `NOME (CPF)`, sem coluna de CPF: a importação separa o CPF do nome e liga o
+   processo pelo CPF (não pelo nome). O cliente que veio no passo 1 aparece como
+   "CPF já cadastrado": decida **todos deste tipo** de uma vez com *Manter como
+   está*. "Etapa" vira o status ("Ação protocolada" → Distribuído). "Responsável"
+   do parceiro não é da equipe: deixe sem campo, ou cada linha ganha um aviso e
+   fica o advogado padrão. Escolha o mesmo parceiro em "Escritório de origem".
 
 **Fora da V1, por decisão:** contratos de honorários e lançamentos financeiros
 (têm ciclo de vida próprio no Financeiro), documentos PDF/DOCX e a API do ADVBOX
