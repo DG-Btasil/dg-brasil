@@ -8,8 +8,8 @@ import { runDriveSync } from "@/server/integrations/google-drive/sync";
 /**
  * Rodada agendada do Google Drive (Vercel Cron — vercel.json): exporta as
  * versões aprovadas na fila e importa arquivos novos das pastas ligadas, as mais
- * antigas primeiro. Uma vez por dia (09:00 UTC) enquanto o projeto está no plano
- * Hobby; volta a cada 15 min na produção (docs/deploy/producao.md). Protegida por
+ * antigas primeiro. A cada 15 minutos (Vercel Pro, desde 18/11/2026, quando o
+ * Drive foi ligado na produção; docs/deploy/producao.md, item 2). Protegida por
  * CRON_SECRET (a Vercel manda "Authorization: Bearer <CRON_SECRET>").
  *
  * Sem Drive configurado (ou com a credencial ilegível) a rodada não acontece e

@@ -60,6 +60,11 @@ hora de contratar.
 
 ## 2. Google Drive: sincronizar a cada 15 minutos
 
+> **Feito em 18/11/2026.** Drive ligado na produção pelo caminho A (OAuth, projeto "DG Brasil"
+> no Google Cloud, app publicado "Em produção"), as 4 variáveis `GOOGLE_DRIVE_*` em Production,
+> **Testar conexão** ok com a pasta "DG BRASIL" e `vercel.json` trocado para `*/15 * * * *`.
+> O texto abaixo fica como histórico.
+
 > **O que depende disto (conferido em 14/11/2026).** Os agentes da ponte **não** dependem desta
 > integração: eles leem e gravam na pasta do cliente pelo Google Drive para computador
 > (`G:\Meu Drive\DG BRASIL\...`), e o Arquivista e o Mensageiro levam e trazem os arquivos

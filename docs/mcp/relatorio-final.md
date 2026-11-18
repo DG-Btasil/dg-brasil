@@ -72,9 +72,9 @@ gate humano não muda: tudo vai para Revisões. Como usar:
 - **Google Drive** (`server/integrations/google-drive/`, `server/domain/drive/`):
   - cliente da API v3 com OAuth ou conta de serviço;
   - sincronização (entrada e saída);
-  - rota agendada `/api/cron/drive-sync`, protegida por `CRON_SECRET`, uma vez
-    por dia no plano Hobby da Vercel (`vercel.json`); a cada 15 min na produção
-    ([docs/deploy/producao.md](../deploy/producao.md));
+  - rota agendada `/api/cron/drive-sync`, protegida por `CRON_SECRET`, a cada
+    15 min (`vercel.json`; desde 18/11/2026, com o Vercel Pro e o Drive ligado na
+    produção: [docs/deploy/producao.md](../deploy/producao.md), item 2);
   - "Sincronizar agora";
   - sugestões de ligação por nome, com confirmação humana.
 

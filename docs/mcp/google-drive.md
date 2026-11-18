@@ -38,8 +38,8 @@ Abra o Google Drive com a conta do escritório.
 
 ## 2. Pasta dos clientes
 
-Abra no navegador a pasta que contém as pastas dos clientes (hoje,
-`01. ADVOCACIA — CLIENTES\CLIENTE - ESCRITÓRIO`). O identificador é o trecho
+Abra no navegador a pasta que contém as pastas dos clientes (na produção, a pasta
+"DG BRASIL", a mesma em que os agentes da ponte trabalham). O identificador é o trecho
 depois de `/folders/` no endereço:
 
 ```
@@ -109,9 +109,8 @@ Apague o arquivo JSON do computador depois de colar.
 
 ## 4. Rodada automática (Vercel Cron)
 
-O arquivo `apps/frontend/vercel.json` agenda `/api/cron/drive-sync` **uma vez por
-dia**, por volta das 6h de Brasília (`0 9 * * *`; a Vercel usa UTC e, no plano
-Hobby, chama em algum momento entre 6h00 e 6h59). Cada rodada:
+O arquivo `apps/frontend/vercel.json` agenda `/api/cron/drive-sync` **a cada 15
+minutos** (`*/15 * * * *`, desde 18/11/2026, com o Vercel Pro). Cada rodada:
 1. envia até 5 versões aprovadas que estão na fila;
 2. confere até 5 pastas ligadas, das mais antigas para as mais novas.
 
@@ -120,10 +119,10 @@ Hobby, chama em algum momento entre 6h00 e 6h59). Cada rodada:
 | `CRON_SECRET` | Um texto aleatório longo. A Vercel envia esse valor na chamada, e a rota recusa sem ele. |
 | `DG_WORKER_DB_URL` | Login `dg_worker` pelo pooler do Supabase (o mesmo da API do computador do escritório) |
 
-> Uma vez por dia é o máximo do plano gratuito da Vercel (Hobby): com agendamento
-> mais frequente, o deploy é recusado. Enquanto isso, use **Sincronizar agora** na
-> ficha do cliente. Na produção, a rodada volta a ser a cada 15 minutos: ver
-> [docs/deploy/producao.md](../deploy/producao.md).
+> No plano gratuito da Vercel (Hobby), o máximo é uma vez por dia: com agendamento
+> mais frequente, o deploy é recusado. A produção está no Vercel Pro
+> ([docs/deploy/producao.md](../deploy/producao.md), item 2). Para não esperar a
+> rodada, use **Sincronizar agora** na ficha do cliente.
 
 Se a rodada for chamada **sem o Drive configurado** (ou com a credencial
 ilegível), ela não passa em silêncio: registra um erro no log do servidor

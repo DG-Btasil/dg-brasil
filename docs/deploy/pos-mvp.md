@@ -22,9 +22,9 @@ Este arquivo junta só o que fica **para depois do lançamento**.
 | 10 | Prazos de guarda dos dados | Nada é apagado sozinho, salvo os pedidos aos agentes (180 dias) e o histórico do agendador (7 dias) | Decidir por quanto tempo guardar cada registro | Sem custo |
 | 11 | Pedido de titular de dados (LGPD) | Procedimento escrito, sem tela | Definir quem atende e por qual canal | Sem custo |
 | 12 | Resumo diário por e-mail | Avisos só no sino do site | Depende do e-mail do escritório (SMTP) | Plano pago do Zoho |
-| 13 | Termos de uso e política de privacidade definitivos | Texto provisório (versão `0.1-provisorio`) | Texto jurídico definitivo | Sem custo |
+| 13 | Termos de uso e política de privacidade definitivos | Texto provisório (versão `0.1-provisorio`), só depois do login | Texto jurídico definitivo e **página pública** de termos e condições (o Google aponta para ela) | Sem custo |
 | 16 | Segurança da captura judicial: como a equipe fica sabendo quando o DJEN ou o DataJud falham | Releitura de 30 dias, vigia, faixa, avisos no sino e Cobertura já existem | Conversa com a dona do escritório: aviso fora do site, monitor externo, tribunais que intimam fora do DJEN | Sem custo, salvo o canal de aviso |
-| 15 | **URGENTE:** integração do Google Drive pelo site (B.1) | Não configurada; a ponte funciona sem ela | Credencial OAuth da conta Gmail do escritório (precisa da dona da conta, com a verificação em duas etapas), variáveis na Vercel e o teste da Parte 4 | Sem custo |
+| 15 | **URGENTE:** integração do Google Drive pelo site (B.1) | **Ligada na produção em 18/11/2026** (Testar conexão ok, rodada a cada 15 min) | Ligar as pastas dos clientes (Sugerir ligações) e conferir uma sincronização e uma exportação | Sem custo |
 | 14 | OAB e assinatura nas peças de caso de parceiro | Os dados de quem assina vêm do `escritorio.json` (dentro do setup) | Decidir como a peça e a procuração levam a OAB do advogado parceiro, dono do cliente | Sem custo |
 
 ---
@@ -265,6 +265,13 @@ fica como está.
   **gênero** (finalidade: tratá-la corretamente nos textos do sistema) e a **data de nascimento**
   (finalidade: aviso de aniversário à equipe, função ainda não implementada). Os dois são opcionais,
   a pessoa altera ou apaga em "Meu perfil", e não há CPF, endereço residencial nem documento pessoal.
+  **Página pública de termos e condições (pedido de 18/11/2026):** criar uma página que abra **sem
+  login**, com os termos de uso e a política de privacidade. Hoje `/termos` só abre depois do login
+  (quem não entrou vai para `/login`). Motivo: ao publicar o app OAuth "DG Brasil" no Google Cloud
+  (integração do Drive, item 15), o Google exigiu o link da política de privacidade, e foi usado
+  `https://app.dgbrasil.adv.br/termos`. Quando a página pública existir, trocar esse link em Google
+  Cloud → Google Auth Platform → Branding. Se um dia o app pedir a verificação do Google (por
+  exemplo, ao enviar um logotipo), a página pública passa a ser obrigatória.
 - **Revisão LGPD** do provedor de IA e do Google Drive ([producao.md](producao.md), itens 7 e
   9): também pós-MVP desde 14/11/2026, obrigatória antes do primeiro dado real.
 
@@ -283,6 +290,14 @@ caso (o cadastro do parceiro no site já tem as OABs das pessoas, migration 048)
 Junto, mais tarde: termos de uso e LGPD da parceria (item 13).
 
 ## 15. URGENTE: integração do Google Drive pelo site (decisão de 14/11/2026)
+
+> **Ligada na produção em 18/11/2026:** projeto "DG Brasil" no Google Cloud (separado do
+> projeto da esteira), app OAuth publicado "Em produção" sem logotipo e sem escopo cadastrado
+> (para não exigir a verificação do Google), cliente "DG Brasil servidor", refresh token pelo
+> OAuth Playground, as 4 variáveis em Production, Redeploy e **Testar conexão** ok na pasta
+> "DG BRASIL". Rodada a cada 15 minutos. Falta: ligar as pastas dos clientes e conferir uma
+> sincronização e uma exportação de versão aprovada. Para cortar o acesso: remover o app
+> "DG Brasil" em myaccount.google.com/permissions da conta do escritório.
 
 Saiu da frente do lançamento porque criar a credencial exige a dona da conta Google, com a
 verificação em duas etapas, e ela não estava disponível. É o primeiro item do pós-MVP: tem de
