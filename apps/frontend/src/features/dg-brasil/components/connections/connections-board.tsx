@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Bot, Cloud, Cpu, FileSearch, HardDrive, Newspaper, Scale, Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Select } from "@/components/ui/form";
+import { Checkbox, Select } from "@/components/ui/form";
 import { Panel } from "@/components/ui/panel";
 import { callAction, type ActionResult } from "@/lib/actions/result";
 import { useActionFeedback } from "@/lib/actions/use-action-feedback";
@@ -15,7 +15,7 @@ import { usePermission } from "@/features/auth/hooks";
 import type { DgOverviewDTO, OfficeStatusDTO } from "@/server/domain/dg/dto";
 import type { DriveStatusDTO } from "@/server/domain/drive/dto";
 import type { JudicialOverviewDTO } from "@/server/domain/judicial/dto";
-import { saveTaskSettingsAction } from "@/server/domain/process-tasks/actions";
+import { saveCaseOrchestrationAction, saveTaskSettingsAction } from "@/server/domain/process-tasks/actions";
 import type { TaskAgentDTO } from "@/server/domain/process-tasks/dto";
 import { useToast } from "@/store/ui-store";
 
@@ -30,6 +30,8 @@ export interface ConnectionsData {
   drive: ActionResult<DriveStatusDTO>;
   overview: ActionResult<DgOverviewDTO>;
   agents: ActionResult<TaskAgentDTO[]>;
+  /** Caso novo e análise aprovada vão ao orquestrador (081). */
+  caseOrchestration: ActionResult<{ enabled: boolean }>;
 }
 
 /**
@@ -97,7 +99,7 @@ export function ConnectionsBoard({ data }: { data: ConnectionsData }) {
             <Unavailable />
           )}
         </Card>
-        <OrchestratorCard agents={data.agents} overview={overview} />
+        <OrchestratorCard agents={data.agents} overview={overview} caseOrchestration={data.caseOrchestration} />
         <Card icon={Newspaper} title="DJEN — publicações" health={djenHealth} href="/dg-brasil/integracoes" action="Ver integração judicial">
           {judicial ? (
             <>
@@ -155,13 +157,18 @@ const RUN_LABEL: Record<"RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED", string> 
   FAILED: "falhou",
 };
 
-function OrchestratorCard({ agents, overview }: { agents: ActionResult<TaskAgentDTO[]>; overview?: DgOverviewDTO }) {
+function OrchestratorCard({ agents, overview, caseOrchestration }: {
+  agents: ActionResult<TaskAgentDTO[]>;
+  overview?: DgOverviewDTO;
+  caseOrchestration: ActionResult<{ enabled: boolean }>;
+}) {
   const canManage = usePermission("dgbrasil.manage");
   const failed = useActionFeedback();
   const toast = useToast();
   const list = agents.ok ? agents.data : [];
   const [current, setCurrent] = useState(list.find((a) => a.isOrchestrator)?.id ?? "");
   const [saving, setSaving] = useState(false);
+  const [casesOn, setCasesOn] = useState(caseOrchestration.ok ? caseOrchestration.data.enabled : true);
   const health: Health = !agents.ok ? "unknown" : current ? "ok" : "warn";
 
   async function choose(id: string) {
@@ -171,6 +178,15 @@ function OrchestratorCard({ agents, overview }: { agents: ActionResult<TaskAgent
     if (!r.ok) return failed(r, "Não foi possível salvar o orquestrador.");
     setCurrent(id);
     toast({ tone: "success", title: id ? "Orquestrador definido" : "Orquestrador removido" });
+  }
+
+  async function toggleCases(enabled: boolean) {
+    setSaving(true);
+    const r = await callAction(() => saveCaseOrchestrationAction({ enabled }));
+    setSaving(false);
+    if (!r.ok) return failed(r, "Não foi possível salvar a esteira do caso.");
+    setCasesOn(enabled);
+    toast({ tone: "success", title: enabled ? "Caso novo vai ao orquestrador" : "Caso novo não chama mais o orquestrador" });
   }
 
   return (
@@ -192,6 +208,19 @@ function OrchestratorCard({ agents, overview }: { agents: ActionResult<TaskAgent
         )}
         {!current && <p className="mt-1 text-[12px] text-warning">Sem orquestrador, só sai para a fila a tarefa em que a pessoa escolher o agente.</p>}
       </div>
+      {caseOrchestration.ok && (
+        <div className="pt-2">
+          <Checkbox
+            checked={casesOn}
+            disabled={!canManage || saving}
+            onChange={(e) => void toggleCases(e.target.checked)}
+            label="Caso novo e análise aprovada vão ao orquestrador"
+            description={casesOn
+              ? "O caso vai quando chega o primeiro documento; depois da análise aprovada, ele decide os próximos agentes."
+              : "Desligado: caso novo não chama ninguém e a análise aprovada segue a lista fixa do modelo."}
+          />
+        </div>
+      )}
     </Card>
   );
 }

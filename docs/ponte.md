@@ -599,3 +599,40 @@ pessoa baixa para editar).
   em outro trabalho do mesmo cliente. PDF que o próprio agente gerou (a Teresa,
   o "PDF, se pedido" dos redatores) continua sendo trazido, como antes.
 - `doctor` avisa se o Word não foi encontrado.
+
+## 10. O orquestrador na esteira do caso (18/11/2026, migration 081, conector 1.4.0)
+
+Até aqui o orquestrador só recebia a **tarefa do processo**. Agora ele recebe três
+pedidos, e é o começo do pedido que diz qual:
+
+| Pedido | Quando nasce | O que o orquestrador decide |
+|---|---|---|
+| `TAREFA DO PROCESSO` | a equipe escreve a tarefa, ou o prazo da Diana vira tarefa (061) | o redator da peça |
+| `CASO NOVO` | o caso recebe o primeiro documento próprio (não gerado por agente) e ainda não tem análise; rascunho do parceiro espera o envio | o primeiro passo: análise da Clara, Atlas, Vicente, ou nenhum, com o motivo |
+| `ANÁLISE APROVADA` | o advogado aprova a análise em Revisões | os próximos: em geral Lucas e Alice; nenhum se não houver viabilidade |
+
+O caso novo vai **uma vez** por caso, em nome do advogado do caso (quem anexa
+costuma ser o parceiro, que não pede trabalho a agente). Sem advogado, não vai:
+fica na atividade do caso e os administradores recebem um aviso. A opção fica em
+DG Brasil → Conexões → "Caso novo e análise aprovada vão ao orquestrador"
+(ligada por padrão); desligada, volta tudo a como era (caso novo não chama
+ninguém, análise aprovada segue a lista fixa da 056).
+
+**Dois ajustes no conector 1.4.0, sem os quais a esteira não funcionava:**
+
+1. **A análise não roda dentro do trabalho do orquestrador.** O resultado da
+   análise só é aceito numa execução de análise, e é a aprovação dela que traz o
+   caso de volta. Por isso o orquestrador responde `ANÁLISE: clara-hiscon-dg`, e
+   a sessão usa a ferramenta nova `pedir_analise`: ela abre a "Análise Bancária"
+   no caso como outro trabalho da fila, como se alguém tivesse clicado em
+   "Iniciar análise".
+2. **O agente escolhido pelo orquestrador passa pela ponte.** Antes, o `ver_ponte`
+   só olhava o agente do trabalho (o orquestrador, que não está no `ponte.json`),
+   então o redator escolhido rodava sem a pasta do cliente. Agora a sessão chama
+   `ver_ponte(agente=<bloco>)` para cada bloco e faz Porteiro, Arquivista, agente
+   e Mensageiro; no segundo bloco, na mesma pasta, o Porteiro não relê.
+
+**Para instalar no computador do escritório:** depois da 080 e da 081 aplicadas,
+rodar de novo o instalador do conector (traz o 1.4.0 e libera `pedir_analise` na
+sessão Vigia) e o `instalar-agentes-bancario.ps1` (orquestrador novo e a
+conferência do orquestrador no fim).

@@ -318,6 +318,27 @@ export function registrarFerramentas(servidor: McpServer, o: OpcoesFerramentas) 
       : 'Este trabalho já tinha um resultado entregue. Nada foi duplicado.')
   }))
 
+  servidor.registerTool('pedir_analise', {
+    title: 'Pedir a análise do caso (orquestrador)',
+    description: 'Só no trabalho do ORQUESTRADOR. Quando ele indicar o agente de ANÁLISE de um modelo (ex.: clara-hiscon-dg), NÃO chame ' +
+      'esse agente nesta sessão: use esta ferramenta. Ela abre a análise do modelo no caso como OUTRO trabalho da fila (o resultado ' +
+      'vai para Revisões e, aprovado, o caso volta ao orquestrador). Repetir não duplica.',
+    inputSchema: {
+      trabalho_id: idTrabalho,
+      agente: z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/).describe('O agente do bloco AGENTE: (ex.: clara-hiscon-dg).'),
+      pedido: z.string().min(1).max(8000).describe('As INSTRUÇÕES que o orquestrador escreveu para esse agente.'),
+    },
+    annotations: entrega,
+  }, seguro('pedir_analise', async (a: { trabalho_id: string; agente: string; pedido: string }) => {
+    const t = trabalhos.obter(a.trabalho_id, true)
+    if (t.contexto.analysis) return erro('Este trabalho já é uma análise: faça a análise aqui mesmo e entregue com entregar_analise.')
+    const r = await api.pedirAnalise(t.id, t.reserva, a.agente, a.pedido)
+    return texto(r.created
+      ? `Análise "${r.template}" aberta no caso e posta na fila (trabalho ${r.agent_run_id}). Ela roda em outro trabalho: ` +
+        'não chame o agente de análise aqui. Os próximos agentes vêm depois da aprovação, num novo pedido ao orquestrador.'
+      : `A análise "${r.template}" deste caso já estava aberta (trabalho ${r.agent_run_id}). Nada foi duplicado.`)
+  }))
+
   servidor.registerTool('entregar_minuta', {
     title: 'Entregar uma minuta',
     description: 'Entrega um arquivo que o agente gerou na pasta saida (PDF, DOCX, XLSX, TXT ou CSV, até 50 MB). Vira ' +

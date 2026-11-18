@@ -276,6 +276,17 @@ describe("API do computador do escritório", () => {
     expect((await job("POST", "fail", { error_code: "SEM_PASTA_NO_DRIVE", message: "Sem pasta" })).status).toBe(200);
   });
 
+  it("pedir análise (081): agente e pedido validados; a porta do banco recebe só o que foi conferido", async () => {
+    const { job, calls } = setup({ executor_start_case_analysis: { analysis_id: "a1", agent_run_id: JOB, template: "Análise Bancária", created: true } });
+    expect((await job("POST", "analyses", { local_agent: "Clara Hiscon", request: "x" })).status).toBe(422);
+    expect((await job("POST", "analyses", { local_agent: "clara-hiscon-dg", request: "" })).status).toBe(422);
+    expect((await job("POST", "analyses", { local_agent: "clara-hiscon-dg", request: "x", extra: 1 })).status).toBe(422);
+    const r = await job("POST", "analyses", { local_agent: "clara-hiscon-dg", request: " Analise o HISCON. " });
+    expect([r.status, (r.body as { created: boolean }).created]).toEqual([200, true]);
+    const c = calls.find((x) => x.fn === "executor_start_case_analysis")!;
+    expect(c.args).toEqual([sha256Hex(TOKEN), JOB, sha256Hex(LEASE), "clara-hiscon-dg", "Analise o HISCON."]);
+  });
+
   it("ponte: dados da pasta do Drive só com a reserva, pela porta do banco que confere o trabalho", async () => {
     const dados = { cliente: { id: JOB, nome: "JOSE DA SILVA FICTICIO" }, pasta_drive: { id: "pastaFicticia_0001", nome: "JOSE DA SILVA FICTICIO" } };
     const { job, send, calls } = setup({ executor_bridge_data: dados });

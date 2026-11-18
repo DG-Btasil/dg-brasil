@@ -173,7 +173,9 @@ if (-not (Test-Path $Settings)) {
     'Read(//g/Meu Drive/DG BRASIL/**)', 'Edit(//g/Meu Drive/DG BRASIL/**)',
     'Read(//c/DGBrasil/agentes/**)', 'Edit(//c/DGBrasil/agentes/trabalho/**)',
     # modelos de recurso que o Rafael lê (só leitura; não é pasta de cliente)
-    'Read(//g/Meu Drive/BASE DE CONHECIMENTO CLAUDE/**)'
+    'Read(//g/Meu Drive/BASE DE CONHECIMENTO CLAUDE/**)',
+    # o orquestrador pede a análise do caso como outro trabalho (081, conector 1.4.0)
+    'mcp__dg-brasil__pedir_analise'
   )
   $allow = @($s.permissions.allow)
   foreach ($r in $novas) { if ($allow -notcontains $r) { $allow += $r } }

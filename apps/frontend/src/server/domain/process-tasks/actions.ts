@@ -8,6 +8,7 @@ import {
   completeProcessTaskSchema,
   createProcessTaskSchema,
   listProcessTasksSchema,
+  saveCaseOrchestrationSchema,
   saveTaskSettingsSchema,
   sendProcessTaskSchema,
 } from "./schemas";
@@ -40,4 +41,12 @@ export async function listTaskAgentsAction() {
 
 export async function saveTaskSettingsAction(input: unknown) {
   return runAction({ name: "process_tasks.settings", permission: "dgbrasil.manage", schema: saveTaskSettingsSchema, input, handler: service.saveTaskSettings });
+}
+
+export async function getCaseOrchestrationAction() {
+  return runAction({ name: "process_tasks.case_orchestration", permission: "analyses.start", schema: z.object({}).optional(), input: undefined, handler: (ctx) => service.getCaseOrchestration(ctx) });
+}
+
+export async function saveCaseOrchestrationAction(input: unknown) {
+  return runAction({ name: "process_tasks.case_orchestration_save", permission: "dgbrasil.manage", schema: saveCaseOrchestrationSchema, input, handler: service.saveCaseOrchestration });
 }

@@ -52,3 +52,13 @@ export async function listAgents(db: SupabaseClient): Promise<TaskAgentRow[]> {
 export async function saveSettings(db: SupabaseClient, orchestratorAgentId: string | null): Promise<void> {
   unwrap(await db.rpc("save_process_task_settings", { p_orchestrator_agent_id: orchestratorAgentId }));
 }
+
+/** Caso novo e análise aprovada vão ao orquestrador (081). Sem a linha (ou a coluna), vale o padrão: ligado. */
+export async function getCaseOrchestration(db: SupabaseClient): Promise<boolean> {
+  const row = unwrap(await db.from("process_task_settings").select("case_orchestration").maybeSingle()) as { case_orchestration: boolean } | null;
+  return row?.case_orchestration ?? true;
+}
+
+export async function saveCaseOrchestration(db: SupabaseClient, enabled: boolean): Promise<void> {
+  unwrap(await db.rpc("save_case_orchestration", { p_enabled: enabled }));
+}

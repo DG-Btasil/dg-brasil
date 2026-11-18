@@ -207,6 +207,12 @@ export const EXECUTOR_ERROR_CODES = [
   "PORTEIRO_BLOQUEOU", "SEM_PASTA_NO_DRIVE",
 ] as const;
 
+/** Orquestrador (081): abrir a análise do modelo cujo agente principal é local_agent. */
+export const startCaseAnalysisSchema = z.object({
+  local_agent: z.string().trim().regex(/^[a-z0-9][a-z0-9-]{1,63}$/),
+  request: z.string().trim().min(1).max(8000),
+}).strict();
+
 export const failSchema = z.object({
   error_code: z.enum(EXECUTOR_ERROR_CODES),
   message: z.string().trim().min(1).max(1000),

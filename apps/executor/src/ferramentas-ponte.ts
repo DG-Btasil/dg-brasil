@@ -54,9 +54,10 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
   const leitura = { readOnlyHint: true, openWorldHint: false }
   const escrita = { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
 
-  const configDoTrabalho = async (t: Trabalho) => {
+  // O agente da ponte é o do trabalho; no trabalho do orquestrador, o que ver_ponte recebeu (o bloco da vez).
+  const configDoTrabalho = async (t: Trabalho, escolhido?: string) => {
     const cfg = await lerPonte(arquivoPonte())
-    const agente = t.contexto.agent.local_agent
+    const agente = escolhido ?? t.ponte?.agente ?? t.contexto.agent.local_agent
     if (!cfg || !agente || !cfg.agentes[agente]) return null
     return { cfg, agente, conf: cfg.agentes[agente] }
   }
@@ -105,15 +106,31 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
   servidor.registerTool('ver_ponte', {
     title: 'Ver se o trabalho passa pela ponte',
     description: 'Diz se o agente deste trabalho trabalha na pasta do cliente no Drive (ponte com os agentes da máquina) e, se sim, ' +
-      'qual é a pasta do cliente e a ordem: Porteiro → Arquivista → agente → Mensageiro. Chame logo depois de baixar_documentos.',
-    inputSchema: { trabalho_id: idTrabalho },
+      'qual é a pasta do cliente e a ordem: Porteiro → Arquivista → agente → Mensageiro. Chame logo depois de baixar_documentos. ' +
+      'No trabalho do ORQUESTRADOR, chame de novo para CADA bloco "AGENTE:" da resposta dele, com agente=<nome do bloco>.',
+    inputSchema: {
+      trabalho_id: idTrabalho,
+      agente: z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/).optional()
+        .describe('Só no trabalho do orquestrador: o agente que ele escolheu (o nome do bloco AGENTE:).'),
+    },
     annotations: leitura,
-  }, seguro('ver_ponte', async ({ trabalho_id }: { trabalho_id: string }) => {
+  }, seguro('ver_ponte', async ({ trabalho_id, agente }: { trabalho_id: string; agente?: string }) => {
     const t = trabalhos.obter(trabalho_id, true)
-    const c = await configDoTrabalho(t)
+    const anterior = t.ponte
+    if (agente !== undefined && agente !== t.contexto.agent.local_agent) {
+      // Trocar de agente só vale no trabalho de quem distribui (o orquestrador), que não trabalha na pasta do cliente.
+      const cfg = await lerPonte(arquivoPonte())
+      const proprio = t.contexto.agent.local_agent
+      if (cfg && proprio && cfg.agentes[proprio]) {
+        return erro(`Este trabalho é do agente ${proprio}: não troque de agente. Chame ver_ponte sem o campo agente.`)
+      }
+    }
+    const c = await configDoTrabalho(t, agente)
     if (!c) {
       t.ponte = null
-      return texto('Este trabalho NÃO passa pela ponte: o agente local não está no ponte.json deste computador. Siga o fluxo de sempre (pastas entrada e saida).')
+      return texto(agente
+        ? `O agente ${agente} NÃO passa pela ponte (não está no ponte.json deste computador). Chame-o pelo passo d, com as pastas entrada e saida.`
+        : 'Este trabalho NÃO passa pela ponte: o agente local não está no ponte.json deste computador. Siga o fluxo de sempre (pastas entrada e saida).')
     }
     const dados = await api.ponte(t.id, t.reserva)
     let nome: string | null = null
@@ -147,9 +164,12 @@ export function registrarFerramentasPonte(servidor: McpServer, trabalhos: Trabal
       return erro(`A pasta do cliente não existe na etapa do agente ${c.agente} e o ponte.json não deixa criar. ` +
         'Chame informar_falha com codigo MISSING_INPUT e a mensagem "Pasta do cliente não encontrada no Drive".')
     }
-    t.ponte = { agente: c.agente, pasta, dados, checagens: null, inicioAgente: null }
+    // Próximo bloco do orquestrador na MESMA pasta: o Porteiro já conferiu estes documentos e não precisa reler.
+    const jaConferido = anterior?.checagens && anterior.pasta.pasta === pasta.pasta ? anterior.checagens : null
+    t.ponte = { agente: c.agente, pasta, dados, checagens: jaConferido, inicioAgente: null }
     return texto([
       `Este trabalho PASSA PELA PONTE. Agente da máquina: ${c.agente}.`,
+      jaConferido ? 'O Porteiro já conferiu os documentos deste trabalho (bloco anterior, mesma pasta): pule o passo 1 e comece pelo ARQUIVISTA.' : '',
       pasta.origem ? `Origem do cliente: ${textoDaOrigem(pasta.origem)}. Pasta da origem: ${pasta.origem.pasta}` : '',
       `Pasta do cliente: ${pasta.pasta}${pasta.existe ? '' : pasta.criar.length ? '  (ainda não existe: o Arquivista cria, com a pasta da origem)' : '  (ainda não existe: o Arquivista cria)'}`,
       peloCliente ? 'A pasta leva o nome do cliente no cadastro do DG Brasil.'

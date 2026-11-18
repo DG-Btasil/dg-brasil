@@ -131,6 +131,7 @@ $allow = @(
   'mcp__dg-brasil__ver_processo', 'mcp__dg-brasil__listar_documentos', 'mcp__dg-brasil__baixar_documentos',
   'mcp__dg-brasil__consultar_teses', 'mcp__dg-brasil__listar_referencias', 'mcp__dg-brasil__abrir_referencia',
   'mcp__dg-brasil__informar_progresso', 'mcp__dg-brasil__entregar_analise', 'mcp__dg-brasil__entregar_minuta',
+  'mcp__dg-brasil__pedir_analise',
   'mcp__dg-brasil__propor', 'mcp__dg-brasil__concluir_trabalho', 'mcp__dg-brasil__informar_falha',
   'mcp__dg-brasil__devolver_trabalho', 'mcp__dg-brasil__reservar_trabalho', 'mcp__dg-brasil__roteiro_vigia',
   'Read(./trabalhos/**)', 'Edit(./trabalhos/**)',
