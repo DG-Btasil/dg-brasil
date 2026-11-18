@@ -5854,6 +5854,9 @@ await deveFalhar('parceiro não grava a forma de pagamento', () =>
 // ═════════════════════════════ Sequência automática [056] ════════════════
 
 secao('Sequência automática: análise aprovada → próximos agentes do caso, na ordem [056]')
+// A lista fixa da 056 é a reserva da 081: aqui ela é testada com o orquestrador fora da esteira do caso
+// (a 081 é verificada na própria seção, no fim do arquivo).
+await db.query(`update process_task_settings set case_orchestration = false where id`)
 // Agentes e modelos próprios (o kit saiu de cena no começo do arquivo).
 const agente056 = async (slug, status = 'ACTIVE') => {
   const a = await um(db, `insert into agents (slug, name, status) values ($1, $2, 'DRAFT') returning id`, [slug, `Agente ${slug}`])
@@ -10018,6 +10021,158 @@ await deve('cada pessoa só mexe no próprio cadastro; cadastro concluído não 
   igual((await como(ids.lucas, (tx) => tx.query(`update profiles set job_title = 'Invadido' where id = $1`, [ids.ana]))).affectedRows ?? 0, 0, 'UPDATE em perfil alheio não pega linha')
   await deveFalhar('apagar a cidade de cadastro concluído', () => db.query(`update profiles set office_city = null where id = $1`, [ids.lucas]), /profiles_completed_has_office/)
   await deveFalhar('gênero fora da lista', () => db.query(`update profiles set gender = 'X' where id = $1`, [ids.lucas]), /profiles_gender_known/)
+})
+
+// ═════════════════════════════ Caso novo no orquestrador [081] ═══════════
+
+secao('Caso novo e análise aprovada vão ao orquestrador; o orquestrador pede a análise pela porta certa [081]')
+const t081 = {}
+// Pessoa logada SEM trocar de papel no banco (o gatilho roda como na tela, com auth.uid() da pessoa).
+const sessao081 = (uid, fn) => db.transaction(async (tx) => {
+  await tx.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: uid, role: 'authenticated', aal: 'aal2' })])
+  return fn(tx)
+})
+async function documento081(tx, caso, titulo, origem = 'UPLOAD') {
+  const cli = (await um(tx, `select client_id from legal_cases where id = $1`, [caso])).client_id
+  const doc = randomUUID(), v = randomUUID()
+  await tx.query(`insert into documents (id, client_id, category, title) values ($1, $2, 'OTHER', $3)`, [doc, cli, titulo])
+  await tx.query(`insert into case_documents (legal_case_id, document_id) values ($1, $2)`, [caso, doc])
+  await tx.query(`insert into document_versions (id, document_id, storage_object_name, original_filename, source) values ($1, $2, $3, $4, $5)`,
+    [v, doc, `clients/${cli}/documents/${doc}/${v}/arquivo.pdf`, `${titulo}.pdf`, origem])
+  return doc
+}
+const caso081 = async (titulo, { status = 'IN_PROGRESS', advogado = ids.lucas, cliente = t081.cli } = {}) => (await um(db,
+  `insert into legal_cases (client_id, legal_area_id, title, status, origin_organization_id, created_by_organization_id, partner_organization_id, assigned_lawyer_id, accepted_at)
+   values ($1, $2, $3, $4, $5, $5, $5, $6, case when $6::uuid is null then null else now() end) returning id`,
+  [cliente, ids.banking, titulo, status, ids.almeida, advogado])).id
+const entrada081 = (caso) => linhas(db, `select r.id, r.agent_id, r.requested_by, r.status, r.legal_process_id, i.request_text txt, i.parameters par
+  from agent_runs r join agent_run_inputs i on i.agent_run_id = r.id
+  where r.legal_case_id = $1 and i.parameters ->> 'caso_novo' = 'true' order by r.created_at`, [caso])
+const atividade081 = (caso, acao) => linhas(db, `select metadata from audit_events where entity_type = 'legal_cases' and entity_id = $1 and action = $2`, [caso, acao])
+
+await deve('cenário: a 081 roda de novo sem quebrar; opção ligada por padrão; orquestrador e Clara fictícios; modelo com lista fixa', async () => {
+  igual((await um(db, `select column_default d from information_schema.columns where table_name = 'process_task_settings' and column_name = 'case_orchestration'`)).d, 'true', 'ligada por padrão')
+  await db.exec(await readFile(new URL('migrations/20261118000081_caso_novo_orquestrador.sql', raiz), 'utf8'))
+  for (const g of ['document_versions_case_intake', 'case_documents_case_intake', 'legal_cases_case_intake'])
+    igual((await um(db, `select count(*)::int n from pg_trigger where tgname = $1 and not tgisinternal`, [g])).n, 1, g)
+  const agente = async (slug, local) => {
+    const a = await um(db, `insert into agents (slug, name, status) values ($1, $2, 'DRAFT') returning id`, [slug, `Agente ${slug}`])
+    const v = await um(db, `insert into agent_versions (agent_id, instructions, configuration) values ($1, 'Teste 081', $2) returning id`,
+      [a.id, JSON.stringify(local ? { local_agent: local } : {})])
+    await db.query(`update agents set current_version_id = $2, status = 'ACTIVE' where id = $1`, [a.id, v.id])
+    return a.id
+  }
+  t081.orqAntes = (await um(db, `select orchestrator_agent_id o from process_task_settings where id`)).o
+  t081.orq = await agente('orquestrador-081', 'orquestrador')
+  t081.clara = await agente('clara-081', 'clara-081')
+  t081.lucas = await agente('lucas-081', 'lucas-081')
+  t081.outro = await agente('outro-081', 'outro-081')
+  await como(ids.barbara, (tx) => tx.query(`select public.save_process_task_settings($1)`, [t081.orq]))
+  t081.tpl = (await um(db, `insert into analysis_templates (legal_area_id, name, primary_agent_id, next_agent_ids)
+    values ($1, 'Modelo 081', $2, $3) returning id`, [ids.banking, t081.clara, [t081.lucas]])).id
+  t081.cli = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '98108100001', $1) returning id`, [ids.almeida])).id
+  t081.cliSem = (await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', '98108100002', $1) returning id`, [ids.almeida])).id
+  await db.query(`update process_task_settings set case_orchestration = true where id`)
+})
+await deveFalhar('LAWYER não liga nem desliga a esteira (só ADMIN)', () =>
+  como(ids.lucas, (tx) => tx.query(`select public.save_case_orchestration(false)`)), /Somente ADMIN/)
+await deve('ADMIN desliga e liga; com a opção desligada, caso novo com documento não chama ninguém', async () => {
+  await como(ids.barbara, (tx) => tx.query(`select public.save_case_orchestration(false)`))
+  const c = await caso081('Caso 081 com a esteira desligada')
+  await sessao081(ids.lucas, (tx) => documento081(tx, c, 'HISCON'))
+  igual((await entrada081(c)).length, 0, 'nada na fila')
+  await como(ids.barbara, (tx) => tx.query(`select public.save_case_orchestration(true)`))
+  igual((await um(db, `select case_orchestration v from process_task_settings where id`)).v, true, 'ligada de novo')
+})
+await deve('rascunho do PARCEIRO com documento não vai; quando o parceiro envia o caso, vai ao orquestrador uma vez, em nome do advogado do caso, com o pedido "CASO NOVO"', async () => {
+  const c = t081.casoP = await caso081('Consignado 081 (parceiro)', { status: 'DRAFT' })
+  await sessao081(ids.almeidaUsr, (tx) => documento081(tx, c, 'HISCON do cliente'))
+  igual((await entrada081(c)).length, 0, 'rascunho: nada')
+  await sessao081(ids.almeidaUsr, (tx) => tx.query(`update legal_cases set status = 'SUBMITTED', submitted_at = now() where id = $1`, [c]))
+  const e = await entrada081(c)
+  igual(e.map((r) => [r.agent_id, r.requested_by, r.status, r.legal_process_id]), [[t081.orq, ids.lucas, 'QUEUED', null]], 'um trabalho, do advogado')
+  const txt = e[0].txt
+  if (!txt.startsWith('CASO NOVO (DG Brasil)')) throw new Error('pedido sem o começo "CASO NOVO"')
+  if (!txt.includes('- HISCON do cliente (OTHER, HISCON do cliente.pdf)')) throw new Error('pedido sem a lista dos documentos: ' + txt)
+  if (!txt.includes('Caso: Consignado 081 (parceiro)')) throw new Error('pedido sem o caso')
+  igual((await atividade081(c, 'CASE_INTAKE_QUEUED')).length, 1, 'registrado na atividade do caso')
+  t081.runP = e[0].id
+})
+await deve('mais documentos no mesmo caso não mandam de novo', async () => {
+  await sessao081(ids.almeidaUsr, (tx) => documento081(tx, t081.casoP, 'Identidade'))
+  await sessao081(ids.lucas, (tx) => documento081(tx, t081.casoP, 'Comprovante'))
+  igual((await entrada081(t081.casoP)).length, 1, 'continua um')
+})
+await deve('documento gerado por agente não conta; o primeiro documento da equipe manda, em nome de quem está logado', async () => {
+  const c = await caso081('Caso 081 interno', { advogado: ids.barbara })
+  await sessao081(ids.lucas, (tx) => documento081(tx, c, 'Minuta do agente', 'AGENT'))
+  igual((await entrada081(c)).length, 0, 'só documento de agente: nada')
+  await sessao081(ids.lucas, (tx) => documento081(tx, c, 'HISCON'))
+  igual((await entrada081(c)).map((r) => r.requested_by), [ids.lucas], 'em nome de quem anexou (advogado logado)')
+})
+await deve('caso que já tem análise (alguém iniciou à mão) não vai ao orquestrador', async () => {
+  const c = await caso081('Caso 081 já com análise')
+  await iniciar(ids.lucas, randomUUID(), c, t081.tpl, {}, false)
+  await sessao081(ids.lucas, (tx) => documento081(tx, c, 'HISCON'))
+  igual((await entrada081(c)).length, 0, 'nada')
+})
+await deve('caso sem advogado (criado pelo parceiro): nada vai, fica na atividade e os ADMIN são avisados uma vez; o documento entra normalmente', async () => {
+  const c = await caso081('Caso 081 sem advogado', { status: 'SUBMITTED', advogado: null, cliente: t081.cliSem })
+  await sessao081(ids.almeidaUsr, (tx) => documento081(tx, c, 'HISCON'))
+  await sessao081(ids.almeidaUsr, (tx) => documento081(tx, c, 'Identidade'))
+  igual((await entrada081(c)).length, 0, 'nada na fila')
+  igual((await atividade081(c, 'CASE_INTAKE_SKIPPED')).length, 1, 'um registro')
+  igual((await um(db, `select count(*)::int n from notifications where event_key = $1 and user_id = $2`, ['case-intake-no-lawyer:' + c, ids.barbara])).n, 1, 'aviso ao ADMIN')
+  igual((await um(db, `select count(*)::int n from case_documents where legal_case_id = $1`, [c])).n, 2, 'documentos gravados')
+})
+await deve('sem orquestrador em vigor: nada vai', async () => {
+  await db.query(`update process_task_settings set orchestrator_agent_id = null where id`)
+  const c = await caso081('Caso 081 sem orquestrador')
+  await sessao081(ids.lucas, (tx) => documento081(tx, c, 'HISCON'))
+  igual((await entrada081(c)).length, 0, 'nada')
+  await db.query(`update process_task_settings set orchestrator_agent_id = $1 where id`, [t081.orq])
+})
+
+secao('O orquestrador pede a análise do modelo; a aprovação devolve o caso ao orquestrador [081]')
+await deve('o trabalho do orquestrador abre a análise do modelo do agente escolhido, em nome de quem pediu; repetir não duplica', async () => {
+  const l = t081.lease = lease()
+  igual((await reservar040(hA, t081.runP, l)).claimed, true, 'orquestrador reservado')
+  const r = await ex(`select private.executor_start_case_analysis($1, $2, $3, 'clara-081', 'Analise o HISCON do caso.') r`, [hA, t081.runP, l])
+  igual([r.created, r.template], [true, 'Modelo 081'], 'análise aberta')
+  const a = await um(db, `select a.status, a.legal_case_id, a.analysis_template_id, a.started_by, r.agent_id, r.requested_by, i.request_text txt, i.parameters par
+    from legal_analyses a join agent_runs r on r.id = a.agent_run_id join agent_run_inputs i on i.agent_run_id = r.id where a.id = $1`, [r.analysis_id])
+  igual([a.status, a.legal_case_id, a.analysis_template_id, a.started_by, a.agent_id, a.requested_by, a.txt, a.par.pedido_do_orquestrador],
+    ['QUEUED', t081.casoP, t081.tpl, ids.lucas, t081.clara, ids.lucas, 'Pedido do orquestrador: Analise o HISCON do caso.', t081.runP], 'análise e execução da Clara')
+  const de = await ex(`select private.executor_start_case_analysis($1, $2, $3, 'clara-081', 'De novo.') r`, [hA, t081.runP, l])
+  igual([de.created, de.analysis_id], [false, r.analysis_id], 'mesma análise')
+  t081.analise = r
+})
+await deveFalhar('agente que não é de análise de nenhum modelo da área é recusado', () =>
+  ex(`select private.executor_start_case_analysis($1, $2, $3, 'outro-081', 'x') r`, [hA, t081.runP, t081.lease]), /não faz a análise de nenhum modelo/)
+await deveFalhar('trabalho que não é do orquestrador não pede análise', async () => {
+  const run = await avulsa040('Trabalho comum 081'); const l = lease()
+  await reservar040(hA, run, l)
+  await ex(`select private.executor_start_case_analysis($1, $2, $3, 'clara-081', 'x') r`, [hA, run, l])
+}, /Só o trabalho do orquestrador/)
+await deveFalhar('sem a reserva do trabalho, nada feito', () =>
+  ex(`select private.executor_start_case_analysis($1, $2, $3, 'clara-081', 'x') r`, [hA, t081.runP, lease()]), /não está reservado/)
+await deve('análise aprovada volta ao orquestrador ("ANÁLISE APROVADA", com o resumo e o recado), em nome de quem aprovou; a lista fixa do modelo não roda; aprovar de novo não duplica', async () => {
+  const run = t081.analise.agent_run_id
+  await reservar039(run, 'worker-081')
+  const e = await entregarAnalise(run, 'worker-081', 'Resumo 081: cabe a inicial do bloco B.', resultado039)
+  await decidir(ids.lucas, e.review_id, 'APPROVE', 'PODE GERAR a primeira rodada.')
+  const v = await linhas(db, `select r.agent_id, r.requested_by, r.status, i.request_text txt from agent_runs r join agent_run_inputs i on i.agent_run_id = r.id
+    where i.parameters ->> 'legal_analysis_result_id' = $1 order by r.created_at`, [e.result_id])
+  igual(v.map((x) => [x.agent_id, x.requested_by, x.status]), [[t081.orq, ids.lucas, 'QUEUED']], 'só o orquestrador, sem o Lucas da lista fixa')
+  for (const trecho of ['ANÁLISE APROVADA (DG Brasil)', 'análise "Modelo 081"', 'Resumo 081: cabe a inicial do bloco B.', 'Recado do advogado na aprovação:\nPODE GERAR a primeira rodada.'])
+    if (!v[0].txt.includes(trecho)) throw new Error('pedido sem: ' + trecho)
+  await decidir(ids.lucas, e.review_id, 'REOPEN', 'conferir')
+  await decidir(ids.barbara, e.review_id, 'APPROVE')
+  igual((await um(db, `select count(*)::int n from agent_run_inputs where parameters ->> 'legal_analysis_result_id' = $1`, [e.result_id])).n, 1, 'sem duplicar')
+})
+await deve('fim do cenário: orquestrador de antes de volta; a esteira do caso fica ligada', async () => {
+  await db.query(`update process_task_settings set orchestrator_agent_id = $1 where id`, [t081.orqAntes])
+  igual((await um(db, `select case_orchestration v from process_task_settings where id`)).v, true, 'ligada')
 })
 
 // ═════════════════════════════ fim ═══════════════════════════════════════
