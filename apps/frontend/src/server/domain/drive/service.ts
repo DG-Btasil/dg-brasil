@@ -7,8 +7,8 @@ import { DomainError } from "@/server/core/errors";
 import { callPrivate } from "@/server/core/worker-db";
 import { signedDocumentStorage } from "@/server/domain/documents/signed-storage";
 import { DriveClient, DriveError, driveConfigFromEnv } from "@/server/integrations/google-drive/client";
-import { DRIVE_DB_FUNCTIONS, runDriveSync, suggestLinks, type DriveDbFunction, type SyncDeps } from "@/server/integrations/google-drive/sync";
-import type { ClientDriveDTO, DriveFolderDTO, DriveStatusDTO, DriveSuggestionDTO, DriveSyncResultDTO } from "./dto";
+import { DRIVE_DB_FUNCTIONS, runDriveSync, suggestLinks, syncAllBatch, type DriveDbFunction, type SyncAllState, type SyncDeps } from "@/server/integrations/google-drive/sync";
+import type { ClientDriveDTO, DriveFolderDTO, DriveLinkManyDTO, DriveStatusDTO, DriveSuggestionDTO, DriveSyncAllDTO, DriveSyncResultDTO } from "./dto";
 import { assertFolderAllowed } from "./folder-scope";
 
 /**
@@ -86,7 +86,7 @@ export async function testDrive(ctx: ServiceContext): Promise<{ email?: string; 
 export async function searchFolders(ctx: ServiceContext, term: string): Promise<DriveFolderDTO[]> {
   requireRole(ctx, "ADMIN", "LAWYER");
   try {
-    return (await requireClient().searchFolders(term)).map((f) => ({ id: f.id, name: f.name }));
+    return (await requireClient().searchFolders(term)).map((f) => ({ id: f.id, name: f.name, ...(f.path ? { path: f.path } : {}) }));
   } catch (e) {
     return fromDrive(e);
   }
@@ -153,7 +153,10 @@ export async function syncClientNow(ctx: ServiceContext, clientId: string): Prom
   return { imported: r.imported, skipped: r.skipped, failed: r.failed, exported: r.exports.exported };
 }
 
-/** Sugestões de ligação: clientes sem pasta × pastas da raiz com o mesmo nome. Um humano confirma cada uma. */
+/**
+ * Sugestões de ligação: clientes sem pasta × pastas de cliente com o mesmo nome
+ * (na raiz e em <ORIGEM>\CLIENTE BANCÁRIO, folder-tree.ts). Um humano confirma.
+ */
 export async function suggestions(ctx: ServiceContext): Promise<DriveSuggestionDTO[]> {
   requireRole(ctx, "ADMIN", "LAWYER");
   const c = requireClient();
@@ -163,4 +166,44 @@ export async function suggestions(ctx: ServiceContext): Promise<DriveSuggestionD
     c.listClientFolders().catch(fromDrive),
   ]);
   return suggestLinks(clients, folders).slice(0, 200);
+}
+
+/** Tempo de cada lote em Server Action (a página de Configurações tem maxDuration = 60). */
+const BATCH_MS = 40_000;
+
+/**
+ * "Ligar todas as sugestões exatas" (ADMIN), em lotes: cada pasta passa pelas
+ * mesmas conferências do "Ligar" (pasta ativa, dentro da pasta dos clientes,
+ * não pública). Uma falha não para as outras; o que não coube no tempo volta
+ * em `notProcessed` para a tela mandar de novo.
+ */
+export async function linkMany(ctx: ServiceContext, items: { clientId: string; folderId: string }[]): Promise<DriveLinkManyDTO> {
+  requireRole(ctx, "ADMIN");
+  const until = Date.now() + BATCH_MS;
+  const out: DriveLinkManyDTO = { linked: [], failed: [], notProcessed: [] };
+  for (const it of items) {
+    if (Date.now() > until) {
+      out.notProcessed.push(it.clientId);
+      continue;
+    }
+    try {
+      await linkFolder(ctx, it.clientId, it.folderId);
+      out.linked.push(it.clientId);
+    } catch (e) {
+      if (!(e instanceof DomainError)) ctx.log.warn("drive.link_many_failed", { clientId: it.clientId });
+      out.failed.push({ clientId: it.clientId, reason: e instanceof DomainError ? e.publicMessage : "Falha inesperada ao ligar esta pasta." });
+    }
+  }
+  ctx.log.info("drive.link_many", { linked: out.linked.length, failed: out.failed.length, notProcessed: out.notProcessed.length });
+  return out;
+}
+
+/** "Sincronizar tudo agora" (ADMIN): um lote; a tela repete até `done` (sync.ts, syncAllBatch). */
+export async function syncAll(ctx: ServiceContext, state: SyncAllState): Promise<DriveSyncAllDTO> {
+  requireRole(ctx, "ADMIN");
+  const c = requireClient();
+  const summary = await rpc<Record<string, unknown>>(ctx.db, "get_drive_summary");
+  const r = await syncAllBatch(syncDeps(ctx, c, Date.now() + BATCH_MS), state);
+  ctx.log.info("drive.sync_all_batch", { links: r.links, imported: r.imported, failed: r.failed, pending: r.pending.length, done: r.done });
+  return { ...r, total: Math.max(Number(summary.linked_clients ?? 0), r.visited.length) };
 }

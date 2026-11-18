@@ -2,13 +2,13 @@
 
 import { z } from "zod";
 import { runAction } from "@/server/core/action";
-import { clientIdSchema, linkFolderSchema, searchFoldersSchema } from "./schemas";
+import { clientIdSchema, linkFolderSchema, linkManySchema, searchFoldersSchema, syncAllSchema } from "./schemas";
 import * as service from "./service";
 
 /**
  * Google Drive (041). Ler a situação: equipe interna. Procurar, ligar,
  * desligar e sincronizar: ADMIN ou advogado (o banco revalida). Testar a
- * conexão: ADMIN.
+ * conexão, ligar as sugestões em lote e sincronizar tudo: ADMIN.
  */
 
 const empty = z.object({}).default({});
@@ -36,4 +36,10 @@ export async function syncClientDriveAction(input: unknown) {
 }
 export async function getDriveSuggestionsAction() {
   return runAction({ name: "drive.suggestions", schema: empty, input: {}, handler: (ctx) => service.suggestions(ctx) });
+}
+export async function linkDriveFoldersAction(input: unknown) {
+  return runAction({ name: "drive.link_many", schema: linkManySchema, input, handler: (ctx, v) => service.linkMany(ctx, v.items) });
+}
+export async function syncAllDriveAction(input: unknown) {
+  return runAction({ name: "drive.sync_all", schema: syncAllSchema, input, handler: (ctx, v) => service.syncAll(ctx, v) });
 }

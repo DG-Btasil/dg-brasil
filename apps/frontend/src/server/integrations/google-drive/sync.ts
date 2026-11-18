@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import type { Logger } from "@/server/core/logger";
 import { DriveError, type DriveClient, type DriveFile } from "./client";
+import { normalizeName } from "./folder-tree";
+
+export { normalizeName };
 
 /**
  * Sincronização com o Google Drive, rodada pelo SERVIDOR (rota agendada ou
@@ -57,6 +60,8 @@ export interface LinkSyncResult {
   imported: number;
   skipped: number;
   failed: number;
+  /** Ficou arquivo novo para trás (limite da passada ou do tempo): precisa de outra passada. */
+  more: boolean;
 }
 
 type ImportOutcome = "imported" | "known";
@@ -71,7 +76,7 @@ const time = (d: SyncDeps) => (d.now ?? Date.now)();
 const outOfTime = (d: SyncDeps) => d.deadline !== undefined && time(d) > d.deadline;
 
 export async function syncLink(link: Link, d: SyncDeps, maxImports = 30): Promise<LinkSyncResult> {
-  const result: LinkSyncResult = { imported: 0, skipped: 0, failed: 0 };
+  const result: LinkSyncResult = { imported: 0, skipped: 0, failed: 0, more: false };
   let error: string | null = null;
   try {
     const known = await d.db<{ imported: string[]; exported: (string | null)[] }>("drive_known_files", [link.id]);
@@ -83,7 +88,10 @@ export async function syncLink(link: Link, d: SyncDeps, maxImports = 30): Promis
         result.skipped++;
         continue;
       }
-      if (result.imported >= maxImports || outOfTime(d)) break;
+      if (result.imported >= maxImports || outOfTime(d)) {
+        result.more = true;
+        break;
+      }
       try {
         if ((await importFile(link, f, d)) === "imported") result.imported++;
         else result.skipped++;
@@ -193,7 +201,7 @@ export async function processExports(d: SyncDeps, limit = 5): Promise<ExportResu
 export async function runDriveSync(d: SyncDeps, opts: { links?: number; clientId?: string } = {}) {
   const exports = await processExports(d);
   const links = await d.db<Link[]>("drive_links_to_sync", [opts.links ?? 5, opts.clientId ?? null]);
-  const totals: LinkSyncResult = { imported: 0, skipped: 0, failed: 0 };
+  const totals = { imported: 0, skipped: 0, failed: 0 };
   for (const l of links) {
     if (outOfTime(d)) break;
     const r = await syncLink(l, d);
@@ -204,14 +212,95 @@ export async function runDriveSync(d: SyncDeps, opts: { links?: number; clientId
   return { exports, links: links.length, ...totals };
 }
 
-/** Normaliza nome para casar cliente ↔ pasta (sugestão; um humano confirma). */
-export function normalizeName(s: string): string {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+/** Janela das pastas mais antigas lida em cada lote do "Sincronizar tudo agora". */
+export const SYNC_ALL_WINDOW = 100;
+
+export interface SyncAllState {
+  /** Pastas (ids das ligações) já conferidas desde o começo. */
+  visited: string[];
+  /** Clientes cuja pasta ainda tem arquivo novo (passou do limite da passada). */
+  pending: string[];
+}
+
+export interface SyncAllBatchResult extends SyncAllState {
+  /** Pastas conferidas neste lote (contando as passadas extras). */
+  links: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  exported: number;
+  done: boolean;
+}
+
+/**
+ * Um lote do "Sincronizar tudo agora". Quem chama repete com o estado
+ * devolvido até `done`. Sem estado no servidor: fechar a página só interrompe
+ * (o que entrou fica; nada duplica, porque cada arquivo é conferido pelo ID e
+ * pelo md5 antes de entrar).
+ *
+ * Ordem: primeiro as pastas que ficaram com arquivo novo para trás; depois as
+ * pastas ainda não conferidas, das mais antigas para as mais novas. O banco
+ * devolve as ligações pela última sincronização (as nunca sincronizadas
+ * primeiro), e toda passada grava a hora: assim uma pasta ainda não conferida
+ * sempre vem antes das já conferidas. Terminou quando não sobra passada extra e
+ * a janela das mais antigas só tem pasta já conferida (as de fora dela foram
+ * sincronizadas depois do começo, pela rodada agendada).
+ */
+export async function syncAllBatch(d: SyncDeps, state: SyncAllState): Promise<SyncAllBatchResult> {
+  const visited = new Set(state.visited);
+  const pending = new Set(state.pending);
+  const out = { links: 0, imported: 0, skipped: 0, failed: 0 };
+  const add = (r: LinkSyncResult) => {
+    out.links++;
+    out.imported += r.imported;
+    out.skipped += r.skipped;
+    out.failed += r.failed;
+  };
+  const exports = await processExports(d);
+
+  for (const clientId of [...pending]) {
+    if (outOfTime(d)) break;
+    const [link] = await d.db<Link[]>("drive_links_to_sync", [1, clientId]);
+    if (!link) {
+      pending.delete(clientId);
+      continue;
+    }
+    const r = await syncLink(link, d);
+    add(r);
+    visited.add(link.id);
+    if (!r.more) pending.delete(clientId);
+  }
+
+  let left = 0;
+  if (!outOfTime(d)) {
+    const window = await d.db<Link[]>("drive_links_to_sync", [SYNC_ALL_WINDOW, null]);
+    const todo = window.filter((l) => !visited.has(l.id));
+    for (const l of todo) {
+      if (outOfTime(d)) {
+        left++;
+        continue;
+      }
+      const r = await syncLink(l, d);
+      add(r);
+      visited.add(l.id);
+      if (r.more) pending.add(l.client_id);
+    }
+  } else {
+    left = 1;
+  }
+
+  return {
+    ...out,
+    exported: exports.exported,
+    visited: [...visited],
+    pending: [...pending],
+    done: left === 0 && pending.size === 0 && !outOfTime(d),
+  };
 }
 
 /** Sugestões: pasta cujo nome normalizado é igual ao do cliente, ou começa com ele. */
-export function suggestLinks(clients: { client_id: string; name: string }[], folders: { id: string; name: string }[]) {
-  const byName = new Map<string, { id: string; name: string }[]>();
+export function suggestLinks<F extends { id: string; name: string }>(clients: { client_id: string; name: string }[], folders: F[]) {
+  const byName = new Map<string, F[]>();
   for (const f of folders) {
     const k = normalizeName(f.name);
     byName.set(k, [...(byName.get(k) ?? []), f]);

@@ -1,4 +1,5 @@
 import { createSign } from "node:crypto";
+import { clientFoldersFrom, isStructuralName, readClientFolderTree, type ClientFolderTree, type FolderNode } from "./folder-tree";
 
 /**
  * Cliente mínimo da API do Google Drive (v3), com fetch. Só o que o DG Brasil
@@ -113,30 +114,78 @@ export class DriveClient {
     return { email: j.user?.emailAddress };
   }
 
-  /** Pastas dentro da pasta raiz dos clientes (ou em todo o Drive, sem raiz), por parte do nome. */
-  async searchFolders(term: string, limit = 25): Promise<{ id: string; name: string }[]> {
-    const parts = [`mimeType = '${FOLDER}'`, "trashed = false"];
-    if (this.config.rootFolderId) parts.push(`'${quote(this.config.rootFolderId)}' in parents`);
-    if (term.trim()) parts.push(`name contains '${quote(term.trim().slice(0, 100))}'`);
-    const q = encodeURIComponent(parts.join(" and "));
-    const j = (await (await this.call(`${API}/files?q=${q}&fields=files(id,name)&orderBy=name&pageSize=${Math.min(limit, 100)}&${ALL}`)).json()) as { files?: { id: string; name: string }[] };
-    return j.files ?? [];
+  /**
+   * Pastas filhas de várias pastas de uma vez (consultas com até 30 pastas-mãe,
+   * 1.000 por página). Até `max`.
+   */
+  private async childFolders(parentIds: string[], max = 5000, nameContains?: string): Promise<FolderNode[]> {
+    const out: FolderNode[] = [];
+    for (let i = 0; i < parentIds.length && out.length < max; i += 30) {
+      const ps = parentIds.slice(i, i + 30).map((id) => `'${quote(id)}' in parents`).join(" or ");
+      const parts = [`mimeType = '${FOLDER}'`, "trashed = false", `(${ps})`];
+      if (nameContains) parts.push(`name contains '${quote(nameContains)}'`);
+      let page: string | undefined;
+      do {
+        const q = encodeURIComponent(parts.join(" and "));
+        const j = (await (await this.call(`${API}/files?q=${q}&fields=nextPageToken,files(id,name,parents)&orderBy=name&pageSize=1000&${ALL}${page ? `&pageToken=${page}` : ""}`)).json()) as {
+          files?: FolderNode[]; nextPageToken?: string;
+        };
+        out.push(...(j.files ?? []));
+        page = j.nextPageToken;
+      } while (page && out.length < max);
+    }
+    return out.slice(0, max);
   }
 
-  /** Todas as pastas da raiz (para sugerir ligações). Até `max`. */
-  async listClientFolders(max = 2000): Promise<{ id: string; name: string }[]> {
+  /**
+   * Estrutura da pasta dos clientes (folder-tree.ts): origens, pastas
+   * "CLIENTE BANCÁRIO" e clientes direto na raiz. Duas a poucas consultas.
+   */
+  async clientFolderTree(): Promise<ClientFolderTree> {
+    const root = this.config.rootFolderId;
+    if (!root) return { containers: [], rootClients: [], structural: new Set() };
+    const level1 = await this.childFolders([root]);
+    const look = level1.filter((f) => !isStructuralName(f.name)).map((f) => f.id);
+    const level2 = look.length ? await this.childFolders(look) : [];
+    return readClientFolderTree(level1, level2);
+  }
+
+  /**
+   * Pastas de cliente dentro da raiz, por parte do nome (ou em todo o Drive,
+   * sem raiz). Procura na raiz e nas pastas "CLIENTE BANCÁRIO" de cada origem;
+   * nunca devolve as pastas de origem, de área nem de apoio.
+   */
+  async searchFolders(term: string, limit = 25): Promise<{ id: string; name: string; path?: string }[]> {
+    const t = term.trim().slice(0, 100);
+    const size = Math.min(limit, 100);
+    if (!this.config.rootFolderId) {
+      const parts = [`mimeType = '${FOLDER}'`, "trashed = false"];
+      if (t) parts.push(`name contains '${quote(t)}'`);
+      const q = encodeURIComponent(parts.join(" and "));
+      const j = (await (await this.call(`${API}/files?q=${q}&fields=files(id,name)&orderBy=name&pageSize=${size}&${ALL}`)).json()) as { files?: { id: string; name: string }[] };
+      return j.files ?? [];
+    }
+    const tree = await this.clientFolderTree();
+    const found = await this.childFolders([this.config.rootFolderId, ...tree.containers.map((c) => c.id)], 500, t || undefined);
+    const fromRoot = new Set(tree.rootClients.map((f) => f.id));
+    const pathOf = new Map(tree.containers.map((c) => [c.id, c.path]));
+    return found
+      .filter((f) => !tree.structural.has(f.id) && !isStructuralName(f.name))
+      .filter((f) => fromRoot.has(f.id) || (f.parents ?? []).some((p) => pathOf.has(p)))
+      .map((f) => {
+        const parent = (f.parents ?? []).find((p) => pathOf.has(p));
+        return parent ? { id: f.id, name: f.name, path: pathOf.get(parent) } : { id: f.id, name: f.name };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+      .slice(0, size);
+  }
+
+  /** Todas as pastas de cliente (para sugerir ligações). Até `max`. */
+  async listClientFolders(max = 5000): Promise<{ id: string; name: string; path?: string }[]> {
     if (!this.config.rootFolderId) return [];
-    const out: { id: string; name: string }[] = [];
-    let page: string | undefined;
-    do {
-      const q = encodeURIComponent(`mimeType = '${FOLDER}' and trashed = false and '${quote(this.config.rootFolderId)}' in parents`);
-      const j = (await (await this.call(`${API}/files?q=${q}&fields=nextPageToken,files(id,name)&pageSize=1000&${ALL}${page ? `&pageToken=${page}` : ""}`)).json()) as {
-        files?: { id: string; name: string }[]; nextPageToken?: string;
-      };
-      out.push(...(j.files ?? []));
-      page = j.nextPageToken;
-    } while (page && out.length < max);
-    return out.slice(0, max);
+    const tree = await this.clientFolderTree();
+    const inContainers = tree.containers.length ? await this.childFolders(tree.containers.map((c) => c.id), max) : [];
+    return clientFoldersFrom(tree, inContainers).slice(0, max);
   }
 
   async folder(id: string): Promise<{ id: string; name: string; webViewLink?: string }> {

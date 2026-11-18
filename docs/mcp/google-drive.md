@@ -124,6 +124,29 @@ minutos** (`*/15 * * * *`, desde 18/11/2026, com o Vercel Pro). Cada rodada:
 > ([docs/deploy/producao.md](../deploy/producao.md), item 2). Para não esperar a
 > rodada, use **Sincronizar agora** na ficha do cliente.
 
+Cada pasta traz **até 30 arquivos novos por passada**; o resto vem nas passadas
+seguintes. Com 5 pastas a cada 15 minutos, 150 pastas novas levam umas 7 a 8 horas
+só pela rodada automática (mais, se houver pasta com muitos arquivos).
+
+**Sincronizar tudo agora** (ADMIN, desde 18/11/2026), em Configurações →
+Integrações → Google Drive, faz o mesmo trabalho sem esperar:
+- a tela chama o servidor em lotes de até 40 segundos e repete até acabar,
+  mostrando as pastas conferidas, o total e os arquivos trazidos;
+- primeiro as pastas que ainda têm arquivo novo para trás (passaram dos 30),
+  depois as ainda não conferidas, das mais antigas para as mais novas;
+- termina quando toda pasta ligada foi conferida depois do clique e nenhuma ficou
+  com arquivo para trás (pasta que a rodada automática conferiu nesse meio tempo
+  conta como conferida);
+- envia também as versões aprovadas que estiverem na fila;
+- **Parar**, fechar a página ou cair a conexão só interrompem: o que entrou fica,
+  e nada entra duas vezes (cada arquivo é conferido pelo ID e pelo md5). A rodada
+  automática continua em paralelo. O estado do lote fica só na tela, nada novo no
+  banco (`syncAllBatch` em `apps/frontend/src/server/integrations/google-drive/sync.ts`).
+
+O tempo depende do tamanho dos arquivos: cada arquivo novo é baixado do Drive,
+conferido e guardado no DG Brasil. Estimativa, ainda sem medição na produção:
+150 pastas com uns 10 arquivos cada devem levar de 20 a 40 minutos.
+
 Se a rodada for chamada **sem o Drive configurado** (ou com a credencial
 ilegível), ela não passa em silêncio: registra um erro no log do servidor
 (`drive.cron_not_configured`) e responde 503. Com o aviso de erros ligado
@@ -135,11 +158,32 @@ Em **Configurações → Integrações → Google Drive**:
 1. **Testar conexão** (ADMIN): mostra a conta conectada e o nome da pasta dos
    clientes.
 2. **Sugerir ligações:** lista os clientes ainda sem pasta, ao lado da pasta com
-   o mesmo nome (sem acento, maiúsculas ou pontuação). Confira e clique **Ligar**
-   em cada uma. Nada é ligado sozinho.
-3. Os casos com várias pastas parecidas, ou sem pasta de nome igual, se ligam pela
+   o mesmo nome (sem acento, maiúsculas ou pontuação) e de onde ela fica. Confira e
+   clique **Ligar** em cada uma. Nada é ligado sem um clique.
+3. **Ligar todas as sugestões exatas** (ADMIN, desde 18/11/2026): depois de
+   conferir a lista, liga de uma vez as sugestões com **uma só** pasta de nome
+   **igual**. Cada pasta passa pelas mesmas conferências do **Ligar** (pasta
+   ativa, dentro da pasta dos clientes, não aberta a "qualquer pessoa com o
+   link"). A que falhar não para as outras e aparece numa lista com o motivo. As
+   de nome parecido ou com várias pastas continuam uma a uma.
+4. Os casos com várias pastas parecidas, ou sem pasta de nome igual, se ligam pela
    **ficha do cliente → Documentos → Pasta no Google Drive → Ligar pasta**
    (procura pelo nome).
+
+**Onde o DG Brasil procura as pastas dos clientes (desde 18/11/2026).** Dentro da
+pasta dos clientes valem os três jeitos de organizar
+(`apps/frontend/src/server/integrations/google-drive/folder-tree.ts`):
+- `<pasta dos clientes>\<ORIGEM>\CLIENTE BANCÁRIO\<NOME DO CLIENTE>`: o jeito da
+  ponte desde a 060, com a pasta do escritório de origem (o próprio escritório ou
+  um parceiro);
+- `<pasta dos clientes>\CLIENTE BANCÁRIO\<NOME DO CLIENTE>`;
+- `<pasta dos clientes>\<NOME DO CLIENTE>`: o jeito antigo.
+
+A pasta de origem (a que tem um "CLIENTE BANCÁRIO" dentro), a própria
+"CLIENTE BANCÁRIO" e a "BASE DE CONHECIMENTO" nunca aparecem como pasta de
+cliente, nem na sugestão nem na busca. Para trazer os clientes de um parceiro,
+coloque as pastas deles em `<pasta dos clientes>\<NOME DO PARCEIRO>\CLIENTE
+BANCÁRIO\`, cadastre (ou importe) os clientes e use a sugestão.
 
 **Quem pode ligar qual pasta (desde 13/11/2026).** A conta do Google do
 escritório enxerga mais do que as pastas dos clientes. Por isso:

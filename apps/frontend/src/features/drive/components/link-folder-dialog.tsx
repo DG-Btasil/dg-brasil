@@ -98,6 +98,7 @@ export function LinkFolderDialog({ clientId, onClose, onLinked, initialTerm = ""
                   className={cn("w-full px-3 py-2 text-left text-[13px] hover:bg-surface-2", chosen?.id === f.id && "bg-surface-2 font-semibold text-navy")}
                 >
                   {f.name}
+                  {f.path && <span className="block text-[11.5px] font-normal text-subtle">{f.path}</span>}
                 </button>
               </li>
             ))}

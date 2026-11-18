@@ -2,7 +2,7 @@ import { createHash, createVerify, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createLogger } from "@/server/core/logger";
 import { DriveClient, driveConfigFromEnv, type DriveConfig, type DriveFile } from "./client";
-import { exportName, normalizeName, processExports, suggestLinks, syncLink, type DriveDbFunction, type SyncDeps } from "./sync";
+import { exportName, normalizeName, processExports, suggestLinks, syncAllBatch, syncLink, type DriveDbFunction, type SyncDeps } from "./sync";
 
 const oauth: DriveConfig = { auth: { mode: "oauth", clientId: "cid", clientSecret: "sec", refreshToken: "rt" }, rootFolderId: "raizClientes_0001" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -30,9 +30,67 @@ describe("cliente do Drive", () => {
     await c.searchFolders("D'Avila");
     await c.searchFolders("x");
     expect(fetchFn.mock.calls.filter(([u]) => String(u).includes("oauth2"))).toHaveLength(1);
-    const q = decodeURIComponent(String(fetchFn.mock.calls[1]![0]));
+    const q = fetchFn.mock.calls.map(([u]) => decodeURIComponent(String(u))).find((u) => u.includes("name contains"))!;
     expect(q).toContain("'raizClientes_0001' in parents");
     expect(q).toContain("name contains 'D\\'Avila'");
+  });
+
+  /**
+   * Drive de mentira para a pasta dos clientes:
+   *   RAIZ ── BARBARA CARDOSO ADVOCACIA ── CLIENTE BANCÁRIO ── JOSE DA SILVA, MARIA SOUZA
+   *        ── PARCEIRO X ── CLIENTE BANCÁRIO ── ANA LIMA
+   *        ── CLIENTE BANCÁRIO ── CARLOS ANTIGO        (agentes clonados)
+   *        ── PEDRO RAIZ ── DOCUMENTOS                 (jeito antigo: cliente direto na raiz)
+   *        ── BASE DE CONHECIMENTO
+   */
+  const TREE: Record<string, { id: string; name: string }[]> = {
+    raizClientes_0001: [
+      { id: "origemBarbara", name: "BARBARA CARDOSO ADVOCACIA" }, { id: "origemParc", name: "PARCEIRO X" },
+      { id: "bancRaiz", name: "CLIENTE BANCÁRIO" }, { id: "pedroRaiz", name: "PEDRO RAIZ" }, { id: "baseConhec", name: "BASE DE CONHECIMENTO" },
+    ],
+    origemBarbara: [{ id: "bancBarbara", name: "CLIENTE BANCÁRIO" }],
+    origemParc: [{ id: "bancParc", name: "Cliente Bancario" }],
+    pedroRaiz: [{ id: "pedroDocs", name: "DOCUMENTOS" }],
+    bancBarbara: [{ id: "jose", name: "JOSE DA SILVA" }, { id: "maria", name: "MARIA SOUZA" }],
+    bancParc: [{ id: "ana", name: "ANA LIMA" }],
+    bancRaiz: [{ id: "carlos", name: "CARLOS ANTIGO" }],
+  };
+  function treeDrive() {
+    const queries: string[] = [];
+    const fetchFn = vi.fn(async (url: string | URL | Request) => {
+      const u = decodeURIComponent(String(url));
+      if (u.includes("oauth2")) return json({ access_token: "tok", expires_in: 3600 });
+      queries.push(u);
+      const parents = [...u.matchAll(/'([A-Za-z0-9_]+)' in parents/g)].map((m) => m[1]!);
+      const term = /name contains '([^']+)'/.exec(u)?.[1];
+      const files = parents.flatMap((p) => (TREE[p] ?? []).map((f) => ({ ...f, parents: [p] })))
+        .filter((f) => !term || f.name.toUpperCase().includes(term.toUpperCase()));
+      return json({ files });
+    });
+    return { c: new DriveClient(oauth, fetchFn as unknown as typeof fetch), queries };
+  }
+
+  it("lista as pastas de cliente na raiz e em <ORIGEM>/CLIENTE BANCÁRIO, sem as pastas de origem, de área e de apoio", async () => {
+    const { c, queries } = treeDrive();
+    const folders = await c.listClientFolders();
+    expect(folders.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+      { id: "ana", name: "ANA LIMA", path: "PARCEIRO X / Cliente Bancario" },
+      { id: "carlos", name: "CARLOS ANTIGO", path: "CLIENTE BANCÁRIO" },
+      { id: "jose", name: "JOSE DA SILVA", path: "BARBARA CARDOSO ADVOCACIA / CLIENTE BANCÁRIO" },
+      { id: "maria", name: "MARIA SOUZA", path: "BARBARA CARDOSO ADVOCACIA / CLIENTE BANCÁRIO" },
+      { id: "pedroRaiz", name: "PEDRO RAIZ" },
+    ]);
+    // Três consultas: raiz, nível 2 (de uma vez) e as pastas de área (de uma vez).
+    expect(queries).toHaveLength(3);
+    expect(queries.every((q) => q.includes("pageSize=1000"))).toBe(true);
+    expect(queries[1]).not.toContain("'baseConhec' in parents");
+  });
+
+  it("a busca de pasta acha cliente dentro da origem, com o caminho; nunca devolve a pasta de origem", async () => {
+    const { c } = treeDrive();
+    expect(await c.searchFolders("ana")).toEqual([{ id: "ana", name: "ANA LIMA", path: "PARCEIRO X / Cliente Bancario" }]);
+    expect((await c.searchFolders("BARBARA")).map((f) => f.id)).toEqual([]);
+    expect((await c.searchFolders("")).map((f) => f.id).sort()).toEqual(["ana", "carlos", "jose", "maria", "pedroRaiz"]);
   });
 
   it("conta de serviço: assina o JWT (RS256) com a chave privada", async () => {
@@ -108,7 +166,7 @@ describe("sincronização (entrada)", () => {
   it("importa arquivo novo: caminho do banco, bytes no Storage, registro com md5 e sha256", async () => {
     const { d, calls, uploaded } = setupWith({ files: [file()], bytes: pdf });
     const r = await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
-    expect(r).toEqual({ imported: 1, skipped: 0, failed: 0 });
+    expect(r).toEqual({ imported: 1, skipped: 0, failed: 0, more: false });
     expect(uploaded).toEqual(["clients/c/documents/d/v/x.pdf"]);
     const reg = calls.find((c) => c.fn === "drive_register_import")!;
     expect(reg.args.slice(0, 4)).toEqual(["l1", "arquivo_00001", md5(pdf), "HISCON.pdf"]);
@@ -126,7 +184,7 @@ describe("sincronização (entrada)", () => {
       known: { imported: [`jaImportado_01:${md5(pdf)}`], exported: ["exportadoDG_01"] },
     });
     const r = await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
-    expect(r).toEqual({ imported: 0, skipped: 5, failed: 0 });
+    expect(r).toEqual({ imported: 0, skipped: 5, failed: 0, more: false });
     expect(calls.some((c) => c.fn === "drive_register_import")).toBe(false);
   });
 
@@ -144,7 +202,7 @@ describe("sincronização (entrada)", () => {
     const db = d.db;
     d.db = async <T,>(fn: DriveDbFunction, args: unknown[]) => (fn === "drive_match_existing" ? (calls.push({ fn, args }), { matched: true }) as T : db<T>(fn, args));
     const r = await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
-    expect(r).toEqual({ imported: 0, skipped: 1, failed: 0 });
+    expect(r).toEqual({ imported: 0, skipped: 1, failed: 0, more: false });
     expect(uploaded).toEqual([]);
     const m = calls.find((c) => c.fn === "drive_match_existing")!;
     expect(m.args[5]).toBe(createHash("sha256").update(pdf).digest("hex"));
@@ -159,7 +217,7 @@ describe("sincronização (entrada)", () => {
       return db<T>(fn, args);
     };
     const r = await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
-    expect(r).toEqual({ imported: 1, skipped: 0, failed: 0 });
+    expect(r).toEqual({ imported: 1, skipped: 0, failed: 0, more: false });
     expect(uploaded).toHaveLength(1);
   });
 
@@ -171,13 +229,110 @@ describe("sincronização (entrada)", () => {
       bytes: txt,
     });
     const r = await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d);
-    expect(r).toEqual({ imported: 0, skipped: 2, failed: 0 });
+    expect(r).toEqual({ imported: 0, skipped: 2, failed: 0, more: false });
     expect(calls.some((c) => c.fn === "drive_prepare_import")).toBe(false);
+  });
+
+  it("pasta com mais arquivos novos que o limite da passada: avisa que precisa de outra passada", async () => {
+    const files = [file({ id: "arquivo_00001" }), file({ id: "arquivo_00002" }), file({ id: "arquivo_00003" })];
+    const { d } = setupWith({ files, bytes: pdf });
+    expect(await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d, 2)).toEqual({ imported: 2, skipped: 0, failed: 0, more: true });
+    expect(await syncLink({ id: "l1", client_id: "c1", folder_id: "pasta_000001" }, d, 3)).toMatchObject({ imported: 3, more: false });
   });
 
   function setupWith(o: Parameters<typeof deps>[0]) {
     return deps(o);
   }
+});
+
+describe("sincronizar tudo agora (lotes)", () => {
+  const pdf = new TextEncoder().encode("%PDF HISCON");
+  const f = (id: string): DriveFile => ({ id, name: `${id}.pdf`, mimeType: "application/pdf", md5Checksum: md5(pdf), size: pdf.length });
+
+  /**
+   * Banco de mentira: ligações ordenadas pela última sincronização (como
+   * drive_links_to_sync), arquivos já importados por ligação e um relógio que
+   * anda 1 por chamada ao banco.
+   */
+  function world(links: { id: string; client_id: string; files: number }[], budget = Infinity) {
+    let clock = 0;
+    const synced = new Map<string, number>(links.map((l) => [l.id, -1]));
+    const importedBy = new Map<string, Set<string>>(links.map((l) => [l.id, new Set()]));
+    const filesOf = new Map(links.map((l) => [l.id, Array.from({ length: l.files }, (_, i) => f(`${l.id}_arq_${String(i).padStart(4, "0")}`))]));
+    let current = "";
+    const d: SyncDeps = {
+      drive: {
+        listFiles: async (folder: string) => filesOf.get(folder) ?? [],
+        download: async () => pdf,
+      } as unknown as DriveClient,
+      db: async <T,>(fn: DriveDbFunction, args: unknown[]) => {
+        clock++;
+        if (fn === "drive_claim_exports") return [] as T;
+        if (fn === "drive_links_to_sync") {
+          const [limit, clientId] = args as [number, string | null];
+          return links
+            .filter((l) => !clientId || l.client_id === clientId)
+            .sort((a, b) => synced.get(a.id)! - synced.get(b.id)!)
+            .slice(0, limit)
+            .map((l) => ({ id: l.id, client_id: l.client_id, folder_id: l.id })) as T;
+        }
+        if (fn === "drive_known_files") {
+          current = args[0] as string;
+          return { imported: [...importedBy.get(current)!].map((id) => `${id}:${md5(pdf)}`), exported: [] } as T;
+        }
+        if (fn === "drive_prepare_import") return { document_id: "d", document_version_id: "v", storage_object_name: "o" } as T;
+        if (fn === "drive_register_import") importedBy.get(args[0] as string)!.add(args[1] as string);
+        if (fn === "drive_mark_synced") synced.set(args[0] as string, clock);
+        return undefined as T;
+      },
+      storage: { uploadObject: async () => {}, downloadObject: async () => pdf },
+      log: createLogger(),
+      now: () => clock,
+    };
+    return { d, importedBy, synced, startBatch: () => { d.deadline = clock + budget; } };
+  }
+
+  async function runAll(w: ReturnType<typeof world>, maxBatches = 50) {
+    let state = { visited: [] as string[], pending: [] as string[] };
+    let imported = 0;
+    for (let i = 1; i <= maxBatches; i++) {
+      w.startBatch();
+      const r = await syncAllBatch(w.d, state);
+      imported += r.imported;
+      state = { visited: r.visited, pending: r.pending };
+      if (r.done) return { batches: i, imported, visited: r.visited };
+    }
+    throw new Error("não terminou");
+  }
+
+  it("confere cada pasta uma vez, faz as passadas extras da pasta grande e termina", async () => {
+    const w = world([
+      { id: "lnk_a", client_id: "cli_a", files: 2 },
+      { id: "lnk_b", client_id: "cli_b", files: 75 }, // 30 + 30 + 15
+      { id: "lnk_c", client_id: "cli_c", files: 0 },
+    ]);
+    const r = await runAll(w);
+    expect(r.imported).toBe(77);
+    expect(new Set(r.visited)).toEqual(new Set(["lnk_a", "lnk_b", "lnk_c"]));
+    expect(w.importedBy.get("lnk_b")!.size).toBe(75);
+  });
+
+  it("com pouco tempo por lote, continua de onde parou e não importa nada duas vezes", async () => {
+    const links = Array.from({ length: 12 }, (_, i) => ({ id: `lnk_${i}`, client_id: `cli_${i}`, files: i % 3 === 0 ? 40 : 1 }));
+    const w = world(links, 25);
+    const r = await runAll(w, 200);
+    expect(r.batches).toBeGreaterThan(1);
+    expect(r.imported).toBe(links.reduce((s, l) => s + l.files, 0));
+    for (const l of links) expect(w.importedBy.get(l.id)!.size).toBe(l.files);
+  });
+
+  it("pasta desligada no meio do caminho sai da lista de passadas extras", async () => {
+    const w = world([{ id: "lnk_a", client_id: "cli_a", files: 1 }]);
+    w.startBatch();
+    const r = await syncAllBatch(w.d, { visited: [], pending: ["cli_sumiu"] });
+    expect(r.pending).toEqual([]);
+    expect(r.done).toBe(true);
+  });
 });
 
 describe("sincronização (saída)", () => {
