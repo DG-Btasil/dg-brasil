@@ -77,6 +77,13 @@ export function ImportsPage() {
       <Callout tone="info" title="Como funciona">
         1. Envie o arquivo · 2. Diga qual coluna é qual campo · 3. Simulação sem gravar nada · 4. Resolva os conflitos (CPF ou processo já cadastrado) · 5. Confirme e grave · 6.
         Relatório do que entrou e do que falhou. Linhas com erro nunca são gravadas.
+        <span className="mt-1.5 block">
+          Não tem planilha pronta?{" "}
+          <a href="/modelos/planilha-clientes-e-processos.csv" download className="font-medium text-foreground underline underline-offset-2">
+            Baixe a planilha modelo
+          </a>
+          : uma linha por processo, com o nome e o CPF do cliente. O mesmo CPF em várias linhas vira um cliente só. As colunas do modelo são reconhecidas sozinhas.
+        </span>
       </Callout>
       <Panel>
         {!data ? (

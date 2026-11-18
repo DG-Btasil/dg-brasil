@@ -32,6 +32,24 @@ ilegível) e `CANCELLED` (antes da gravação).
   processo está encerrado/arquivado), origem no escritório, área escolhida no
   mapeamento e advogado = o "Responsável" da linha quando é advogado/ADMIN da
   equipe, senão o advogado padrão.
+- **Planilha de um parceiro (082).** No mapeamento, "Escritório de origem"
+  aceita um parceiro ativo que tenha o percentual de parceria configurado.
+  Nessa importação:
+  - cliente **novo** nasce com origem no parceiro e já relacionado a ele, então
+    o parceiro vê o cadastro mesmo sem processo na linha. A origem também decide
+    a pasta da ponte (`DG BRASIL\<PARCEIRO>\CLIENTE BANCÁRIO\<NOME>`);
+  - caso **novo** nasce com origem no parceiro e ligado a ele
+    (`partner_organization_id`): o parceiro vê o caso e o processo, e a divisão
+    da parceria é gravada pelo percentual dele;
+  - cliente que **já existia** não muda de origem. O parceiro vê só o caso novo
+    dele;
+  - processo que já existia ("Atualizar") não muda de caso nem de parceiro.
+
+  Sem parceiro, tudo fica com o escritório, como antes.
+- **Planilha modelo:** `apps/frontend/public/modelos/planilha-clientes-e-processos.csv`,
+  com link na tela de Importações. Uma linha por processo, com nome e CPF do
+  cliente; todas as colunas do modelo são reconhecidas sozinhas (um teste
+  confere).
 - **Mesmo CPF/CNPJ em várias linhas = um cliente.** Vale a primeira linha sem
   erro; se o nome diverge, a linha seguinte ganha um aviso.
 - **CPF/CNPJ já cadastrado** → conflito: *Atualizar o cadastro* (só os campos

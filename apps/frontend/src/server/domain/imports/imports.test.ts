@@ -25,6 +25,14 @@ describe("campos: a lista do front é a mesma do banco (042)", () => {
     expect(fromSql).toEqual([...IMPORT_FIELD_KEYS]);
   });
 
+  it("planilha modelo (public/modelos): toda coluna é sugerida sozinha, sem repetir campo", () => {
+    const bytes = readFileSync(new URL("../../../../public/modelos/planilha-clientes-e-processos.csv", import.meta.url));
+    const headers = parseCsv(decodeText(new Uint8Array(bytes)))[0]!.cells.map((h) => h.replace(/^﻿/, ""));
+    const s = suggestMapping(headers);
+    expect(headers.filter((h) => !s[h])).toEqual([]);
+    expect(s).toMatchObject({ "Nome do cliente": "client.name", CPF: "client.document", "Número do processo": "process.cnj", "Parte contrária": "process.opposingParty" });
+  });
+
   it("sugere pelo cabeçalho sem repetir campo e ignora acento/caixa", () => {
     const s = suggestMapping(["NOME COMPLETO", "CPF/CNPJ", "Nº Processo", "Vara", "Vencimento", "Observações", "Coluna estranha", "Nome"]);
     expect(s["NOME COMPLETO"]).toBe("client.name");

@@ -22,7 +22,9 @@ export const simulateSchema = z.object({
     .array(z.object({ sourceColumn: z.string().min(1).max(200), targetField: z.enum(IMPORT_FIELD_KEYS) }))
     .min(1, "Escolha o campo de pelo menos uma coluna.")
     .max(200),
-  options: z.object({ legalAreaId: zUuid().optional(), lawyerId: zUuid().optional() }).default({}),
+  options: z
+    .object({ legalAreaId: zUuid().optional(), lawyerId: zUuid().optional(), partnerOrganizationId: zUuid().optional() })
+    .default({}),
 });
 export type SimulateInput = z.infer<typeof simulateSchema>;
 
