@@ -296,7 +296,9 @@ Junto, mais tarde: termos de uso e LGPD da parceria (item 13).
 > (para não exigir a verificação do Google), cliente "DG Brasil servidor", refresh token pelo
 > OAuth Playground, as 4 variáveis em Production, Redeploy e **Testar conexão** ok na pasta
 > "DG BRASIL". Rodada a cada 15 minutos. Falta: ligar as pastas dos clientes e conferir uma
-> sincronização e uma exportação de versão aprovada. Para cortar o acesso: remover o app
+> sincronização e uma exportação de versão aprovada. **19/11/2026:** "Sugerir ligações" na produção
+> voltou "Nenhuma sugestão" (a importação real dos clientes do parceiro ainda não foi feita); ligar
+> logo depois da importação e rodar "Sincronizar tudo agora" duas vezes (a segunda traz 0 arquivos). Para cortar o acesso: remover o app
 > "DG Brasil" em myaccount.google.com/permissions da conta do escritório.
 
 Saiu da frente do lançamento porque criar a credencial exige a dona da conta Google, com a
