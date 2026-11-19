@@ -16,6 +16,8 @@ export interface DriveStatusDTO {
 export interface DriveFolderDTO {
   id: string;
   name: string;
+  /** Onde a pasta fica dentro da pasta dos clientes (ex.: "PARCEIRO X / CLIENTE BANCÁRIO"). Vazio = direto na raiz. */
+  path?: string;
 }
 
 export interface ClientDriveDTO {
@@ -46,4 +48,26 @@ export interface DriveSyncResultDTO {
   skipped: number;
   failed: number;
   exported: number;
+}
+
+/** "Ligar todas as sugestões exatas": um lote. */
+export interface DriveLinkManyDTO {
+  linked: string[];
+  failed: { clientId: string; reason: string }[];
+  /** Não deu tempo neste lote: mandar de novo. */
+  notProcessed: string[];
+}
+
+/** "Sincronizar tudo agora": um lote. A tela manda de volta `visited` e `pending` até `done`. */
+export interface DriveSyncAllDTO {
+  visited: string[];
+  pending: string[];
+  links: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  exported: number;
+  done: boolean;
+  /** Pastas ligadas no total (para o progresso). */
+  total: number;
 }

@@ -43,25 +43,28 @@ describe("pasta do Drive: só de dentro da pasta dos clientes", () => {
     expect(loop.mock.calls.length).toBeLessThanOrEqual(2);
   });
 
-  it("advogado liga pasta de dentro da raiz; de fora, não", async () => {
-    expect(await assertFolderAllowed({ role: "LAWYER", folderId: "clienteJose", rootFolderId: "RAIZ", parentsOf })).toBe("INSIDE_ROOT");
-    expect(await reason(assertFolderAllowed({ role: "LAWYER", folderId: "financeiro", rootFolderId: "RAIZ", parentsOf }))).toEqual([
-      "FORBIDDEN",
-      "Esta pasta fica fora da pasta dos clientes do escritório. Só o administrador pode ligar uma pasta de fora dela.",
-    ]);
+  it("pasta de dentro da DG BRASIL: advogado e administrador ligam", async () => {
+    for (const role of ["ADMIN", "LAWYER"]) {
+      expect(await assertFolderAllowed({ role, folderId: "clienteJose", rootFolderId: "RAIZ", parentsOf })).toBe("INSIDE_ROOT");
+    }
   });
 
-  it("sem a pasta dos clientes configurada, só o administrador liga", async () => {
-    expect(await reason(assertFolderAllowed({ role: "LAWYER", folderId: "clienteJose", rootFolderId: undefined, parentsOf }))).toEqual([
-      "FORBIDDEN",
-      "A pasta dos clientes do escritório ainda não foi configurada. Até lá, só o administrador pode ligar uma pasta do Drive.",
-    ]);
-    expect(await assertFolderAllowed({ role: "ADMIN", folderId: "clienteJose", rootFolderId: undefined, parentsOf })).toBe("OUTSIDE_ROOT_BY_ADMIN");
+  it("pasta de fora da DG BRASIL: ninguém liga, nem o administrador (18/11/2026)", async () => {
+    for (const role of ["ADMIN", "LAWYER"]) {
+      expect(await reason(assertFolderAllowed({ role, folderId: "financeiro", rootFolderId: "RAIZ", parentsOf }))).toEqual([
+        "FORBIDDEN",
+        "Esta pasta fica fora da pasta DG BRASIL. O DG Brasil só liga pastas que estão dentro dela, nem o administrador liga pasta de fora.",
+      ]);
+    }
   });
 
-  it("administrador pode ligar pasta de fora (fica marcado); a própria raiz, ninguém", async () => {
-    expect(await assertFolderAllowed({ role: "ADMIN", folderId: "financeiro", rootFolderId: "RAIZ", parentsOf })).toBe("OUTSIDE_ROOT_BY_ADMIN");
-    expect(await assertFolderAllowed({ role: "ADMIN", folderId: "clienteJose", rootFolderId: "RAIZ", parentsOf })).toBe("INSIDE_ROOT");
+  it("sem a pasta DG BRASIL configurada, ninguém liga nada", async () => {
+    for (const role of ["ADMIN", "LAWYER"]) {
+      expect((await reason(assertFolderAllowed({ role, folderId: "clienteJose", rootFolderId: undefined, parentsOf })))?.[0]).toBe("INVALID_STATE");
+    }
+  });
+
+  it("a própria DG BRASIL nunca é ligada a um cliente", async () => {
     for (const role of ["ADMIN", "LAWYER"]) {
       expect((await reason(assertFolderAllowed({ role, folderId: "RAIZ", rootFolderId: "RAIZ", parentsOf })))?.[0]).toBe("BUSINESS_RULE");
     }
