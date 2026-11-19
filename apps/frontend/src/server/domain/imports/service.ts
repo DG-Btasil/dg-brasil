@@ -173,6 +173,8 @@ export async function getReferenceData(ctx: ServiceContext): Promise<ImportRefer
   return {
     areas: (r.areas ?? []).map((a) => ({ id: String(a.id), code: String(a.code), name: String(a.name) })),
     users: (r.users ?? []).map((u) => ({ id: String(u.id), name: String(u.preferred_name || u.name || ""), role: String(u.role) })),
+    // Banco ainda sem a 082: lista vazia, e a tela importa como antes (só para o escritório).
+    partners: (r.partners ?? []).map((p) => ({ id: String(p.id), name: String(p.name ?? ""), configured: p.configured === true })),
   };
 }
 
@@ -182,7 +184,11 @@ export async function simulate(ctx: ServiceContext, input: SimulateInput, deps: 
     ctx.db,
     input.jobId,
     input.mapping.map((m) => ({ source_column: m.sourceColumn, target_field: m.targetField })),
-    { legal_area_id: input.options.legalAreaId ?? null, lawyer_id: input.options.lawyerId ?? null },
+    {
+      legal_area_id: input.options.legalAreaId ?? null,
+      lawyer_id: input.options.lawyerId ?? null,
+      partner_organization_id: input.options.partnerOrganizationId ?? null,
+    },
   );
 
   let table: ReadResult;

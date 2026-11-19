@@ -68,9 +68,9 @@ export function toMapping(rows: { source_column: string; target_field: string }[
   return rows.filter((m) => isImportFieldKey(m.target_field)).map((m) => ({ sourceColumn: m.source_column, targetField: m.target_field as ImportFieldKey }));
 }
 
-export function toOptions(v: unknown): { legalAreaId?: string; lawyerId?: string } {
+export function toOptions(v: unknown): { legalAreaId?: string; lawyerId?: string; partnerOrganizationId?: string } {
   const o = (v && typeof v === "object" ? v : {}) as Json;
-  return { legalAreaId: str(o.legal_area_id), lawyerId: str(o.lawyer_id) };
+  return { legalAreaId: str(o.legal_area_id), lawyerId: str(o.lawyer_id), partnerOrganizationId: str(o.partner_organization_id) };
 }
 
 export function toPlan(v: Json): ImportPlanDTO {

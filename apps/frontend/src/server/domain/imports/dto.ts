@@ -80,7 +80,7 @@ export interface ImportJobDTO extends ImportJobSummaryDTO {
   sheetName?: string;
   detectedColumns: string[];
   mapping: { sourceColumn: string; targetField: ImportFieldKey }[];
-  options: { legalAreaId?: string; lawyerId?: string };
+  options: { legalAreaId?: string; lawyerId?: string; partnerOrganizationId?: string };
   dryRunAt?: string;
   confirmedAt?: string;
   confirmedByName?: string;
@@ -164,6 +164,8 @@ export interface ImportConflictsDTO {
 export interface ImportReferenceDTO {
   areas: { id: string; code: string; name: string }[];
   users: { id: string; name: string; role: string }[];
+  /** Escritórios parceiros ativos (082). Sem a configuração de parceria, não podem ser a origem. */
+  partners: { id: string; name: string; configured: boolean }[];
 }
 
 export interface ImportReportDTO {

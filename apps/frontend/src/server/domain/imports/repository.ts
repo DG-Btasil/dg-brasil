@@ -44,7 +44,7 @@ export const getPlan = (db: SupabaseClient, jobId: string) => rpc<Json>(db, "get
 export const getConflicts = (db: SupabaseClient, jobId: string, offset: number, limit: number) =>
   rpc<Json>(db, "get_import_conflicts", { p_job_id: jobId, p_offset: offset, p_limit: limit });
 
-export const referenceData = (db: SupabaseClient) => rpc<{ areas: Json[]; users: Json[] }>(db, "get_import_reference_data");
+export const referenceData = (db: SupabaseClient) => rpc<{ areas: Json[]; users: Json[]; partners?: Json[] }>(db, "get_import_reference_data");
 
 export const confirm = (db: SupabaseClient, jobId: string) => rpc<Json>(db, "import_confirm", { p_job_id: jobId });
 

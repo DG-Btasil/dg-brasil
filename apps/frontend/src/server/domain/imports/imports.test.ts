@@ -1,8 +1,20 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { IMPORT_FIELD_KEYS, mapsProcess, suggestMapping } from "@/lib/domain/import-fields";
 import { buildReportCsv, rowColumns, toRow } from "./mappers";
-import { isValidCnj, matchUser, normalizeRows, parseDate, parseMoney, parseStatus, parseUf, type ImportUser } from "./normalize";
+import {
+  isValidCnj,
+  matchUser,
+  normalizeRows,
+  parseDate,
+  parseGender,
+  parseMaritalStatus,
+  parseMoney,
+  parseStatus,
+  parseUf,
+  splitNameAndDocument,
+  type ImportUser,
+} from "./normalize";
 import { ImportFileError, readSpreadsheet } from "./parse";
 import { decodeText, detectDelimiter, parseCsv } from "./parse/csv";
 import { columnIndex, decodeXml, excelSerialToIso, isDateFormat, numberText } from "./parse/xlsx";
@@ -17,12 +29,27 @@ function cnj(seq: number): string {
   return `${n}${String(dv).padStart(2, "0")}${rest}`;
 }
 
-describe("campos: a lista do front é a mesma do banco (042)", () => {
-  it("private.import_target_fields() == IMPORT_FIELD_KEYS", () => {
-    const sql = readFileSync(new URL("../../../../../../supabase/migrations/20261031000042_spreadsheet_import.sql", import.meta.url), "utf8");
+describe("campos: a lista do front é a mesma do banco (042, ampliada na 082)", () => {
+  it("private.import_target_fields() (a última definição) == IMPORT_FIELD_KEYS", () => {
+    const dir = new URL("../../../../../../supabase/migrations/", import.meta.url);
+    const latest = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => readFileSync(new URL(f, dir), "utf8"))
+      .filter((s) => s.includes("function private.import_target_fields()"))
+      .pop();
+    const sql = latest ?? "";
     const body = /function private\.import_target_fields\(\)[\s\S]*?array\[([\s\S]*?)\]/.exec(sql)?.[1] ?? "";
     const fromSql = [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(fromSql).toEqual([...IMPORT_FIELD_KEYS]);
+  });
+
+  it("planilha modelo (public/modelos): toda coluna é sugerida sozinha, sem repetir campo", () => {
+    const bytes = readFileSync(new URL("../../../../public/modelos/planilha-clientes-e-processos.csv", import.meta.url));
+    const headers = parseCsv(decodeText(new Uint8Array(bytes)))[0]!.cells.map((h) => h.replace(/^﻿/, ""));
+    const s = suggestMapping(headers);
+    expect(headers.filter((h) => !s[h])).toEqual([]);
+    expect(s).toMatchObject({ "Nome do cliente": "client.name", CPF: "client.document", "Número do processo": "process.cnj", "Parte contrária": "process.opposingParty" });
   });
 
   it("sugere pelo cabeçalho sem repetir campo e ignora acento/caixa", () => {
@@ -331,6 +358,55 @@ describe("validação linha a linha (simulação)", () => {
     );
     expect(a!.errors[0]).toMatch(/sem número CNJ/);
     expect(b!.payload!.client.kind).toBe("COMPANY");
+  });
+});
+
+describe("exportações do ADVBOX (082): clientes com qualificação e processos com o CPF no nome", () => {
+  const ctx = { users: [] as ImportUser[], lawyerId: "u-padrao", today: "2026-11-18" };
+  // Cabeçalhos reais das exportações; dados fictícios.
+  const clientes = ["Nome", "CPF/CNPJ", "RG", "Data de nascimento", "Estado Civil", "PIS/PASEP", "CTPS", "CID", "Profissão", "Sexo", "Celular", "Telefone", "E-mail", "País", "Estado", "Cidade", "Endereço", "Bairro", "CEP", "Nome da mãe", "Origem", "Anotações Gerais", "Data de cadastro"];
+
+  it("clientes: qualificação sugerida; Anotações Gerais fica sem campo (costuma ter senha)", () => {
+    const s = suggestMapping(clientes);
+    expect(s).toMatchObject({
+      Nome: "client.name", "CPF/CNPJ": "client.document", RG: "client.rg", "Data de nascimento": "client.birthDate",
+      "Estado Civil": "client.maritalStatus", Profissão: "client.profession", Sexo: "client.gender", Celular: "client.phone",
+      "E-mail": "client.email", Estado: "client.state", Cidade: "client.city", Endereço: "client.street", Bairro: "client.district", CEP: "client.zipCode",
+      "Anotações Gerais": "", Origem: "", "Nome da mãe": "",
+    });
+    expect(mapsProcess(Object.values(s).filter(Boolean))).toBe(false);
+  });
+
+  it("clientes: a linha leva a qualificação ao cadastro", () => {
+    const mapping = suggestMapping(clientes);
+    const byField = Object.fromEntries(Object.entries(mapping).filter(([, f]) => f).map(([h, f]) => [f, h]));
+    const cells = ["José Fictício Teste", "529.982.247-25", "9930151", "08/04/1956", "SOLTEIRO(A)", "", "", "", "APOSENTADO", "MASCULINO", "(14) 99881-0960", "", "jose@exemplo.com.br", "BRASIL", "SP", "LINS", "RUA DAS FLORES, Nº55", "CENTRO", "16402-675", "", "", "", ""];
+    const [r] = normalizeRows(clientes, [{ line: 2, cells }], byField, ctx);
+    expect(r!.status).toBe("VALID");
+    expect(r!.payload?.client).toMatchObject({
+      document: "52998224725", name: "José Fictício Teste", birth_date: "1956-04-08", gender: "MALE",
+      marital_status: "SINGLE", profession: "APOSENTADO", rg: "9930151", phone: "14998810960",
+    });
+  });
+
+  it("estado civil e sexo: variações do ADVBOX; união estável não entra", () => {
+    expect(["SOLTEIRO(A)", "Casada", "viúvo", "DIVORCIADO(A)", "Separada"].map(parseMaritalStatus)).toEqual(["SINGLE", "MARRIED", "WIDOWED", "DIVORCED", "SEPARATED"]);
+    expect(parseMaritalStatus("UNIÃO ESTÁVEL")).toBeUndefined();
+    expect(["MASCULINO", "feminino", "F", "Outro"].map(parseGender)).toEqual(["MALE", "FEMALE", "FEMALE", "OTHER"]);
+  });
+
+  it("processos: “NOME (CPF)” liga pelo CPF, não pelo nome; Etapa vira status", () => {
+    expect(splitNameAndDocument("FULANO DE TAL (529.982.247-25)")).toEqual({ name: "FULANO DE TAL", document: "529.982.247-25" });
+    expect(splitNameAndDocument("EMPRESA X (11.222.333/0001-81)")).toEqual({ name: "EMPRESA X", document: "11.222.333/0001-81" });
+    expect(splitNameAndDocument("MARIA (FILHA)")).toEqual({ name: "MARIA (FILHA)" });
+    const headers = ["Nome do cliente", "Parte contrária", "Tipo de ação", "Etapa", "Número do processo", "Comarca", "Vara", "Tribunal", "Expectiva/Valor da causa (R$)"];
+    const mapping = suggestMapping(headers);
+    expect(mapping.Etapa).toBe("process.status");
+    const byField = Object.fromEntries(Object.entries(mapping).filter(([, f]) => f).map(([h, f]) => [f, h]));
+    const [r] = normalizeRows(headers, [{ line: 2, cells: ["FULANO DE TAL (529.982.247-25)", "BANCO X S.A", "FRAUDE EXCLUÍDOS", "AÇÃO PROTOCOLADA/INICIADA", cnj(77), "GUARULHOS", "1ª VARA DO JUIZADO ESPECIAL CÍVEL", "TJSP", "R$11.567,50"] }], byField, ctx);
+    expect(r!.status).toBe("VALID");
+    expect(r!.payload?.client).toEqual({ kind: "INDIVIDUAL", document: "52998224725", name: "FULANO DE TAL" });
+    expect(r!.payload?.process).toMatchObject({ cnj: cnj(77), status: "FILED", case_value: 11567.5, adverse_party: "BANCO X S.A" });
   });
 });
 

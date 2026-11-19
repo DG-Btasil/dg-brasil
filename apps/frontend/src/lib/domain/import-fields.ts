@@ -24,6 +24,11 @@ export const IMPORT_FIELD_KEYS = [
   "client.city",
   "client.state",
   "client.notes",
+  "client.birthDate",
+  "client.gender",
+  "client.maritalStatus",
+  "client.profession",
+  "client.rg",
   "process.cnj",
   "process.title",
   "process.actionType",
@@ -74,6 +79,11 @@ export const IMPORT_FIELDS: ImportField[] = [
   { key: "client.city", entity: "client", label: "Cidade", synonyms: ["cidade", "municipio", "cidade do cliente"] },
   { key: "client.state", entity: "client", label: "UF", synonyms: ["uf", "estado", "uf do cliente"] },
   { key: "client.notes", entity: "client", label: "Observações do cliente (internas)", synonyms: ["observacoes", "observacao", "obs", "anotacoes", "observacoes do cliente"] },
+  { key: "client.birthDate", entity: "client", label: "Data de nascimento", synonyms: ["data de nascimento", "nascimento", "data nascimento", "dt nascimento", "data de nasc"] },
+  { key: "client.gender", entity: "client", label: "Sexo", hint: "Masculino, feminino ou outro.", synonyms: ["sexo", "genero"] },
+  { key: "client.maritalStatus", entity: "client", label: "Estado civil", hint: "Solteiro, casado, divorciado, viúvo ou separado. União estável não entra (confira no cadastro).", synonyms: ["estado civil", "estadocivil"] },
+  { key: "client.profession", entity: "client", label: "Profissão", synonyms: ["profissao", "ocupacao", "profissao do cliente"] },
+  { key: "client.rg", entity: "client", label: "RG", synonyms: ["rg", "identidade", "documento de identidade", "numero do rg", "rg do cliente"] },
   { key: "process.cnj", entity: "process", label: "Número CNJ", hint: "20 dígitos; o dígito verificador é conferido.", synonyms: ["cnj", "numero cnj", "processo", "n processo", "nº processo", "numero do processo", "no processo", "numero processo", "n do processo", "nº do processo", "autos", "numero dos autos"] },
   { key: "process.title", entity: "process", label: "Nome resumido do processo", synonyms: ["titulo", "nome do processo", "caso", "titulo do processo", "nome do caso"] },
   { key: "process.actionType", entity: "process", label: "Tipo de ação / classe", synonyms: ["acao", "tipo de acao", "classe", "tipo da acao", "classe processual", "natureza", "tipo de processo"] },
@@ -85,7 +95,7 @@ export const IMPORT_FIELDS: ImportField[] = [
   { key: "process.opposingParty", entity: "process", label: "Parte contrária", synonyms: ["parte contraria", "reu", "requerido", "parte adversa", "banco", "adverso", "parte re", "contrario"] },
   { key: "process.clientSide", entity: "process", label: "Polo do cliente", hint: "Autor/ativo, réu/passivo ou terceiro. Vazio = autor.", synonyms: ["polo", "polo do cliente", "posicao do cliente", "polo ativo/passivo"] },
   { key: "process.responsible", entity: "process", label: "Responsável", hint: "Nome de alguém da equipe. Vale para o processo e para o cliente novo.", synonyms: ["responsavel", "advogado", "advogado responsavel", "responsavel pelo processo"] },
-  { key: "process.status", entity: "process", label: "Status do processo", synonyms: ["status", "situacao", "andamento", "fase", "situacao do processo"] },
+  { key: "process.status", entity: "process", label: "Status do processo", synonyms: ["status", "situacao", "andamento", "fase", "situacao do processo", "etapa"] },
   { key: "process.distributionDate", entity: "process", label: "Data de distribuição", synonyms: ["distribuicao", "data de distribuicao", "data distribuicao", "ajuizamento", "data de ajuizamento"] },
   { key: "process.caseValue", entity: "process", label: "Valor da causa", synonyms: ["valor da causa", "valor", "valor causa", "valor da causa r$", "expectativa/valor da causa r$", "expectiva/valor da causa r$"] },
   { key: "process.dueDate", entity: "process", label: "Próximo vencimento (vira prazo)", hint: "Só em processo novo e com data de hoje em diante.", synonyms: ["vencimento", "prazo", "data de vencimento", "proximo prazo", "data do prazo", "prazo fatal"] },
@@ -124,6 +134,13 @@ export function suggestMapping(headers: string[]): Record<string, ImportFieldKey
     const match = IMPORT_FIELDS.find((f) => !used.has(f.key) && f.synonyms.some((s) => normalizeHeader(s) === h));
     result[header] = match?.key ?? "";
     if (match) used.add(match.key);
+  }
+  // Planilha só de clientes (ex.: exportação de clientes do ADVBOX): "Anotações
+  // Gerais" não é observação de processo. Fica sem campo, para a pessoa decidir
+  // (no ADVBOX essa coluna costuma guardar senha do cliente, que não deve entrar).
+  const processFields = Object.values(result).filter((k) => k.startsWith("process.") && k !== "process.responsible");
+  if (processFields.length === 1 && processFields[0] === "process.notes") {
+    for (const h of Object.keys(result)) if (result[h] === "process.notes") result[h] = "";
   }
   return result;
 }

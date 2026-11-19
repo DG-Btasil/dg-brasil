@@ -17,7 +17,7 @@ const fieldOptions = IMPORT_FIELDS.map((f) => ({ value: f.key, label: `${IMPORT_
 
 export interface MappingSubmit {
   mapping: { sourceColumn: string; targetField: ImportFieldKey }[];
-  options: { legalAreaId?: string; lawyerId?: string };
+  options: { legalAreaId?: string; lawyerId?: string; partnerOrganizationId?: string };
 }
 
 /** Problemas que impedem simular (o servidor e o banco conferem de novo). */
@@ -60,8 +60,13 @@ export function MappingStep({
   });
   const [areaId, setAreaId] = useState(job.options.legalAreaId ?? reference.areas.find((a) => a.code === "BANKING")?.id ?? "");
   const [lawyerId, setLawyerId] = useState(job.options.lawyerId ?? "");
-  const options = { legalAreaId: areaId || undefined, lawyerId: lawyerId || undefined };
-  const problems = mappingProblems(mapping, options);
+  const [partnerId, setPartnerId] = useState(job.options.partnerOrganizationId ?? "");
+  const options = { legalAreaId: areaId || undefined, lawyerId: lawyerId || undefined, partnerOrganizationId: partnerId || undefined };
+  const partner = reference.partners.find((p) => p.id === partnerId);
+  const problems = [
+    ...mappingProblems(mapping, options),
+    ...(partner && !partner.configured ? [`${partner.name} ainda não tem o percentual da parceria. Configure em Parceiros antes de importar.`] : []),
+  ];
   const hasProcess = mapsProcess(Object.values(mapping).filter(Boolean));
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -156,6 +161,29 @@ export function MappingStep({
           Cada processo será ligado ao cliente <strong>já cadastrado</strong> no DG Brasil com o mesmo nome (sem diferença de acento ou maiúsculas). Linha cujo cliente não for
           encontrado, ou tiver mais de um cadastro com o mesmo nome, fica de fora com o motivo. Nenhum cliente novo é criado. Dica: importe antes a planilha de clientes, com CPF/CNPJ.
         </Callout>
+      )}
+
+      {reference.partners.length > 0 && (
+        <Panel>
+          <PanelHeader
+            title="De onde vêm estes clientes"
+            description="Escolha o parceiro quando a planilha for de um escritório parceiro. Os clientes e casos novos nascem com origem nele, a divisão da parceria segue o percentual dele, e o parceiro passa a ver esses casos e processos no DG Brasil. Cliente que já estava cadastrado não muda de origem: o parceiro vê só o caso novo dele."
+          />
+          <PanelBody className="grid grid-cols-2 gap-4">
+            <Field label="Escritório de origem" hint={partner ? `Origem e visibilidade: ${partner.name}.` : "Sem parceiro, tudo fica só com o nosso escritório."}>
+              {(p) => (
+                <Select
+                  {...p}
+                  value={partnerId}
+                  onChange={(e) => setPartnerId(e.target.value)}
+                  options={reference.partners.map((x) => ({ value: x.id, label: x.configured ? x.name : `${x.name} (sem percentual de parceria)` }))}
+                  placeholder="Nosso escritório (sem parceiro)"
+                  disabled={busy}
+                />
+              )}
+            </Field>
+          </PanelBody>
+        </Panel>
       )}
 
       {hasProcess && (

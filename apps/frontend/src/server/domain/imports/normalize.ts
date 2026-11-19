@@ -43,6 +43,40 @@ export interface ClientPayload {
   phone?: string;
   address?: { postal_code?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string };
   notes?: string;
+  /** Qualificação da pessoa física (082). */
+  birth_date?: string;
+  gender?: "MALE" | "FEMALE" | "OTHER";
+  marital_status?: "SINGLE" | "MARRIED" | "DIVORCED" | "WIDOWED" | "SEPARATED";
+  profession?: string;
+  rg?: string;
+}
+
+/** "NOME (154.476.568-18)", como o relatório de processos do ADVBOX traz o cliente: separa o nome do CPF/CNPJ. */
+export function splitNameAndDocument(value: string): { name: string; document?: string } {
+  const m = /^(.*?)\s*\(\s*([\d.\-/\s]+?)\s*\)\s*$/.exec(value);
+  const digits = m ? m[2]!.replace(/\D/g, "") : "";
+  if (!m || !m[1]!.trim() || (digits.length !== 11 && digits.length !== 14)) return { name: value };
+  return { name: m[1]!.trim(), document: m[2]!.trim() };
+}
+
+export function parseGender(value: string): ClientPayload["gender"] | undefined {
+  const v = normalizeHeader(value);
+  if (/^(m|masc|masculino|homem|male)$/.test(v)) return "MALE";
+  if (/^(f|fem|feminino|mulher|female)$/.test(v)) return "FEMALE";
+  if (/^(o|outro|outros|other)$/.test(v)) return "OTHER";
+  return undefined;
+}
+
+/** "SOLTEIRO(A)", "Casada", "viúvo"... União estável fica de fora: não é estado civil no cadastro. */
+export function parseMaritalStatus(value: string): ClientPayload["marital_status"] | undefined {
+  const v = normalizeHeader(value);
+  if (/uniao|convivente/.test(v)) return undefined;
+  if (/^solteir/.test(v)) return "SINGLE";
+  if (/^casad/.test(v)) return "MARRIED";
+  if (/^divorciad/.test(v)) return "DIVORCED";
+  if (/^viuv/.test(v)) return "WIDOWED";
+  if (/^separad/.test(v)) return "SEPARATED";
+  return undefined;
 }
 
 export interface ProcessPayload {
@@ -266,12 +300,14 @@ export function normalizeRows(
     }
 
     // ── cliente ──
-    const name = clip(v["client.name"]?.replace(/\s+/g, " "), 300);
+    // "NOME (CPF)" (relatório de processos do ADVBOX): o CPF do nome vale como documento quando não há coluna de CPF.
+    const fromName = splitNameAndDocument(v["client.name"]?.replace(/\s+/g, " ").trim() ?? "");
+    const name = clip(fromName.name || undefined, 300);
     if (!name) errors.push("Nome do cliente vazio.");
     let document: string | undefined;
     let kind: ClientPayload["kind"] | undefined;
     const hasProcess = hasProcessColumns && col.some(([f]) => f.startsWith("process.") && f !== "process.responsible" && v[f]);
-    const rawDoc = v["client.document"];
+    const rawDoc = v["client.document"] ?? fromName.document;
     // Sem CPF/CNPJ: só processo de cliente já cadastrado (o banco acha pelo nome).
     const byName = !rawDoc && hasProcess;
     if (!rawDoc) {
@@ -330,6 +366,26 @@ export function normalizeRows(
       if (uf) address.state = uf;
       else warnings.push(`UF “${v["client.state"]}” não reconhecida: não será importada.`);
     }
+
+    // ── qualificação da pessoa física (082) ──
+    const qualification: Pick<ClientPayload, "birth_date" | "gender" | "marital_status" | "profession" | "rg"> = {};
+    if (v["client.birthDate"]) {
+      const d = parseDate(v["client.birthDate"]);
+      if (d && d > "1900-01-01" && d <= ctx.today) qualification.birth_date = d;
+      else warnings.push(`Data de nascimento “${v["client.birthDate"]}” inválida: não será importada.`);
+    }
+    if (v["client.gender"]) {
+      const g = parseGender(v["client.gender"]);
+      if (g) qualification.gender = g;
+      else warnings.push(`Sexo “${v["client.gender"]}” não reconhecido: não será importado.`);
+    }
+    if (v["client.maritalStatus"]) {
+      const m = parseMaritalStatus(v["client.maritalStatus"]);
+      if (m) qualification.marital_status = m;
+      else warnings.push(`Estado civil “${v["client.maritalStatus"]}” não entra no cadastro: confira na ficha do cliente.`);
+    }
+    if (v["client.profession"]) qualification.profession = clip(v["client.profession"], 120);
+    if (v["client.rg"]) qualification.rg = clip(v["client.rg"].replace(/\s+/g, " "), 30);
 
     // ── processo ──
     let process: ProcessPayload | undefined;
@@ -412,6 +468,7 @@ export function normalizeRows(
     if (phone) client.phone = phone;
     if (Object.keys(address).length) client.address = address;
     if (v["client.notes"]) client.notes = clip(v["client.notes"], 4000);
+    if (kind === "INDIVIDUAL") Object.assign(client, qualification);
     return { ...base, payload: process ? { client, process } : { client } };
   });
 }

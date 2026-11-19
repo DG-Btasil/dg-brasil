@@ -10175,6 +10175,95 @@ await deve('fim do cenário: orquestrador de antes de volta; a esteira do caso f
   igual((await um(db, `select case_orchestration v from process_task_settings where id`)).v, true, 'ligada')
 })
 
+// ═════════════════════════════ Importação do parceiro [082] ═════════════
+
+secao('Importação de planilha com o escritório parceiro de origem [082]')
+const colunas082 = '["Nome do cliente","CPF","Número do processo","Tipo de ação"]'
+const map082 = JSON.stringify([['Nome do cliente', 'client.name'], ['CPF', 'client.document'], ['Número do processo', 'process.cnj'],
+  ['Tipo de ação', 'process.actionType']].map(([source_column, target_field]) => ({ source_column, target_field })))
+const novoJob082 = async (nome, linhas = 4) => {
+  const job = (await rpc042(ids.barbara, `select public.import_create_job($1, 'XLSX') r`, [nome])).import_job_id
+  await rpc042(ids.barbara, `select public.import_register_columns($1, $2, null, $3, $4) r`, [job, sha(String(linhas)), colunas082, linhas])
+  return job
+}
+const opcoes082 = (extra = {}) => JSON.stringify({ legal_area_id: ids.banking, lawyer_id: ids.lucas, ...extra })
+await deve('a tela recebe os parceiros ativos, dizendo quais têm a configuração de parceria [082]', async () => {
+  ids.semConfig082 = (await um(db, `insert into organizations (type, name, status) values ('PARTNER', 'Sem Configuração 082', 'ACTIVE') returning id`)).id
+  const r = await rpc042(ids.barbara, `select public.get_import_reference_data() r`)
+  const por = (id) => r.partners.find((p) => p.id === id)
+  igual([por(ids.almeida)?.name, por(ids.almeida)?.configured, por(ids.semConfig082)?.configured], ['Almeida Advogados', true, false], 'parceiros')
+  igual(r.partners.some((p) => p.id === ids.owner), false, 'o escritório proprietário não é parceiro')
+})
+await deveFalhar('o escritório proprietário não serve como parceiro de origem [082]', async () =>
+  rpc042(ids.barbara, `select public.import_save_mapping($1, $2, $3) r`, [await novoJob082('dono.xlsx'), map082, opcoes082({ partner_organization_id: ids.owner })]),
+/parceiro ativo/)
+await deveFalhar('parceiro sem a configuração de parceria é recusado antes da simulação [082]', async () =>
+  rpc042(ids.barbara, `select public.import_save_mapping($1, $2, $3) r`, [await novoJob082('sem-config.xlsx'), map082, opcoes082({ partner_organization_id: ids.semConfig082 })]),
+/configuração de parceria/)
+await deve('com o parceiro: cliente e caso novos com origem nele, caso ligado a ele, divisão da parceria gravada, e o parceiro enxerga [082]', async () => {
+  // Cliente que já existia, do escritório, para conferir que a origem dele não muda.
+  const existente = await um(db, `insert into clients (kind, cpf, origin_organization_id) values ('INDIVIDUAL', $1, $2) returning id, cpf`, [cpf042(87), ids.owner])
+  await db.query(`insert into individual_client_details (client_id, full_name) values ($1, 'Lia Já Cadastrada 082')`, [existente.id])
+  const job = await novoJob082('parceiro-almeida.xlsx')
+  const r = await rpc042(ids.barbara, `select public.import_save_mapping($1, $2, $3) r`, [job, map082, opcoes082({ partner_organization_id: ids.almeida })])
+  igual(r.status, 'MAPPED', 'mapeado')
+  igual((await um(db, `select options ->> 'partner_organization_id' p from import_jobs where id = $1`, [job])).p, ids.almeida, 'opção guardada')
+  const pf = (n, nome) => ({ kind: 'INDIVIDUAL', document: cpf042(n), name: nome })
+  const lote = [
+    { row_number: 2, status: 'VALID', payload: { client: { ...pf(82, 'Hugo do Parceiro'), birth_date: '1956-04-08', gender: 'MALE',
+      marital_status: 'SINGLE', profession: 'Aposentado', rg: '9930151' }, process: { cnj: cnj042(82), legal_class: 'Revisional', status: 'ACTIVE' } } },
+    { row_number: 3, status: 'VALID', payload: { client: pf(82, 'Hugo do Parceiro'), process: { cnj: cnj042(83), legal_class: 'Declaratória', status: 'APPEAL' } } },
+    { row_number: 4, status: 'VALID', payload: { client: pf(84, 'Iara Só Cadastro') } },
+    { row_number: 5, status: 'VALID', payload: { client: { kind: 'INDIVIDUAL', document: existente.cpf, name: 'Lia Já Cadastrada 082' },
+      process: { cnj: cnj042(85), legal_class: 'Cobrança' } } },
+  ]
+  await rpc042(ids.barbara, `select public.import_stage_rows($1, $2, true) r`, [job, JSON.stringify(lote)])
+  await rpc042(ids.barbara, `select public.import_finish_dry_run($1) r`, [job])
+  const ks = await linhas(db, `select conflict_kind k, row_number r, resolution x from import_conflicts where import_job_id = $1 order by row_number, conflict_kind`, [job])
+  igual(ks.map((k) => [k.k, k.r, k.x]), [['CLIENT_DOCUMENT', 5, null]], 'só o CPF já cadastrado conflita')
+  await rpc042(ids.barbara, `select public.import_resolve_conflicts($1, $2) r`, [job, JSON.stringify([{ kind: 'CLIENT_DOCUMENT', resolution: 'IGNORE' }])])
+  await rpc042(ids.barbara, `select public.import_confirm($1) r`, [job])
+  const fim = await rpc042(ids.barbara, `select public.import_process_batch($1) r`, [job])
+  igual([fim.status, fim.failed, fim.clients_created, fim.processes_created], ['COMPLETED', 0, 2, 3], 'gravado')
+
+  const hugo = await um(db, `select id, origin_organization_id o from clients where cpf = $1`, [cpf042(82)])
+  const iara = await um(db, `select id, origin_organization_id o from clients where cpf = $1`, [cpf042(84)])
+  igual([hugo.o, iara.o], [ids.almeida, ids.almeida], 'cliente novo com origem no parceiro')
+  const q = await um(db, `select birth_date::text b, gender g, marital_status m, profession p, identity_document_type t, identity_document_number n
+    from individual_client_details where client_id = $1`, [hugo.id])
+  igual([q.b, q.g, q.m, q.p, q.t, q.n], ['1956-04-08', 'MALE', 'SINGLE', 'Aposentado', 'RG', '9930151'], 'qualificação da pessoa física')
+  const casos = await linhas(db, `select lc.id, lc.status, lc.origin_organization_id o, lc.partner_organization_id p, lc.client_id
+    from legal_processes lp join legal_cases lc on lc.id = lp.legal_case_id where lp.cnj_number = any($1) order by lp.cnj_number`, [[cnj042(82), cnj042(83), cnj042(85)]])
+  igual(casos.map((c) => [c.status, c.o, c.p]), [['IN_PROGRESS', ids.almeida, ids.almeida], ['IN_PROGRESS', ids.almeida, ids.almeida], ['IN_PROGRESS', ids.almeida, ids.almeida]], 'casos do parceiro')
+  const div = await linhas(db, `select partner_organization_id p, partner_percentage::int pp, owner_percentage::int op from case_partnership_agreements
+    where legal_case_id = any($1) and cancelled_at is null`, [casos.map((c) => c.id)])
+  igual(div.map((d) => [d.p, d.pp, d.op]), [[ids.almeida, 50, 50], [ids.almeida, 50, 50], [ids.almeida, 50, 50]], 'divisão da parceria pelo percentual do parceiro')
+  igual((await um(db, `select origin_organization_id o from clients where id = $1`, [existente.id])).o, ids.owner, 'cliente existente não muda de origem')
+  igual(casos[2].client_id, existente.id, 'processo no cliente existente')
+
+  // O que o parceiro enxerga (RLS), e o que outro parceiro não enxerga.
+  const ve = (uid) => como(uid, async (tx) => ({
+    casos: (await linhas(tx, `select id from legal_cases where id = any($1)`, [casos.map((c) => c.id)])).length,
+    processos: (await linhas(tx, `select id from legal_processes where cnj_number = any($1)`, [[cnj042(82), cnj042(83), cnj042(85)]])).length,
+    clientes: (await linhas(tx, `select id from clients where id = any($1)`, [[hugo.id, iara.id, existente.id]])).length,
+  }))
+  igual(await ve(ids.almeidaUsr), { casos: 3, processos: 3, clientes: 3 }, 'o parceiro vê os casos, os processos e os clientes (o só-cadastro também)')
+  igual(await ve(ids.ferreiraAdm), { casos: 0, processos: 0, clientes: 0 }, 'outro parceiro não vê nada')
+})
+await deve('sem o parceiro, a importação segue como na 042: origem no escritório, caso interno [082]', async () => {
+  const job = await novoJob082('sem-parceiro.xlsx', 1)
+  await rpc042(ids.barbara, `select public.import_save_mapping($1, $2, $3) r`, [job, map082, opcoes082()])
+  igual((await um(db, `select options ? 'partner_organization_id' tem from import_jobs where id = $1`, [job])).tem, false, 'sem a opção')
+  await rpc042(ids.barbara, `select public.import_stage_rows($1, $2, true) r`, [job, JSON.stringify([
+    { row_number: 2, status: 'VALID', payload: { client: { kind: 'INDIVIDUAL', document: cpf042(86), name: 'Joana Interna' }, process: { cnj: cnj042(86), legal_class: 'Revisional' } } }])])
+  await rpc042(ids.barbara, `select public.import_finish_dry_run($1) r`, [job])
+  await rpc042(ids.barbara, `select public.import_confirm($1) r`, [job])
+  igual((await rpc042(ids.barbara, `select public.import_process_batch($1) r`, [job])).status, 'COMPLETED', 'gravado')
+  const c = await um(db, `select cl.origin_organization_id co, lc.origin_organization_id o, lc.partner_organization_id p
+    from legal_processes lp join legal_cases lc on lc.id = lp.legal_case_id join clients cl on cl.id = lc.client_id where lp.cnj_number = $1`, [cnj042(86)])
+  igual([c.co, c.o, c.p], [ids.owner, ids.owner, null], 'tudo do escritório')
+})
+
 // ═════════════════════════════ fim ═══════════════════════════════════════
 
 console.log(
