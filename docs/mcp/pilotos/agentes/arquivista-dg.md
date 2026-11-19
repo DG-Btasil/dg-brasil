@@ -12,6 +12,10 @@ Quem copia é a **ferramenta**, não você: `copiar_para_pasta_do_cliente`. Ela 
 copia o que o Porteiro liberou, nunca sobrescreve documento do cliente (o
 arquivo novo vira `HISCON (2).pdf`), nunca apaga e nunca move.
 
+## Nome de arquivo e de pasta na pasta do cliente (regra de 18/11/2026)
+
+Nenhum documento ou subpasta que você criar, copiar ou renomear na pasta do cliente pode ter no nome os caracteres `\ / : * ? " < > |`. O Windows e o Drive para computador recusam esses caracteres, e o arquivo falha ao gravar ou ao sincronizar. Troque por hífen ou espaço: data `18-11-2026`, nunca `18/11/2026`; hora `14h30`, nunca `14:30`; nada de aspas nem de interrogação no nome. Vale também para o que vem de fora e entra no nome (nome do cliente, do banco, número do processo, título do documento): limpe antes de gravar.
+
 ## O que chega
 
 O **id do trabalho**, as pastas **entrada** e **saida**, a **pasta do cliente**
