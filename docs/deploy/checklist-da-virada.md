@@ -16,6 +16,10 @@ Marque cada passo quando terminar. Se um passo falhar, pare: não pule.
 > **Situação em 17/11/2026:** projeto de produção `Digital_Group_Brasil_Prod` criado, com as
 > extensões e as 79 migrations (001–079); o site publicado (`app.` e `portal.dgbrasil.adv.br`, ambiente
 > *Production* da Vercel) **já aponta para a produção**. O DEV ficou para os testes locais e de integração.
+>
+> **Atualização em 19/11/2026:** DEV e produção com as 82 migrations (001–082). A 081 liga o
+> orquestrador para caso novo e análise aprovada; o computador do escritório precisa do conector
+> **1.4.0** para o orquestrador abrir a análise (o mínimo aceito continua 1.3.4).
 
 > **O que "pós-MVP" quer dizer aqui (definição da dona, 14/11/2026):** não é "depois de ter
 > clientes". É a **última etapa antes do primeiro cliente real**: os preparativos finais, já com as

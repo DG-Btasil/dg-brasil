@@ -35,12 +35,17 @@ const id = (p: string) => `${p}${randomUUID().replace(/-/g, "")}`;
 const md5 = (b: Uint8Array) => createHash("md5").update(b).digest("hex");
 const state = { clientA: "", caseA: "", clientB: "", linkId: "", folder1: id("pastaUm"), folder2: id("pastaDois"), firstVersion: "", secondVersion: "" };
 
-// Drive simulado: pasta → arquivos; envio devolve um ID novo.
+// Drive simulado: pasta → arquivos; envio devolve um ID novo. As duas pastas
+// dos clientes ficam dentro da pasta DG BRASIL simulada: desde 18/11/2026 a
+// rodada só lê e grava abaixo dela (sync.ts confere as pastas-mãe).
+const DG_BRASIL = id("pastaDgBrasil");
 const files: DriveFile[] = [];
 const blobs = new Map<string, Uint8Array>();
 const uploaded: { folder: string; name: string; id: string }[] = [];
 let publicFolder = false;
 const drive = {
+  rootFolderId: DG_BRASIL,
+  parents: async (folder: string) => (folder === state.folder1 || folder === state.folder2 ? [DG_BRASIL] : []),
   listFiles: async (folder: string) => (folder === state.folder2 ? [...files] : []),
   download: async (fileId: string) => blobs.get(fileId)!,
   isPublic: async () => publicFolder,
@@ -141,7 +146,7 @@ describe("Google Drive no banco real (041), Drive simulado", () => {
     putFile(id("drvDoc"), "anotacoes", "application/vnd.google-apps.document", null);
     const ln = { id: state.linkId, client_id: state.clientA, folder_id: state.folder2 };
 
-    expect(await syncLink(ln, deps())).toEqual({ imported: 1, skipped: 1, failed: 0 });
+    expect(await syncLink(ln, deps())).toEqual({ imported: 1, skipped: 1, failed: 0, more: false });
     const docs = await clientDocs();
     expect(docs).toHaveLength(1);
     expect(docs[0]).toMatchObject({ title: "extrato-ficticio.pdf", visibility: "INTERNAL", category: "OTHER" });
@@ -149,13 +154,13 @@ describe("Google Drive no banco real (041), Drive simulado", () => {
     expect(v).toMatchObject({ source: "IMPORT", checksum_sha256: createHash("sha256").update(blobs.get(files[0].id)!).digest("hex") });
     state.firstVersion = v!.id;
 
-    expect(await syncLink(ln, deps())).toEqual({ imported: 0, skipped: 2, failed: 0 });
+    expect(await syncLink(ln, deps())).toEqual({ imported: 0, skipped: 2, failed: 0, more: false });
     expect(await clientDocs()).toHaveLength(1);
 
     // O mesmo arquivo editado no Drive (md5 novo) entra uma vez como documento novo.
     putFile(files[0].id, "extrato-ficticio.pdf", "application/pdf", `%PDF-1.4\n% extrato FICTÍCIO editado ${tag}\n%%EOF\n`);
-    expect(await syncLink(ln, deps())).toEqual({ imported: 1, skipped: 1, failed: 0 });
-    expect(await syncLink(ln, deps())).toEqual({ imported: 0, skipped: 2, failed: 0 });
+    expect(await syncLink(ln, deps())).toEqual({ imported: 1, skipped: 1, failed: 0, more: false });
+    expect(await syncLink(ln, deps())).toEqual({ imported: 0, skipped: 2, failed: 0, more: false });
     const after = await clientDocs();
     expect(after).toHaveLength(2);
     const { data: v2 } = await svc.from("document_versions").select("id").eq("document_id", after.find((x) => x.id !== docs[0].id)!.id).single();
@@ -180,7 +185,7 @@ describe("Google Drive no banco real (041), Drive simulado", () => {
 
     putFile(uploaded[0].id, uploaded[0].name, "application/pdf", "%PDF-1.4\n% cópia exportada\n%%EOF\n");
     const r = await syncLink({ id: state.linkId, client_id: state.clientA, folder_id: state.folder2 }, deps());
-    expect(r).toEqual({ imported: 0, skipped: 3, failed: 0 });
+    expect(r).toEqual({ imported: 0, skipped: 3, failed: 0, more: false });
     expect(await clientDocs()).toHaveLength(2);
   });
 
