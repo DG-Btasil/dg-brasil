@@ -399,6 +399,10 @@ describe("exportações do ADVBOX (082): clientes com qualificação e processos
     expect(splitNameAndDocument("FULANO DE TAL (529.982.247-25)")).toEqual({ name: "FULANO DE TAL", document: "529.982.247-25" });
     expect(splitNameAndDocument("EMPRESA X (11.222.333/0001-81)")).toEqual({ name: "EMPRESA X", document: "11.222.333/0001-81" });
     expect(splitNameAndDocument("MARIA (FILHA)")).toEqual({ name: "MARIA (FILHA)" });
+    // ADVBOX junta outras partes depois de ";": vale o primeiro trecho NOME (CPF).
+    expect(splitNameAndDocument("FULANO DE TAL (529.982.247-25);BANCO X S.A")).toEqual({ name: "FULANO DE TAL", document: "529.982.247-25" });
+    expect(splitNameAndDocument("FULANO DE TAL (529.982.247-25);- BANCO Y S A")).toEqual({ name: "FULANO DE TAL", document: "529.982.247-25" });
+    expect(splitNameAndDocument("FULANO;BANCO X")).toEqual({ name: "FULANO;BANCO X" });
     const headers = ["Nome do cliente", "Parte contrária", "Tipo de ação", "Etapa", "Número do processo", "Comarca", "Vara", "Tribunal", "Expectiva/Valor da causa (R$)"];
     const mapping = suggestMapping(headers);
     expect(mapping.Etapa).toBe("process.status");

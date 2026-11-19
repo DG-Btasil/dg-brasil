@@ -101,7 +101,7 @@ A lista é a mesma no front (`src/lib/domain/import-fields.ts`) e no banco
    CID também ficam de fora. Escolha o parceiro em "Escritório de origem".
 2. **Processos** (relatório de processos). O ADVBOX escreve o cliente como
    `NOME (CPF)`, sem coluna de CPF: a importação separa o CPF do nome e liga o
-   processo pelo CPF (não pelo nome). O cliente que veio no passo 1 aparece como
+   processo pelo CPF (não pelo nome). Quando o ADVBOX junta outra parte depois de `;` (`NOME (CPF);BANCO X S.A`), vale o primeiro trecho `NOME (CPF)`. O cliente que veio no passo 1 aparece como
    "CPF já cadastrado": decida **todos deste tipo** de uma vez com *Manter como
    está*. "Etapa" vira o status ("Ação protocolada" → Distribuído). "Responsável"
    do parceiro não é da equipe: deixe sem campo, ou cada linha ganha um aviso e

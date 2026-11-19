@@ -51,12 +51,19 @@ export interface ClientPayload {
   rg?: string;
 }
 
-/** "NOME (154.476.568-18)", como o relatório de processos do ADVBOX traz o cliente: separa o nome do CPF/CNPJ. */
+/**
+ * "NOME (154.476.568-18)", como o relatório de processos do ADVBOX traz o cliente: separa o nome do CPF/CNPJ.
+ * O ADVBOX também junta outras partes depois de ";" ("NOME (CPF);BANCO X S.A"): vale o primeiro trecho no
+ * formato NOME (CPF). Sem nenhum trecho assim, o valor volta inteiro como nome (achado na exportação real
+ * de um parceiro em 19/11/2026: 115 de 370 processos).
+ */
 export function splitNameAndDocument(value: string): { name: string; document?: string } {
-  const m = /^(.*?)\s*\(\s*([\d.\-/\s]+?)\s*\)\s*$/.exec(value);
-  const digits = m ? m[2]!.replace(/\D/g, "") : "";
-  if (!m || !m[1]!.trim() || (digits.length !== 11 && digits.length !== 14)) return { name: value };
-  return { name: m[1]!.trim(), document: m[2]!.trim() };
+  for (const part of value.split(";")) {
+    const m = /^(.*?)\s*\(\s*([\d.\-/\s]+?)\s*\)\s*$/.exec(part.trim());
+    const digits = m ? m[2]!.replace(/\D/g, "") : "";
+    if (m && m[1]!.trim() && (digits.length === 11 || digits.length === 14)) return { name: m[1]!.trim(), document: m[2]!.trim() };
+  }
+  return { name: value };
 }
 
 export function parseGender(value: string): ClientPayload["gender"] | undefined {
