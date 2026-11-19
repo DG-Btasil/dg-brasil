@@ -62,7 +62,9 @@ try {
   }
   $total = 0
   foreach ($p in @('agentes\bancario', 'agentes\geral', 'agentes\scripts', 'docs\mcp\pilotos\agentes')) { $total += Copiar $p }
-  foreach ($arq in @('agentes\escritorio.exemplo.json', 'apps\executor\scripts\instalar-agentes-bancario.ps1')) {
+  # conferir-orquestrador.mjs: o instalador roda a conferência do orquestrador no fim
+  # (sem ele no pacote, o setup avisa "a conferência do orquestrador não rodou").
+  foreach ($arq in @('agentes\escritorio.exemplo.json', 'apps\executor\scripts\instalar-agentes-bancario.ps1', 'apps\executor\scripts\conferir-orquestrador.mjs')) {
     $para = Join-Path $Stage $arq
     New-Item -ItemType Directory -Force -Path (Split-Path $para) | Out-Null
     Copy-Item -LiteralPath (Join-Path $Repo $arq) -Destination $para -Force
