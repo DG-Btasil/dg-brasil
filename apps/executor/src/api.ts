@@ -132,6 +132,11 @@ export class DgApi {
   entregarAnalise(id: string, reserva: string, resultado: unknown) {
     return this.pedir<{ result_id: string; review_id: string; created: boolean }>('POST', `jobs/${id}/analysis`, { reserva, corpo: { result: resultado } })
   }
+  /** Orquestrador (081): abre a análise do modelo cujo agente é `agente` e põe na fila (outro trabalho). */
+  pedirAnalise(id: string, reserva: string, agente: string, pedido: string) {
+    return this.pedir<{ analysis_id: string; agent_run_id: string; template: string; created: boolean }>(
+      'POST', `jobs/${id}/analyses`, { reserva, corpo: { local_agent: agente, request: pedido } })
+  }
   propor(id: string, reserva: string, corpo: unknown) {
     return this.pedir<{ proposal_id: string; created: boolean; applied?: boolean }>('POST', `jobs/${id}/proposals`, { reserva, corpo })
   }

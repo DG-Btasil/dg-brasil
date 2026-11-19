@@ -68,3 +68,16 @@ export async function saveTaskSettings(ctx: ServiceContext, input: { orchestrato
   await repo.saveSettings(ctx.db, input.orchestratorAgentId);
   ctx.log.info("process_task.settings_saved", {});
 }
+
+/** Caso novo e análise aprovada vão ao orquestrador (081). */
+export async function getCaseOrchestration(ctx: ServiceContext): Promise<{ enabled: boolean }> {
+  requireInternal(ctx);
+  return { enabled: await repo.getCaseOrchestration(ctx.db) };
+}
+
+export async function saveCaseOrchestration(ctx: ServiceContext, input: { enabled: boolean }): Promise<void> {
+  requireInternal(ctx);
+  requirePermission(ctx, "dgbrasil.manage");
+  await repo.saveCaseOrchestration(ctx.db, input.enabled);
+  ctx.log.info("process_task.case_orchestration_saved", { enabled: input.enabled });
+}

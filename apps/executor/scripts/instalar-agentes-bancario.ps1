@@ -18,7 +18,9 @@
 #      (quem assina: preencher com os dados reais);
 #   5. acrescenta os clones ao %APPDATA%\DGBrasil\ponte.json (guarda o anterior);
 #   6. libera, na sessão do DG Brasil (C:\DGBrasil\sessao), as pastas dos clones
-#      (guarda o settings.json anterior).
+#      (guarda o settings.json anterior);
+#   7. confere se a tabela do orquestrador está igual ao kit
+#      (conferir-orquestrador.mjs); se não estiver, só avisa, não aborta.
 #
 # NUNCA altera os agentes do escritório: só grava arquivos terminados em -dg.md e
 # os quatro agentes da ponte. Não mexe em tarefas agendadas.
@@ -136,6 +138,7 @@ $trazer = @{
   'clara-hiscon-dg'     = @('ROTEIRO_CONSIGNADO_*.html', 'ROTEIRO_CONSIGNADO_*.pdf', 'TETO_NORMATIVO_*.html', 'TETO_NORMATIVO_*.pdf', $ficha)
   'lucas-procuracao-dg' = @('Procuracao_*.pdf', 'Declaracao_Hipossuficiencia_*.pdf', 'Contrato_Honorarios_*.pdf', 'Declaracao_Residencia_*.pdf', $ficha)
   'alice-inicial-dg'    = $minuta + @('PARECER_*.docx', 'TABELA_*.docx', 'TABELA_*.xlsx')
+  'vera-viabilidade-dg' = @('PARECER_VIABILIDADE_*.html', 'PARECER_VIABILIDADE_*.pdf', $ficha)
 }
 if (Test-Path $Ponte) {
   $cfg = Get-Content -Raw -Encoding UTF8 $Ponte | ConvertFrom-Json
@@ -170,7 +173,9 @@ if (-not (Test-Path $Settings)) {
     'Read(//g/Meu Drive/DG BRASIL/**)', 'Edit(//g/Meu Drive/DG BRASIL/**)',
     'Read(//c/DGBrasil/agentes/**)', 'Edit(//c/DGBrasil/agentes/trabalho/**)',
     # modelos de recurso que o Rafael lê (só leitura; não é pasta de cliente)
-    'Read(//g/Meu Drive/BASE DE CONHECIMENTO CLAUDE/**)'
+    'Read(//g/Meu Drive/BASE DE CONHECIMENTO CLAUDE/**)',
+    # o orquestrador pede a análise do caso como outro trabalho (081, conector 1.4.0)
+    'mcp__dg-brasil__pedir_analise'
   )
   $allow = @($s.permissions.allow)
   foreach ($r in $novas) { if ($allow -notcontains $r) { $allow += $r } }
@@ -182,6 +187,25 @@ if (-not (Test-Path $Settings)) {
   if (-not $Simular) { Copy-Item -LiteralPath $Settings -Destination "$Settings.anterior" -Force }
   GravarTexto $Settings ($s | ConvertTo-Json -Depth 8)
   Ok 'Pastas dos clones liberadas na sessão (o anterior ficou em settings.json.anterior)'
+}
+
+# ── 7. conferência do orquestrador ───────────────────────────────────────────
+# Só lê: confere se a tabela do orquestrador está igual ao kit instalado. Nunca aborta a instalação.
+Passo 'Conferência do orquestrador'
+$Conferir = Join-Path $PSScriptRoot 'conferir-orquestrador.mjs'
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  Aviso 'Node não encontrado: a conferência do orquestrador não rodou. Instale o Node 22 ou mais novo e rode de novo.'
+} elseif (-not (Test-Path $Conferir)) {
+  Aviso "Não achei ${Conferir}: a conferência do orquestrador não rodou."
+} else {
+  if ($Simular) { Faria 'a conferência olha os agentes já instalados, não os que esta simulação copiaria' }
+  try {
+    & node $Conferir (Join-Path $DaPonte 'orquestrador.md') --repo $Repo
+    if ($LASTEXITCODE -eq 0) { Ok 'Orquestrador igual ao kit' }
+    else { Aviso "A conferência do orquestrador achou problemas (acima, código $LASTEXITCODE). A instalação seguiu: acerte a tabela do orquestrador ou o kit e rode de novo." }
+  } catch {
+    Aviso "A conferência do orquestrador falhou: $($_.Exception.Message). A instalação seguiu."
+  }
 }
 
 Write-Host ''

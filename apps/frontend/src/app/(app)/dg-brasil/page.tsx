@@ -10,7 +10,7 @@ import type { DgCatalogDTO, DgOverviewDTO } from "@/server/domain/dg/dto";
 import { canUseOfficeSetupAction } from "@/server/domain/account/actions";
 import { getDriveStatusAction } from "@/server/domain/drive/actions";
 import { getJudicialOverviewAction } from "@/server/domain/judicial/actions";
-import { listTaskAgentsAction } from "@/server/domain/process-tasks/actions";
+import { getCaseOrchestrationAction, listTaskAgentsAction } from "@/server/domain/process-tasks/actions";
 import type { ActionResult } from "@/lib/actions/result";
 
 type Section = "conexoes" | "agentes" | "teses";
@@ -38,8 +38,10 @@ export default async function DgBrasilPage({ searchParams }: PageProps<"/dg-bras
 
 async function Section({ section, overview }: { section: Section; overview: ActionResult<DgOverviewDTO> }) {
   if (section === "conexoes") {
-    const [office, judicial, drive, agents] = await Promise.all([getOfficeStatusAction(), getJudicialOverviewAction(), getDriveStatusAction(), listTaskAgentsAction()]);
-    return <ConnectionsBoard data={{ office, judicial, drive, overview, agents }} />;
+    const [office, judicial, drive, agents, caseOrchestration] = await Promise.all([
+      getOfficeStatusAction(), getJudicialOverviewAction(), getDriveStatusAction(), listTaskAgentsAction(), getCaseOrchestrationAction(),
+    ]);
+    return <ConnectionsBoard data={{ office, judicial, drive, overview, agents, caseOrchestration }} />;
   }
   const catalog = await getDgCatalogAction();
   if (!catalog.ok) return <ActionErrorState error={catalog} title="Não foi possível abrir o DG Brasil." />;

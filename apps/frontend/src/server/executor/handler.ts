@@ -6,7 +6,7 @@ import type { Logger } from "@/server/core/logger";
 import { SlidingWindowLimiter } from "@/server/core/rate-limit";
 import {
   ANALYSIS_SCHEMA_VERSION, EXECUTOR_TOKEN, LEASE_TOKEN, MIN_EXECUTOR_VERSION, PROPOSAL_DATA, analysisForStorage, completeSchema,
-  configSchema, createProposalSchema, executorVersionAccepted, failSchema, finalizeOutputSchema, heartbeatSchema, parseExecutorVersion,
+  configSchema, createProposalSchema, startCaseAnalysisSchema, executorVersionAccepted, failSchema, finalizeOutputSchema, heartbeatSchema, parseExecutorVersion,
   prepareOutputSchema, proposalKey, setupPrepareSchema, sha256Hex, submitAnalysisSchema,
 } from "./contract";
 import type { ExecutorDb, ExecutorFunction } from "./db";
@@ -253,6 +253,10 @@ async function route_(req: ExecutorRequest, tokenHash: string, deps: ExecutorDep
     }
     case "POST analysis":
       return ok(await submitAnalysis(job, parse(submitAnalysisSchema, req.body).result));
+    case "POST analyses": {
+      const b = parse(startCaseAnalysisSchema, req.body);
+      return ok(await job("executor_start_case_analysis", b.local_agent, b.request));
+    }
     case "POST proposals": {
       const b = parse(createProposalSchema, req.body);
       const data = parse(PROPOSAL_DATA[b.type] as z.ZodType<Record<string, unknown>>, b.data);

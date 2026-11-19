@@ -28,3 +28,5 @@ export const sendProcessTaskSchema = z.object({ taskId: zUuid(), note: zOptional
 export const completeProcessTaskSchema = z.object({ taskId: zUuid(), note: zOptionalText(2000) });
 export const cancelProcessTaskSchema = z.object({ taskId: zUuid(), reason: zText(1000, "Informe o motivo do cancelamento.") });
 export const saveTaskSettingsSchema = z.object({ orchestratorAgentId: zUuid().nullable() });
+/** Caso novo e análise aprovada vão ao orquestrador (081). */
+export const saveCaseOrchestrationSchema = z.object({ enabled: z.boolean() });

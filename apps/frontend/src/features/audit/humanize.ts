@@ -103,6 +103,9 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   AUTO_SEQUENCE_QUEUED: "Sequência automática: próximo agente acionado",
   AUTO_SEQUENCE_SKIPPED: "Sequência automática: agente pulado",
   AUTO_SEQUENCE_FAILED: "Sequência automática: falha ao acionar agente",
+  CASE_INTAKE_QUEUED: "Caso novo enviado ao orquestrador",
+  CASE_INTAKE_SKIPPED: "Caso novo não foi ao orquestrador",
+  CASE_INTAKE_FAILED: "Caso novo: falha ao enviar ao orquestrador",
   AI_EXECUTION_ENABLED: "Execução dos agentes ligada",
   AI_EXECUTION_DISABLED: "Execução dos agentes desligada",
   EXECUTOR_CREATED: "Computador do escritório autorizado",
@@ -407,6 +410,7 @@ export const AUDIT_FIELD_LABEL: Record<string, string> = {
   deadline_auto_apply: "prazo direto na agenda",
   deadline_auto_task: "prazo vira tarefa",
   orchestrator_agent_id: "agente orquestrador",
+  case_orchestration: "caso novo vai ao orquestrador",
   configuration: "configuração",
   config: "configuração",
 };

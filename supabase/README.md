@@ -8,9 +8,10 @@ papéis: ADMIN, LAWYER, ASSISTANT (internos); PARTNER_ADMIN, PARTNER_USER.
 Domínio central: **Client → LegalCase → LegalProcess**.
 
 > **Regra de migrations.** Migration aplicada **nunca** é reescrita: mudança
-> nova é sempre um arquivo novo, com o número seguinte. Em 17/11/2026 o
-> repositório tem **79 migrations (001–079)**. No Supabase de desenvolvimento,
-> **todas estão aplicadas (a 079 em 17/11/2026)**, e na produção também
+> nova é sempre um arquivo novo, com o número seguinte. Em 18/11/2026 o
+> repositório tem **81 migrations (001–081)** no ramo `caso-novo-orquestrador-v2`
+> (o master vai até a 079). No Supabase de desenvolvimento, **até a 079 estão
+> aplicadas (a 079 em 17/11/2026); a 080 e a 081 ainda não**, e na produção também
 > (`Digital_Group_Brasil_Prod`, que é o banco do site publicado). Migration nova vai
 > **primeiro no DEV, depois na produção, e só então o site**; antes de aplicar uma nova,
 > confira o que já está lá com `npx supabase migration list`.
@@ -24,7 +25,7 @@ Domínio central: **Client → LegalCase → LegalProcess**.
 | Caminho | O que é |
 |---|---|
 | `migrations/` | As migrations, em ordem. As 19 primeiras seguem a seção 100 da especificação |
-| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade, com a RLS testada por papel: aplica **todas** as migrations do zero e confere cada uma (os blocos são marcados com o número da migration, de `[020]` a `[079]`). 1.228 verificações até a 079; cada migration nova acrescenta as suas, e o total aparece no fim de `npm run verificar` |
+| `tests/verificar.mjs` | Critérios de aceitação e regras de integridade, com a RLS testada por papel: aplica **todas** as migrations do zero e confere cada uma (os blocos são marcados com o número da migration, de `[020]` a `[081]`). 1.246 verificações até a 081; cada migration nova acrescenta as suas, e o total aparece no fim de `npm run verificar` |
 | `tests/supabase-shim.sql` | Simulação mínima de `auth`, `storage`, `pgmq`, `pg_cron` e roles do Supabase para rodar no PGlite. **Só para teste local** |
 | `tests/real/validar-real.mjs` | Validação contra um Supabase **real de desenvolvimento**: Auth, JWT/PostgREST, Storage, pgmq e login do `dg_worker` (`npm run validar:real`, variáveis em `.env.real`, modelo em `.env.real.example`) |
 | `scripts/usuarios-qa.mjs` | Usuários **fixos** para QA manual no DEV (LAWYER, ASSISTANT e PARTNER_ADMIN/PARTNER_USER de "Parceiro QA A/B"), senha em `QA_SENHA`; termos e MFA no primeiro login (`npm run usuarios:qa`) |
@@ -524,6 +525,8 @@ foi resetado em seguida.
 | `20261117000077_agentes_so_setup` | O conteúdo dos agentes (`agent_versions`: orientações e configuração) só para quem vê o setup; ADMIN sem setup vê a lista, pausa, ativa e executa. `dg_save_agent_once` (039) refeita. Testes `[077]`. Aplicada no DEV |
 | `20261117000078_indices_e_limpeza` | Revisão do banco antes do lançamento: índices por processo, por execução e por responsável (`deadlines_process_idx`, `reviews_process_idx`, `legal_analyses_agent_run_idx`, `legal_processes_responsible_idx`); CPF de escritório parceiro único (`organizations_cpf_key`, só é criado se não houver repetido); `updated_at` automático em quatro tabelas de configuração; limpeza diária dos dados operacionais com mais de 120 dias (`private.operational_housekeeping`, `dg-limpeza-operacional`); guarda de 5 anos da auditoria e dos acessos LGPD (`private.audit_retention_housekeeping`, na mesma rotina); descrição em todas as tabelas. Não muda regra, permissão nem assinatura. Testes `[078]`. Aplicada no DEV |
 | `20261118000079_cadastro_pessoal` | Cadastro pessoal: etapa obrigatória "Complete seu cadastro" e tela "Meu perfil". `profiles` ganha `gender`, `birth_date`, `office_city`, `office_state` e `profile_completed_at` (nulo = pendente; contas existentes ficam pendentes de propósito, sem preenchimento retroativo); `complete_my_profile(jsonb)` grava e valida (as colunas novas não têm `UPDATE` direto pela API); `get_my_session_context()` (038) refeita com o corpo idêntico e a chave `profile.completed`. **Ordem de publicação: migration primeiro, site depois.** Testes `[079]`. Aplicada no DEV |
+| `20261118000080_agente_viabilidade_recursal` | Vera · Viabilidade recursal entra no kit (cadastro do agente `vera-viabilidade-dg`, ativo, sem sobrescrever o que já existe). Testes `[080]`. Não aplicada |
+| `20261118000081_caso_novo_orquestrador` | Caso novo e análise aprovada vão ao orquestrador. `process_task_settings.case_orchestration` (ligada por padrão) e `save_case_orchestration(boolean)` (só ADMIN); gatilhos em `document_versions`, `case_documents` e `legal_cases.status` mandam o caso, uma vez, quando chega o primeiro documento próprio (rascunho espera o envio; caso com análise não vai), em nome do advogado do caso, também quando quem anexa é o parceiro (`private.request_agent_run_as`); sem advogado, registra `CASE_INTAKE_SKIPPED` e avisa os ADMIN. `analysis_sequence_enqueue` (056) passa a mandar a análise aprovada ao orquestrador (pedido "ANÁLISE APROVADA"), com a lista fixa em `analysis_sequence_fixed` como reserva. Porta `executor_start_case_analysis` (rota `POST jobs/:id/analyses`, conector 1.4.0): só o trabalho do orquestrador abre a análise do modelo do agente escolhido, em nome de quem pediu. **Ordem: migration primeiro, site e conector depois.** Testes `[081]`. Não aplicada |
 
 ### Revisão do banco (2026-11-17)
 
