@@ -4,3 +4,8 @@
 *.docx binary
 *.ico binary
 *.xlsx binary
+
+# Agentes do Claude Code sempre em LF: com CRLF o validador recusa e o
+# agente pode deixar de carregar (core.autocrlf=true no Windows converte).
+docs/mcp/pilotos/agentes/*.md text eol=lf
+apps/frontend/public/executor/agentes/*.md text eol=lf
